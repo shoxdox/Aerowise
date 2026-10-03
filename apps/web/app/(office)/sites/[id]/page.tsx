@@ -1,0 +1,232 @@
+"use client";
+
+import { SAFETY_FLAGS, type SiteDetail } from "@aerowise/domain";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
+import { useLoad } from "@/components/useLoad";
+import { api, ApiError, formValues } from "@/lib/api";
+import { canEdit, useSession } from "@/lib/session";
+
+export default function SitePage() {
+  const { id } = useParams<{ id: string }>();
+  const editable = canEdit(useSession());
+  const { data: site, error, reload } = useLoad<SiteDetail>(`/sites/${id}`);
+  const [editing, setEditing] = useState<"site" | "system" | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  if (error) return <p className="error">{error}</p>;
+  if (!site) return <p className="muted">Loading…</p>;
+
+  async function save(path: string, method: "POST" | "PATCH", body: object) {
+    setFormError(null);
+    try {
+      await api(path, { method, body });
+      setEditing(null);
+      await reload();
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Could not save");
+    }
+  }
+
+  function onSaveSite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    const flags = new FormData(event.currentTarget).getAll("safetyFlags").map(String);
+    void save(`/sites/${id}`, "PATCH", {
+      addressLine1: v.addressLine1,
+      city: v.city,
+      postalCode: v.postalCode ?? null,
+      county: v.county ?? null,
+      permitNumber: v.permitNumber ?? null,
+      gateCode: v.gateCode ?? null,
+      accessNotes: v.accessNotes ?? null,
+      schedulingNotes: v.schedulingNotes ?? null,
+      safetyFlags: flags,
+    });
+  }
+
+  function onAddSystem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    void save(`/sites/${id}/systems`, "POST", {
+      manufacturer: v.manufacturer,
+      model: v.model,
+      serial: v.serial,
+      installedAt: v.installedAt,
+      disposalType: v.disposalType,
+      chlorinationMethod: v.chlorinationMethod,
+      systemType: "aerobic",
+    });
+  }
+
+  const mapsUrl =
+    site.lat !== null && site.lng !== null
+      ? `https://www.google.com/maps/search/?api=1&query=${site.lat},${site.lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${site.addressLine1}, ${site.city}, ${site.state}`)}`;
+
+  return (
+    <div className="stack">
+      <p>
+        <Link href={`/customers/${site.customer.id}`}>← {site.customer.displayName}</Link>
+      </p>
+      <div className="row">
+        <h1>
+          {site.addressLine1}, {site.city}
+        </h1>
+        <SafetyBadges flags={site.safetyFlags} />
+        <span className="spacer" />
+        <a href={mapsUrl} target="_blank" rel="noreferrer">
+          Map
+        </a>
+        {editable && (
+          <button className="secondary" onClick={() => setEditing(editing === "site" ? null : "site")}>
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing === "site" ? (
+        <form className="card grid" onSubmit={onSaveSite}>
+          <label className="wide">
+            Address
+            <input name="addressLine1" defaultValue={site.addressLine1} required />
+          </label>
+          <label>
+            City
+            <input name="city" defaultValue={site.city} required />
+          </label>
+          <label>
+            ZIP
+            <input name="postalCode" defaultValue={site.postalCode ?? ""} />
+          </label>
+          <label>
+            County
+            <input name="county" defaultValue={site.county ?? ""} />
+          </label>
+          <label>
+            Permit number
+            <input name="permitNumber" defaultValue={site.permitNumber ?? ""} />
+          </label>
+          <label>
+            Gate code
+            <input name="gateCode" defaultValue={site.gateCode ?? ""} />
+          </label>
+          <fieldset className="wide">
+            <legend>Safety and access</legend>
+            {SAFETY_FLAGS.map((f) => (
+              <label key={f} className="check">
+                <input type="checkbox" name="safetyFlags" value={f} defaultChecked={site.safetyFlags.includes(f)} />
+                {SAFETY_FLAG_LABELS[f]}
+              </label>
+            ))}
+          </fieldset>
+          <label className="wide">
+            Access notes
+            <textarea name="accessNotes" defaultValue={site.accessNotes ?? ""} rows={2} />
+          </label>
+          <label className="wide">
+            Scheduling requirements
+            <textarea name="schedulingNotes" defaultValue={site.schedulingNotes ?? ""} rows={2} />
+          </label>
+          {formError && <p className="error wide">{formError}</p>}
+          <div className="wide">
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      ) : (
+        <dl className="card details">
+          <dt>Permit</dt>
+          <dd>{site.permitNumber ?? "Not recorded"}</dd>
+          <dt>County</dt>
+          <dd>{site.county ?? "—"}</dd>
+          <dt>Gate code</dt>
+          <dd>{site.gateCode ?? "—"}</dd>
+          <dt>Access notes</dt>
+          <dd>{site.accessNotes ?? "—"}</dd>
+          <dt>Scheduling</dt>
+          <dd>{site.schedulingNotes ?? "—"}</dd>
+        </dl>
+      )}
+
+      <section className="stack">
+        <div className="row">
+          <h2>Wastewater systems</h2>
+          <span className="spacer" />
+          {editable && (
+            <button className="secondary" onClick={() => setEditing(editing === "system" ? null : "system")}>
+              Add system
+            </button>
+          )}
+        </div>
+        {editing === "system" && (
+          <form className="card grid" onSubmit={onAddSystem}>
+            <label>
+              Manufacturer
+              <input name="manufacturer" />
+            </label>
+            <label>
+              Model
+              <input name="model" />
+            </label>
+            <label>
+              Serial
+              <input name="serial" />
+            </label>
+            <label>
+              Installed
+              <input name="installedAt" type="date" />
+            </label>
+            <label>
+              Disposal
+              <select name="disposalType" defaultValue="">
+                <option value="">—</option>
+                <option value="spray">Spray</option>
+                <option value="drip">Drip</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              Chlorination
+              <select name="chlorinationMethod" defaultValue="">
+                <option value="">—</option>
+                <option value="tablet">Tablet</option>
+                <option value="liquid">Liquid</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            {formError && <p className="error wide">{formError}</p>}
+            <div className="wide">
+              <button type="submit">Add system</button>
+            </div>
+          </form>
+        )}
+        {site.systems.length === 0 && <p className="muted">No systems recorded.</p>}
+        {site.systems.map((s) => (
+          <dl key={s.id} className="card details">
+            <dt>Unit</dt>
+            <dd>{[s.manufacturer, s.model].filter(Boolean).join(" ") || "Unknown"}</dd>
+            <dt>Serial</dt>
+            <dd>{s.serial ?? "—"}</dd>
+            <dt>Installed</dt>
+            <dd>{s.installedAt ?? "—"}</dd>
+            <dt>Disposal</dt>
+            <dd>{s.disposalType ?? "—"}</dd>
+            <dt>Chlorination</dt>
+            <dd>{s.chlorinationMethod ?? "—"}</dd>
+          </dl>
+        ))}
+      </section>
+
+      <section className="stack">
+        <h2>Contacts</h2>
+        {site.contacts.map((c) => (
+          <p key={c.id}>
+            {c.name} {c.phone && <a href={`tel:${c.phone}`}>{c.phone}</a>}
+          </p>
+        ))}
+      </section>
+    </div>
+  );
+}

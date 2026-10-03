@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aerowise
+          POSTGRES_PASSWORD: aerowise
+          POSTGRES_DB: aerowise
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aerowise"
+          --health-interval 2s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://aerowise:aerowise@localhost:5432/aerowise
+      TEST_DATABASE_URL: postgres://aerowise:aerowise@localhost:5432/aerowise_test
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Seed runs cleanly
+        run: pnpm db:seed
+      - run: pnpm build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build

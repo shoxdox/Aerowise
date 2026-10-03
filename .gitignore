@@ -6,3 +6,9 @@ node_modules/
 *.key
 credentials*.json
 .DS_Store
+.next/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
