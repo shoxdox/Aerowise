@@ -11,16 +11,20 @@ let passwordHash: string | undefined;
 export interface TestContext {
   db: Database;
   app: App;
+  /** Pinned clock: tests set `ctx.now` to control "today". */
+  now: Date;
 }
 
 /** One app + db per test file; every table is emptied before each test. */
 export function setupTestApp(): TestContext {
   const ctx = {} as TestContext;
   ctx.db = createDb(testDatabaseUrl());
+  ctx.now = new Date("2026-03-01T18:00:00Z");
   beforeEach(async () => {
-    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000 });
+    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now });
+    ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate audit_events, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate audit_events, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });

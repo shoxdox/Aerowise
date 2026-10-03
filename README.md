@@ -13,8 +13,10 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
 | Append-only audit log | Done |
-| Contracts and recurring inspection obligations | Next |
-| Scheduling, technician PWA (offline), inspections, reports, filing, exception inbox, imports | Planned, in that order |
+| Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
+| Due-inspections list for the office | Done |
+| Jobs and scheduling | Next |
+| Technician PWA (offline), inspections, reports, filing, exception inbox, imports | Planned, in that order |
 
 Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
 
@@ -36,7 +38,7 @@ pnpm db:seed            # applies migrations, then loads demo data
 pnpm dev                # API on :4000, web on :3000
 ```
 
-Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems. All demo names, addresses and permit numbers are made up.
+Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 

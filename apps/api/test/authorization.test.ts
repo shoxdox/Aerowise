@@ -47,7 +47,7 @@ describe("deny by default", () => {
     await app.close();
   });
 
-  it("requires a session on every CRM route", async () => {
+  it("requires a session on every protected route", async () => {
     const id = crypto.randomUUID();
     const api = client(ctx.app);
     const calls = [
@@ -63,6 +63,15 @@ describe("deny by default", () => {
       api.patch(`/sites/${id}`, {}),
       api.post(`/sites/${id}/systems`, {}),
       api.patch(`/systems/${id}`, {}),
+      api.get("/plans"),
+      api.post("/plans", {}),
+      api.patch(`/plans/${id}`, {}),
+      api.get(`/sites/${id}/contracts`),
+      api.post(`/sites/${id}/contracts`, {}),
+      api.get(`/contracts/${id}`),
+      api.post(`/contracts/${id}/renew`, {}),
+      api.post(`/contracts/${id}/cancel`, {}),
+      api.get("/obligations/due"),
     ];
     for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(401);
   });

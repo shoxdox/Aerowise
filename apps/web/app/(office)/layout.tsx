@@ -10,8 +10,10 @@ function Shell({ children }: { children: ReactNode }) {
   const me = useSession();
   const path = usePathname();
   const nav = [
+    { href: "/due", label: "Due" },
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
+    { href: "/plans", label: "Plans" },
   ];
   async function signOut() {
     await api("/auth/logout", { method: "POST", body: {} });

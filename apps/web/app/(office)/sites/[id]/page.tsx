@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
+import { SiteContracts } from "@/components/SiteContracts";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { canEdit, useSession } from "@/lib/session";
@@ -149,6 +150,8 @@ export default function SitePage() {
           <dd>{site.schedulingNotes ?? "—"}</dd>
         </dl>
       )}
+
+      <SiteContracts siteId={site.id} editable={editable} />
 
       <section className="stack">
         <div className="row">

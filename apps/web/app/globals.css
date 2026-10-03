@@ -61,3 +61,11 @@ tr:last-child td { border-bottom: none; }
 
 .login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
 .login form { width: 100%; max-width: 360px; }
+
+.small { font-size: 0.85rem; }
+.badge.danger, .badge.expired { background: #fde8e6; color: var(--error); border-color: transparent; margin-left: 6px; }
+.badge.upcoming { background: #e6f0fd; color: #1d4f91; border-color: transparent; }
+.badge.cancelled { color: var(--muted); text-decoration: line-through; }
+.badge.completed { background: #e3f4ec; color: var(--accent); border-color: transparent; }
+tr.overdue td:first-child { border-left: 3px solid var(--error); }
+table.compact th, table.compact td { padding: 6px 10px; }

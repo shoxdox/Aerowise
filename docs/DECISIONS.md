@@ -19,3 +19,15 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Object storage deferred to the reports module.** The `minio/minio` image is no longer published on Docker Hub, so the S3-compatible service will be chosen when photos and PDFs need it.
 - **Web app talks to the API through a same-origin `/api` rewrite**, so the session cookie is first-party and no CORS is needed. Pages are client components for now; the technician PWA will be offline-first anyway.
 - **TypeScript runs directly via `tsx`** in the API and scripts; internal packages export `.ts` source. A compile step can be added when deploy targets are chosen.
+
+## 2026-10-03 · Plans, contracts and service obligations
+
+- **One obligation row per visit.** A contract materializes a `service_obligations` row for each visit in its term (an annual plan with 3 visits makes 3 rows). Each row is the unit the office schedules, a job is assigned to and an inspection completes. This is simpler to schedule and audit than one rolling row per contract.
+- **Visit windows split the term evenly.** A 12-month term with 3 visits gives three 4-month windows; each visit is due on the last day of its window, and is overdue the day after. Plans must divide the term into whole months (12/3, 12/4, 24/6…), enforced in the API and by a database check. Shifting later windows after an early or late inspection is a decision for the inspections module.
+- **Visit counts and intervals are provider plan settings, not jurisdiction rules.** No county requirement is assumed here; when the compliance engine arrives, a ruleset can require a minimum visit count and the contract form can warn.
+- **Contracts copy their plan's terms** (name, term, visits, price, billing frequency) when created, so editing or retiring a plan never rewrites an existing contract. A negotiated price can override the plan price.
+- **Contract state is derived, not stored.** The table stores `active` or `cancelled`; `upcoming` and `expired` come from the start/end dates and the organization's own "today" (its timezone, default America/Chicago). No nightly job has to flip statuses.
+- **No overlapping contracts per site.** A Postgres exclusion constraint rejects two non-cancelled contracts on one site whose dates overlap; the API answers 409.
+- **Renewal, minimal version.** "Renew" creates the next term starting the day after the old one ends, linked by `previous_contract_id`, with the same terms unless a plan or price is given. The old contract and its visits are untouched. A contract can be renewed once. Campaigns, e-signature and payment stay out of scope; `renewal_status` is the seam for them.
+- **Cancelling** keeps the contract with its reason and time, cancels its open visits and keeps completed ones as history.
+- **The due-inspections list** shows open visits due on or before a date (default today + 30 days), overdue first. It becomes the left column of the scheduling screen in the next module.
