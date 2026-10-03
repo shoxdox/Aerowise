@@ -1,0 +1,24 @@
+{
+  "name": "@aerowise/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "migrate": "tsx src/cli.ts migrate",
+    "seed": "tsx src/cli.ts seed",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aerowise/domain": "workspace:*",
+    "kysely": "^0.29.6",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  }
+}

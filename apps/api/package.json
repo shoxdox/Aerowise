@@ -1,0 +1,32 @@
+{
+  "name": "@aerowise/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "openapi": "tsx src/print-openapi.ts"
+  },
+  "dependencies": {
+    "@aerowise/db": "workspace:*",
+    "@aerowise/domain": "workspace:*",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^10.0.0",
+    "@fastify/swagger": "^9.9.1",
+    "fastify": "^5.12.5",
+    "fastify-plugin": "^5.1.0",
+    "fastify-type-provider-zod": "^7.0.0",
+    "kysely": "^0.29.6",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.3"
+  }
+}

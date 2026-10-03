@@ -1,0 +1,35 @@
+# Local development stack: `docker compose up`, then `docker compose run --rm api pnpm db:seed`.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aerowise
+      POSTGRES_PASSWORD: aerowise
+      POSTGRES_DB: aerowise
+    ports: ["5432:5432"]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "aerowise"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: .
+    command: pnpm --filter @aerowise/api start
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://aerowise:aerowise@db:5432/aerowise
+      API_PORT: "4000"
+    ports: ["4000:4000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: .
+    command: pnpm --filter @aerowise/web start
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  db-data:
