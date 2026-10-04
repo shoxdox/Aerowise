@@ -3,9 +3,11 @@ import type { Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
 import { claimNext, enqueue, markDone, markFailed, type Task } from "./queue.ts";
 import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
+import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export * from "./queue.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
+export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
   db: Database;
@@ -15,7 +17,13 @@ export interface TaskContext {
   mail?: EmailTransport;
   /** From address on filing emails. */
   mailFrom?: string;
+  /** From address on invoice emails; the provider's name is shown with it. */
+  invoiceMailFrom?: string;
+  /** Where customers open pay links: the web app's public address. */
+  appUrl?: string;
 }
+
+export const DEFAULT_APP_URL = "http://localhost:3000";
 
 export function complianceContext(ctx: TaskContext): ComplianceContext {
   return { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, enqueue, from: ctx.mailFrom };
@@ -28,6 +36,17 @@ async function run(ctx: TaskContext, task: Task) {
       await generateReports(ctx.db, ctx.store, task.organizationId!, payload.inspectionId!, ctx.now());
       // With the authority copy made, the inspection's filing can be checked and sent.
       await prepareFiling(complianceContext(ctx), task.organizationId!, payload.inspectionId!);
+      return;
+    case RENDER_INVOICE:
+      await renderInvoicePdf(ctx.db, ctx.store, task.organizationId!, payload.invoiceId!, ctx.appUrl ?? DEFAULT_APP_URL);
+      return;
+    case SEND_INVOICE:
+      await sendInvoice(
+        { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, appUrl: ctx.appUrl ?? DEFAULT_APP_URL, from: ctx.invoiceMailFrom },
+        task.organizationId!,
+        payload.invoiceId!,
+        Number(payload.sendNo),
+      );
       return;
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);

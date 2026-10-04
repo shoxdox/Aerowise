@@ -1,5 +1,14 @@
 import type { ColumnType, Generated } from "kysely";
-import type { FilingStatus, Role, SubmissionMethod } from "@aerowise/domain";
+import type {
+  FilingStatus,
+  InvoicePaymentStatus,
+  InvoiceStatus,
+  PaymentMethod,
+  PaymentRecordStatus,
+  RefundStatus,
+  Role,
+  SubmissionMethod,
+} from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
 // migrations/*.sql.
@@ -19,6 +28,12 @@ export interface OrganizationsTable {
   postalCode: string | null;
   timezone: Generated<string>;
   logoUrl: string | null;
+  invoiceTermsDays: Generated<number>;
+  defaultTaxRateBps: Generated<number>;
+  nextInvoiceNumber: Generated<number>;
+  stripeAccountId: string | null;
+  stripeChargesEnabled: Generated<boolean>;
+  stripeDetailsSubmitted: Generated<boolean>;
   createdAt: CreatedAt;
 }
 
@@ -334,6 +349,7 @@ export interface ComplianceEventsTable {
   inspectionId: string | null;
   reportId: string | null;
   filingId: ColumnType<string | null, string | null | undefined, never>;
+  invoiceId: ColumnType<string | null, string | null | undefined, never>;
   summary: string;
   details: ColumnType<unknown, string | undefined, never>;
 }
@@ -432,6 +448,131 @@ export interface ImportRowsTable {
   contractId: string | null;
 }
 
+export interface InvoicesTable {
+  id: Generated<string>;
+  organizationId: string;
+  customerId: string;
+  siteId: string | null;
+  number: number | null;
+  status: Generated<InvoiceStatus>;
+  paymentStatus: Generated<InvoicePaymentStatus>;
+  memo: string | null;
+  termsDays: number;
+  taxRateBps: number;
+  discountCents: number;
+  subtotalCents: number;
+  taxableCents: number;
+  taxCents: number;
+  totalCents: number;
+  paidCents: Generated<number>;
+  pendingCents: Generated<number>;
+  refundedCents: Generated<number>;
+  issuedOn: string | null;
+  dueOn: string | null;
+  publicToken: string | null;
+  snapshot: ColumnType<unknown, string | null | undefined, string | null>;
+  pdfStorageKey: string | null;
+  pdfSha256: string | null;
+  pdfByteSize: number | null;
+  sentAt: Timestamp | null;
+  sendCount: Generated<number>;
+  paidAt: Timestamp | null;
+  voidedAt: Timestamp | null;
+  voidReason: string | null;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface InvoiceLinesTable {
+  id: Generated<string>;
+  organizationId: string;
+  invoiceId: string;
+  position: number;
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
+  amountCents: number;
+  taxable: boolean;
+  contractId: string | null;
+  installment: number | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  jobId: string | null;
+}
+
+export interface PaymentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  invoiceId: string;
+  amountCents: number;
+  method: PaymentMethod;
+  source: "stripe" | "manual";
+  status: PaymentRecordStatus;
+  refundedCents: Generated<number>;
+  providerPaymentId: string | null;
+  providerSessionId: string | null;
+  receivedOn: string | null;
+  reference: string | null;
+  note: string | null;
+  failureReason: string | null;
+  recordedBy: string | null;
+  succeededAt: Timestamp | null;
+  failedAt: Timestamp | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface RefundsTable {
+  id: Generated<string>;
+  organizationId: string;
+  paymentId: string;
+  amountCents: number;
+  status: RefundStatus;
+  providerRefundId: string | null;
+  reason: string | null;
+  failureReason: string | null;
+  createdBy: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface CheckoutSessionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  invoiceId: string;
+  providerSessionId: string;
+  amountCents: number;
+  url: string;
+  expiresAt: Timestamp;
+  status: Generated<"open" | "complete" | "expired">;
+  createdAt: Timestamp;
+}
+
+export interface StripeEventsTable {
+  id: string;
+  type: string;
+  account: string | null;
+  livemode: boolean;
+  organizationId: string | null;
+  payload: ColumnType<unknown, string, never>;
+  outcome: string;
+  receivedAt: Timestamp;
+}
+
+export interface InvoiceEventsTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  invoiceId: string;
+  eventType: string;
+  summary: string;
+  actorUserId: string | null;
+  paymentId: string | null;
+  details: ColumnType<unknown, string | undefined, never>;
+  occurredAt: Timestamp;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -460,4 +601,11 @@ export interface DB {
   filingAttempts: FilingAttemptsTable;
   imports: ImportsTable;
   importRows: ImportRowsTable;
+  invoices: InvoicesTable;
+  invoiceLines: InvoiceLinesTable;
+  payments: PaymentsTable;
+  refunds: RefundsTable;
+  checkoutSessions: CheckoutSessionsTable;
+  stripeEvents: StripeEventsTable;
+  invoiceEvents: InvoiceEventsTable;
 }

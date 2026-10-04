@@ -6,6 +6,9 @@ import {
   FILING_OPEN_STATUSES,
   id,
   inbox,
+  INVOICE_LATE_DAYS,
+  invoiceNumberLabel,
+  PAYMENT_FAILED_WINDOW_DAYS,
   ISSUE_LABELS,
   issueResolveInput,
   sortExceptions,
@@ -19,6 +22,7 @@ import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
+import { dollars } from "@aerowise/payments";
 import { organizationToday } from "../lib/today.ts";
 
 const params = z.object({ id });
@@ -283,6 +287,69 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     });
   }
 
+  /** Overdue invoices, failed bank payments still owed, and money to give back. */
+  async function invoiceExceptions(organizationId: string, today: string): Promise<InboxException[]> {
+    const base = () =>
+      db
+        .selectFrom("invoices as i")
+        .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "i.customerId").onRef("c.organizationId", "=", "i.organizationId"))
+        .leftJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
+        .select(["i.id", "i.number", "i.status", "i.dueOn", "i.totalCents", "i.paidCents", "i.pendingCents", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+        .where("i.organizationId", "=", organizationId);
+    type Row = Awaited<ReturnType<ReturnType<typeof base>["execute"]>>[number];
+    const where = (r: Row) => ({
+      site: r.siteId && r.addressLine1 && r.city ? { id: r.siteId, addressLine1: r.addressLine1, city: r.city } : null,
+      customer: customer(r),
+      target: { type: "invoice" as const, id: r.id },
+    });
+    const owed = (r: Row) => dollars(Math.max(0, r.totalCents - r.paidCents - r.pendingCents));
+    const failedSince = new Date(now().getTime() - PAYMENT_FAILED_WINDOW_DAYS * 86_400_000);
+    const [overdue, failed, overpaid] = await Promise.all([
+      base().where("i.status", "=", "open").where("i.paymentStatus", "in", ["unpaid", "partial"]).where("i.dueOn", "<", today).orderBy("i.dueOn").limit(PER_KIND).execute(),
+      base()
+        .where("i.status", "=", "open")
+        .where("i.paymentStatus", "in", ["unpaid", "partial"])
+        .where((eb) => eb.exists(eb.selectFrom("payments as p").select("p.id").whereRef("p.invoiceId", "=", "i.id").where("p.status", "=", "failed").where("p.failedAt", ">=", failedSince)))
+        .orderBy("i.dueOn")
+        .limit(PER_KIND)
+        .execute(),
+      base().where("i.paymentStatus", "=", "overpaid").orderBy("i.updatedAt").limit(PER_KIND).execute(),
+    ]);
+    const failedIds = new Set(failed.map((r) => r.id));
+    return [
+      ...failed.map((r) => ({
+        ...where(r),
+        key: `payment_failed:${r.id}`,
+        kind: "payment_failed" as const,
+        severity: "high" as const,
+        title: "Bank payment failed",
+        detail: `${invoiceNumberLabel(r.number)}: ${owed(r)} still owed. The customer can pay again from the same link.`,
+        dueOn: r.dueOn,
+      })),
+      // A failed payment already says the invoice is owed.
+      ...overdue
+        .filter((r) => !failedIds.has(r.id))
+        .map((r) => ({
+          ...where(r),
+          key: `invoice_overdue:${r.id}`,
+          kind: "invoice_overdue" as const,
+          severity: (r.dueOn! < addDays(today, -INVOICE_LATE_DAYS) ? "medium" : "low") as ExceptionSeverity,
+          title: "Invoice overdue",
+          detail: `${invoiceNumberLabel(r.number)}: ${owed(r)} unpaid`,
+          dueOn: r.dueOn,
+        })),
+      ...overpaid.map((r) => ({
+        ...where(r),
+        key: `invoice_overpaid:${r.id}`,
+        kind: "invoice_overpaid" as const,
+        severity: "medium" as const,
+        title: "Paid more than owed: refund the difference",
+        detail: r.status === "void" ? `${invoiceNumberLabel(r.number)} is void but ${dollars(r.paidCents)} was paid on it` : `${invoiceNumberLabel(r.number)}: ${dollars(r.paidCents - r.totalCents)} over`,
+        dueOn: null,
+      })),
+    ];
+  }
+
   app.get(
     "/inbox",
     {
@@ -296,7 +363,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     async (req) => {
       const { organizationId } = req.requireAuth();
       const today = await organizationToday(db, organizationId, now());
-      const [groups, due, routes] = await Promise.all([
+      const [groups, due, routes, unpaid] = await Promise.all([
         Promise.all([
           overdueVisits(organizationId, today),
           incompleteInspections(organizationId),
@@ -304,6 +371,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           lateNextVisits(organizationId, today),
           openIssues(organizationId),
           contractEnds(organizationId, today),
+          invoiceExceptions(organizationId, today),
         ]),
         db
           .selectFrom("serviceObligations")
@@ -324,6 +392,13 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           .groupBy(["j.technicianUserId", "u.name"])
           .orderBy("u.name")
           .execute(),
+        db
+          .selectFrom("invoices")
+          .select([sql<number>`count(*)::int`.as("n"), sql<number>`coalesce(sum(greatest(total_cents - paid_cents, 0)), 0)::int`.as("cents")])
+          .where("organizationId", "=", organizationId)
+          .where("status", "=", "open")
+          .where("paymentStatus", "in", ["unpaid", "processing", "partial"])
+          .executeTakeFirstOrThrow(),
       ]);
       const items = sortExceptions(groups.flat());
       return {
@@ -333,6 +408,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           overdue: Number(due.overdue),
           filingsAtRisk: items.filter((e) => e.kind.startsWith("filing_")).length,
           contractsExpiring: items.filter((e) => e.kind === "contract_expiring").length,
+          unpaidInvoices: Number(unpaid.n),
+          unpaidCents: Number(unpaid.cents),
         },
         items,
         routes: routes.map((r) => ({ ...r, stops: Number(r.stops), done: Number(r.done) })),

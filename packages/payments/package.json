@@ -1,0 +1,21 @@
+{
+  "name": "@aerowise/payments",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aerowise/db": "workspace:*",
+    "@aerowise/domain": "workspace:*",
+    "kysely": "^0.29.6",
+    "stripe": "^23.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

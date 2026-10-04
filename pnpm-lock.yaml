@@ -38,6 +38,9 @@ importers:
       '@aerowise/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@aerowise/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
       '@aerowise/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -201,6 +204,25 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@22.20.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/payments:
+    dependencies:
+      '@aerowise/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aerowise/domain':
+        specifier: workspace:*
+        version: link:../domain
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+      stripe:
+        specifier: ^23.0.0
+        version: 23.0.0(@types/node@22.20.5)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+
   packages/reports:
     dependencies:
       '@aerowise/domain':
@@ -234,6 +256,9 @@ importers:
       '@aerowise/domain':
         specifier: workspace:*
         version: link:../domain
+      '@aerowise/payments':
+        specifier: workspace:*
+        version: link:../payments
       '@aerowise/reports':
         specifier: workspace:*
         version: link:../reports
@@ -1934,6 +1959,15 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
+
+  stripe@23.0.0:
+    resolution: {integrity: sha512-MDE2A5ZVVluYURORaZEVghSmnLJc3w6aHAlZSxDQMsOjOb3V0O6ro/CiaeFlJS4N7uIVmsg98ocRsPmUK6YfyA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@types/node': '>=20'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
@@ -3744,6 +3778,10 @@ snapshots:
       safe-buffer: 5.2.1
 
   strip-json-comments@3.1.1: {}
+
+  stripe@23.0.0(@types/node@22.20.5):
+    optionalDependencies:
+      '@types/node': 22.20.5
 
   styled-jsx@5.1.6(react@19.3.0):
     dependencies:

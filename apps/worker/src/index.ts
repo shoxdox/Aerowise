@@ -9,8 +9,15 @@ const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
 await syncRulesets(db);
-// Filing emails go to the development outbox in file storage; see README for production.
-const ctx = { db, store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"), now: () => new Date(), mailFrom: process.env.FILING_EMAIL_FROM };
+// Filing and invoice emails go to the development outbox in file storage; see README for production.
+const ctx = {
+  db,
+  store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
+  now: () => new Date(),
+  mailFrom: process.env.FILING_EMAIL_FROM,
+  invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
+  appUrl: process.env.PUBLIC_APP_URL,
+};
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
 

@@ -15,6 +15,9 @@ export const EXCEPTION_KINDS = [
   "issue_open",
   "contract_expiring",
   "contract_expired",
+  "invoice_overdue",
+  "payment_failed",
+  "invoice_overpaid",
 ] as const;
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number];
 
@@ -27,6 +30,10 @@ export const UNCONFIRMED_AFTER_DAYS = 14;
 export const CONTRACT_EXPIRING_DAYS = 30;
 /** Expired contracts stop showing this many days after they ended. */
 export const CONTRACT_EXPIRED_WINDOW_DAYS = 60;
+/** A failed bank payment stays in the inbox this long, while the invoice is still owed. */
+export const PAYMENT_FAILED_WINDOW_DAYS = 30;
+/** Invoices this many days past due are medium severity; before that, low. */
+export const INVOICE_LATE_DAYS = 30;
 
 export const inboxException = z.object({
   /** Stable for as long as the cause lasts: kind plus the record it is about. */
@@ -37,10 +44,11 @@ export const inboxException = z.object({
   detail: z.string().nullable(),
   /** The date that makes it urgent (due, deadline, contract end), if any. */
   dueOn: z.iso.date().nullable(),
-  site: z.object({ id, addressLine1: z.string(), city: z.string() }),
+  /** Null only for an invoice that is not for a particular site. */
+  site: z.object({ id, addressLine1: z.string(), city: z.string() }).nullable(),
   customer: z.object({ id, displayName: z.string() }),
   /** The record to open to deal with it. */
-  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site"]), id }),
+  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice"]), id }),
 });
 export type InboxException = z.infer<typeof inboxException>;
 
@@ -51,6 +59,9 @@ export const inbox = z.object({
     overdue: z.number().int(),
     filingsAtRisk: z.number().int(),
     contractsExpiring: z.number().int(),
+    /** Issued invoices not fully paid, and what is left on them. */
+    unpaidInvoices: z.number().int(),
+    unpaidCents: z.number().int(),
   }),
   items: z.array(inboxException),
   routes: z.array(z.object({ technicianId: id, name: z.string(), stops: z.number().int(), done: z.number().int() })),
