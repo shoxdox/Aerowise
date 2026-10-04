@@ -1,10 +1,11 @@
 import type { Database } from "@aerowise/db";
 import { id, site, siteDetail, siteListItem, sitePatch, systemInput, systemPatch, wastewaterSystem } from "@aerowise/domain";
+import { queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
-import { notFound } from "../lib/errors.ts";
+import { notFound, unprocessable } from "../lib/errors.ts";
 import { definedOnly } from "../lib/json.ts";
 import { CONTACT_COLUMNS, SITE_COLUMNS, siteRow } from "./customers.ts";
 
@@ -24,8 +25,9 @@ const SYSTEM_COLUMNS = [
 ] as const;
 
 const params = z.object({ id });
+const ADDRESS_COLUMNS = ["addressLine1", "addressLine2", "city", "state", "postalCode"] as const;
 
-export const siteRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (app, { db }) => {
+export const siteRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }> = async (app, { db, now }) => {
   app.get(
     "/sites",
     {
@@ -122,14 +124,35 @@ export const siteRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (app, {
     async (req) => {
       const { organizationId } = req.requireAuth();
       const row = await db.transaction().execute(async (trx) => {
-        const updated = await trx
-          .updateTable("sites")
-          .set({ ...definedOnly(req.body), updatedAt: new Date() })
+        const current = await trx
+          .selectFrom("sites")
+          .select(["id", ...ADDRESS_COLUMNS, "locationSource"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
-          .returning(SITE_COLUMNS)
+          .forUpdate()
           .executeTakeFirst();
-        if (!updated) throw notFound("Site");
+        if (!current) throw notFound("Site");
+        const { lat, lng, ...fields } = definedOnly(req.body);
+        const addressChanged = ADDRESS_COLUMNS.some((c) => fields[c] !== undefined && fields[c] !== current[c]);
+        let location = {};
+        if (lat !== undefined || lng !== undefined) {
+          // Coordinates typed in by a person. Both, or neither to have the address looked up.
+          if ((lat ?? null) === null !== ((lng ?? null) === null)) throw unprocessable("Give both lat and lng, or neither");
+          location = lat != null ? { lat, lng, locationSource: "manual", geocodeStatus: null } : { lat: null, lng: null, locationSource: null, geocodeStatus: null };
+        } else if (addressChanged) {
+          // A new address: found coordinates are found again; typed ones are kept.
+          location = current.locationSource === "manual" ? {} : { lat: null, lng: null, locationSource: null, geocodeStatus: null };
+        }
+        const updated = await trx
+          .updateTable("sites")
+          .set({ ...fields, ...location, updatedAt: new Date() })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", current.id)
+          .returning(SITE_COLUMNS)
+          .executeTakeFirstOrThrow();
+        if (updated.lat === null && updated.geocodeStatus === null) {
+          await queueSiteLocating(trx, organizationId, `site:${updated.id}:${updated.updatedAt.getTime()}`, now());
+        }
         await audit(trx, req, { action: "site.updated", entityType: "site", entityId: updated.id, changes: req.body });
         return updated;
       });

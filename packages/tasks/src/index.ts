@@ -9,6 +9,8 @@ import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 import { PORTAL_LINK_EMAIL, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
 import type { SmsConfig, SmsRequest } from "@aerowise/sms";
 import { runSmsSweep, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
+import type { Geocoder } from "@aerowise/routing";
+import { LOCATE_SITES, locateSites } from "./routing-task.ts";
 import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
 
 export * from "./queue.ts";
@@ -28,6 +30,7 @@ export {
 } from "./renewal-task.ts";
 export { createPortalLink, hashPortalToken, PORTAL_LINK_EMAIL, portalUrlFor, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
 export { queueSms, runSmsSweep, scheduleSmsSweeps, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
+export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } from "./routing-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -46,6 +49,8 @@ export interface TaskContext {
   quickbooks?: { provider: QuickBooksProvider; cipher: TokenCipher } | null;
   /** Text messages; without it, queued texts are dropped. */
   sms?: SmsConfig | null;
+  /** Finds sites on the map; without it, sites wait unlocated. */
+  geocoder?: Geocoder | null;
 }
 
 export const DEFAULT_APP_URL = "http://localhost:3000";
@@ -110,6 +115,10 @@ async function run(ctx: TaskContext, task: Task) {
       return;
     case SMS_SWEEP:
       await runSmsSweep(ctx.db, payload.organizationId!, ctx.now());
+      return;
+    case LOCATE_SITES:
+      if (!ctx.geocoder) return;
+      await locateSites(ctx.db, ctx.geocoder, payload.organizationId!, ctx.now());
       return;
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);

@@ -183,3 +183,10 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .ok-text { color: #17603f; }
 .portal-url { word-break: break-all; font-size: 0.85rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
 .notice { background: var(--warn-bg); color: var(--warn-text); padding: 8px 12px; border-radius: 8px; margin: 0; }
+
+.route-map { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; }
+.route-map-bg { fill: #eef2ef; }
+.route-summary { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.route-legend { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.leg { padding-left: 14px; margin: -6px 0; }
+.optimize { border-color: var(--accent); }

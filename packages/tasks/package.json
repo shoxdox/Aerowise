@@ -17,6 +17,7 @@
     "@aerowise/quickbooks": "workspace:*",
     "@aerowise/renewals": "workspace:*",
     "@aerowise/reports": "workspace:*",
+    "@aerowise/routing": "workspace:*",
     "@aerowise/sms": "workspace:*",
     "@aerowise/storage": "workspace:*",
     "kysely": "^0.29.6"

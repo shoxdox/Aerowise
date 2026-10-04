@@ -28,6 +28,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Renewals: automatic campaign, one homeowner link to confirm details, choose add-ons, e-sign (typed or drawn) and pay, signed PDF, next term activated | Done |
 | Customer portal: magic link (copied or emailed, or asked for by email) with plan, next visit, inspection reports, invoices and payments, renewal, and service requests that land in the inbox | Done |
 | Text messages (Twilio): on the way, inspection done, report ready (with a portal link), renewal and payment reminders; consent, STOP/START, quiet hours, delivery receipts, replies in the inbox | Done |
+| Routing: sites found on the map, day map of every route, driving and day-length estimates, one-click route optimization, unscheduled visits ranked by distance from a route | Done |
 
 Route optimization is not built yet.
 
@@ -80,6 +81,7 @@ packages/
   renewals/   Renewal offers, activation into the next contract, and contract creation shared with the API
   quickbooks/ QuickBooks Online client (OAuth, REST), the built-in test company, sync engine, first-sync review
   reports/    Report snapshot and PDF rendering
+  routing/    Travel estimates, route optimization, geocoders (US Census, built-in test) and the site lookup sweep
   sms/        Twilio client, the built-in test provider, sending once per text, replies (STOP/START) and delivery receipts
   storage/    File storage interface (local disk for now)
   tasks/      Background task queue and task handlers
@@ -102,4 +104,5 @@ packages/
 - **QuickBooks runs against a test company by default.** Without `QUICKBOOKS_CLIENT_ID`, a built-in stand-in company (kept in the database) replaces QuickBooks Online outside production. With an Intuit app's keys, register `<PUBLIC_APP_URL>/api/quickbooks/callback` as its redirect URI and set `QUICKBOOKS_TOKEN_KEY`. The Intuit client is covered by unit tests with a stubbed network, not yet by a run against an Intuit sandbox company.
 - QuickBooks sync is one-way (Aerowise to QuickBooks). Sales tax, refunds, sub-customers per site and estimates are not sent yet; an invoice with tax waits in the conflict center to be entered by hand.
 - **Texts run in test mode by default.** Without `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`, a built-in test provider stands in outside production: nothing is sent, each text shows as delivered on the Texts page, Twilio's magic numbers (`+15005550001` invalid, `+15005550009` not a mobile, `+15005550004` unsubscribed) fail the way Twilio fails them, and the Texts page can play a customer's reply. With Twilio keys, the owner enters the organization's Twilio number on the Texts page and points that number's incoming messages at `<PUBLIC_APP_URL>/api/webhooks/sms/inbound` (or set `SMS_WEBHOOK_BASE_URL` to the API's public address plus `/api`). Twilio's request signatures are checked against that exact URL. US numbers also need A2P 10DLC registration in Twilio before carriers deliver them. The Twilio client is covered by unit tests with a stubbed network, not yet by a run against a Twilio account.
+- **Sites are found on the map with the US Census geocoder in production** (free, no key; `GEOCODER=off` turns it off). Outside production the built-in test geocoder gives each address a made-up, repeatable spot near central Texas (ZIP `00000` is not found). Lookups run in the worker. Driving times are estimates from straight-line distance; see docs/DECISIONS.md.
 - Route optimization is not built yet.

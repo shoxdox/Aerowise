@@ -1,12 +1,13 @@
 "use client";
 
-import type { DueObligation, Stop, Technician } from "@aerowise/domain";
+import type { DueObligation, NearbyResult, OptimizeResult, RouteDay, Stop, Technician } from "@aerowise/domain";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { ROUTE_COLORS, RouteMap } from "@/components/RouteMap";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
-import { day } from "@/lib/format";
+import { day, duration } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 function addDays(date: string, n: number) {
@@ -34,11 +35,28 @@ export default function SchedulePage() {
     today ? `/obligations/due?unscheduledOnly=true&limit=500&through=${addDays(today, 30)}` : null,
   );
   const week = useLoad<{ items: Stop[] }>(monday ? `/schedule?from=${monday}&to=${addDays(monday, 6)}` : null);
+  const routes = useLoad<RouteDay>(selected ? `/routing/day?date=${selected}` : null);
   const [assignTo, setAssignTo] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [sort, setSort] = useState<"due" | "nearby">("due");
+  const [previews, setPreviews] = useState<Record<string, OptimizeResult>>({});
 
   const technicianId = assignTo || techs.data?.items[0]?.id || "";
+  const nearby = useLoad<NearbyResult>(sort === "nearby" && technicianId && selected ? `/routing/nearby?technicianId=${technicianId}&date=${selected}` : null);
   const dayStops = useMemo(() => (week.data?.items ?? []).filter((s) => s.scheduledDate === selected), [week.data, selected]);
+  const routeOf = useMemo(() => new Map((routes.data?.technicians ?? []).map((r) => [r.technicianId, r])), [routes.data]);
+  const numbers = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of techs.data?.items ?? []) dayStops.filter((s) => s.technicianId === t.id).forEach((s, i) => m.set(s.jobId, i + 1));
+    return m;
+  }, [dayStops, techs.data]);
+  const unscheduledItems = useMemo(() => {
+    const items = unscheduled.data?.items ?? [];
+    if (sort !== "nearby" || !nearby.data) return items;
+    const rank = new Map(nearby.data.items.map((n, i) => [n.obligationId, i]));
+    return [...items].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+  }, [unscheduled.data, nearby.data, sort]);
+  const nearbyOf = useMemo(() => new Map((nearby.data?.items ?? []).map((n) => [n.obligationId, n])), [nearby.data]);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -47,7 +65,21 @@ export default function SchedulePage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update the schedule");
     }
-    await Promise.all([unscheduled.reload(), week.reload()]);
+    setPreviews({});
+    await Promise.all([unscheduled.reload(), week.reload(), routes.reload(), nearby.reload()]);
+  }
+
+  const dismiss = (techId: string) => setPreviews((p) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== techId)));
+
+  async function optimize(techId: string, apply: boolean) {
+    setError(null);
+    try {
+      const r = await api<OptimizeResult>("/routing/optimize", { method: "POST", body: { technicianId: techId, scheduledDate: selected, apply } });
+      if (apply) await run(async () => {});
+      else setPreviews((p) => ({ ...p, [techId]: r }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not plan the route");
+    }
   }
 
   const assign = (o: DueObligation) =>
@@ -113,8 +145,15 @@ export default function SchedulePage() {
               </select>
             </label>
           )}
+          <label>
+            Sort
+            <select value={sort} onChange={(e) => setSort(e.target.value as "due" | "nearby")}>
+              <option value="due">By due date</option>
+              <option value="nearby">Nearest to {techs.data?.items.find((t) => t.id === technicianId)?.name ?? "the"}&apos;s route</option>
+            </select>
+          </label>
           {unscheduled.data?.items.length === 0 && <p className="muted">Everything due is scheduled.</p>}
-          {unscheduled.data?.items.map((o) => (
+          {unscheduledItems.map((o) => (
             <div key={o.id} className={`card tight ${o.overdue ? "overdue-card" : ""}`}>
               <div className="row">
                 <Link href={`/sites/${o.site.id}`}>
@@ -131,59 +170,148 @@ export default function SchedulePage() {
                 {o.customer.displayName} · visit #{o.sequence} · due {day(o.dueOn, { month: "short", day: "numeric" })}
                 {o.overdue && <span className="badge danger">overdue</span>}
               </div>
+              {sort === "nearby" && nearby.data && (
+                <div className="small">
+                  {nearbyOf.get(o.id) ? (
+                    <>
+                      <span className="badge">
+                        +{nearbyOf.get(o.id)!.detourMiles} mi · +{duration(nearbyOf.get(o.id)!.detourMinutes)}
+                      </span>
+                      {!nearbyOf.get(o.id)!.fits && <span className="badge warn">day would run long</span>}
+                    </>
+                  ) : (
+                    <span className="muted">Not on the map</span>
+                  )}
+                </div>
+              )}
               <SafetyBadges flags={o.site.safetyFlags} />
               {o.site.schedulingNotes && <div className="small restriction">⚠ {o.site.schedulingNotes}</div>}
             </div>
           ))}
         </section>
 
-        <section className="columns">
-          {techs.data?.items.map((t) => {
-            const stops = dayStops.filter((s) => s.technicianId === t.id);
-            return (
-              <div key={t.id} className="stack column">
-                <div className="row">
-                  <h2>{t.name}</h2>
-                  <span className="muted small">
-                    {stops.length} stop{stops.length === 1 ? "" : "s"} · {day(selected, { weekday: "short", month: "short", day: "numeric" })}
-                  </span>
-                </div>
-                {stops.length === 0 && <p className="muted small">No stops.</p>}
-                {stops.map((s, i) => (
-                  <div key={s.jobId} className="card tight">
-                    <div className="row">
-                      <span className="stop-number">{i + 1}</span>
-                      <Link href={`/sites/${s.site.id}`}>
-                        <strong>{s.site.addressLine1}</strong>, {s.site.city}
-                      </Link>
-                      <span className="spacer" />
-                      {editable && (
-                        <>
-                          <button className="link" aria-label="Move up" onClick={() => move(s, stops, -1)} disabled={i === 0}>
-                            ↑
-                          </button>
-                          <button className="link" aria-label="Move down" onClick={() => move(s, stops, 1)} disabled={i === stops.length - 1}>
-                            ↓
-                          </button>
-                        </>
+        <section className="stack">
+          {routes.data && dayStops.length > 0 && (
+            <RouteMap day={routes.data} technicianIds={techs.data?.items.map((t) => t.id) ?? []} numbers={numbers} />
+          )}
+          <div className="row small">
+            {routes.data && !routes.data.start && <span className="muted">Routes start at their first stop.</span>}
+            <span className="spacer" />
+            <Link href="/settings/routing">Route settings</Link>
+          </div>
+          <div className="columns">
+            {techs.data?.items.map((t, ti) => {
+              const stops = dayStops.filter((s) => s.technicianId === t.id);
+              const r = routeOf.get(t.id);
+              const legTo = new Map((r?.legs ?? []).map((l) => [l.toJobId ?? "end", l]));
+              const preview = previews[t.id];
+              return (
+                <div key={t.id} className="stack column">
+                  <div className="row">
+                    <h2>
+                      <span className="route-legend" style={{ background: ROUTE_COLORS[ti % ROUTE_COLORS.length] }} />
+                      {t.name}
+                    </h2>
+                    <span className="muted small">
+                      {stops.length} stop{stops.length === 1 ? "" : "s"} · {day(selected, { weekday: "short", month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                  {r && stops.length > 0 && (
+                    <div className="route-summary small">
+                      <span>
+                        {r.driveMiles} mi · {duration(r.driveMinutes)} driving
+                      </span>
+                      <span className="muted">{duration(r.totalMinutes)} with stops</span>
+                      {r.overCapacity && <span className="badge danger">longer than a working day</span>}
+                      {r.unlocatedJobIds.length > 0 && (
+                        <span className="badge warn">
+                          {r.unlocatedJobIds.length} not on the map
+                        </span>
                       )}
                     </div>
-                    <div className="muted small">
-                      {s.customer.displayName}
-                      {s.obligation && <> · visit #{s.obligation.sequence} · due {day(s.obligation.dueOn, { month: "short", day: "numeric" })}</>}
+                  )}
+                  {editable && stops.length > 1 && !preview && (
+                    <button className="secondary" onClick={() => void optimize(t.id, false)}>
+                      Optimize route
+                    </button>
+                  )}
+                  {preview && (
+                    <div className="card tight optimize stack">
+                      {preview.changed ? (
+                        <>
+                          <div>
+                            A shorter order saves <strong>{Math.round((preview.before.driveMiles - preview.after.driveMiles) * 10) / 10} mi</strong> and{" "}
+                            <strong>{duration(preview.before.driveMinutes - preview.after.driveMinutes)}</strong> of driving ({preview.before.driveMiles} → {preview.after.driveMiles} mi).
+                          </div>
+                          <div className="muted small">New order: {preview.proposedJobIds.map((id) => numbers.get(id)).join(", ")}</div>
+                          <div className="row">
+                            <button onClick={() => void optimize(t.id, true)}>Use this order</button>
+                            <button className="secondary" onClick={() => dismiss(t.id)}>
+                              Keep current
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="row">
+                          <span>This is already the shortest order found.</span>
+                          <button className="link" onClick={() => dismiss(t.id)}>
+                            OK
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <SafetyBadges flags={s.site.safetyFlags} />
-                    {s.site.schedulingNotes && <div className="small restriction">⚠ {s.site.schedulingNotes}</div>}
-                    {editable && (
-                      <button className="link small" onClick={() => unschedule(s)}>
-                        Unschedule
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+                  )}
+                  {stops.length === 0 && <p className="muted small">No stops.</p>}
+                  {stops.map((s, i) => (
+                    <Fragment key={s.jobId}>
+                      {legTo.get(s.jobId) && (
+                        <div className="leg muted small">
+                          ↓ {legTo.get(s.jobId)!.miles} mi · {duration(legTo.get(s.jobId)!.minutes)}
+                          {legTo.get(s.jobId)!.fromJobId === null ? " from the start" : ""}
+                        </div>
+                      )}
+                      <div className="card tight">
+                        <div className="row">
+                          <span className="stop-number">{i + 1}</span>
+                          <Link href={`/sites/${s.site.id}`}>
+                            <strong>{s.site.addressLine1}</strong>, {s.site.city}
+                          </Link>
+                          <span className="spacer" />
+                          {editable && (
+                            <>
+                              <button className="link" aria-label="Move up" onClick={() => move(s, stops, -1)} disabled={i === 0}>
+                                ↑
+                              </button>
+                              <button className="link" aria-label="Move down" onClick={() => move(s, stops, 1)} disabled={i === stops.length - 1}>
+                                ↓
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        <div className="muted small">
+                          {s.customer.displayName}
+                          {s.obligation && <> · visit #{s.obligation.sequence} · due {day(s.obligation.dueOn, { month: "short", day: "numeric" })}</>}
+                        </div>
+                        <SafetyBadges flags={s.site.safetyFlags} />
+                        {s.site.schedulingNotes && <div className="small restriction">⚠ {s.site.schedulingNotes}</div>}
+                        {s.site.lat === null && <div className="small muted">Not on the map yet</div>}
+                        {editable && (
+                          <button className="link small" onClick={() => unschedule(s)}>
+                            Unschedule
+                          </button>
+                        )}
+                      </div>
+                    </Fragment>
+                  ))}
+                  {legTo.get("end") && (
+                    <div className="leg muted small">
+                      ↩ {legTo.get("end")!.miles} mi · {duration(legTo.get("end")!.minutes)} back to the start
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </section>
       </div>
     </div>

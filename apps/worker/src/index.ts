@@ -3,10 +3,11 @@ import { syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
+import { geocoderFromEnv } from "@aerowise/routing";
 import { smsFromEnv } from "@aerowise/sms";
-import { runNextTask, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSmsSweeps } from "@aerowise/tasks";
+import { runNextTask, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps } from "@aerowise/tasks";
 
-// Runs background tasks (report PDFs, filing submissions, invoices, QuickBooks sync, renewal campaigns, texts) from the Postgres queue.
+// Runs background tasks (report PDFs, filing submissions, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
@@ -21,6 +22,7 @@ const ctx = {
   appUrl: process.env.PUBLIC_APP_URL,
   quickbooks: quickBooksFromEnv(db, process.env, process.env.NODE_ENV === "production"),
   sms: smsFromEnv(process.env, process.env.NODE_ENV === "production"),
+  geocoder: geocoderFromEnv(process.env, process.env.NODE_ENV === "production"),
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
 const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);
@@ -31,6 +33,9 @@ let nextRenewalSweep = 0;
 // Payment reminder texts are looked for this often.
 const smsEveryMs = Number(process.env.SMS_SWEEP_INTERVAL_MS ?? 60 * 60_000);
 let nextSmsSweep = 0;
+// Sites not yet on the map are looked for this often (and soon after each change).
+const locateEveryMs = Number(process.env.SITE_LOCATE_INTERVAL_MS ?? 15 * 60_000);
+let nextLocateSweep = 0;
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
 
@@ -56,6 +61,10 @@ while (!stopping) {
     if (ctx.sms && Date.now() >= nextSmsSweep) {
       nextSmsSweep = Date.now() + smsEveryMs;
       await scheduleSmsSweeps(db, new Date(), smsEveryMs);
+    }
+    if (ctx.geocoder && Date.now() >= nextLocateSweep) {
+      nextLocateSweep = Date.now() + locateEveryMs;
+      await scheduleSiteLocating(db, new Date(), locateEveryMs);
     }
     worked = await runNextTask(ctx, workerId, console.log);
   } catch (err) {

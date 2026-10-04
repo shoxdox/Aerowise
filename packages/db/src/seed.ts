@@ -72,6 +72,10 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
         state: "TX",
         postalCode: "78620",
         logoUrl: null,
+        // Technicians leave from the office in the morning.
+        routeStartAddress: "100 Example Pkwy, Dripping Springs, TX 78620",
+        routeStartLat: 30.19,
+        routeStartLng: -98.09,
       })
       .returning("id")
       .executeTakeFirstOrThrow();
@@ -152,6 +156,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
             county: sitePlace.county,
             lat: Number((sitePlace.lat + (r.next() - 0.5) * 0.1).toFixed(6)),
             lng: Number((sitePlace.lng + (r.next() - 0.5) * 0.1).toFixed(6)),
+            locationSource: "manual",
             permitNumber: `DEMO-${String(10000 + i * 3 + s).padStart(6, "0")}`,
             accessNotes: flags.includes("locked_gate") ? "Gate on the east side of the property." : null,
             gateCode: flags.includes("locked_gate") ? String(1000 + r.int(9000)) : null,

@@ -3,6 +3,7 @@ import { buildApp } from "./app.ts";
 import { LocalDiskStore } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
+import { geocoderFromEnv } from "@aerowise/routing";
 import { smsFromEnv } from "@aerowise/sms";
 
 const url = requireDatabaseUrl();
@@ -28,6 +29,7 @@ const app = await buildApp({
   appUrl: process.env.PUBLIC_APP_URL,
   // Twilio keys send real texts; without them, a test provider outside production.
   sms: smsFromEnv(process.env, production),
+  geocoder: geocoderFromEnv(process.env, production),
 });
 
 const shutdown = async () => {
