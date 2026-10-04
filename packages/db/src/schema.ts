@@ -37,6 +37,10 @@ export interface OrganizationsTable {
   stripeAccountId: string | null;
   stripeChargesEnabled: Generated<boolean>;
   stripeDetailsSubmitted: Generated<boolean>;
+  renewalWindowDays: Generated<number>;
+  renewalAutoSend: Generated<boolean>;
+  renewalPayment: Generated<"pay_to_activate" | "invoice">;
+  renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
 }
 
@@ -188,6 +192,7 @@ export interface ContractsTable {
   status: Generated<"active" | "cancelled">;
   renewalStatus: Generated<string>;
   previousContractId: string | null;
+  signedDocumentId: ColumnType<string | null, string | null | undefined, string | null>;
   cancelledAt: Timestamp | null;
   cancelReason: string | null;
   notes: string | null;
@@ -353,6 +358,7 @@ export interface ComplianceEventsTable {
   reportId: string | null;
   filingId: ColumnType<string | null, string | null | undefined, never>;
   invoiceId: ColumnType<string | null, string | null | undefined, never>;
+  renewalId: ColumnType<string | null, string | null | undefined, never>;
   summary: string;
   details: ColumnType<unknown, string | undefined, never>;
 }
@@ -635,6 +641,83 @@ export interface QuickbooksTestCompaniesTable {
   updatedAt: Timestamp;
 }
 
+export type RenewalStatus = "upcoming" | "sent" | "viewed" | "signed" | "payment_pending" | "paid" | "activated" | "declined" | "expired" | "needs_review";
+
+export interface RenewalAddonsTable {
+  id: Generated<string>;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  taxable: Generated<boolean>;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface RenewalsTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractId: string;
+  siteId: string;
+  customerId: string;
+  status: Generated<RenewalStatus>;
+  publicToken: string;
+  version: Generated<number>;
+  planId: string | null;
+  planName: string;
+  termMonths: number;
+  visitsPerTerm: number;
+  priceCents: number;
+  billingFrequency: "annual" | "semiannual" | "quarterly" | "monthly";
+  serviceType: "aerobic_inspection";
+  autoRenew: Generated<boolean>;
+  startOn: string;
+  endOn: string;
+  selectedAddons: ColumnType<unknown, string | undefined, string>;
+  customerUpdates: ColumnType<unknown, string | undefined, string>;
+  sentAt: Timestamp | null;
+  sendCount: Generated<number>;
+  lastReminderDays: number | null;
+  viewedAt: Timestamp | null;
+  signedAt: Timestamp | null;
+  paidAt: Timestamp | null;
+  activatedAt: Timestamp | null;
+  declinedAt: Timestamp | null;
+  declineReason: string | null;
+  expiredAt: Timestamp | null;
+  reviewReason: string | null;
+  signedDocumentId: string | null;
+  invoiceId: string | null;
+  newContractId: string | null;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface SignedDocumentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  kind: "renewal_agreement";
+  renewalId: string | null;
+  siteId: string;
+  customerId: string;
+  title: string;
+  content: ColumnType<unknown, string, never>;
+  contentSha256: string;
+  signerName: string;
+  signatureKind: "typed" | "drawn";
+  signatureImage: string | null;
+  consentText: string;
+  signedAt: Timestamp;
+  ipAddress: string | null;
+  userAgent: string | null;
+  pdfStorageKey: string | null;
+  pdfSha256: string | null;
+  pdfByteSize: number | null;
+  createdAt: CreatedAt;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -673,4 +756,7 @@ export interface DB {
   quickbooksConnections: QuickbooksConnectionsTable;
   quickbooksLinks: QuickbooksLinksTable;
   quickbooksTestCompanies: QuickbooksTestCompaniesTable;
+  renewalAddons: RenewalAddonsTable;
+  renewals: RenewalsTable;
+  signedDocuments: SignedDocumentsTable;
 }

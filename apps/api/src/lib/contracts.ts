@@ -1,17 +1,9 @@
 import type { DB } from "@aerowise/db";
-import { buildTermSchedule } from "@aerowise/domain";
+import { insertContract as insertContractRows, type Terms } from "@aerowise/renewals";
 import type { Transaction } from "kysely";
 import { HttpError } from "./errors.ts";
 
-export interface Terms {
-  planId: string | null;
-  planName: string;
-  termMonths: number;
-  visitsPerTerm: number;
-  priceCents: number;
-  billingFrequency: DB["contracts"]["billingFrequency"];
-  serviceType: DB["contracts"]["serviceType"];
-}
+export type { Terms };
 
 /** Maps Postgres constraint errors on contracts to API errors. */
 export function contractConflict(err: unknown): never {
@@ -25,44 +17,6 @@ export function contractConflict(err: unknown): never {
 }
 
 /** Inserts a contract and one open obligation per visit window, in the caller's transaction. */
-export async function insertContract(
-  trx: Transaction<DB>,
-  organizationId: string,
-  input: { siteId: string; startOn: string; terms: Terms; autoRenew: boolean; notes?: string | null; previousContractId?: string },
-) {
-  const schedule = buildTermSchedule(input.startOn, input.terms.termMonths, input.terms.visitsPerTerm);
-  const created = await trx
-    .insertInto("contracts")
-    .values({
-      organizationId,
-      siteId: input.siteId,
-      ...input.terms,
-      startOn: input.startOn,
-      endOn: schedule.endOn,
-      autoRenew: input.autoRenew,
-      notes: input.notes ?? null,
-      previousContractId: input.previousContractId ?? null,
-      cancelledAt: null,
-      cancelReason: null,
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow()
-    .catch(contractConflict);
-  await trx
-    .insertInto("serviceObligations")
-    .values(
-      schedule.visits.map((v) => ({
-        organizationId,
-        contractId: created.id,
-        siteId: input.siteId,
-        serviceType: input.terms.serviceType,
-        sequence: v.sequence,
-        windowStart: v.windowStart,
-        windowEnd: v.windowEnd,
-        dueOn: v.dueOn,
-        completedAt: null,
-      })),
-    )
-    .execute();
-  return created.id;
+export async function insertContract(trx: Transaction<DB>, organizationId: string, input: Parameters<typeof insertContractRows>[2]) {
+  return insertContractRows(trx, organizationId, input).catch(contractConflict);
 }

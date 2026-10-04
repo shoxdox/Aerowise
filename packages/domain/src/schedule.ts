@@ -18,6 +18,17 @@ export function addDays(date: string, days: number): string {
   return format(d);
 }
 
+/** Whole days from one date to another (negative when `to` is earlier). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((parse(to).getTime() - parse(from).getTime()) / 86_400_000);
+}
+
+/** Today's calendar date (YYYY-MM-DD) in a timezone. */
+export function dateInZone(now: Date, timeZone: string): string {
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
 /** Adds calendar months, clamping to the last day of the month (Jan 31 + 1 month = Feb 28/29). */
 export function addMonths(date: string, months: number): string {
   const d = parse(date);

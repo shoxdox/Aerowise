@@ -13,6 +13,7 @@ COPY packages/db/package.json packages/db/
 COPY packages/domain/package.json packages/domain/
 COPY packages/payments/package.json packages/payments/
 COPY packages/quickbooks/package.json packages/quickbooks/
+COPY packages/renewals/package.json packages/renewals/
 COPY packages/reports/package.json packages/reports/
 COPY packages/storage/package.json packages/storage/
 COPY packages/tasks/package.json packages/tasks/

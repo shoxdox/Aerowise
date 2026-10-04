@@ -16,6 +16,7 @@ import {
   type ExceptionSeverity,
   type InboxException,
   type ValidationProblem,
+  RENEWAL_STATUS_LABELS,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -250,6 +251,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     const rows = await sites(organizationId)
       .innerJoin("contracts as k", (j) => j.onRef("k.siteId", "=", "s.id").onRef("k.organizationId", "=", "s.organizationId"))
       .select(["k.id", "k.endOn", "k.planName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .select((eb) => eb.selectFrom("renewals as rn").select("rn.id").whereRef("rn.contractId", "=", "k.id").orderBy("rn.createdAt", "desc").limit(1).as("renewalId"))
+      .select((eb) => eb.selectFrom("renewals as rn").select("rn.status").whereRef("rn.contractId", "=", "k.id").orderBy("rn.createdAt", "desc").limit(1).as("renewalStatus"))
       .where("k.status", "=", "active")
       .where("s.active", "=", true)
       .where("k.endOn", ">=", addDays(today, -CONTRACT_EXPIRED_WINDOW_DAYS))
@@ -279,13 +282,38 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         kind: expired ? "contract_expired" : "contract_expiring",
         severity: expired ? "medium" : "low",
         title: expired ? "Contract expired without renewal" : "Contract ending, not renewed",
-        detail: `${r.planName} ${expired ? "ended" : "ends"} ${r.endOn}`,
+        detail: `${r.planName} ${expired ? "ended" : "ends"} ${r.endOn}${r.renewalStatus ? ` · renewal: ${RENEWAL_STATUS_LABELS[r.renewalStatus].toLowerCase()}` : ""}`,
         dueOn: r.endOn,
         site: site(r),
         customer: customer(r),
-        target: { type: "contract", id: r.id },
+        target: r.renewalId ? { type: "renewal", id: r.renewalId } : { type: "contract", id: r.id },
       };
     });
+  }
+
+  /** Renewals the system could not finish on its own. */
+  async function renewalExceptions(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("renewals as r")
+      .innerJoin("sites as s", "s.id", "r.siteId")
+      .innerJoin("customers as c", "c.id", "r.customerId")
+      .select(["r.id", "r.reviewReason", "r.startOn", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("r.organizationId", "=", organizationId)
+      .where("r.status", "=", "needs_review")
+      .orderBy("r.startOn")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      key: `renewal_needs_review:${r.id}`,
+      kind: "renewal_needs_review",
+      severity: "medium",
+      title: "Renewal needs review",
+      detail: r.reviewReason,
+      dueOn: r.startOn,
+      site: site(r),
+      customer: customer(r),
+      target: { type: "renewal", id: r.id },
+    }));
   }
 
   /** Overdue invoices, failed bank payments still owed, and money to give back. */
@@ -390,6 +418,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           lateNextVisits(organizationId, today),
           openIssues(organizationId),
           contractEnds(organizationId, today),
+          renewalExceptions(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),
         ]),

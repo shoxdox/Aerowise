@@ -28,10 +28,15 @@ export class TestPaymentProvider implements PaymentProvider {
     return { chargesEnabled: true, detailsSubmitted: true };
   }
 
-  /** The test checkout page lives under the invoice's pay page. */
+  /** The test checkout page lives under the invoice's pay page, and returns where Stripe would. */
   async createCheckout(input: CheckoutInput) {
     const sessionId = rid("cs");
-    return { sessionId, url: `${input.cancelUrl}/test-checkout?session=${sessionId}`, expiresAt: new Date(Date.now() + 24 * 3600_000) };
+    const done = new URL(input.successUrl);
+    return {
+      sessionId,
+      url: `${input.cancelUrl}/test-checkout?session=${sessionId}&done=${encodeURIComponent(done.pathname + done.search)}`,
+      expiresAt: new Date(Date.now() + 24 * 3600_000),
+    };
   }
 
   async expireCheckout() {}

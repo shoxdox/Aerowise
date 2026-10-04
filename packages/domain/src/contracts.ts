@@ -85,7 +85,9 @@ export const contract = z.object({
   autoRenew: z.boolean(),
   status: z.enum(["active", "cancelled"]),
   state: z.enum(CONTRACT_STATES),
+  /** The latest renewal's status, or "not_started". */
   renewalStatus: z.string(),
+  renewalId: id.nullable(),
   previousContractId: id.nullable(),
   renewedById: id.nullable(),
   cancelledAt: z.iso.datetime({ offset: true }).nullable(),

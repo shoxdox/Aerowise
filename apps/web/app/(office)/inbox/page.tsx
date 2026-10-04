@@ -25,6 +25,8 @@ function href(e: InboxException): string | null {
       return `/invoices/${e.target.id}`;
     case "quickbooks":
       return "/quickbooks";
+    case "renewal":
+      return `/renewals/${e.target.id}`;
     default:
       return null;
   }
@@ -42,6 +44,7 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   filing_unconfirmed: "Record confirmation",
   contract_expiring: "Renew",
   contract_expired: "Renew",
+  renewal_needs_review: "Review",
   invoice_overdue: "Open invoice",
   payment_failed: "Open invoice",
   invoice_overpaid: "Refund",
@@ -101,7 +104,7 @@ export default function InboxPage() {
     { label: "Due this week", value: data.counts.dueThisWeek, href: "/due" },
     { label: "Overdue", value: data.counts.overdue, href: "/due", alert: data.counts.overdue > 0 },
     { label: "Filings at risk", value: data.counts.filingsAtRisk, href: "/filings", alert: data.counts.filingsAtRisk > 0 },
-    { label: "Contracts expiring", value: data.counts.contractsExpiring, href: "/sites" },
+    { label: "Contracts expiring", value: data.counts.contractsExpiring, href: "/renewals" },
     { label: `Unpaid invoices · ${money(data.counts.unpaidCents)}`, value: data.counts.unpaidInvoices, href: "/invoices" },
     ...(data.quickbooks
       ? [
