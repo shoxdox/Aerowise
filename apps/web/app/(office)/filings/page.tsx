@@ -10,8 +10,8 @@ import { day } from "@/lib/format";
 const VIEWS = [
   { key: "attention", label: "Needs attention" },
   { key: "open", label: "Not sent yet" },
-  { key: "sent", label: "Waiting for confirmation" },
-  { key: "confirmed", label: "Confirmed" },
+  { key: "sent", label: "Waiting for acknowledgment" },
+  { key: "confirmed", label: "Acknowledged" },
   { key: "all", label: "All" },
 ] as const;
 
@@ -34,6 +34,9 @@ export default function FilingsPage() {
     <div className="stack">
       <div className="row">
         <h1>Filings</h1>
+        <Link href="/settings/credentials" className="small">
+          Licenses and registrations
+        </Link>
         <span className="spacer" />
         {VIEWS.map((v) => (
           <button key={v.key} className={view === v.key ? undefined : "secondary"} onClick={() => setView(v.key)}>
@@ -42,7 +45,7 @@ export default function FilingsPage() {
         ))}
       </div>
       <p className="muted">
-        Each completed inspection is filed with the site&apos;s reporting authority. A filing counts as done only when the authority confirms it.
+        Completed inspections, and maintenance contracts where the authority asks for them, are filed with the site&apos;s reporting authority. Sent is not done: a filing counts as done only once the authority&apos;s acknowledgment is recorded.
       </p>
       {error && <p className="error">{error}</p>}
       <table>
@@ -51,7 +54,7 @@ export default function FilingsPage() {
             <th>Deadline</th>
             <th>Site</th>
             <th>Authority</th>
-            <th>Inspected</th>
+            <th>For</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -68,7 +71,7 @@ export default function FilingsPage() {
                 <div className="muted small">{f.customer.displayName}</div>
               </td>
               <td>{f.jurisdiction?.authorityName ?? <span className="muted">None matched</span>}</td>
-              <td>{when(f.inspection.completedAt)}</td>
+              <td>{f.contract ? `Contract from ${day(f.contract.startOn)}` : `Inspection ${when(f.inspection?.completedAt ?? null)}`}</td>
               <td>
                 <FilingStatusBadge status={f.status} />
                 {note(f) && <div className="muted small">{note(f)}</div>}

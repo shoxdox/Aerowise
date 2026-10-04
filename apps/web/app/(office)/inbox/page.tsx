@@ -51,6 +51,7 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   payment_failed: "Open invoice",
   invoice_overpaid: "Refund",
   sms_reply: "All texts",
+  complaint_unresolved: "Record response",
 };
 
 /** A customer's text needs no written resolution: someone read it and acted. */

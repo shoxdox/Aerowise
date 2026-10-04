@@ -344,6 +344,36 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
+  /**
+   * Owner complaints and monitoring notices that are not resolved: no response yet, or a
+   * response that left the problem outstanding. They go on authority reports as outstanding
+   * until resolved, so the office should get them closed.
+   */
+  async function unresolvedComplaints(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("serviceRequests as r")
+      .innerJoin("sites as s", "s.id", "r.siteId")
+      .innerJoin("customers as c", "c.id", "r.customerId")
+      .select(["r.id", "r.reportClassification", "r.description", "r.receivedAt", "r.responseAction", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("r.organizationId", "=", organizationId)
+      .where("r.reportClassification", "in", ["owner_complaint", "monitoring_notice"])
+      .where((eb) => eb.or([eb("r.responseOutcome", "is", null), eb("r.responseOutcome", "=", "outstanding")]))
+      .orderBy("r.receivedAt")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      key: `complaint_unresolved:${r.id}`,
+      kind: "complaint_unresolved",
+      severity: "high",
+      title: `${r.reportClassification === "owner_complaint" ? "Owner complaint" : "Monitoring notice"} ${r.responseAction ? "still outstanding" : "with no response yet"}`,
+      detail: [r.description, `received ${r.receivedAt.toISOString().slice(0, 10)}`, "reported to the authority as outstanding until resolved"].join(" · "),
+      dueOn: null,
+      site: site(r),
+      customer: customer(r),
+      target: { type: "site", id: r.siteId },
+    }));
+  }
+
   /** Texts from customers that are not STOP or START and nobody has dealt with yet. */
   async function smsReplies(organizationId: string): Promise<InboxException[]> {
     const rows = await db
@@ -473,6 +503,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),
           serviceRequests(organizationId),
+          unresolvedComplaints(organizationId),
           smsReplies(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),

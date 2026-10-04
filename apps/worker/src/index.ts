@@ -5,13 +5,14 @@ import { LocalDiskStore } from "@aerowise/storage";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
 import { geocoderFromEnv } from "@aerowise/routing";
 import { smsFromEnv } from "@aerowise/sms";
-import { runNextTask, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps } from "@aerowise/tasks";
+import { runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps } from "@aerowise/tasks";
 
-// Runs background tasks (report PDFs, filing submissions, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
+// Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
-await syncRulesets(db);
+// Fictional rules (the example county) are for development and tests only.
+await syncRulesets(db, undefined, { includeFictional: process.env.NODE_ENV !== "production" });
 // Filing and invoice emails go to the development outbox in file storage; see README for production.
 const ctx = {
   db,
@@ -36,6 +37,9 @@ let nextSmsSweep = 0;
 // Sites not yet on the map are looked for this often (and soon after each change).
 const locateEveryMs = Number(process.env.SITE_LOCATE_INTERVAL_MS ?? 15 * 60_000);
 let nextLocateSweep = 0;
+// Contracts needing a filing with their authority are looked for this often.
+const contractFilingsEveryMs = Number(process.env.CONTRACT_FILING_SWEEP_INTERVAL_MS ?? 15 * 60_000);
+let nextContractFilingSweep = 0;
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
 
@@ -65,6 +69,10 @@ while (!stopping) {
     if (ctx.geocoder && Date.now() >= nextLocateSweep) {
       nextLocateSweep = Date.now() + locateEveryMs;
       await scheduleSiteLocating(db, new Date(), locateEveryMs);
+    }
+    if (Date.now() >= nextContractFilingSweep) {
+      nextContractFilingSweep = Date.now() + contractFilingsEveryMs;
+      await scheduleContractFilingSweeps(db, new Date(), contractFilingsEveryMs);
     }
     worked = await runNextTask(ctx, workerId, console.log);
   } catch (err) {

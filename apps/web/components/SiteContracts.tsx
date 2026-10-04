@@ -4,6 +4,7 @@ import { RENEWAL_STATUS_LABELS, type ContractDetail, type Plan, type RenewalStat
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { ContractFilingStatus } from "@/components/ContractFilingStatus";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
@@ -155,6 +156,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             )}
           </div>
           {c.cancelReason && <p className="muted">Cancelled: {c.cancelReason}</p>}
+          {c.status === "active" && <ContractFilingStatus contractId={c.id} editable={editable} />}
           <table className="compact">
             <thead>
               <tr>

@@ -105,11 +105,12 @@ export interface AdapterDeps {
 
 /**
  * Email submission with a manual portal/export fallback, driven entirely by the
- * ruleset. It renders nothing itself: the authority copy made by the reports module is
- * the artifact. There is no automatic verification; the office records the authority's
- * confirmation reference when it arrives.
+ * ruleset. It renders nothing itself: the stored submission package (cover sheet and the
+ * authority copy or signed contract) is what it sends. There is no automatic
+ * verification; the office records the authority's acknowledgment when one arrives.
+ * v2 sends the stored package; v1 sent the authority report alone.
  */
-export const EMAIL_MANUAL_VERSION = "email-manual@1";
+export const EMAIL_MANUAL_VERSION = "email-manual@2";
 
 export class EmailManualAdapter implements JurisdictionAdapter {
   readonly version = EMAIL_MANUAL_VERSION;
@@ -202,13 +203,13 @@ export class EmailManualAdapter implements JurisdictionAdapter {
   }
 }
 
-/** Adapters by jurisdiction key. Only the fake example county exists. */
-const ADAPTERS: Record<string, { version: string; create: (resolved: ResolvedJurisdiction, deps: AdapterDeps) => JurisdictionAdapter }> = {
-  "tx-example-county": { version: EMAIL_MANUAL_VERSION, create: (r, d) => new EmailManualAdapter(r, d) },
-};
-
-export const adapterVersion = (key: string) => ADAPTERS[key]?.version ?? null;
+/**
+ * Every authority files through the ruleset-driven email/manual adapter for now: what
+ * differs between authorities (recipient, cover sheet, identifiers, deadlines) is data in
+ * the ruleset. An authority needing something else (a portal API) gets its own adapter.
+ */
+export const adapterVersion = (_key: string) => EMAIL_MANUAL_VERSION;
 
 export function adapterFor(resolved: ResolvedJurisdiction, deps: AdapterDeps): JurisdictionAdapter | null {
-  return ADAPTERS[resolved.key]?.create(resolved, deps) ?? null;
+  return new EmailManualAdapter(resolved, deps);
 }

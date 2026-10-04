@@ -321,6 +321,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             description: req.body.description,
             contactPhone: req.body.contactPhone || null,
             portalLinkId: link.id,
+            receivedAt: at,
             updatedAt: at,
           })
           .returning(["id"])

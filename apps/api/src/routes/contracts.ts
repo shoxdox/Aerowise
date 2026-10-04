@@ -1,3 +1,4 @@
+import { openContractFiling } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
   addDays,
@@ -279,6 +280,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           notes: req.body.notes,
         });
         await audit(trx, req, { action: "contract.created", entityType: "contract", entityId: created, changes: req.body });
+        // Opens a filing with the site's authority when it requires contracts on file.
+        await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
         return created;
       });
       return reply.status(201).send(await loadContractDetail(organizationId, contractId));
@@ -338,6 +341,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           entityId: created,
           changes: { ...req.body, previousContractId: prev.id },
         });
+        await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
         return created;
       });
       return reply.status(201).send(await loadContractDetail(organizationId, contractId));

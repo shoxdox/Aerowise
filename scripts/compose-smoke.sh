@@ -25,6 +25,13 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 curl -sf "$WEB/login" >/dev/null || fail "web app did not come up on $WEB"
+# The web app is usually up before the API has applied its migrations and started
+# listening, so wait for the API through the web app's proxy as well.
+for _ in $(seq 1 60); do
+  curl -sf "$WEB/api/health" >/dev/null && break
+  sleep 2
+done
+curl -sf "$WEB/api/health" >/dev/null || fail "the API did not come up behind $WEB/api"
 
 call POST /auth/login '{"email":"office@example.com","password":"aerowise-dev"}' >/dev/null
 items=$(call GET /inbox | jq '.items | length')

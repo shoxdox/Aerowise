@@ -16,7 +16,22 @@ export interface ReportSnapshot {
   customer: { name: string };
   site: { address: string; county: string | null; permitNumber: string | null };
   system: { manufacturer: string | null; model: string | null; serial: string | null; disposalType: string | null; chlorinationMethod: string | null } | null;
-  technician: { name: string; license: string | null };
+  technician: {
+    name: string;
+    license: string | null;
+    /** The technician's licenses and registrations, each with what it is. */
+    credentials?: { kind: string; label: string; number: string }[];
+  };
+  /** The licensed maintenance provider responsible for the report (authority copy). */
+  responsibleProvider?: { name: string; label: string; number: string } | null;
+  /**
+   * Owner complaints and electronic monitoring notices since the last report, with the
+   * response to each, as the authority requires (authority copy only).
+   */
+  responses?: { classification: "owner_complaint" | "monitoring_notice"; receivedAt: string; description: string; responseAction: string | null; respondedAt: string | null; outcome?: "resolved" | "outstanding" | null; carriedOver?: boolean }[];
+  /** Set on a corrected version: what it replaces and why. */
+  /** Set on a corrected version. `amendments` are every corrected answer so far, by field key. */
+  correction?: { version: number; supersedesReportId: string; reason: string; amendedFields: string[]; amendments?: { key: string; value: string | number | boolean | null }[] } | null;
   inspection: {
     id: string;
     arrivedAt: string;
@@ -63,9 +78,15 @@ export function reportSections(def: TemplateDefinition, values: InspectionValues
   return sections;
 }
 
-/** The customer copy lists every issue; the authority copy only noncompliance. */
+/**
+ * Issue types left off the authority copy. Only sales follow-ups: a failure, needed
+ * repair, part, pumping or return visit is part of the system's condition and stays on it.
+ */
+export const AUTHORITY_OMITTED_ISSUES: readonly string[] = ["estimate_required"];
+
+/** The customer copy lists every issue; the authority copy everything but sales follow-ups. */
 export function reportIssues(issues: { type: string; severity: string; description: string }[], audience: Audience): ReportSnapshot["issues"] {
   return issues
-    .filter((i) => audience === "customer" || i.type === "noncompliance")
+    .filter((i) => audience === "customer" || !AUTHORITY_OMITTED_ISSUES.includes(i.type))
     .map((i) => ({ type: ISSUE_LABELS[i.type as keyof typeof ISSUE_LABELS] ?? i.type, severity: i.severity, description: i.description }));
 }

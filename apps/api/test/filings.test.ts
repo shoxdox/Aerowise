@@ -1,34 +1,13 @@
-import { bundledRulesets, loadCatalog, resolveSite, submitFiling, syncRulesets, type EmailMessage, type EmailResult, type EmailTransport } from "@aerowise/compliance";
+import { bundledRulesets, loadCatalog, resolveSite, submitFiling, syncRulesets } from "@aerowise/compliance";
 import { complianceContext, drainTasks } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { FakeMail } from "./fake-mail.ts";
 import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
-
-/**
- * A mail provider double. It honours idempotency keys like a real provider must, and can
- * be told to fail, or to deliver and then lose the response (the worst case for retries).
- */
-class FakeMail implements EmailTransport {
-  readonly name = "fake";
-  delivered = new Map<string, EmailMessage>();
-  calls = 0;
-  mode: "ok" | "fail" | "lose_response_once" = "ok";
-
-  async send(m: EmailMessage): Promise<EmailResult> {
-    this.calls++;
-    if (this.mode === "fail") throw new Error("SMTP 451 temporary failure");
-    if (!this.delivered.has(m.idempotencyKey)) this.delivered.set(m.idempotencyKey, m);
-    if (this.mode === "lose_response_once") {
-      this.mode = "ok";
-      throw new Error("timed out waiting for the provider");
-    }
-    return { messageId: `<${m.idempotencyKey}@fake>`, acceptedAt: new Date().toISOString(), response: { fake: true } };
-  }
-}
 
 const mail = new FakeMail();
 const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now: () => c.now, mail });
@@ -75,7 +54,7 @@ describe("filing with the county", () => {
 
     await runWorker(ctx);
     const sent = await detailOf(s, opened!.id);
-    expect(sent).toMatchObject({ status: "sent", submissionMethod: "email", methodVersion: "email-manual@1", stateMachineVersion: 1, confirmedAt: null, confirmationReference: null });
+    expect(sent).toMatchObject({ status: "sent", submissionMethod: "email", methodVersion: "email-manual@2", stateMachineVersion: 2, confirmedAt: null, confirmationReference: null });
     expect(sent.proof).toMatchObject({ kind: "email_message_id", reference: expect.stringContaining("@fake>") });
     expect(sent.attempts).toHaveLength(1);
     expect(sent.package).toMatchObject({ destination: "filings@tx-example-county.example", subject: "Aerobic maintenance report, permit not recorded" });
@@ -167,7 +146,7 @@ describe("filing with the county", () => {
 
     const manual = await s.api.post(`/filings/${f.id}/manual`, {});
     expect(manual.json()).toMatchObject({ status: "ready", submissionMethod: "manual_export" });
-    expect(manual.json().package.reportUrl).toMatch(/^\/report-files\//);
+    expect(manual.json().package.reportUrl).toMatch(/^\/package-files\//);
     expect((await client(ctx.app).get(manual.json().package.reportUrl)).statusCode).toBe(200);
 
     const sent = await s.api.post(`/filings/${f.id}/mark-sent`, { reference: "PORTAL-881", note: "Uploaded on the county portal" });
@@ -253,7 +232,7 @@ describe("jurisdiction requirements", () => {
   it("asks the office to pick an authority when none matches, then files with the one chosen", async () => {
     mail.mode = "ok";
     const s = await countySetup(ctx, "Org A", { county: "Nowhere County" });
-    expect((await s.api.get(`/sites/${s.site.id}/jurisdiction`)).json()).toEqual({ source: "none", jurisdiction: null });
+    expect((await s.api.get(`/sites/${s.site.id}/jurisdiction`)).json()).toMatchObject({ source: "none", jurisdiction: null, candidates: [], reviewReason: expect.stringContaining("No reporting authority") });
     await complete(s, { ...completeValues(), air_pressure: 4 });
     await runWorker(ctx);
     const f = (await filingOf(s, "attention"))!;
@@ -261,8 +240,12 @@ describe("jurisdiction requirements", () => {
     expect((await s.api.post(`/filings/${f.id}/confirm`, { reference: "x" })).statusCode).toBe(409);
 
     const list = (await s.api.get("/jurisdictions")).json().items;
-    expect(list).toEqual([expect.objectContaining({ key: "tx-example-county", rulesetVersion: 1, counties: ["Example County"] })]);
-    const set = await s.api.put(`/sites/${s.site.id}/jurisdiction`, { jurisdictionId: list[0].id });
+    expect(list.map((j: { key: string }) => j.key).sort()).toEqual(["tx-example-county", "tx-harris-county-oce", "tx-lcra-ossf"]);
+    const example = list.find((j: { key: string }) => j.key === "tx-example-county");
+    expect(example).toMatchObject({ rulesetVersion: 1, counties: ["Example County"], assignment: "county", profileStatus: "fictional" });
+    // An office override has to say what it rests on.
+    expect((await s.api.put(`/sites/${s.site.id}/jurisdiction`, { jurisdictionId: example.id })).statusCode).toBe(400);
+    const set = await s.api.put(`/sites/${s.site.id}/jurisdiction`, { jurisdictionId: example.id, evidenceKind: "permit_record", evidenceReference: "Permit file 2019-114" });
     expect(set.json()).toMatchObject({ source: "override", jurisdiction: { key: "tx-example-county" } });
 
     expect((await s.api.post(`/filings/${f.id}/recheck`, {})).json()).toMatchObject({ status: "queued", deadlineOn: "2026-03-15" });
@@ -295,8 +278,18 @@ describe("rulesets", () => {
     await expect(syncRulesets(ctx.db, [{ ...rules!, filing: { ...rules!.filing, deadlineDays: 30 } }])).rejects.toThrow(/changed after it was published/);
   });
 
-  it("say they are fictional", () => {
-    for (const r of bundledRulesets()) expect(r.sourceReference).toMatch(/FICTIONAL/);
+  it("say whether they are fictional, drafts or verified", () => {
+    for (const r of bundledRulesets()) {
+      if (/FICTIONAL/.test(r.sourceReference)) expect(r.profile).toBeUndefined();
+      else expect(r.profile?.status).toMatch(/^(draft|verified)$/);
+    }
+    // The real authorities are drafts with their open questions listed, so none files on its own.
+    const real = bundledRulesets().filter((r) => r.profile);
+    expect(real.map((r) => r.profile!.status)).toEqual(["draft", "draft"]);
+    for (const r of real) {
+      expect(r.profile!.unresolved.length).toBeGreaterThan(0);
+      expect(r.filing.autoSubmit).toBe(false);
+    }
   });
 });
 

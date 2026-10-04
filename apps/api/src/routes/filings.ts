@@ -1,22 +1,21 @@
 import {
-  adapterFor,
   confirmFiling,
+  correctFiling,
+  explainSite,
   FilingStateError,
-  loadCanonicalInspection,
   loadCatalog,
   loadFiling,
   markFiledManually,
-  prepareFiling,
+  prepareFilingById,
   recheckFiling,
   rejectFiling,
-  resolveSite,
+  ReportCorrectionError,
   resubmitFiling,
   retryFiling,
   rulesetOn,
   submitNow,
   useManualFiling,
   type ComplianceContext,
-  type ResolvedJurisdiction,
 } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import {
@@ -24,15 +23,20 @@ import {
   FILING_ATTENTION_STATUSES,
   FILING_OPEN_STATUSES,
   filingConfirmInput,
+  filingCorrectInput,
   filingDetail,
   filingListItem,
   filingManualSentInput,
   filingRejectInput,
   id,
   jurisdiction,
+  profileStatus,
+  siteIdentifierInput,
   siteJurisdiction,
   siteJurisdictionInput,
   type FilingDetail,
+  type PackageDocument,
+  type SiteJurisdiction,
   type FilingListItem,
   type FilingProof,
   type FilingStatus,
@@ -58,6 +62,9 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 ) => {
   const ctx = (): ComplianceContext => ({ ...compliance, db, now });
 
+  /** When the sources were read and when the requirement took effect: two different dates, kept apart. */
+  const profileDates = (rules: RulesetRules) => ({ sourcesCheckedOn: rules.profile?.sourcesCheckedOn ?? null, requirementEffective: rules.profile?.requirementEffective ?? null });
+
   const toJurisdiction = (entry: Awaited<ReturnType<typeof loadCatalog>>[number], onDate: string): Jurisdiction => {
     const rs = rulesetOn(entry, onDate) ?? entry.rulesets[0] ?? null;
     return {
@@ -68,6 +75,9 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       type: entry.jurisdiction.type,
       rulesetVersion: rs?.version ?? null,
       counties: rs?.rules.applicability.counties ?? [],
+      assignment: rs?.rules.applicability.assignment ?? "county",
+      howToDecide: rs?.rules.applicability.howToDecide ?? null,
+      profileStatus: rs ? profileStatus(rs.rules) : "fictional",
     };
   };
 
@@ -83,21 +93,68 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     },
   );
 
-  async function siteJurisdictionOf(organizationId: string, siteId: string) {
-    const site = await db.selectFrom("sites").select(["id", "county", "state", "jurisdictionId"]).where("organizationId", "=", organizationId).where("id", "=", siteId).executeTakeFirst();
+  async function siteJurisdictionOf(organizationId: string, siteId: string): Promise<SiteJurisdiction> {
+    const site = await db
+      .selectFrom("sites")
+      .select(["id", "county", "state", "jurisdictionId", "authorityAssignmentId"])
+      .where("organizationId", "=", organizationId)
+      .where("id", "=", siteId)
+      .executeTakeFirst();
     if (!site) throw notFound("Site");
     const today = await organizationToday(db, organizationId, now());
     const catalog = await loadCatalog(db);
-    const resolved = resolveSite(catalog, site, today);
+    const resolution = explainSite(catalog, site, today);
+    const resolved = resolution.resolved;
     const entry = resolved && catalog.find((e) => e.jurisdiction.id === resolved.jurisdictionId);
-    return { source: resolved?.source ?? ("none" as const), jurisdiction: entry ? toJurisdiction(entry, today) : null };
+    const assignment = site.authorityAssignmentId
+      ? await db
+          .selectFrom("siteAuthorityAssignments as a")
+          .leftJoin("users as u", "u.id", "a.assignedBy")
+          .select(["a.evidenceKind", "a.evidenceReference", "a.evidenceNote", "a.assignedAt", "u.name"])
+          .where("a.organizationId", "=", organizationId)
+          .where("a.id", "=", site.authorityAssignmentId)
+          .executeTakeFirst()
+      : undefined;
+    const values = resolved
+      ? await db
+          .selectFrom("siteAuthorityIdentifiers")
+          .select(["kind", "value"])
+          .where("organizationId", "=", organizationId)
+          .where("siteId", "=", siteId)
+          .where("jurisdictionId", "=", resolved.jurisdictionId)
+          .execute()
+      : [];
+    return {
+      source: resolved?.source ?? "none",
+      jurisdiction: entry ? toJurisdiction(entry, today) : null,
+      reviewReason: resolved ? null : resolution.reviewReason,
+      candidates: resolution.candidates.map((e) => toJurisdiction(e, today)),
+      assignment:
+        site.jurisdictionId && assignment?.evidenceKind && assignment.evidenceReference
+          ? {
+              evidenceKind: assignment.evidenceKind,
+              evidenceReference: assignment.evidenceReference,
+              evidenceNote: assignment.evidenceNote,
+              assignedAt: assignment.assignedAt.toISOString(),
+              assignedBy: assignment.name,
+            }
+          : null,
+      profile: resolved
+        ? { status: profileStatus(resolved.rules), ...profileDates(resolved.rules), unresolved: resolved.rules.profile?.unresolved ?? [], howToDecide: resolved.rules.applicability.howToDecide ?? null }
+        : null,
+      identifiers: (resolved?.rules.identifiers ?? []).map((i) => {
+        const value = values.find((v) => v.kind === i.key)?.value ?? null;
+        const problem = !value ? (i.required ? "Required for filings with this authority" : null) : i.pattern && !new RegExp(i.pattern).test(value) ? "Not in the authority's format" : null;
+        return { key: i.key, label: i.label, required: i.required, value, help: i.help ?? null, problem };
+      }),
+    };
   }
 
   app.get(
     "/sites/:id/jurisdiction",
     {
       config: { permission: "crm:read" },
-      schema: { tags: ["filings"], summary: "Which authority the site reports to, and why", params, response: { 200: siteJurisdiction } },
+      schema: { tags: ["filings"], summary: "Which authority the site reports to, why, and what it still needs", params, response: { 200: siteJurisdiction } },
     },
     async (req) => siteJurisdictionOf(req.requireAuth().organizationId, req.params.id),
   );
@@ -108,24 +165,84 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       config: { permission: "crm:write" },
       schema: {
         tags: ["filings"],
-        summary: "Choose the site's authority by hand, or null to match it from the county",
-        description: "Affects inspections completed from now on and filings checked again; existing filings keep the authority they recorded.",
+        summary: "Choose the site's authority by hand, with the evidence it is based on, or null to match it from the county",
+        description:
+          "Every choice is kept (append-only) with who made it and what it was based on. Affects inspections completed from now on and filings checked again; existing filings keep the authority they recorded.",
         params,
         body: siteJurisdictionInput,
         response: { 200: siteJurisdiction },
       },
     },
     async (req) => {
-      const { organizationId } = req.requireAuth();
-      const { jurisdictionId } = req.body;
-      if (jurisdictionId) {
-        const j = await db.selectFrom("jurisdictions").select("id").where("id", "=", jurisdictionId).where("active", "=", true).executeTakeFirst();
+      const { organizationId, userId } = req.requireAuth();
+      const body = req.body;
+      if (body.jurisdictionId) {
+        const j = await db.selectFrom("jurisdictions").select("id").where("id", "=", body.jurisdictionId).where("active", "=", true).executeTakeFirst();
         if (!j) throw unprocessable("jurisdictionId does not match an active authority");
       }
       await db.transaction().execute(async (trx) => {
-        const res = await trx.updateTable("sites").set({ jurisdictionId, updatedAt: now() }).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
-        if (Number(res.numUpdatedRows) !== 1) throw notFound("Site");
-        await audit(trx, req, { action: "site.jurisdiction_set", entityType: "site", entityId: req.params.id, changes: { jurisdictionId } });
+        const site = await trx.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).forUpdate().executeTakeFirst();
+        if (!site) throw notFound("Site");
+        const assignment = await trx
+          .insertInto("siteAuthorityAssignments")
+          .values({
+            organizationId,
+            siteId: site.id,
+            jurisdictionId: body.jurisdictionId,
+            evidenceKind: body.jurisdictionId ? body.evidenceKind! : null,
+            evidenceReference: body.jurisdictionId ? body.evidenceReference! : null,
+            evidenceNote: body.jurisdictionId ? (body.evidenceNote ?? null) : null,
+            assignedBy: userId,
+            assignedAt: now(),
+          })
+          .returning("id")
+          .executeTakeFirstOrThrow();
+        await trx.updateTable("sites").set({ jurisdictionId: body.jurisdictionId, authorityAssignmentId: assignment.id, updatedAt: now() }).where("organizationId", "=", organizationId).where("id", "=", site.id).execute();
+        await audit(trx, req, { action: "site.jurisdiction_set", entityType: "site", entityId: site.id, changes: { ...body, assignmentId: assignment.id } });
+      });
+      return siteJurisdictionOf(organizationId, req.params.id);
+    },
+  );
+
+  app.put(
+    "/sites/:id/authority-identifiers/:key",
+    {
+      config: { permission: "crm:write" },
+      schema: {
+        tags: ["filings"],
+        summary: "Record (or with null, remove) a number an authority gives this property, such as LCRA's OSSF application number",
+        description: "Packages already built keep the value they were built with.",
+        params: z.object({ id, key: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/) }),
+        body: siteIdentifierInput,
+        response: { 200: siteJurisdiction },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const { jurisdictionId, value, sourceNote } = req.body;
+      const today = await organizationToday(db, organizationId, now());
+      const entry = (await loadCatalog(db)).find((e) => e.jurisdiction.id === jurisdictionId);
+      const rules = entry && (rulesetOn(entry, today) ?? entry.rulesets[0])?.rules;
+      const declared = rules?.identifiers?.find((i) => i.key === req.params.key);
+      if (!declared) throw unprocessable(`${entry?.jurisdiction.authorityName ?? "That authority"} does not use an identifier called ${req.params.key}`);
+      if (value && declared.pattern && !new RegExp(declared.pattern).test(value)) throw unprocessable(`${declared.label} is not in the authority's format`);
+      await db.transaction().execute(async (trx) => {
+        const site = await trx.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+        if (!site) throw notFound("Site");
+        const where = trx
+          .deleteFrom("siteAuthorityIdentifiers")
+          .where("organizationId", "=", organizationId)
+          .where("siteId", "=", site.id)
+          .where("jurisdictionId", "=", jurisdictionId)
+          .where("kind", "=", req.params.key);
+        if (value === null) await where.execute();
+        else
+          await trx
+            .insertInto("siteAuthorityIdentifiers")
+            .values({ organizationId, siteId: site.id, jurisdictionId, kind: req.params.key, value, sourceNote: sourceNote ?? null, updatedBy: userId, updatedAt: now() })
+            .onConflict((oc) => oc.columns(["organizationId", "siteId", "jurisdictionId", "kind"]).doUpdateSet({ value, sourceNote: sourceNote ?? null, updatedBy: userId, updatedAt: now() }))
+            .execute();
+        await audit(trx, req, { action: "site.authority_identifier_set", entityType: "site", entityId: site.id, changes: { jurisdictionId, key: req.params.key, value, sourceNote } });
       });
       return siteJurisdictionOf(organizationId, req.params.id);
     },
@@ -136,10 +253,17 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       .selectFrom("filings as f")
       .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "f.siteId").onRef("s.organizationId", "=", "f.organizationId"))
       .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"))
-      .innerJoin("inspections as i", (j) => j.onRef("i.id", "=", "f.inspectionId").onRef("i.organizationId", "=", "f.organizationId"))
+      .leftJoin("inspections as i", (j) => j.onRef("i.id", "=", "f.inspectionId").onRef("i.organizationId", "=", "f.organizationId"))
+      .leftJoin("contracts as k", (j) => j.onRef("k.id", "=", "f.contractId").onRef("k.organizationId", "=", "f.organizationId"))
       .leftJoin("jurisdictions as jr", "jr.id", "f.jurisdictionId")
       .select((eb) => [
         "f.id",
+        "f.kind",
+        "f.deadlineBasis",
+        "k.id as contractId",
+        "k.startOn as contractStartOn",
+        "k.endOn as contractEndOn",
+        "k.planName as contractPlanName",
         "f.status",
         "f.submissionMethod",
         "f.deadlineOn",
@@ -168,6 +292,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   type ListRow = Awaited<ReturnType<ReturnType<typeof listQuery>["execute"]>>[number];
   const toItem = (r: ListRow, today: string): FilingListItem => ({
     id: r.id,
+    kind: r.kind,
     status: r.status,
     submissionMethod: r.submissionMethod,
     deadlineOn: r.deadlineOn,
@@ -179,7 +304,9 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     reviewReason: r.reviewReason,
     lastError: r.lastError,
     attemptCount: Number(r.attemptCount ?? 0),
-    inspection: { id: r.inspectionId, completedAt: r.completedAt?.toISOString() ?? null },
+    inspection: r.inspectionId ? { id: r.inspectionId, completedAt: r.completedAt?.toISOString() ?? null } : null,
+    contract: r.contractId && r.contractStartOn && r.contractEndOn && r.contractPlanName ? { id: r.contractId, startOn: r.contractStartOn, endOn: r.contractEndOn, planName: r.contractPlanName } : null,
+    deadlineBasis: r.deadlineBasis,
     site: { id: r.siteId, addressLine1: r.addressLine1, city: r.city, permitNumber: r.permitNumber },
     customer: { id: r.customerId, displayName: r.displayName },
     jurisdiction: r.jurisdictionKey && r.authorityName && r.rulesetVersion ? { key: r.jurisdictionKey, authorityName: r.authorityName, rulesetVersion: r.rulesetVersion } : null,
@@ -197,6 +324,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           "`open`: not yet sent. `sent`: sent and waiting for the authority's confirmation.",
         querystring: z.object({
           view: z.enum(VIEWS).default("attention"),
+          kind: z.enum(["inspection_report", "contract"]).optional(),
           siteId: id.optional(),
           limit: z.coerce.number().int().min(1).max(500).default(200),
         }),
@@ -208,6 +336,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const today = await organizationToday(db, organizationId, now());
       let q = listQuery(organizationId);
       if (req.query.siteId) q = q.where("f.siteId", "=", req.query.siteId);
+      if (req.query.kind) q = q.where("f.kind", "=", req.query.kind);
       const open = [...FILING_OPEN_STATUSES];
       switch (req.query.view) {
         case "attention":
@@ -233,6 +362,8 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     },
   );
 
+  const packageFileUrl = (organizationId: string, packageId: string, index: number) => signer.url(organizationId, `${packageId}.${index}`, now().getTime(), "package-files");
+
   async function detail(organizationId: string, filingId: string): Promise<FilingDetail> {
     const row = await listQuery(organizationId).where("f.id", "=", filingId).executeTakeFirst();
     if (!row) throw notFound("Filing");
@@ -240,50 +371,55 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     const f = await db
       .selectFrom("filings as f")
       .leftJoin("jurisdictionRulesets as r", "r.id", "f.rulesetId")
-      .leftJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
-      .select([
-        "f.stateMachineVersion",
-        "f.submissionNo",
-        "f.methodVersion",
-        "f.templateId",
-        "f.proof",
-        "f.confirmationNote",
-        "f.rejectionReason",
-        "f.reportId",
-        "r.id as rulesetId",
-        "r.rules",
-        "j.key",
-        "j.authorityName",
-      ])
+      .select(["f.stateMachineVersion", "f.submissionNo", "f.methodVersion", "f.templateId", "f.proof", "f.confirmationNote", "f.confirmationEvidence", "f.rejectionReason", "f.reportId", "f.inspectionId", "r.rules"])
       .where("f.organizationId", "=", organizationId)
       .where("f.id", "=", filingId)
       .executeTakeFirstOrThrow();
-    const attempts = await db
-      .selectFrom("filingAttempts")
-      .select(["attemptNo", "submissionNo", "method", "status", "startedAt", "finishedAt", "error"])
-      .where("organizationId", "=", organizationId)
-      .where("filingId", "=", filingId)
-      .orderBy("attemptNo", "desc")
-      .execute();
-
-    let pkg: FilingDetail["package"] = null;
-    if (f.rulesetId && f.rules && f.key && f.authorityName) {
-      const rules = f.rules as RulesetRules;
-      const resolved: ResolvedJurisdiction = { jurisdictionId: "", key: f.key, authorityName: f.authorityName, rulesetId: f.rulesetId, rules, source: "county" };
-      const adapter = adapterFor(resolved, { db, store: compliance.store, mail: compliance.mail });
-      let subject: string | null = null;
-      if (adapter && row.completedAt) {
-        const insp = await loadCanonicalInspection(db, organizationId, row.inspectionId);
-        subject = (await adapter.buildSubmission(insp, [], { filingId, submissionNo: f.submissionNo })).subject;
-      }
-      pkg = {
-        destination: rules.submission.email?.to ?? null,
-        portalUrl: rules.submission.portalUrl,
-        subject,
-        reportUrl: f.reportId ? signer.url(organizationId, f.reportId, now().getTime(), "report-files") : null,
-        fallback: rules.submission.fallback,
-      };
-    }
+    const [attempts, packages, reports] = await Promise.all([
+      db
+        .selectFrom("filingAttempts")
+        .select(["attemptNo", "submissionNo", "method", "status", "startedAt", "finishedAt", "error", "recipient", "packageId", "response"])
+        .where("organizationId", "=", organizationId)
+        .where("filingId", "=", filingId)
+        .orderBy("attemptNo", "desc")
+        .execute(),
+      db
+        .selectFrom("submissionPackages")
+        .select(["id", "submissionNo", "method", "recipient", "subject", "body", "fields", "documents", "manifestSha256", "createdAt"])
+        .where("organizationId", "=", organizationId)
+        .where("filingId", "=", filingId)
+        .orderBy("submissionNo", "desc")
+        .execute(),
+      f.inspectionId
+        ? db
+            .selectFrom("reports")
+            .select(["id", "version", "sha256", "supersedesReportId", "correctionReason", "generatedAt"])
+            .where("organizationId", "=", organizationId)
+            .where("inspectionId", "=", f.inspectionId)
+            .where("audience", "=", "authority")
+            .orderBy("version", "desc")
+            .execute()
+        : [],
+    ]);
+    const rules = f.rules as RulesetRules | null;
+    const current = packages.find((p) => p.submissionNo === f.submissionNo);
+    const currentDocs = (current?.documents as PackageDocument[] | undefined) ?? [];
+    const pkg: FilingDetail["package"] = rules
+      ? {
+          destination: current?.recipient ?? rules.submission.email?.to ?? null,
+          portalUrl: rules.submission.portalUrl,
+          subject: current?.subject ?? null,
+          // The filed document itself (report or contract), not the cover sheet.
+          reportUrl: current
+            ? currentDocs.length
+              ? packageFileUrl(organizationId, current.id, Math.max(0, currentDocs.findIndex((d) => d.role !== "cover_sheet")))
+              : null
+            : f.reportId
+              ? signer.url(organizationId, f.reportId, now().getTime(), "report-files")
+              : null,
+          fallback: rules.submission.fallback,
+        }
+      : null;
     return {
       ...toItem(row, today),
       stateMachineVersion: f.stateMachineVersion,
@@ -292,11 +428,62 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       templateId: f.templateId,
       proof: (f.proof as FilingProof | null) ?? null,
       confirmationNote: f.confirmationNote,
+      confirmationEvidence: (f.confirmationEvidence as FilingDetail["confirmationEvidence"]) ?? null,
       rejectionReason: f.rejectionReason,
       package: pkg,
-      attempts: attempts.map((a) => ({ ...a, startedAt: a.startedAt.toISOString(), finishedAt: a.finishedAt?.toISOString() ?? null })),
+      attempts: attempts.map((a) => ({
+        attemptNo: a.attemptNo,
+        submissionNo: a.submissionNo,
+        method: a.method,
+        status: a.status,
+        startedAt: a.startedAt.toISOString(),
+        finishedAt: a.finishedAt?.toISOString() ?? null,
+        error: a.error,
+        recipient: a.recipient,
+        packageId: a.packageId,
+        response: (a.response as Record<string, unknown>) ?? {},
+      })),
+      packages: packages.map((p) => ({
+        id: p.id,
+        submissionNo: p.submissionNo,
+        method: p.method,
+        recipient: p.recipient,
+        subject: p.subject,
+        body: p.body,
+        fields: p.fields as FilingDetail["packages"][number]["fields"],
+        documents: (p.documents as PackageDocument[]).map(({ storageKey: _k, ...d }, i) => ({ ...d, url: packageFileUrl(organizationId, p.id, i) })),
+        manifestSha256: p.manifestSha256,
+        createdAt: p.createdAt.toISOString(),
+      })),
+      profile: rules
+        ? { status: profileStatus(rules), ...profileDates(rules), unresolved: rules.profile?.unresolved ?? [], confirmationMode: rules.confirmation.mode, confirmationNote: rules.confirmation.note ?? null }
+        : null,
+      reports: reports.map((r) => ({ ...r, generatedAt: r.generatedAt.toISOString() })),
     };
   }
+
+  app.get(
+    "/package-files/:file",
+    {
+      // Authorized by the signature, like /report-files; bound to the package's organization.
+      config: { public: true },
+      schema: {
+        tags: ["filings"],
+        summary: "Download one document of a submission package through a signed link",
+        params: z.object({ file: z.string().regex(/^[0-9a-f-]{36}\.\d{1,2}$/) }),
+        querystring: z.object({ exp: z.coerce.number().int(), sig: z.string().max(100) }),
+      },
+    },
+    async (req, reply) => {
+      const [packageId, index] = req.params.file.split(".") as [string, string];
+      const row = await db.selectFrom("submissionPackages").select(["id", "organizationId", "documents"]).where("id", "=", packageId).executeTakeFirst();
+      if (!row || !signer.verify(row.organizationId, req.params.file, req.query.exp, req.query.sig, now().getTime(), "package-files")) throw notFound("File");
+      const doc = (row.documents as PackageDocument[])[Number(index)];
+      const data = doc && (await compliance.store.get(doc.storageKey));
+      if (!doc || !data) throw notFound("File");
+      return reply.type(doc.contentType).header("content-disposition", `inline; filename="${doc.filename}"`).header("x-content-type-options", "nosniff").send(data);
+    },
+  );
 
   app.get(
     "/filings/:id",
@@ -330,6 +517,13 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     return detail(organizationId, filingId);
   }
 
+  /** Checks a filing again after an action put it back to pending, then returns it. */
+  async function prepared(req: FastifyRequest, filingId: string) {
+    const { organizationId, userId } = req.requireAuth();
+    await prepareFilingById(ctx(), organizationId, filingId, userId);
+    return detail(organizationId, filingId);
+  }
+
   const action = (summary: string, body?: z.ZodObject) => ({
     config: { permission: "filings:write" as const },
     schema: { tags: ["filings"], summary, params, ...(body ? { body } : {}), response: { 200: filingDetail } },
@@ -339,8 +533,30 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 
   app.post("/filings/:id/retry", action("Retry a failed email filing now"), async (req) => act(req, req.params.id, "retried", (trx, f, a) => retryFiling(trx, ctx(), f, a)));
 
-  app.post("/filings/:id/resubmit", action("Submit again after the authority rejected it"), async (req) =>
-    act(req, req.params.id, "resubmitted", (trx, f, a) => resubmitFiling(trx, ctx(), f, a)),
+  app.post("/filings/:id/resubmit", action("Submit again after the authority rejected it: checked again, with a new package"), async (req) => {
+    await act(req, req.params.id, "resubmitted", (trx, f, a) => resubmitFiling(trx, ctx(), f, a));
+    return prepared(req, req.params.id);
+  });
+
+  app.post(
+    "/filings/:id/correct",
+    action("Correct a rejected inspection filing: a new authority report version linked to the old one, then a new submission", filingCorrectInput),
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const body = filingCorrectInput.parse(req.body);
+      const f = await loadFiling(db, organizationId, req.params.id);
+      if (!f) throw notFound("Filing");
+      let report;
+      try {
+        report = await correctFiling(ctx(), f, { organizationId, filingId: f.id, actorUserId: userId, at: now(), reason: body.reason, amendments: body.amendments });
+      } catch (err) {
+        if (err instanceof FilingStateError) throw new HttpError(409, "invalid_transition", err.message);
+        if (err instanceof ReportCorrectionError) throw unprocessable(err.message);
+        throw err;
+      }
+      await act(req, f.id, "corrected", (trx, locked, a) => resubmitFiling(trx, ctx(), locked, a), { reason: body.reason, amendments: body.amendments, reportId: report.reportId, version: report.version });
+      return prepared(req, f.id);
+    },
   );
 
   app.post("/filings/:id/manual", action("File this one by hand (portal, mail or counter) instead of by email"), async (req) =>
@@ -355,7 +571,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 
   app.post("/filings/:id/confirm", action("Record the authority's confirmation and its reference", filingConfirmInput), async (req) => {
     const body = filingConfirmInput.parse(req.body);
-    return act(req, req.params.id, "confirmed", (trx, f, a) => confirmFiling(trx, f, { ...a, reference: body.reference, note: body.note ?? null }), body);
+    return act(req, req.params.id, "confirmed", (trx, f, a) => confirmFiling(trx, f, { ...a, reference: body.reference, note: body.note ?? null, evidence: body.evidence ?? null }), body);
   });
 
   app.post("/filings/:id/reject", action("Record that the authority rejected it", filingRejectInput), async (req) => {
@@ -364,10 +580,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   });
 
   app.post("/filings/:id/recheck", action("Check a filing that needs review again, after fixing the cause"), async (req) => {
-    const { organizationId } = req.requireAuth();
     await act(req, req.params.id, "rechecked", (trx, f, a) => recheckFiling(trx, f, a));
-    const f = await loadFiling(db, organizationId, req.params.id);
-    if (f) await prepareFiling(ctx(), organizationId, f.inspectionId, req.requireAuth().userId);
-    return detail(organizationId, req.params.id);
+    return prepared(req, req.params.id);
   });
 };
