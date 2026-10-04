@@ -2,6 +2,7 @@
 
 import {
   applyRequirements,
+  ISSUE_LABELS,
   ISSUE_SEVERITIES,
   ISSUE_TYPES,
   validateInspection,
@@ -16,15 +17,6 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { saveInspection, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
 import { currentPosition, preparePhoto, templateById } from "@/lib/offline/data";
-
-const ISSUE_LABELS: Record<string, string> = {
-  repair_needed: "Repair needed",
-  pump_out: "Pump-out needed",
-  part_replacement: "Part replacement",
-  callback: "Callback",
-  estimate_required: "Estimate required",
-  noncompliance: "Noncompliance",
-};
 
 function Choice({ label, options, value, onChange }: { label: string; options: { value: string | boolean; label: string }[]; value: InspectionValue | undefined; onChange: (v: InspectionValue) => void }) {
   return (

@@ -241,6 +241,15 @@ export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; def
 export const ISSUE_TYPES = ["repair_needed", "pump_out", "part_replacement", "callback", "estimate_required", "noncompliance"] as const;
 export const ISSUE_SEVERITIES = ["low", "medium", "high"] as const;
 
+export const ISSUE_LABELS: Record<(typeof ISSUE_TYPES)[number], string> = {
+  repair_needed: "Repair needed",
+  pump_out: "Pump-out needed",
+  part_replacement: "Part replacement",
+  callback: "Callback",
+  estimate_required: "Estimate required",
+  noncompliance: "Noncompliance",
+};
+
 const value = z.union([z.string().max(5000), z.number(), z.boolean(), z.null()]);
 const gps = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracyM: z.number().min(0).max(100000).optional() });
 

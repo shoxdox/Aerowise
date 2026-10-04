@@ -282,6 +282,9 @@ export interface IssuesTable {
   severity: Generated<string>;
   description: Generated<string>;
   status: Generated<"open" | "resolved">;
+  resolvedAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  resolvedBy: ColumnType<string | null, string | null | undefined, string | null>;
+  resolution: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
