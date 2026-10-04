@@ -12,6 +12,7 @@ function Shell({ children }: { children: ReactNode }) {
   const nav = [
     { href: "/schedule", label: "Schedule" },
     { href: "/due", label: "Due" },
+    { href: "/filings", label: "Filings" },
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },

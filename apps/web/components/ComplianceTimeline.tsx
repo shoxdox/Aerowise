@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComplianceEvent } from "@aerowise/domain";
+import Link from "next/link";
 import { useLoad } from "@/components/useLoad";
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
@@ -27,6 +28,12 @@ export function ComplianceTimeline({ siteId }: { siteId: string }) {
               <span>
                 {e.summary}
                 {e.actorName && <span className="muted"> · {e.actorName}</span>}
+                {e.filingId && (
+                  <>
+                    {" · "}
+                    <Link href={`/filings/${e.filingId}`}>Filing</Link>
+                  </>
+                )}
                 {e.report && (
                   <>
                     {" · "}

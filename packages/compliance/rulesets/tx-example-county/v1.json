@@ -1,0 +1,43 @@
+{
+  "jurisdiction": {
+    "key": "tx-example-county",
+    "state": "TX",
+    "authorityName": "Example County Environmental Health (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL placeholder for development and tests. These are not any real county's requirements; replace with a ruleset written from the authority's published rules before filing for real.",
+  "applicability": {
+    "counties": ["Example County"]
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": ["air_pressure"],
+    "requiredPhotos": [{ "key": "overview", "minCount": 1 }],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": true
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-example-county.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}

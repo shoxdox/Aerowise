@@ -1,6 +1,7 @@
+import { OutboxTransport, prepareFiling, SUBMIT_FILING, submitFiling, type ComplianceContext, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
-import { claimNext, markDone, markFailed, type Task } from "./queue.ts";
+import { claimNext, enqueue, markDone, markFailed, type Task } from "./queue.ts";
 import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 
 export * from "./queue.ts";
@@ -10,6 +11,14 @@ export interface TaskContext {
   db: Database;
   store: ObjectStore;
   now: () => Date;
+  /** How filings are emailed. Defaults to the development outbox in file storage. */
+  mail?: EmailTransport;
+  /** From address on filing emails. */
+  mailFrom?: string;
+}
+
+export function complianceContext(ctx: TaskContext): ComplianceContext {
+  return { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, enqueue, from: ctx.mailFrom };
 }
 
 async function run(ctx: TaskContext, task: Task) {
@@ -17,6 +26,11 @@ async function run(ctx: TaskContext, task: Task) {
   switch (task.kind) {
     case GENERATE_REPORTS:
       await generateReports(ctx.db, ctx.store, task.organizationId!, payload.inspectionId!, ctx.now());
+      // With the authority copy made, the inspection's filing can be checked and sent.
+      await prepareFiling(complianceContext(ctx), task.organizationId!, payload.inspectionId!);
+      return;
+    case SUBMIT_FILING:
+      await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
       return;
     default:
       throw new Error(`unknown task kind ${task.kind}`);

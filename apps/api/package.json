@@ -11,6 +11,7 @@
     "openapi": "tsx src/print-openapi.ts"
   },
   "dependencies": {
+    "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
     "@aerowise/domain": "workspace:*",
     "@aerowise/storage": "workspace:*",

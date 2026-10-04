@@ -1,13 +1,16 @@
 import { hostname } from "node:os";
+import { syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
 import { runNextTask } from "@aerowise/tasks";
 
-// Runs background tasks (report PDFs now, filings later) from the Postgres queue.
+// Runs background tasks (report PDFs, filing submissions) from the Postgres queue.
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
-const ctx = { db, store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"), now: () => new Date() };
+await syncRulesets(db);
+// Filing emails go to the development outbox in file storage; see README for production.
+const ctx = { db, store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"), now: () => new Date(), mailFrom: process.env.FILING_EMAIL_FROM };
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
 

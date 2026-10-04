@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import {
+  applyRequirements,
   attachment,
   canTransition,
   DEFAULT_TEMPLATE,
@@ -20,6 +21,7 @@ import {
   type JobStatus,
   type TemplateDefinition,
 } from "@aerowise/domain";
+import { openFiling, siteRequirements } from "@aerowise/compliance";
 import { enqueue, GENERATE_REPORTS } from "@aerowise/tasks";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -212,7 +214,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
 
   /**
    * Marks the job, and the visit it fulfils, as done; records it on the site's compliance
-   * ledger; and queues the report PDFs. All in the caller's transaction.
+   * ledger; opens the filing; and queues the report PDFs. All in the caller's transaction.
    */
   async function completeJob(
     trx: Transaction<DB>,
@@ -252,6 +254,8 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         details: JSON.stringify({ jobId: job.id, obligationId: job.obligationId }),
       })
       .execute();
+    // The filing waits for the authority report, which the reports task makes next.
+    await openFiling(trx, { organizationId, inspectionId, actorUserId: req.requireAuth().userId, at });
     await enqueue(trx, { kind: GENERATE_REPORTS, organizationId, payload: { inspectionId }, dedupeKey: `reports:${inspectionId}`, runAt: at });
   }
 
@@ -451,7 +455,9 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         }
 
         if (body.status === "completed") {
-          const problems = validateInspection(definition, values, await photoCounts(trx, organizationId, rowId));
+          // The template's rules plus whatever the site's reporting authority requires.
+          const requirements = await siteRequirements(trx, organizationId, job.siteId, body.completedAt ? new Date(body.completedAt) : at);
+          const problems = validateInspection(applyRequirements(definition, requirements), values, await photoCounts(trx, organizationId, rowId));
           if (problems.length === 0) {
             await trx
               .updateTable("inspections")

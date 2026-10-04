@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id, SAFETY_FLAGS } from "./crm.ts";
+import { inspectionRequirements } from "./filings.ts";
 
 export const JOB_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -75,6 +76,8 @@ export const stop = z.object({
   system: z
     .object({ manufacturer: z.string().nullable(), model: z.string().nullable(), disposalType: z.string().nullable(), chlorinationMethod: z.string().nullable() })
     .nullable(),
+  /** What the site's reporting authority adds to the inspection. Only on the technician's route. */
+  requirements: inspectionRequirements.nullable().optional(),
 });
 
 export const technician = z.object({ id, name: z.string(), technicianLicense: z.string().nullable() });

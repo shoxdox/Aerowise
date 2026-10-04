@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
 import { ComplianceTimeline } from "@/components/ComplianceTimeline";
+import { SiteAuthority } from "@/components/SiteAuthority";
 import { SiteContracts } from "@/components/SiteContracts";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -152,6 +153,7 @@ export default function SitePage() {
         </dl>
       )}
 
+      <SiteAuthority siteId={site.id} county={site.county} editable={editable} />
       <SiteContracts siteId={site.id} editable={editable} />
       <ComplianceTimeline siteId={site.id} />
 
