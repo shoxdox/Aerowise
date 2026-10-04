@@ -16,7 +16,7 @@ export const hashPortalToken = (token: string) => createHash("sha256").update(to
 /** Makes a new portal link for a customer and returns its token, which only the caller ever sees. */
 export async function createPortalLink(
   db: Executor,
-  link: { organizationId: string; customerId: string; source: "office" | "email"; sentTo: string | null; createdBy: string | null; now: Date },
+  link: { organizationId: string; customerId: string; source: "office" | "email" | "sms"; sentTo: string | null; createdBy: string | null; now: Date },
 ) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(link.now.getTime() + PORTAL_LINK_DAYS * 86_400_000);

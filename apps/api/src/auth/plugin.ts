@@ -13,6 +13,8 @@ declare module "fastify" {
     public?: boolean;
     /** Accepts a raw image body instead of JSON (photo uploads). */
     imageUpload?: boolean;
+    /** Accepts a form-encoded body: provider webhooks that sign their requests (Twilio). */
+    signedForm?: boolean;
   }
   interface FastifyRequest {
     auth: AuthContext | null;
@@ -50,7 +52,11 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     // are allowed on routes that opt in: image/* is not a CORS-safelisted type either.
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       const type = req.headers["content-type"] ?? "";
-      const allowed = type.startsWith("application/json") || (config.imageUpload === true && type.startsWith("image/"));
+      const allowed =
+        type.startsWith("application/json") ||
+        (config.imageUpload === true && type.startsWith("image/")) ||
+        // Never with a session: these routes check the provider's signature instead.
+        (config.signedForm === true && config.public === true && type.startsWith("application/x-www-form-urlencoded"));
       if (!allowed) {
         throw new HttpError(415, "unsupported_media_type", "Requests must send application/json");
       }

@@ -3,6 +3,7 @@ import type { Database } from "@aerowise/db";
 import type { InspectionValues, TemplateDefinition } from "@aerowise/domain";
 import { renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
+import { queueSms } from "./sms-task.ts";
 
 export const GENERATE_REPORTS = "reports.generate";
 
@@ -52,6 +53,7 @@ export async function generateReports(db: Database, store: ObjectStore, organiza
       "s.postalCode",
       "s.county",
       "s.permitNumber",
+      "c.id as customerId",
       "c.displayName as customerName",
       "u.name as technicianName",
       "m.technicianLicense",
@@ -175,6 +177,10 @@ export async function generateReports(db: Database, store: ObjectStore, organiza
           details: JSON.stringify({ audience, sha256: createHash("sha256").update(pdf).digest("hex") }),
         })
         .execute();
+      // The homeowner hears that their copy is ready, if they get texts.
+      if (audience === "customer") {
+        await queueSms(trx, organizationId, { kind: "report_ready", customerId: insp.customerId, siteId: insp.siteId, relatedType: "report", relatedId: reportId, dedupeKey: `report_ready:${inspectionId}` }, now);
+      }
       created.push({ id: reportId, audience });
     });
   }

@@ -1,5 +1,7 @@
-import type { Stop } from "@aerowise/domain";
+import { formatPhone, type SmsQueueResult, type Stop } from "@aerowise/domain";
+import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
+import { api, ApiError } from "@/lib/api";
 import type { LocalInspection } from "@/lib/offline/db";
 import { day } from "@/lib/format";
 import { stopStatus } from "./StopList";
@@ -27,6 +29,7 @@ export function StopDetail({ stop, inspection, canStart, onStart }: { stop: Stop
           </a>
         )}
       </div>
+      {!finished && <OnTheWay stop={stop} />}
       <dl className="details card">
         {site.gateCode && (
           <>
@@ -81,6 +84,43 @@ export function StopDetail({ stop, inspection, canStart, onStart }: { stop: Stop
         </button>
       )}
       {!canStart && <p className="muted small">The inspection form has not been downloaded yet. Open the app once with signal.</p>}
+    </div>
+  );
+}
+
+const OUTCOME_TEXT: Record<SmsQueueResult["outcome"], string> = {
+  queued: "Customer texted that you are on the way",
+  off: "Texting is turned off, so no text was sent",
+  no_phone: "No text sent: the customer has no mobile number on file",
+  no_consent: "No text sent: the customer has not agreed to texts",
+  opted_out: "No text sent: the customer replied STOP",
+};
+
+/** Tells the customer the technician is heading over. Needs signal; one text per visit. */
+function OnTheWay({ stop }: { stop: Stop }) {
+  const [result, setResult] = useState<string | null>(stop.onTheWayAt ? `On the way since ${new Date(stop.onTheWayAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : null);
+  const [busy, setBusy] = useState(false);
+  async function send() {
+    setBusy(true);
+    try {
+      const r = await api<SmsQueueResult>(`/jobs/${stop.jobId}/on-the-way`, { method: "POST", body: {} });
+      setResult(r.outcome === "queued" && r.to ? `${OUTCOME_TEXT.queued} (${formatPhone(r.to)}).` : `${OUTCOME_TEXT[r.outcome]}.`);
+    } catch (err) {
+      setResult(err instanceof ApiError ? err.message : "No signal. Try again when you have one.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="stack">
+      <button className="secondary" onClick={() => void send()} disabled={busy}>
+        On my way
+      </button>
+      {result && (
+        <p className="muted small" role="status" data-testid="on-the-way">
+          {result}
+        </p>
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@
     "@aerowise/payments": "workspace:*",
     "@aerowise/quickbooks": "workspace:*",
     "@aerowise/renewals": "workspace:*",
+    "@aerowise/sms": "workspace:*",
     "@aerowise/storage": "workspace:*",
     "@aerowise/tasks": "workspace:*",
     "@fastify/cookie": "^11.1.2",

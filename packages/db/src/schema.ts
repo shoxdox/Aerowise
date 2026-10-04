@@ -10,6 +10,9 @@ import type {
   QuickBooksSyncStatus,
   RefundStatus,
   Role,
+  SmsKind,
+  SmsSkipReason,
+  SmsStatus,
   SubmissionMethod,
 } from "@aerowise/domain";
 
@@ -41,6 +44,9 @@ export interface OrganizationsTable {
   renewalAutoSend: Generated<boolean>;
   renewalPayment: Generated<"pay_to_activate" | "invoice">;
   renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
+  smsEnabled: Generated<boolean>;
+  smsKinds: ColumnType<SmsKind[], SmsKind[] | undefined, SmsKind[]>;
+  smsFromNumber: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
 }
 
@@ -230,6 +236,7 @@ export interface JobsTable {
   notes: string | null;
   cancelledAt: Timestamp | null;
   cancelReason: string | null;
+  onTheWayAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -723,7 +730,7 @@ export interface PortalLinksTable {
   organizationId: string;
   customerId: string;
   tokenHash: Buffer;
-  source: "office" | "email";
+  source: "office" | "email" | "sms";
   sentTo: string | null;
   createdBy: string | null;
   expiresAt: Timestamp;
@@ -749,6 +756,40 @@ export interface ServiceRequestsTable {
   portalLinkId: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
+}
+
+export interface SmsMessagesTable {
+  id: Generated<string>;
+  organizationId: string;
+  direction: "outbound" | "inbound";
+  kind: SmsKind | null;
+  customerId: string | null;
+  contactId: string | null;
+  phone: string | null;
+  body: string;
+  status: SmsStatus;
+  skipReason: SmsSkipReason | null;
+  attempts: Generated<number>;
+  errorCode: string | null;
+  errorMessage: string | null;
+  provider: string | null;
+  providerMessageId: string | null;
+  relatedType: string | null;
+  relatedId: string | null;
+  dedupeKey: string | null;
+  sentAt: Timestamp | null;
+  deliveredAt: Timestamp | null;
+  handledAt: Timestamp | null;
+  handledBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface SmsOptOutsTable {
+  organizationId: string;
+  phone: string;
+  source: "reply" | "carrier";
+  optedOutAt: Generated<Date>;
 }
 
 export interface DB {
@@ -794,4 +835,6 @@ export interface DB {
   signedDocuments: SignedDocumentsTable;
   portalLinks: PortalLinksTable;
   serviceRequests: ServiceRequestsTable;
+  smsMessages: SmsMessagesTable;
+  smsOptOuts: SmsOptOutsTable;
 }

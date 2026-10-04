@@ -28,12 +28,14 @@ import { inspectionRoutes } from "./routes/inspections.ts";
 import { reportRoutes } from "./routes/reports.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
+import { smsRoutes } from "./routes/sms.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { DEFAULT_APP_URL, enqueue } from "@aerowise/tasks";
 import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
+import { TestSmsProvider, type SmsConfig } from "@aerowise/sms";
 
 export interface AppOptions {
   db: Database;
@@ -61,6 +63,11 @@ export interface AppOptions {
   quickbooks?: QuickBooksConfig | null;
   /** The web app's public address, used in pay links and the QuickBooks callback. */
   appUrl?: string;
+  /**
+   * Text messages. Defaults to the built-in test provider outside production; in
+   * production, texting is off unless Twilio is configured.
+   */
+  sms?: SmsConfig | null;
 }
 
 export async function buildApp({
@@ -75,6 +82,7 @@ export async function buildApp({
   payments = production ? null : new TestPaymentProvider(),
   appUrl = DEFAULT_APP_URL,
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
+  sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -153,6 +161,7 @@ export async function buildApp({
   await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(portalRoutes, { db, now, store, appUrl });
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
+  await app.register(smsRoutes, { db, now, sms });
   await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
 
   return app;

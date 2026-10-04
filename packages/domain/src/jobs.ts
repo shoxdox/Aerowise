@@ -56,6 +56,8 @@ export const stop = z.object({
   technicianId: id,
   technicianName: z.string(),
   notes: z.string().nullable(),
+  /** When the technician told the customer they were on the way. */
+  onTheWayAt: z.iso.datetime({ offset: true }).nullable(),
   obligation: z.object({ id, sequence: z.number().int(), dueOn: date, windowEnd: date }).nullable(),
   site: z.object({
     id,

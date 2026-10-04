@@ -7,6 +7,8 @@ import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./i
 import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
 import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 import { PORTAL_LINK_EMAIL, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
+import type { SmsConfig, SmsRequest } from "@aerowise/sms";
+import { runSmsSweep, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
 
 export * from "./queue.ts";
@@ -25,6 +27,7 @@ export {
   type SweepResult,
 } from "./renewal-task.ts";
 export { createPortalLink, hashPortalToken, PORTAL_LINK_EMAIL, portalUrlFor, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
+export { queueSms, runSmsSweep, scheduleSmsSweeps, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -41,6 +44,8 @@ export interface TaskContext {
   appUrl?: string;
   /** QuickBooks Online; without it, sync tasks do nothing. */
   quickbooks?: { provider: QuickBooksProvider; cipher: TokenCipher } | null;
+  /** Text messages; without it, queued texts are dropped. */
+  sms?: SmsConfig | null;
 }
 
 export const DEFAULT_APP_URL = "http://localhost:3000";
@@ -97,6 +102,14 @@ async function run(ctx: TaskContext, task: Task) {
         task.id,
         task.payload as unknown as PortalLinkEmail,
       );
+      return;
+    case SEND_SMS:
+      // Texting was configured when this was queued and is not now.
+      if (!ctx.sms) return;
+      await sendSms({ db: ctx.db, sms: ctx.sms, now: ctx.now, appUrl: ctx.appUrl ?? DEFAULT_APP_URL }, task.organizationId!, task.payload as unknown as SmsRequest);
+      return;
+    case SMS_SWEEP:
+      await runSmsSweep(ctx.db, payload.organizationId!, ctx.now());
       return;
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);

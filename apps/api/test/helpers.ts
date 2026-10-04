@@ -7,6 +7,7 @@ import { sql } from "kysely";
 import { afterAll, beforeEach } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
+import { TestSmsProvider } from "@aerowise/sms";
 import { testDatabaseUrl } from "./db-url.ts";
 
 export const PASSWORD = "correct horse battery staple";
@@ -19,6 +20,8 @@ export interface TestContext {
   now: Date;
   /** Where uploads and reports go: a fresh temporary directory per test file. */
   store: ObjectStore;
+  /** Texting: the built-in test provider, which keeps what it "sent". */
+  sms: { provider: TestSmsProvider; webhookBaseUrl: string };
 }
 
 /** One app + db per test file; every table is emptied before each test. */
@@ -27,11 +30,12 @@ export function setupTestApp(): TestContext {
   ctx.db = createDb(testDatabaseUrl());
   ctx.now = new Date("2026-03-01T18:00:00Z");
   ctx.store = new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-files-")));
+  ctx.sms = { provider: new TestSmsProvider(), webhookBaseUrl: "http://localhost:3000/api" };
   beforeEach(async () => {
-    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store });
+    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store, sms: ctx.sms });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate sms_messages, sms_opt_outs, service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });

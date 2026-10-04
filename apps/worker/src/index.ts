@@ -3,9 +3,10 @@ import { syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
-import { runNextTask, scheduleQuickBooksSyncs, scheduleRenewalSweeps } from "@aerowise/tasks";
+import { smsFromEnv } from "@aerowise/sms";
+import { runNextTask, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSmsSweeps } from "@aerowise/tasks";
 
-// Runs background tasks (report PDFs, filing submissions, invoices, QuickBooks sync, renewal campaigns) from the Postgres queue.
+// Runs background tasks (report PDFs, filing submissions, invoices, QuickBooks sync, renewal campaigns, texts) from the Postgres queue.
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
@@ -19,6 +20,7 @@ const ctx = {
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
   appUrl: process.env.PUBLIC_APP_URL,
   quickbooks: quickBooksFromEnv(db, process.env, process.env.NODE_ENV === "production"),
+  sms: smsFromEnv(process.env, process.env.NODE_ENV === "production"),
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
 const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);
@@ -26,6 +28,9 @@ let nextSweep = 0;
 // Each organization's renewal campaign (new renewals, emails, reminders, expiry) runs this often.
 const renewalsEveryMs = Number(process.env.RENEWAL_SWEEP_INTERVAL_MS ?? 60 * 60_000);
 let nextRenewalSweep = 0;
+// Payment reminder texts are looked for this often.
+const smsEveryMs = Number(process.env.SMS_SWEEP_INTERVAL_MS ?? 60 * 60_000);
+let nextSmsSweep = 0;
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
 
@@ -47,6 +52,10 @@ while (!stopping) {
     if (Date.now() >= nextRenewalSweep) {
       nextRenewalSweep = Date.now() + renewalsEveryMs;
       await scheduleRenewalSweeps(db, new Date(), renewalsEveryMs);
+    }
+    if (ctx.sms && Date.now() >= nextSmsSweep) {
+      nextSmsSweep = Date.now() + smsEveryMs;
+      await scheduleSmsSweeps(db, new Date(), smsEveryMs);
     }
     worked = await runNextTask(ctx, workerId, console.log);
   } catch (err) {

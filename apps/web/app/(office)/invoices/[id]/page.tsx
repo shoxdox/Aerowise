@@ -1,6 +1,6 @@
 "use client";
 
-import { invoiceNumberLabel, PAYMENT_METHOD_LABELS, type InvoiceDetail, type Payment } from "@aerowise/domain";
+import { formatPhone, invoiceNumberLabel, PAYMENT_METHOD_LABELS, SMS_SKIP_LABELS, type InvoiceDetail, type Payment, type SmsQueueResult } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -24,6 +24,7 @@ export default function InvoicePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [panel, setPanel] = useState<"payment" | "void" | null>(null);
   const [copied, setCopied] = useState(false);
+  const [texted, setTexted] = useState<string | null>(null);
 
   if (error) return <p className="error">{error}</p>;
   if (!inv) return <p className="muted">Loading…</p>;
@@ -62,6 +63,20 @@ export default function InvoicePage() {
       await reload();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Could not refund");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function textReminder() {
+    setBusy(true);
+    setActionError(null);
+    setTexted(null);
+    try {
+      const r = await api<SmsQueueResult>(`/invoices/${id}/text-reminder`, { method: "POST", body: {} });
+      setTexted(r.outcome === "queued" ? `Reminder texted to ${r.to ? formatPhone(r.to) : "the customer"}.` : `No text sent: ${r.outcome === "off" ? "texting is off" : SMS_SKIP_LABELS[r.outcome].toLowerCase()}.`);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not text");
     } finally {
       setBusy(false);
     }
@@ -223,6 +238,11 @@ export default function InvoicePage() {
               </button>
             )}
             {inv.amountDueCents > 0 && (
+              <button className="secondary" disabled={busy} onClick={() => void textReminder()}>
+                Text a reminder
+              </button>
+            )}
+            {inv.amountDueCents > 0 && (
               <button className="secondary" onClick={() => setPanel(panel === "payment" ? null : "payment")}>
                 Record a payment
               </button>
@@ -235,6 +255,7 @@ export default function InvoicePage() {
             )}
           </div>
 
+          {texted && <p className="muted">{texted}</p>}
           {panel === "payment" && (
             <form className="card grid" onSubmit={recordPayment}>
               <label>

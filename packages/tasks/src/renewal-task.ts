@@ -8,6 +8,7 @@ import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction } from "kysely";
 import { billingEmail } from "./invoice-task.ts";
 import { enqueue } from "./queue.ts";
+import { queueSms } from "./sms-task.ts";
 
 export const RENEWAL_EMAIL = "renewals.email";
 export const RENEWAL_AGREEMENT = "renewals.agreement";
@@ -38,8 +39,17 @@ export async function queueRenewalEmail(trx: Transaction<DB>, organizationId: st
     }))
     .where("organizationId", "=", organizationId)
     .where("id", "=", renewalId)
-    .returning(["sendCount"])
+    .returning(["sendCount", "customerId", "siteId"])
     .executeTakeFirstOrThrow();
+  // A reminder is texted too, to customers who get texts.
+  if (opts.reminderDays !== undefined) {
+    await queueSms(
+      trx,
+      organizationId,
+      { kind: "renewal_reminder", customerId: r.customerId, siteId: r.siteId, relatedType: "renewal", relatedId: renewalId, dedupeKey: `renewal_reminder:${renewalId}:${opts.reminderDays}` },
+      opts.now,
+    );
+  }
   await enqueue(trx, {
     kind: RENEWAL_EMAIL,
     organizationId,

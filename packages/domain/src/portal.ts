@@ -36,7 +36,7 @@ export const portalAccess = z.object({
   links: z.array(
     z.object({
       id,
-      source: z.enum(["office", "email"]),
+      source: z.enum(["office", "email", "sms"]),
       sentTo: z.string().nullable(),
       createdAt: datetime,
       expiresAt: datetime,
