@@ -178,3 +178,7 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .addon input { margin-top: 3px; }
 .renewal-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .renewal-tabs button { min-height: 34px; padding: 4px 10px; }
+
+/* Customer portal */
+.ok-text { color: #17603f; }
+.portal-url { word-break: break-all; font-size: 0.85rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }

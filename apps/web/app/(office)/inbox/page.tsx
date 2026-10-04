@@ -50,7 +50,7 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   invoice_overpaid: "Refund",
 };
 
-/** Accept an unfinished inspection, or close an issue, without leaving the inbox. */
+/** Accept an unfinished inspection, or close an issue or a service request, without leaving the inbox. */
 function InlineAction({ e, onDone }: { e: InboxException; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +61,7 @@ function InlineAction({ e, onDone }: { e: InboxException; onDone: () => void }) 
     setError(null);
     try {
       if (isInspection) await api(`/inspections/${e.target.id}/override`, { method: "POST", body: { reason: text } });
+      else if (e.target.type === "service_request") await api(`/service-requests/${e.target.id}/resolve`, { method: "POST", body: { resolution: text } });
       else await api(`/issues/${e.target.id}/resolve`, { method: "POST", body: { resolution: text } });
       onDone();
     } catch (err) {
@@ -142,7 +143,7 @@ export default function InboxPage() {
           <ul className="exceptions">
             {data.items.map((e) => {
               const link = href(e);
-              const inline = editable && (e.target.type === "inspection" || e.target.type === "issue");
+              const inline = editable && (e.target.type === "inspection" || e.target.type === "issue" || e.target.type === "service_request");
               return (
                 <li key={e.key} className="card">
                   <div className="row">

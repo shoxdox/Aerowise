@@ -26,8 +26,9 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Online card and bank (ACH) payments through Stripe Connect, with signed, idempotent webhooks | Done |
 | QuickBooks Online sync (customers, invoices, payments) with a first-sync match review, item mapping, retries and a conflict center | Done |
 | Renewals: automatic campaign, one homeowner link to confirm details, choose add-ons, e-sign (typed or drawn) and pay, signed PDF, next term activated | Done |
+| Customer portal: magic link (copied or emailed, or asked for by email) with plan, next visit, inspection reports, invoices and payments, renewal, and service requests that land in the inbox | Done |
 
-E-signature, automatic renewals, the customer portal, SMS and route optimization are not built yet.
+SMS and route optimization are not built yet.
 
 ## Run it
 
@@ -47,7 +48,7 @@ pnpm db:seed            # applies migrations, then loads demo data
 pnpm dev                # API on :4000, web on :3000, plus the background worker
 ```
 
-Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. To try invoicing, sign in as the owner, choose Billing and connect the (test) Stripe account, then use "Bill next installment" on any site's contract; the invoice's pay link opens the page a homeowner would see. To try renewals, choose Renewals and "Run campaign now", open a renewal and copy its link: that is the page a homeowner signs and pays on. To try QuickBooks, choose QuickBooks and connect: a built-in test company stands in, pre-filled with near-copies of a few of your customers so the first-sync review has matches to decide. All demo names, addresses and permit numbers are made up.
+Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. To try invoicing, sign in as the owner, choose Billing and connect the (test) Stripe account, then use "Bill next installment" on any site's contract; the invoice's pay link opens the page a homeowner would see. To try renewals, choose Renewals and "Run campaign now", open a renewal and copy its link: that is the page a homeowner signs and pays on. To try the customer portal, open any customer and choose "Copy portal link": the link opens what that homeowner sees, and a service request sent from it shows in the inbox. To try QuickBooks, choose QuickBooks and connect: a built-in test company stands in, pre-filled with near-copies of a few of your customers so the first-sync review has matches to decide. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
@@ -98,4 +99,4 @@ packages/
 - No autopay or saved payment methods yet, no processing-fee pass-through, no recurring automatic invoicing (the office bills each contract installment); credit notes are done by voiding and reissuing.
 - **QuickBooks runs against a test company by default.** Without `QUICKBOOKS_CLIENT_ID`, a built-in stand-in company (kept in the database) replaces QuickBooks Online outside production. With an Intuit app's keys, register `<PUBLIC_APP_URL>/api/quickbooks/callback` as its redirect URI and set `QUICKBOOKS_TOKEN_KEY`. The Intuit client is covered by unit tests with a stubbed network, not yet by a run against an Intuit sandbox company.
 - QuickBooks sync is one-way (Aerowise to QuickBooks). Sales tax, refunds, sub-customers per site and estimates are not sent yet; an invoice with tax waits in the conflict center to be entered by hand.
-- E-signature, automatic renewals, the customer portal, SMS and route optimization are not built yet.
+- SMS and route optimization are not built yet.

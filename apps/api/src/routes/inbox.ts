@@ -17,6 +17,7 @@ import {
   type InboxException,
   type ValidationProblem,
   RENEWAL_STATUS_LABELS,
+  SERVICE_REQUEST_LABELS,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -316,6 +317,32 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
+  /** What customers asked for from the portal and nobody has closed yet. */
+  async function serviceRequests(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("serviceRequests as r")
+      .innerJoin("sites as s", "s.id", "r.siteId")
+      .innerJoin("customers as c", "c.id", "r.customerId")
+      .select(["r.id", "r.kind", "r.description", "r.contactPhone", "r.createdAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("r.organizationId", "=", organizationId)
+      .where("r.status", "=", "open")
+      .orderBy("r.createdAt")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      key: `service_request:${r.id}`,
+      kind: "service_request",
+      // An alarm or a smell can mean the system is failing; everything else can wait a little.
+      severity: r.kind === "alarm" || r.kind === "odor" ? "high" : "medium",
+      title: `Customer asked for service: ${SERVICE_REQUEST_LABELS[r.kind].toLowerCase()}`,
+      detail: [r.description, r.contactPhone ? `call ${r.contactPhone}` : null, `sent ${r.createdAt.toISOString().slice(0, 10)}`].filter(Boolean).join(" · "),
+      dueOn: null,
+      site: site(r),
+      customer: customer(r),
+      target: { type: "service_request", id: r.id },
+    }));
+  }
+
   /** Overdue invoices, failed bank payments still owed, and money to give back. */
   async function invoiceExceptions(organizationId: string, today: string): Promise<InboxException[]> {
     const base = () =>
@@ -419,6 +446,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           openIssues(organizationId),
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),
+          serviceRequests(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),
         ]),
