@@ -1,4 +1,4 @@
-import { visibleFields, type InspectionValues, type TemplateDefinition, type TemplateField } from "@aerowise/domain";
+import { ISSUE_LABELS, visibleFields, type InspectionValues, type TemplateDefinition, type TemplateField } from "@aerowise/domain";
 
 export type Audience = "customer" | "authority";
 
@@ -32,15 +32,6 @@ export interface ReportSnapshot {
   issues: { type: string; severity: string; description: string }[];
   photos: { label: string; storageKey: string; contentType: string; capturedAt: string | null }[];
 }
-
-const ISSUE_LABELS: Record<string, string> = {
-  repair_needed: "Repair needed",
-  pump_out: "Pump-out needed",
-  part_replacement: "Part replacement",
-  callback: "Callback",
-  estimate_required: "Estimate required",
-  noncompliance: "Noncompliance",
-};
 
 function formatValue(field: TemplateField, value: InspectionValues[string] | undefined): string {
   if (value === undefined || value === null || value === "") return "—";
@@ -76,5 +67,5 @@ export function reportSections(def: TemplateDefinition, values: InspectionValues
 export function reportIssues(issues: { type: string; severity: string; description: string }[], audience: Audience): ReportSnapshot["issues"] {
   return issues
     .filter((i) => audience === "customer" || i.type === "noncompliance")
-    .map((i) => ({ type: ISSUE_LABELS[i.type] ?? i.type, severity: i.severity, description: i.description }));
+    .map((i) => ({ type: ISSUE_LABELS[i.type as keyof typeof ISSUE_LABELS] ?? i.type, severity: i.severity, description: i.description }));
 }

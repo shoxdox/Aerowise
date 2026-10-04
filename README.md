@@ -20,8 +20,8 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Technician phone app (`/tech`) that works offline, with an exactly-once sync test | Done |
 | Customer and authority PDF reports (immutable), per-site compliance history, background worker | Done |
 | Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation (fake `tx-example-county` only) | Done |
-| Exception inbox | Next |
-| Imports | Planned |
+| Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
+| CSV/XLSX imports | Next |
 
 Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
 
@@ -43,7 +43,7 @@ pnpm db:seed            # applies migrations, then loads demo data
 pnpm dev                # API on :4000, web on :3000, plus the background worker
 ```
 
-Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. All demo names, addresses and permit numbers are made up.
+Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 

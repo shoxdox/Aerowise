@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// The exception inbox becomes the home screen in a later module.
+// The office starts at the exception inbox; technicians are sent on to /tech from there.
 export default function Home() {
-  redirect("/customers");
+  redirect("/inbox");
 }

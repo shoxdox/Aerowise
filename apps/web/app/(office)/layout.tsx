@@ -10,6 +10,7 @@ function Shell({ children }: { children: ReactNode }) {
   const me = useSession();
   const path = usePathname();
   const nav = [
+    { href: "/inbox", label: "Inbox" },
     { href: "/schedule", label: "Schedule" },
     { href: "/due", label: "Due" },
     { href: "/filings", label: "Filings" },

@@ -15,6 +15,7 @@ import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
+import { inboxRoutes } from "./routes/inbox.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
@@ -121,6 +122,7 @@ export async function buildApp({
   await app.register(scheduleRoutes, { db, now });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
+  await app.register(inboxRoutes, { db, now });
   await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
 
   return app;
