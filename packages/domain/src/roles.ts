@@ -11,15 +11,28 @@ export const PERMISSIONS = [
   "crm:write",
   "contracts:read",
   "contracts:write",
+  "schedule:read",
+  "schedule:write",
+  "route:read",
   "org:manage",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  owner: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "org:manage"],
-  office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write"],
-  technician: ["self:read", "crm:read", "contracts:read"],
-  read_only: ["self:read", "crm:read", "contracts:read"],
+  owner: [
+    "self:read",
+    "crm:read",
+    "crm:write",
+    "contracts:read",
+    "contracts:write",
+    "schedule:read",
+    "schedule:write",
+    "route:read",
+    "org:manage",
+  ],
+  office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "schedule:read", "schedule:write", "route:read"],
+  technician: ["self:read", "crm:read", "contracts:read", "schedule:read", "route:read"],
+  read_only: ["self:read", "crm:read", "contracts:read", "schedule:read"],
 };
 
 export function roleHasPermission(role: Role, permission: Permission): boolean {

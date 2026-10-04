@@ -24,7 +24,7 @@ export function setupTestApp(): TestContext {
     ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate audit_events, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate audit_events, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });

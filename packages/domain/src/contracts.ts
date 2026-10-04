@@ -98,6 +98,8 @@ export const contractDetail = contract.extend({ obligations: z.array(obligation)
 
 export const dueObligation = obligation.extend({
   overdue: z.boolean(),
+  /** The live job this visit is scheduled as, if any. */
+  job: z.object({ id, scheduledDate: date, technicianId: id, technicianName: z.string() }).nullable(),
   site: z.object({
     id,
     addressLine1: z.string(),
@@ -113,6 +115,8 @@ export const dueQuery = z.object({
   through: date.optional(),
   siteId: id.optional(),
   overdueOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
+  /** Only visits that have no live job yet: the scheduler's "unscheduled work". */
+  unscheduledOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });

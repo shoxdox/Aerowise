@@ -76,6 +76,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
       .returning("id")
       .executeTakeFirstOrThrow();
 
+    let techId = "";
     for (const u of DEMO_USERS) {
       const user = await trx
         .insertInto("users")
@@ -91,6 +92,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
           technicianLicense: u.role === "technician" ? "MP-DEMO-0001" : null,
         })
         .execute();
+      if (u.role === "technician") techId = user.id;
     }
 
     const siteIds: string[] = [];
@@ -193,6 +195,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
 
     const today = todayInChicago();
     let contracts = 0;
+    const toSchedule: { obligationId: string; siteId: string }[] = [];
     for (const [i, siteId] of siteIds.entries()) {
       let startOn: string;
       if (i < 20) {
@@ -231,7 +234,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
         })
         .returning("id")
         .executeTakeFirstOrThrow();
-      await trx
+      const visits = await trx
         .insertInto("serviceObligations")
         .values(
           schedule.visits.map((v) => ({
@@ -248,11 +251,32 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
               : { completedAt: null }),
           })),
         )
+        .returning(["id", "sequence"])
         .execute();
       contracts++;
+      // Put the first nine visits due this week on the technician's route today and tomorrow.
+      if (i < 9) toSchedule.push({ obligationId: visits.find((v) => v.sequence === 1)!.id, siteId });
     }
 
-    log(`seeded ${DEMO_ORG_NAME} (${org.id}) with ${siteIds.length} sites and ${contracts} contracts`);
+    for (const [i, job] of toSchedule.entries()) {
+      const tomorrow = i >= 5;
+      await trx
+        .insertInto("jobs")
+        .values({
+          organizationId: org.id,
+          siteId: job.siteId,
+          obligationId: job.obligationId,
+          scheduledDate: tomorrow ? addDays(today, 1) : today,
+          technicianUserId: techId,
+          routePosition: tomorrow ? i - 4 : i + 1,
+          notes: null,
+          cancelledAt: null,
+          cancelReason: null,
+        })
+        .execute();
+    }
+
+    log(`seeded ${DEMO_ORG_NAME} (${org.id}) with ${siteIds.length} sites, ${contracts} contracts and ${toSchedule.length} scheduled jobs`);
   });
 
   log(`log in as ${DEMO_USERS.map((u) => u.email).join(", ")} with password "${DEMO_PASSWORD}"`);

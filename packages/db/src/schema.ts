@@ -190,6 +190,24 @@ export interface ServiceObligationsTable {
   updatedAt: Timestamp;
 }
 
+export interface JobsTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  obligationId: string | null;
+  type: Generated<"inspection">;
+  status: Generated<"scheduled" | "in_progress" | "completed" | "cancelled">;
+  stateMachineVersion: Generated<number>;
+  scheduledDate: string;
+  technicianUserId: string;
+  routePosition: Generated<number>;
+  notes: string | null;
+  cancelledAt: Timestamp | null;
+  cancelReason: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -203,4 +221,5 @@ export interface DB {
   plans: PlansTable;
   contracts: ContractsTable;
   serviceObligations: ServiceObligationsTable;
+  jobs: JobsTable;
 }
