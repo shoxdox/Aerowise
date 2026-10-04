@@ -25,6 +25,7 @@ import { renewalRoutes } from "./routes/renewals.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
+import { readinessRoutes } from "./routes/readiness.ts";
 import { reportRoutes } from "./routes/reports.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
@@ -94,7 +95,8 @@ export async function buildApp({
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
-  await syncRulesets(db);
+  // Fictional rules (the example county) are for development and tests only.
+  await syncRulesets(db, undefined, { includeFictional: !production });
   const signer = new UrlSigner(fileSigningSecret ?? "aerowise-development-only-signing-secret");
 
   const app = Fastify({
@@ -171,7 +173,9 @@ export async function buildApp({
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
   await app.register(routingRoutes, { db, now, geocoder });
-  await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
+  const compliance = { store, mail: mail ?? new OutboxTransport(store, now), enqueue };
+  await app.register(filingRoutes, { db, now, signer, compliance });
+  await app.register(readinessRoutes, { db, now, signer, compliance });
 
   return app;
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { EmailTransport } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import { addDays, agreementContent, dateInZone, daysBetween, REMINDER_DAYS, REMINDER_GAP_DAYS, SIGNABLE_STATUSES } from "@aerowise/domain";
@@ -132,6 +133,8 @@ export async function renderSignedAgreement(ctx: { db: Database; store: ObjectSt
       "d.ipAddress",
       "d.userAgent",
       "d.pdfStorageKey",
+      "d.customerId",
+      "d.siteId",
       "o.timezone",
       "o.name as orgName",
     ])
@@ -171,9 +174,26 @@ export async function renderSignedAgreement(ctx: { db: Database; store: ObjectSt
   if (!to) return key;
   const pdf = await store.get(key);
   if (!pdf) throw new Error(`agreement PDF ${key} is missing from storage`);
-  await ctx.mail.send({
+  // The customer's copy is recorded as a customer delivery, never as an authority filing.
+  const idempotencyKey = `renewal-agreement-${documentId}`;
+  const delivered = await db.selectFrom("customerDeliveries").select("id").where("organizationId", "=", organizationId).where("idempotencyKey", "=", idempotencyKey).where("status", "=", "accepted").executeTakeFirst();
+  if (delivered) return key;
+  const delivery = {
     organizationId,
-    idempotencyKey: `renewal-agreement-${documentId}`,
+    customerId: d.customerId,
+    siteId: d.siteId,
+    documentKind: "signed_agreement" as const,
+    reportId: null,
+    signedDocumentId: d.id,
+    channel: "email" as const,
+    recipient: to,
+    documentSha256: createHash("sha256").update(pdf).digest("hex"),
+    idempotencyKey,
+    requestedBy: null,
+  };
+  const sent = await ctx.mail.send({
+    organizationId,
+    idempotencyKey,
     from: `"${d.orgName.replace(/"/g, "")}" <${ctx.from ?? "billing@aerowise.invalid"}>`,
     to,
     subject: `Your signed agreement with ${d.orgName}`,
@@ -186,7 +206,15 @@ export async function renderSignedAgreement(ctx: { db: Database; store: ObjectSt
       d.orgName,
     ].join("\n"),
     attachments: [{ filename: "agreement.pdf", contentType: "application/pdf", content: pdf }],
+  }).catch(async (err: Error) => {
+    await db.insertInto("customerDeliveries").values({ ...delivery, status: "failed", attemptedAt: new Date(), error: (err.message || String(err)).slice(0, 2000) }).execute();
+    throw err;
   });
+  await db
+    .insertInto("customerDeliveries")
+    .values({ ...delivery, status: "accepted", attemptedAt: new Date(), transportResponse: JSON.stringify({ ...sent.response, messageId: sent.messageId, acceptedAt: sent.acceptedAt }), error: null })
+    .onConflict((oc) => oc.columns(["organizationId", "idempotencyKey"]).where("status", "=", "accepted").doNothing())
+    .execute();
   return key;
 }
 

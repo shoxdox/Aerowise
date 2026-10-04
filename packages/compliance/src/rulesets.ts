@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Database, DB } from "@aerowise/db";
-import { rulesetRules, type InspectionRequirements, type RulesetRules } from "@aerowise/domain";
+import { profileStatus, rulesetRules, type InspectionRequirements, type RulesetRules } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -19,6 +19,11 @@ export function bundledRulesets(dir = RULESET_DIR): RulesetRules[] {
       if (rules.jurisdiction.key !== key || `v${rules.version}.json` !== file) {
         throw new Error(`ruleset ${key}/${file} declares ${rules.jurisdiction.key} v${rules.version}`);
       }
+      // Real authorities need a profile saying what was checked; only the fictional
+      // example may go without one.
+      if (!rules.profile && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} has no profile`);
+      if (rules.profile?.status === "verified" && rules.profile.unresolved.length > 0) throw new Error(`ruleset ${key}/${file} is marked verified with unresolved requirements`);
+      if (rules.profile?.status === "fictional" && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} is fictional but does not say so`);
       out.push(rules);
     }
   }
@@ -32,8 +37,10 @@ export const rulesHash = (rules: RulesetRules) => createHash("sha256").update(JS
  * several processes at once. A published version whose file has since changed is an
  * error: rules change by adding a new version, never by editing one.
  */
-export async function syncRulesets(db: Database, rulesets: RulesetRules[] = bundledRulesets()) {
+export async function syncRulesets(db: Database, rulesets: RulesetRules[] = bundledRulesets(), opts: { includeFictional?: boolean } = {}) {
   for (const rules of rulesets) {
+    // Fictional rules exist for development and tests; production never loads them.
+    if (opts.includeFictional === false && profileStatus(rules) === "fictional") continue;
     const j = rules.jurisdiction;
     const jurisdiction = await db
       .insertInto("jurisdictions")
@@ -121,17 +128,24 @@ export function rulesetOn(entry: CatalogEntry, onDate: string) {
   return entry.rulesets.find((r) => r.effectiveFrom <= onDate && (r.effectiveTo === null || onDate < r.effectiveTo)) ?? null;
 }
 
+export const NO_AUTHORITY = "No reporting authority matches this site. Set the site's county, or choose its authority on the site page.";
+
+export interface SiteResolution {
+  resolved: ResolvedJurisdiction | null;
+  /** Why nothing was resolved, in words for the office. */
+  reviewReason: string | null;
+  /** Authorities that may cover the site and need a person to choose between. */
+  candidates: CatalogEntry[];
+}
+
 /**
- * Which authority a site reports to, and under which rules on a date. A jurisdiction set
- * on the site wins; otherwise the site's county is matched against each active
- * ruleset's counties. No match, or more than one, resolves to nothing: the filing then
- * needs a person to decide rather than going to a guessed authority.
+ * Which authority a site reports to, and under which rules on a date, with the reason
+ * when there is no safe answer. A jurisdiction chosen on the site (with evidence) wins.
+ * Otherwise the county decides only when exactly one authority covers that whole county
+ * and no authority with other boundaries (a river authority's watershed, a city) may
+ * cover part of it. Anything else needs a person: nothing goes to a guessed authority.
  */
-export function resolveSite(
-  catalog: CatalogEntry[],
-  site: { county: string | null; state: string; jurisdictionId: string | null },
-  onDate: string,
-): ResolvedJurisdiction | null {
+export function explainSite(catalog: CatalogEntry[], site: { county: string | null; state: string; jurisdictionId: string | null }, onDate: string): SiteResolution {
   const pick = (entry: CatalogEntry, source: ResolvedJurisdiction["source"]) => {
     const rs = rulesetOn(entry, onDate);
     if (!rs) return null;
@@ -139,16 +153,41 @@ export function resolveSite(
   };
   if (site.jurisdictionId) {
     const entry = catalog.find((e) => e.jurisdiction.id === site.jurisdictionId);
-    return entry ? pick(entry, "override") : null;
+    const resolved = entry ? pick(entry, "override") : null;
+    return {
+      resolved,
+      reviewReason: resolved ? null : `${entry?.jurisdiction.authorityName ?? "The chosen authority"} has no rules in force on ${onDate}.`,
+      candidates: [],
+    };
   }
-  if (!site.county) return null;
+  if (!site.county) return { resolved: null, reviewReason: NO_AUTHORITY, candidates: [] };
   const county = normalizeCounty(site.county);
-  const matches = catalog.filter((e) => {
+  const covering = catalog.filter((e) => {
     if (!e.jurisdiction.active || e.jurisdiction.state !== site.state) return false;
     const rs = rulesetOn(e, onDate);
     return rs?.rules.applicability.counties.some((c) => normalizeCounty(c) === county) ?? false;
   });
-  return matches.length === 1 ? pick(matches[0]!, "county") : null;
+  const partial = covering.filter((e) => rulesetOn(e, onDate)!.rules.applicability.assignment === "reviewed");
+  const whole = covering.filter((e) => !partial.includes(e));
+  const countyName = site.county.trim().replace(/\s+county$/i, "");
+  if (partial.length > 0) {
+    const names = partial.map((e) => e.jurisdiction.authorityName).join(" or ");
+    return {
+      resolved: null,
+      reviewReason: `${names} may cover part of ${countyName} County, so the county alone cannot decide. Check the authority's boundary and choose it on the site page with what you checked.`,
+      candidates: covering,
+    };
+  }
+  if (whole.length > 1) {
+    return { resolved: null, reviewReason: `More than one authority covers ${countyName} County. Choose one on the site page with what you checked.`, candidates: whole };
+  }
+  if (whole.length === 1) return { resolved: pick(whole[0]!, "county"), reviewReason: null, candidates: [] };
+  return { resolved: null, reviewReason: NO_AUTHORITY, candidates: [] };
+}
+
+/** The resolved authority alone; see `explainSite` for why there may be none. */
+export function resolveSite(catalog: CatalogEntry[], site: { county: string | null; state: string; jurisdictionId: string | null }, onDate: string): ResolvedJurisdiction | null {
+  return explainSite(catalog, site, onDate).resolved;
 }
 
 export function requirementsOf(resolved: ResolvedJurisdiction): InspectionRequirements {

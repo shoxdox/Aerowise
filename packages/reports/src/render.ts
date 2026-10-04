@@ -36,6 +36,16 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
   doc.moveDown(0.8);
   doc.fillColor("#000").font("Helvetica-Bold").fontSize(14).text("Aerobic System Maintenance Inspection");
   doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(s.audience === "customer" ? "Customer copy" : "Copy for the permitting authority");
+  if (s.correction) {
+    doc.moveDown(0.4);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(FAIL)
+      .text(`Corrected report, version ${s.correction.version}. Replaces report ${s.correction.supersedesReportId}.`);
+    doc.font("Helvetica").fontSize(9).fillColor("#000").text(`Reason: ${s.correction.reason}`);
+    if (s.correction.amendedFields.length) doc.text(`Corrected answers: ${s.correction.amendedFields.join(", ")}`);
+  }
   doc.moveDown(0.8);
 
   const pair = (label: string, value: string | null | undefined) => {
@@ -67,7 +77,12 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
 
   heading("Visit");
   pair("Technician", s.technician.name);
-  pair("License", s.technician.license);
+  if (s.technician.credentials?.length) {
+    for (const c of s.technician.credentials) pair(c.label, c.number);
+  } else {
+    pair("License", s.technician.license);
+  }
+  if (s.responsibleProvider) pair("Responsible provider", `${s.responsibleProvider.name}, ${s.responsibleProvider.label} ${s.responsibleProvider.number}`);
   pair("Arrived", when(s.inspection.arrivedAt, s.timezone));
   pair("Completed", when(s.inspection.completedAt, s.timezone));
   if (s.audience === "authority" && s.inspection.completionGps) {
@@ -89,8 +104,26 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
     }
   }
 
+  if (s.responses) {
+    heading("Owner complaints and monitoring notices since the last report");
+    if (s.responses.length === 0) {
+      doc.font("Helvetica").fontSize(10).fillColor("#000").text("None received.", left, doc.y);
+    }
+    for (const r of s.responses) {
+      if (doc.y > doc.page.height - 100) doc.addPage();
+      const kind = r.classification === "owner_complaint" ? "Owner complaint" : "Monitoring notice";
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text(`${kind}, received ${when(r.receivedAt, s.timezone)}`, left, doc.y);
+      doc.font("Helvetica").fontSize(10).text(r.description);
+      doc
+        .font(r.responseAction ? "Helvetica" : "Helvetica-Bold")
+        .fillColor(r.responseAction ? "#000" : FAIL)
+        .text(r.responseAction && r.respondedAt ? `Response (${when(r.respondedAt, s.timezone)}): ${r.responseAction}` : "No response recorded");
+      doc.fillColor("#000").moveDown(0.3);
+    }
+  }
+
   if (s.issues.length) {
-    heading(s.audience === "customer" ? "Findings and recommendations" : "Noncompliance");
+    heading(s.audience === "customer" ? "Findings and recommendations" : "Findings");
     for (const issue of s.issues) {
       doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text(`${issue.type} (${issue.severity})`, left, doc.y);
       if (issue.description) doc.font("Helvetica").fontSize(10).text(issue.description);

@@ -1,0 +1,397 @@
+import { createHash } from "node:crypto";
+import type { Database, DB } from "@aerowise/db";
+import { CREDENTIAL_LABELS, validateInspection, type CredentialKind, type InspectionValues, type ReportedResponse, type TemplateDefinition } from "@aerowise/domain";
+import { renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
+import type { ObjectStore } from "@aerowise/storage";
+import type { Transaction } from "kysely";
+
+// Inspection reports: the customer and authority copies made when an inspection is
+// completed, and corrected versions made later. Every version is a new immutable row;
+// nothing here ever changes a report that exists.
+
+type Executor = Database | Transaction<DB>;
+
+const AUDIENCES: Audience[] = ["customer", "authority"];
+
+const joinAddress = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join(", ") || null;
+const sha256Hex = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+/** A report problem the office has to fix, as opposed to a crash. */
+export class ReportCorrectionError extends Error {}
+
+async function loadInspection(db: Executor, organizationId: string, inspectionId: string) {
+  const insp = await db
+    .selectFrom("inspections as i")
+    .innerJoin("organizations as org", "org.id", "i.organizationId")
+    .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
+    .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"))
+    .innerJoin("users as u", "u.id", "i.technicianUserId")
+    .innerJoin("memberships as m", (j) => j.onRef("m.userId", "=", "i.technicianUserId").onRef("m.organizationId", "=", "i.organizationId"))
+    .innerJoin("inspectionTemplates as t", "t.id", "i.templateId")
+    .select([
+      "i.id",
+      "i.siteId",
+      "i.technicianUserId",
+      "i.status",
+      "i.validationStatus",
+      "i.overrideReason",
+      "i.arrivedAt",
+      "i.completedAt",
+      "i.arrivalLat",
+      "i.arrivalLng",
+      "i.completionLat",
+      "i.completionLng",
+      "i.accessIssue",
+      "org.name as orgName",
+      "org.phone as orgPhone",
+      "org.email as orgEmail",
+      "org.addressLine1 as orgAddress1",
+      "org.city as orgCity",
+      "org.state as orgState",
+      "org.postalCode as orgPostal",
+      "org.timezone",
+      "org.responsibleCredentialId",
+      "s.addressLine1",
+      "s.addressLine2",
+      "s.city",
+      "s.state",
+      "s.postalCode",
+      "s.county",
+      "s.permitNumber",
+      "c.id as customerId",
+      "c.displayName as customerName",
+      "u.name as technicianName",
+      "m.technicianLicense",
+      "t.id as templateId",
+      "t.name as templateName",
+      "t.version as templateVersion",
+      "t.definition",
+    ])
+    .where("i.organizationId", "=", organizationId)
+    .where("i.id", "=", inspectionId)
+    .executeTakeFirst();
+  if (!insp) throw new Error(`inspection ${inspectionId} not found`);
+  if (insp.status !== "completed" || !insp.completedAt) throw new Error(`inspection ${inspectionId} is not completed`);
+  return insp as typeof insp & { completedAt: Date };
+}
+
+/**
+ * Owner complaints and monitoring notices at the site since the previous completed
+ * inspection, up to this one, as the office classified them. Unreviewed requests in the
+ * same window come back separately: a filing waits until each has been looked at.
+ */
+export async function responsesForInspection(db: Executor, organizationId: string, inspectionId: string) {
+  const insp = await db
+    .selectFrom("inspections")
+    .select(["siteId", "completedAt"])
+    .where("organizationId", "=", organizationId)
+    .where("id", "=", inspectionId)
+    .executeTakeFirstOrThrow();
+  if (!insp.completedAt) return { reported: [] as ReportedResponse[], unreviewed: [] as { id: string; receivedAt: string; description: string }[], since: null as string | null };
+  const previous = await db
+    .selectFrom("inspections")
+    .select("completedAt")
+    .where("organizationId", "=", organizationId)
+    .where("siteId", "=", insp.siteId)
+    .where("status", "=", "completed")
+    .where("completedAt", "<", insp.completedAt)
+    .orderBy("completedAt", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  let q = db
+    .selectFrom("serviceRequests")
+    .select(["id", "description", "receivedAt", "reportClassification", "responseAction", "respondedAt"])
+    .where("organizationId", "=", organizationId)
+    .where("siteId", "=", insp.siteId)
+    .where("receivedAt", "<=", insp.completedAt);
+  if (previous?.completedAt) q = q.where("receivedAt", ">", previous.completedAt);
+  const rows = await q.orderBy("receivedAt").orderBy("id").execute();
+  return {
+    reported: rows
+      .filter((r) => r.reportClassification === "owner_complaint" || r.reportClassification === "monitoring_notice")
+      .map(
+        (r): ReportedResponse => ({
+          requestId: r.id,
+          classification: r.reportClassification as ReportedResponse["classification"],
+          receivedAt: r.receivedAt.toISOString(),
+          description: r.description,
+          responseAction: r.responseAction,
+          respondedAt: r.respondedAt?.toISOString() ?? null,
+        }),
+      ),
+    unreviewed: rows.filter((r) => r.reportClassification === null).map((r) => ({ id: r.id, receivedAt: r.receivedAt.toISOString(), description: r.description })),
+    since: previous?.completedAt?.toISOString() ?? null,
+  };
+}
+
+/** Licenses and registrations a person holds in an organization, labelled by kind. */
+async function credentialsOf(db: Executor, organizationId: string, userId: string) {
+  const rows = await db
+    .selectFrom("providerCredentials")
+    .select(["kind", "number"])
+    .where("organizationId", "=", organizationId)
+    .where("userId", "=", userId)
+    .where("active", "=", true)
+    .orderBy("kind")
+    .execute();
+  return rows.map((r) => ({ kind: r.kind, label: CREDENTIAL_LABELS[r.kind as CredentialKind], number: r.number }));
+}
+
+async function responsibleProvider(db: Executor, organizationId: string, credentialId: string | null) {
+  if (!credentialId) return null;
+  const c = await db
+    .selectFrom("providerCredentials")
+    .select(["holderName", "kind", "number"])
+    .where("organizationId", "=", organizationId)
+    .where("id", "=", credentialId)
+    .executeTakeFirst();
+  return c ? { name: c.holderName, label: CREDENTIAL_LABELS[c.kind as CredentialKind], number: c.number } : null;
+}
+
+interface SnapshotOptions {
+  reportId: string;
+  now: Date;
+  amendments?: InspectionValues;
+  correction?: ReportSnapshot["correction"];
+}
+
+async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: string, inspectionId: string, audience: Audience, opts: SnapshotOptions) {
+  const insp = await loadInspection(db, organizationId, inspectionId);
+  const [values, issues, photos, system, credentials, provider, responses] = await Promise.all([
+    db.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).execute(),
+    db.selectFrom("issues").select(["type", "severity", "description"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).orderBy("createdAt").execute(),
+    db
+      .selectFrom("attachments")
+      .select(["photoKey", "storageKey", "contentType", "capturedAt"])
+      .where("organizationId", "=", organizationId)
+      .where("inspectionId", "=", inspectionId)
+      .orderBy("createdAt")
+      .execute(),
+    db
+      .selectFrom("wastewaterSystems")
+      .select(["manufacturer", "model", "serial", "disposalType", "chlorinationMethod"])
+      .where("organizationId", "=", organizationId)
+      .where("siteId", "=", insp.siteId)
+      .where("active", "=", true)
+      .orderBy("createdAt")
+      .limit(1)
+      .executeTakeFirst(),
+    credentialsOf(db, organizationId, insp.technicianUserId),
+    responsibleProvider(db, organizationId, insp.responsibleCredentialId),
+    audience === "authority" ? responsesForInspection(db, organizationId, inspectionId) : null,
+  ]);
+  const def = insp.definition as TemplateDefinition;
+  const answers: InspectionValues = { ...Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...(opts.amendments ?? {}) };
+  const photoLabel = (key: string) => def.photos.find((p) => p.key === key)?.label ?? key;
+  const images = new Map<string, Buffer>();
+  if (audience === "customer") {
+    for (const p of photos) {
+      const data = await store.get(p.storageKey);
+      if (data) images.set(p.storageKey, data);
+    }
+  }
+  const snapshot: ReportSnapshot = {
+    audience,
+    reportId: opts.reportId,
+    generatedAt: opts.now.toISOString(),
+    timezone: insp.timezone,
+    provider: {
+      name: insp.orgName,
+      phone: insp.orgPhone,
+      email: insp.orgEmail,
+      address: joinAddress([insp.orgAddress1, insp.orgCity, [insp.orgState, insp.orgPostal].filter(Boolean).join(" ")]),
+    },
+    customer: { name: insp.customerName },
+    site: {
+      address: joinAddress([insp.addressLine1, insp.addressLine2, insp.city, [insp.state, insp.postalCode].filter(Boolean).join(" ")])!,
+      county: insp.county,
+      permitNumber: insp.permitNumber,
+    },
+    system: system ?? null,
+    technician: { name: insp.technicianName, license: insp.technicianLicense, credentials },
+    responsibleProvider: audience === "authority" ? provider : null,
+    responses: responses?.reported.map(({ requestId: _r, ...rest }) => rest),
+    correction: opts.correction ?? null,
+    inspection: {
+      id: insp.id,
+      arrivedAt: insp.arrivedAt.toISOString(),
+      completedAt: insp.completedAt.toISOString(),
+      arrivalGps: insp.arrivalLat !== null && insp.arrivalLng !== null ? { lat: insp.arrivalLat, lng: insp.arrivalLng } : null,
+      completionGps: insp.completionLat !== null && insp.completionLng !== null ? { lat: insp.completionLat, lng: insp.completionLng } : null,
+      validationStatus: insp.validationStatus,
+      overrideReason: insp.overrideReason,
+      accessIssue: insp.accessIssue,
+    },
+    template: { id: insp.templateId, name: insp.templateName, version: insp.templateVersion },
+    sections: reportSections(def, answers, audience),
+    issues: reportIssues(issues, audience),
+    // Photos go on the customer copy; the authority copy is the form itself.
+    photos: audience === "customer" ? photos.map((p) => ({ label: photoLabel(p.photoKey), storageKey: p.storageKey, contentType: p.contentType, capturedAt: p.capturedAt?.toISOString() ?? null })) : [],
+  };
+  return { insp, snapshot, images, def, answers, responseIds: responses?.reported.map((r) => r.requestId) ?? [] };
+}
+
+/** Called in the transaction that stores a new report, for follow-ups like texts. */
+export type OnReportCreated = (trx: Transaction<DB>, report: { id: string; audience: Audience; customerId: string; siteId: string; version: number }) => Promise<void>;
+
+/**
+ * Makes the customer and authority PDFs for a completed inspection. Safe to run again:
+ * a copy that already exists is left alone, so a retry after a crash only makes what is
+ * missing.
+ */
+export async function generateReports(db: Database, store: ObjectStore, organizationId: string, inspectionId: string, now: Date = new Date(), onCreated?: OnReportCreated) {
+  await loadInspection(db, organizationId, inspectionId);
+  const existing = await db.selectFrom("reports").select("audience").where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).execute();
+  const missing = AUDIENCES.filter((a) => !existing.some((e) => e.audience === a));
+  const created: { id: string; audience: Audience }[] = [];
+  for (const audience of missing) {
+    const reportId = crypto.randomUUID();
+    const { insp, snapshot, images } = await buildSnapshot(db, store, organizationId, inspectionId, audience, { reportId, now });
+    const pdf = await renderReport(snapshot, images);
+    const storageKey = `${organizationId}/reports/${inspectionId}/${audience}-v1-${reportId}.pdf`;
+    await store.put(storageKey, pdf, "application/pdf");
+    const sha256 = sha256Hex(pdf);
+    await db.transaction().execute(async (trx) => {
+      const inserted = await trx
+        .insertInto("reports")
+        .values({ id: reportId, organizationId, inspectionId, siteId: insp.siteId, audience, templateId: insp.templateId, snapshot: JSON.stringify(snapshot), storageKey, byteSize: pdf.length, sha256 })
+        .onConflict((oc) => oc.columns(["organizationId", "inspectionId", "audience", "version"]).doNothing())
+        .returning("id")
+        .executeTakeFirst();
+      // Another worker made this copy first; keep theirs.
+      if (!inserted) return;
+      await trx
+        .insertInto("complianceEvents")
+        .values({
+          organizationId,
+          siteId: insp.siteId,
+          eventType: "report_generated",
+          occurredAt: now,
+          actorUserId: null,
+          inspectionId,
+          reportId,
+          summary: audience === "customer" ? "Customer report generated" : "Authority report generated",
+          details: JSON.stringify({ audience, sha256 }),
+        })
+        .execute();
+      await onCreated?.(trx, { id: reportId, audience, customerId: insp.customerId, siteId: insp.siteId, version: 1 });
+      created.push({ id: reportId, audience });
+    });
+  }
+  return created;
+}
+
+/**
+ * Makes the next version of one copy of an inspection's report, linked to the version it
+ * replaces, with the reason printed on it. `amendments` correct individual answers; the
+ * merged answers must still pass the template's checks. Earlier versions are untouched.
+ */
+export async function writeReportVersion(
+  db: Database,
+  store: ObjectStore,
+  args: { organizationId: string; inspectionId: string; audience: Audience; reason: string; amendments?: InspectionValues; actorUserId: string | null; now: Date },
+) {
+  const latest = await db
+    .selectFrom("reports")
+    .select(["id", "version", "snapshot"])
+    .where("organizationId", "=", args.organizationId)
+    .where("inspectionId", "=", args.inspectionId)
+    .where("audience", "=", args.audience)
+    .orderBy("version", "desc")
+    .executeTakeFirst();
+  if (!latest) throw new ReportCorrectionError("This inspection has no report to correct yet");
+  // Corrections build on each other: earlier amendments stay unless amended again.
+  const earlier = ((latest.snapshot as ReportSnapshot).correction as (ReportSnapshot["correction"] & { amendments?: InspectionValues }) | null | undefined)?.amendments ?? {};
+  const amendments: InspectionValues = { ...earlier, ...(args.amendments ?? {}) };
+  const reportId = crypto.randomUUID();
+  const version = latest.version + 1;
+  const amendedFields = Object.keys(args.amendments ?? {});
+  const { insp, snapshot, images, def, answers } = await buildSnapshot(db, store, args.organizationId, args.inspectionId, args.audience, {
+    reportId,
+    now: args.now,
+    amendments,
+    correction: { version, supersedesReportId: latest.id, reason: args.reason, amendedFields },
+  });
+  const unknown = amendedFields.filter((k) => !def.fields.some((f) => f.key === k));
+  if (unknown.length) throw new ReportCorrectionError(`Not a field on this inspection's form: ${unknown.join(", ")}`);
+  if (amendedFields.length) {
+    const photoCounts = Object.fromEntries(def.photos.map((p) => [p.key, Number.MAX_SAFE_INTEGER]));
+    const problems = validateInspection(def, answers, photoCounts).filter((p) => amendedFields.includes(p.key));
+    if (problems.length) throw new ReportCorrectionError(problems.map((p) => p.message).join("; "));
+  }
+  // Kept on the snapshot so the next correction, and the filing checks, see them.
+  (snapshot.correction as ReportSnapshot["correction"] & { amendments: InspectionValues }).amendments = amendments;
+  const pdf = await renderReport(snapshot, images);
+  const storageKey = `${args.organizationId}/reports/${args.inspectionId}/${args.audience}-v${version}-${reportId}.pdf`;
+  await store.put(storageKey, pdf, "application/pdf");
+  const sha256 = sha256Hex(pdf);
+  await db.transaction().execute(async (trx) => {
+    const inserted = await trx
+      .insertInto("reports")
+      .values({
+        id: reportId,
+        organizationId: args.organizationId,
+        inspectionId: args.inspectionId,
+        siteId: insp.siteId,
+        audience: args.audience,
+        version,
+        templateId: insp.templateId,
+        snapshot: JSON.stringify(snapshot),
+        storageKey,
+        byteSize: pdf.length,
+        sha256,
+        supersedesReportId: latest.id,
+        correctionReason: args.reason,
+        correctedBy: args.actorUserId,
+      })
+      .onConflict((oc) => oc.columns(["organizationId", "inspectionId", "audience", "version"]).doNothing())
+      .returning("id")
+      .executeTakeFirst();
+    if (!inserted) throw new ReportCorrectionError("Someone else corrected this report at the same time; reload and try again");
+    await trx
+      .insertInto("complianceEvents")
+      .values({
+        organizationId: args.organizationId,
+        siteId: insp.siteId,
+        eventType: "report_corrected",
+        occurredAt: args.now,
+        actorUserId: args.actorUserId,
+        inspectionId: args.inspectionId,
+        reportId,
+        summary: `${args.audience === "customer" ? "Customer" : "Authority"} report corrected (version ${version}): ${args.reason.slice(0, 200)}`,
+        details: JSON.stringify({ audience: args.audience, version, supersedesReportId: latest.id, amendedFields, sha256 }),
+      })
+      .execute();
+  });
+  return { id: reportId, version, supersedesReportId: latest.id };
+}
+
+/** The responses printed on the latest authority report, by service request id order. */
+export async function latestAuthorityReport(db: Executor, organizationId: string, inspectionId: string) {
+  return (
+    (await db
+      .selectFrom("reports")
+      .select(["id", "version", "snapshot", "storageKey", "contentType", "sha256", "byteSize"])
+      .where("organizationId", "=", organizationId)
+      .where("inspectionId", "=", inspectionId)
+      .where("audience", "=", "authority")
+      .orderBy("version", "desc")
+      .executeTakeFirst()) ?? null
+  );
+}
+
+/** Two lists of responses say the same thing (what the authority would read). */
+export function sameResponses(a: ReportSnapshot["responses"] | undefined, b: ReportSnapshot["responses"] | undefined) {
+  return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+}
+
+/** Answers on the latest authority report: the inspection's, with any corrections over them. */
+export function amendmentsOf(snapshot: unknown): InspectionValues {
+  return ((snapshot as ReportSnapshot | null)?.correction as { amendments?: InspectionValues } | null | undefined)?.amendments ?? {};
+}
+
+/** Rebuilds what the authority copy would say now, without storing anything. */
+export async function currentAuthorityResponses(db: Executor, organizationId: string, inspectionId: string) {
+  const r = await responsesForInspection(db, organizationId, inspectionId);
+  return r.reported.map(({ requestId: _r, ...rest }) => rest);
+}

@@ -12,6 +12,7 @@ import { runSmsSweep, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 import type { Geocoder } from "@aerowise/routing";
 import { LOCATE_SITES, locateSites } from "./routing-task.ts";
 import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
+import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 
 export * from "./queue.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
@@ -31,6 +32,7 @@ export {
 export { createPortalLink, hashPortalToken, PORTAL_LINK_EMAIL, portalUrlFor, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
 export { queueSms, runSmsSweep, scheduleSmsSweeps, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } from "./routing-task.ts";
+export { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -96,6 +98,18 @@ async function run(ctx: TaskContext, task: Task) {
       return;
     case RENEWAL_AGREEMENT:
       await renderSignedAgreement({ db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), from: ctx.invoiceMailFrom }, task.organizationId!, payload.documentId!);
+      // A contract filing may be waiting for this signed PDF.
+      await prepareContractFilingsFor(complianceContext(ctx), task.organizationId!, payload.documentId!);
+      return;
+    case CONTRACT_FILINGS:
+      await runContractFilings(complianceContext(ctx), payload.organizationId!);
+      return;
+    case SEND_CUSTOMER_REPORT:
+      await sendCustomerReport(
+        { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, from: ctx.invoiceMailFrom },
+        task.organizationId!,
+        task.payload as unknown as { reportId: string; to: string; requestKey: string; requestedBy: string | null },
+      );
       return;
     case RENEWAL_SWEEP:
       await runRenewalSweep(ctx.db, payload.organizationId!, ctx.now());

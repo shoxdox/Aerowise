@@ -1,5 +1,7 @@
 import type { ColumnType, Generated } from "kysely";
 import type {
+  CredentialKind,
+  ReportClassification,
   FilingStatus,
   InvoicePaymentStatus,
   InvoiceStatus,
@@ -54,6 +56,7 @@ export interface OrganizationsTable {
   routeStopMinutes: Generated<number>;
   routeDayMinutes: Generated<number>;
   routeSpeedMph: Generated<number>;
+  responsibleCredentialId: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
 }
 
@@ -124,6 +127,7 @@ export interface SitesTable {
   safetyFlags: Generated<string[]>;
   schedulingNotes: string | null;
   jurisdictionId: ColumnType<string | null, string | null | undefined, string | null>;
+  authorityAssignmentId: ColumnType<string | null, string | null | undefined, string | null>;
   importId: ColumnType<string | null, string | null | undefined, never>;
   active: Generated<boolean>;
   createdAt: CreatedAt;
@@ -361,6 +365,9 @@ export interface ReportsTable {
   byteSize: number;
   sha256: string;
   generatedAt: CreatedAt;
+  supersedesReportId: ColumnType<string | null, string | null | undefined, never>;
+  correctionReason: ColumnType<string | null, string | null | undefined, never>;
+  correctedBy: ColumnType<string | null, string | null | undefined, never>;
 }
 
 export interface ComplianceEventsTable {
@@ -402,15 +409,23 @@ export interface JurisdictionRulesetsTable {
   createdAt: CreatedAt;
 }
 
+export type FilingKind = "inspection_report" | "contract";
+
 export interface FilingsTable {
   id: Generated<string>;
   organizationId: string;
-  inspectionId: string;
+  kind: ColumnType<FilingKind, FilingKind | undefined, never>;
+  inspectionId: string | null;
+  contractId: ColumnType<string | null, string | null | undefined, never>;
+  signedDocumentId: ColumnType<string | null, string | null | undefined, string | null>;
+  contractDocumentId: ColumnType<string | null, string | null | undefined, string | null>;
+  deadlineBasis: ColumnType<string | null, string | null | undefined, string | null>;
+  confirmationEvidence: ColumnType<unknown, string | null | undefined, string | null>;
   siteId: string;
   jurisdictionId: string | null;
   rulesetId: string | null;
   rulesetVersion: number | null;
-  templateId: string;
+  templateId: string | null;
   status: FilingStatus;
   stateMachineVersion: number;
   submissionMethod: SubmissionMethod | null;
@@ -446,6 +461,101 @@ export interface FilingAttemptsTable {
   finishedAt: Timestamp | null;
   response: ColumnType<unknown, string | undefined, string>;
   error: string | null;
+  packageId: ColumnType<string | null, string | null | undefined, string | null>;
+  recipient: ColumnType<string | null, string | null | undefined, string | null>;
+}
+
+export interface SubmissionPackagesTable {
+  id: Generated<string>;
+  organizationId: string;
+  filingId: string;
+  submissionNo: number;
+  jurisdictionId: string;
+  rulesetId: string;
+  method: SubmissionMethod;
+  recipient: string | null;
+  subject: string;
+  body: string;
+  fields: ColumnType<unknown, string, never>;
+  documents: ColumnType<unknown, string, never>;
+  manifestSha256: string;
+  createdAt: ColumnType<Date, Date, never>;
+}
+
+
+export interface ProviderCredentialsTable {
+  id: Generated<string>;
+  organizationId: string;
+  userId: string | null;
+  holderName: string;
+  kind: CredentialKind;
+  number: string;
+  expiresOn: string | null;
+  verifiedOn: string | null;
+  verificationSource: string | null;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export type AuthorityEvidenceKind = "authority_map" | "authority_determination" | "permit_record" | "other";
+
+export interface SiteAuthorityAssignmentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  jurisdictionId: string | null;
+  evidenceKind: AuthorityEvidenceKind | null;
+  evidenceReference: string | null;
+  evidenceNote: string | null;
+  assignedBy: string | null;
+  assignedAt: Timestamp;
+}
+
+export interface SiteAuthorityIdentifiersTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  jurisdictionId: string;
+  kind: string;
+  value: string;
+  sourceNote: string | null;
+  updatedBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface ContractDocumentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractId: string;
+  filename: string;
+  storageKey: string;
+  contentType: Generated<string>;
+  byteSize: number;
+  sha256: string;
+  signedOn: string | null;
+  uploadedBy: string | null;
+  createdAt: CreatedAt;
+}
+
+export interface CustomerDeliveriesTable {
+  id: Generated<string>;
+  organizationId: string;
+  customerId: string;
+  siteId: string | null;
+  documentKind: "inspection_report" | "signed_agreement";
+  reportId: string | null;
+  signedDocumentId: string | null;
+  channel: "email";
+  recipient: string;
+  documentSha256: string;
+  idempotencyKey: string;
+  status: "accepted" | "failed";
+  attemptedAt: Timestamp;
+  transportResponse: ColumnType<unknown, string | undefined, never>;
+  error: string | null;
+  requestedBy: string | null;
 }
 
 export interface ImportsTable {
@@ -763,9 +873,20 @@ export interface ServiceRequestsTable {
   closedAt: Timestamp | null;
   closedBy: string | null;
   portalLinkId: string | null;
+  source: Generated<"portal" | "office">;
+  receivedAt: ColumnType<Date, Date | string, Date | string>;
+  reportClassification: ColumnType<ReportClassification | null, ReportClassification | null | undefined, ReportClassification | null>;
+  classificationNote: ColumnType<string | null, string | null | undefined, string | null>;
+  classifiedBy: ColumnType<string | null, string | null | undefined, string | null>;
+  classifiedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  responseAction: ColumnType<string | null, string | null | undefined, string | null>;
+  respondedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  responseJobId: ColumnType<string | null, string | null | undefined, string | null>;
+  responseRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
+
 
 export interface SmsMessagesTable {
   id: Generated<string>;
@@ -846,4 +967,10 @@ export interface DB {
   serviceRequests: ServiceRequestsTable;
   smsMessages: SmsMessagesTable;
   smsOptOuts: SmsOptOutsTable;
+  submissionPackages: SubmissionPackagesTable;
+  providerCredentials: ProviderCredentialsTable;
+  siteAuthorityAssignments: SiteAuthorityAssignmentsTable;
+  siteAuthorityIdentifiers: SiteAuthorityIdentifiersTable;
+  contractDocuments: ContractDocumentsTable;
+  customerDeliveries: CustomerDeliveriesTable;
 }

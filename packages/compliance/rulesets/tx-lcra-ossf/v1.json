@@ -1,0 +1,74 @@
+{
+  "jurisdiction": {
+    "key": "tx-lcra-ossf",
+    "state": "TX",
+    "authorityName": "Lower Colorado River Authority (LCRA) OSSF Program",
+    "type": "river_authority"
+  },
+  "version": 1,
+  "effectiveFrom": "2010-04-05",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile written 2026-10-04 from LCRA's On-Site Sewage FAQs, LCRA's maintenance contract and inspection report cover sheet, LCRA's OSSF jurisdiction map, LCRA's OSSF order (effective 2010-04-05) and TCEQ's OSSF maintenance page. See profile.sources and docs/jurisdictions/tx-lcra-ossf.md.",
+  "profile": {
+    "status": "draft",
+    "verifiedOn": "2026-10-04",
+    "sources": [
+      { "title": "LCRA On-Site Sewage FAQs (maintenance contracts and reports)", "url": "https://www.lcra.org/water/permits-contracts/on-site-sewage/faqs/", "retrievedOn": "2026-10-04", "note": "Complete the maintenance contract and inspection report cover sheet and email it with your contract or report to ossf@lcra.org. No last-updated date shown." },
+      { "title": "LCRA OSSF Program Maintenance Contract & Inspection Report Cover Sheet", "url": "https://www.lcra.org/download/omcoversheet-pdf/?wpdmdl=20783", "retrievedOn": "2026-10-04", "note": "Fields read from the form's text: Date, Maintenance Provider Name, TCEQ MP # (REQUIRED), LCRA OSSF Application Number (REQUIRED), Property Owners Name, Property Address, Contract Term Start/End, Number of Inspections a Year, Inspection Report Date. Email to: OSSF@LCRA.ORG. No form number or revision date seen." },
+      { "title": "LCRA water quality jurisdictions map (OSSF)", "url": "https://waterquality.lcra.org/ossf/", "retrievedOn": "2026-10-04", "note": "The red area is where LCRA regulates septic systems. Look up by address or ZIP; unclear cases: 512-578-3200 or 800-776-5272." },
+      { "title": "LCRA OSSF order and fee schedule", "url": "https://www.lcra.org/download/water_ossforderandfee-pdf/?wpdmdl=12215", "retrievedOn": "2026-10-04", "note": "Adopted 2010-01-20, effective 2010-04-05. Covers the Highland Lakes restricted and water quality zones (Buchanan, Inks, LBJ, Marble Falls, Travis)." },
+      { "title": "TCEQ OSSF maintenance requirements", "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html", "retrievedOn": "2026-10-04", "note": "Last modified 2026-03-03. Report to the permitting authority and owner at least every four months (six with electronic monitoring and automatic notification), within 14 days after the test, including all responses to owner complaints and electronic monitoring notices." }
+    ],
+    "unresolved": [
+      "The official cover sheet PDF could not be downloaded from this environment; Aerowise draws a reproduction with the same fields, not LCRA's original layout.",
+      "LCRA publishes no acknowledgment or confirmation process for emailed contracts and reports.",
+      "LCRA does not publish the format of the LCRA OSSF application number, so it cannot be checked beyond being present.",
+      "Whether LCRA accepts a reduced (six-month) reporting schedule for systems with electronic monitoring is not modelled; every site is held to four months.",
+      "The counties listed only trigger review (they hold the lakes named in LCRA's order); LCRA's map, not the county, decides each site."
+    ]
+  },
+  "applicability": {
+    "counties": ["Burnet", "Llano", "Travis"],
+    "assignment": "reviewed",
+    "howToDecide": "Look the address up on LCRA's OSSF jurisdiction map (https://waterquality.lcra.org/ossf/; the red area is LCRA's OSSF jurisdiction). If it is unclear, call LCRA at 512-578-3200 or 800-776-5272 for a determination. Record what you checked."
+  },
+  "identifiers": [
+    { "key": "lcra_ossf_application_number", "label": "LCRA OSSF Application Number", "required": true, "help": "Marked REQUIRED on LCRA's cover sheet. Find it on the LCRA permit or license to operate." }
+  ],
+  "provider": { "responsibleProviderRequired": true },
+  "inspectionReports": { "submission": "supported" },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "LCRA asks for contracts by email with the cover sheet. The 30-day timing comes from 30 TAC 285.7 (a renewed contract is submitted at least 30 days before the old one expires); LCRA does not state its own."
+  },
+  "coverSheet": {
+    "title": "LCRA OSSF Program Maintenance Contract & Inspection Report Cover Sheet",
+    "formReference": "Reproduction of LCRA's cover sheet fields (https://www.lcra.org/download/omcoversheet-pdf/?wpdmdl=20783), read 2026-10-04. Not LCRA's original layout.",
+    "appliesTo": ["inspection_report", "contract"],
+    "fields": [
+      { "label": "Date", "source": "submission_date", "required": true },
+      { "label": "Maintenance Provider Name", "source": "responsible_provider_name", "required": true },
+      { "label": "TCEQ MP #", "source": "responsible_provider_mp_number", "required": true },
+      { "label": "LCRA OSSF Application Number", "source": "identifier", "identifier": "lcra_ossf_application_number", "required": true },
+      { "label": "Property Owners Name", "source": "owner_name", "required": false },
+      { "label": "Property Address", "source": "site_address", "required": false },
+      { "label": "Contract Term Start", "source": "contract_start", "required": false },
+      { "label": "Contract Term End", "source": "contract_end", "required": false },
+      { "label": "Number of Inspections a Year", "source": "inspections_per_year", "required": false },
+      { "label": "Inspection Report Date", "source": "inspection_report_date", "required": false }
+    ],
+    "instructions": "Email to: OSSF@LCRA.ORG"
+  },
+  "service": { "intervalMonths": 4 },
+  "inspection": { "requiredFields": [], "requiredPhotos": [], "technicianLicenseRequired": false },
+  "filing": { "deadlineDays": 14, "warningDays": 5, "autoSubmit": false },
+  "submission": {
+    "method": "email",
+    "email": { "to": "ossf@lcra.org", "subject": "Aerobic maintenance inspection report, LCRA OSSF application {identifier:lcra_ossf_application_number}", "contractSubject": "OSSF maintenance contract, LCRA OSSF application {identifier:lcra_ossf_application_number}" },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": { "required": true },
+  "confirmation": { "mode": "none_published", "note": "LCRA's FAQ asks for the email and describes no reply. Record any acknowledgment LCRA sends, with what it was." }
+}

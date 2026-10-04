@@ -182,6 +182,9 @@ importers:
       '@aerowise/domain':
         specifier: workspace:*
         version: link:../domain
+      '@aerowise/reports':
+        specifier: workspace:*
+        version: link:../reports
       '@aerowise/storage':
         specifier: workspace:*
         version: link:../storage

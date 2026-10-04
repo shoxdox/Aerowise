@@ -12,6 +12,7 @@
   "dependencies": {
     "@aerowise/db": "workspace:*",
     "@aerowise/domain": "workspace:*",
+    "@aerowise/reports": "workspace:*",
     "@aerowise/storage": "workspace:*",
     "kysely": "^0.29.6"
   },

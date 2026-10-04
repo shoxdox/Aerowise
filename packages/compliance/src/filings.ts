@@ -3,7 +3,10 @@ import {
   addDays,
   addMonths,
   canTransitionFiling,
+  contractFilingRequired,
   FILING_STATE_MACHINE,
+  mayAutoSubmit,
+  type FilingKind,
   type FilingProof,
   type FilingStatus,
   type InspectionValues,
@@ -14,7 +17,9 @@ import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction, type Updateable } from "kysely";
 import { adapterFor, adapterVersion, type CanonicalInspection, type JurisdictionAdapter } from "./adapter.ts";
 import type { EmailTransport } from "./email.ts";
-import { dateInZone, loadCatalog, resolveSite, type ResolvedJurisdiction } from "./rulesets.ts";
+import { contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
+import { amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
+import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
 
 type Executor = Database | Transaction<DB>;
 
@@ -44,8 +49,12 @@ export { dateInZone } from "./rulesets.ts";
 type FilingRow = {
   id: string;
   organizationId: string;
+  kind: FilingKind;
   siteId: string;
-  inspectionId: string;
+  inspectionId: string | null;
+  contractId: string | null;
+  signedDocumentId: string | null;
+  contractDocumentId: string | null;
   status: FilingStatus;
   submissionMethod: SubmissionMethod | null;
   submissionNo: number;
@@ -54,7 +63,22 @@ type FilingRow = {
   nextDueOn: string | null;
 };
 
-const filingColumns = ["id", "organizationId", "siteId", "inspectionId", "status", "submissionMethod", "submissionNo", "rulesetId", "jurisdictionId", "nextDueOn"] as const;
+const filingColumns = [
+  "id",
+  "organizationId",
+  "kind",
+  "siteId",
+  "inspectionId",
+  "contractId",
+  "signedDocumentId",
+  "contractDocumentId",
+  "status",
+  "submissionMethod",
+  "submissionNo",
+  "rulesetId",
+  "jurisdictionId",
+  "nextDueOn",
+] as const;
 
 export async function loadFiling(db: Executor, organizationId: string, filingId: string, forUpdate = false): Promise<FilingRow | null> {
   let q = db.selectFrom("filings").select(filingColumns).where("organizationId", "=", organizationId).where("id", "=", filingId);
@@ -137,7 +161,7 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
     .where("i.id", "=", inspectionId)
     .executeTakeFirstOrThrow();
   if (!insp.completedAt) throw new Error(`inspection ${inspectionId} is not completed`);
-  const [values, photos] = await Promise.all([
+  const [values, photos, report] = await Promise.all([
     db.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).execute(),
     db
       .selectFrom("attachments")
@@ -146,6 +170,7 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
       .where("inspectionId", "=", inspectionId)
       .groupBy("photoKey")
       .execute(),
+    latestAuthorityReport(db, organizationId, inspectionId),
   ]);
   return {
     organizationId,
@@ -153,7 +178,8 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
     site: { siteId: insp.siteId, county: insp.county, state: insp.state, permitNumber: insp.permitNumber },
     templateId: insp.templateId,
     definition: insp.definition as TemplateDefinition,
-    values: Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])),
+    // Answers corrected on a later report version count over the originals.
+    values: { ...Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...amendmentsOf(report?.snapshot) },
     photoCounts: Object.fromEntries(photos.map((p) => [p.photoKey, Number(p.n)])),
     technicianLicense: insp.technicianLicense,
     validationStatus: insp.validationStatus,
@@ -161,7 +187,7 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
   };
 }
 
-/** Deadline, next due date and method for a filing under a resolved jurisdiction. */
+/** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
 function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
   const r = resolved.rules;
   return {
@@ -171,13 +197,15 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
     submissionMethod: r.submission.method,
     methodVersion: adapterVersion(resolved.key),
     deadlineOn: addDays(completedOn, r.filing.deadlineDays),
+    deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
     nextDueOn: addMonths(completedOn, r.service.intervalMonths),
   };
 }
 
-const NO_AUTHORITY = "No reporting authority matches this site. Set the site's county, or choose its authority on the site page.";
 const NO_ADAPTER = "There is no way to file with this authority yet.";
+const reportsUnknown = (resolved: ResolvedJurisdiction) =>
+  resolved.rules.inspectionReports?.submission === "unknown" ? `${resolved.authorityName} has not published how inspection reports are submitted, so this report cannot be filed through Aerowise.` : null;
 
 /**
  * Opens the filing for a just-completed inspection, in the completing transaction. It
@@ -194,9 +222,10 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
     .where("i.id", "=", args.inspectionId)
     .executeTakeFirstOrThrow();
   const completedOn = dateInZone(insp.completedAt ?? args.at, insp.timezone);
-  const resolved = resolveSite(await loadCatalog(trx), insp, completedOn);
+  const resolution = explainSite(await loadCatalog(trx), insp, completedOn);
+  const resolved = resolution.resolved;
   const terms = resolved ? termsFor(resolved, completedOn) : null;
-  const reviewReason = !resolved ? NO_AUTHORITY : !terms?.methodVersion ? NO_ADAPTER : null;
+  const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : reportsUnknown(resolved);
   const inserted = await trx
     .insertInto("filings")
     .values({
@@ -212,6 +241,7 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
       submissionMethod: terms?.submissionMethod ?? null,
       methodVersion: terms?.methodVersion ?? null,
       deadlineOn: terms?.deadlineOn ?? null,
+      deadlineBasis: terms?.deadlineBasis ?? null,
       warningDays: terms?.warningDays ?? 0,
       nextDueOn: terms?.nextDueOn ?? null,
       reportId: null,
@@ -273,14 +303,143 @@ function makeAdapter(ctx: Pick<ComplianceContext, "db" | "store" | "mail" | "fro
 }
 
 /**
- * Checks a pending filing once its authority report exists and moves it to ready, or to
- * needs_review with the reasons. Ready email filings are queued straight away when the
- * ruleset says so. Safe to call any number of times.
+ * Opens the filing of a signed maintenance contract, when the site's authority requires
+ * contracts on file. Contracts at sites whose authority is undecided, but where a
+ * possible authority requires them, open in review. Safe to call again: one filing per
+ * contract. Runs in the caller's transaction.
  */
-export async function prepareFiling(ctx: ComplianceContext, organizationId: string, inspectionId: string, actorUserId: string | null = null) {
-  const found = await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).executeTakeFirst();
-  if (!found) return null;
-  const f = await loadFiling(ctx.db, organizationId, found.id);
+export async function openContractFiling(trx: Executor, args: { organizationId: string; contractId: string; actorUserId: string | null; at: Date }) {
+  const c = await trx
+    .selectFrom("contracts as c")
+    .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
+    .innerJoin("organizations as o", "o.id", "c.organizationId")
+    .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
+    .select(["c.id", "c.siteId", "c.status", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+    .where("c.organizationId", "=", args.organizationId)
+    .where("c.id", "=", args.contractId)
+    .executeTakeFirst();
+  if (!c || c.status !== "active") return null;
+  const exists = await trx.selectFrom("filings").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", c.id).executeTakeFirst();
+  if (exists) return null;
+  const today = dateInZone(args.at, c.timezone);
+  const catalog = await loadCatalog(trx);
+  const resolution = explainSite(catalog, c, today);
+  const resolved = resolution.resolved;
+  if (resolved && !contractFilingRequired(resolved.rules)) return null;
+  if (!resolved) {
+    // Undecided: open in review only if one of the possible authorities wants contracts.
+    const wants = resolution.candidates.some((e) => {
+      const rs = e.rulesets.find((r) => r.effectiveFrom <= today && (r.effectiveTo === null || today < r.effectiveTo));
+      return rs ? contractFilingRequired(rs.rules) : false;
+    });
+    if (!wants) return null;
+  }
+  const document = c.signedDocumentId
+    ? null
+    : await trx.selectFrom("contractDocuments").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", c.id).orderBy("createdAt", "desc").executeTakeFirst();
+  const deadline = resolved ? contractDeadline(resolved.rules, c.previousEndOn) : { deadlineOn: null, basis: null };
+  const reviewReason = !resolved ? resolution.reviewReason : !c.signedDocumentId && !document ? NO_SIGNED_CONTRACT : null;
+  const inserted = await trx
+    .insertInto("filings")
+    .values({
+      organizationId: args.organizationId,
+      kind: "contract",
+      inspectionId: null,
+      contractId: c.id,
+      signedDocumentId: c.signedDocumentId,
+      contractDocumentId: document?.id ?? null,
+      siteId: c.siteId,
+      templateId: null,
+      status: reviewReason ? "needs_review" : "pending",
+      stateMachineVersion: FILING_STATE_MACHINE.version,
+      jurisdictionId: resolved?.jurisdictionId ?? null,
+      rulesetId: resolved?.rulesetId ?? null,
+      rulesetVersion: resolved?.rules.version ?? null,
+      submissionMethod: resolved?.rules.submission.method ?? null,
+      methodVersion: resolved ? adapterVersion(resolved.key) : null,
+      deadlineOn: deadline.deadlineOn,
+      deadlineBasis: deadline.basis,
+      warningDays: resolved?.rules.filing.warningDays ?? 0,
+      nextDueOn: null,
+      reportId: null,
+      sentAt: null,
+      confirmedAt: null,
+      confirmationReference: null,
+      confirmationNote: null,
+      confirmedBy: null,
+      rejectionReason: null,
+      reviewReason,
+      lastError: null,
+    })
+    .onConflict((oc) => oc.columns(["organizationId", "contractId"]).where("contractId", "is not", null).doNothing())
+    .returning(filingColumns)
+    .executeTakeFirst();
+  if (!inserted) return null;
+  await recordEvent(
+    trx,
+    inserted,
+    args.at,
+    args.actorUserId,
+    resolved && !reviewReason
+      ? {
+          type: "filing_opened",
+          summary: `Contract filing with ${resolved.authorityName} opened (${c.planName}, ${c.startOn} to ${c.endOn})${deadline.deadlineOn ? `; due ${deadline.deadlineOn}` : ""}`,
+          details: { jurisdiction: resolved.key, contractId: c.id, deadlineOn: deadline.deadlineOn, deadlineBasis: deadline.basis },
+        }
+      : { type: "filing_needs_review", summary: `Contract filing needs review: ${reviewReason}` },
+  );
+  return inserted;
+}
+
+const NO_SIGNED_CONTRACT = "No signed copy of this contract is in Aerowise. Upload the signed contract on the site page, then check the filing again.";
+
+/**
+ * Opens contract filings for every active contract that needs one and has none. The
+ * worker runs this regularly, so contracts made anywhere (renewals, imports, the office)
+ * are picked up. Returns how many were opened.
+ */
+export async function syncContractFilings(ctx: Pick<ComplianceContext, "db" | "now">, organizationId: string) {
+  const missing = await ctx.db
+    .selectFrom("contracts as c")
+    .leftJoin("filings as f", (j) => j.onRef("f.contractId", "=", "c.id").onRef("f.organizationId", "=", "c.organizationId"))
+    .select("c.id")
+    .where("c.organizationId", "=", organizationId)
+    .where("c.status", "=", "active")
+    .where("f.id", "is", null)
+    .where("c.endOn", ">=", sql<string>`current_date`)
+    .execute();
+  let opened = 0;
+  for (const m of missing) {
+    const f = await ctx.db.transaction().execute((trx) => openContractFiling(trx, { organizationId, contractId: m.id, actorUserId: null, at: ctx.now() }));
+    if (f) opened++;
+  }
+  return opened;
+}
+
+/** Why an inspection filing cannot go yet, from its answers and its complaint history. */
+async function inspectionProblems(ctx: ComplianceContext, f: FilingRow, adapter: JurisdictionAdapter): Promise<string[]> {
+  const insp = await loadCanonicalInspection(ctx.db, f.organizationId, f.inspectionId!);
+  const problems = (await adapter.validate(insp)).problems;
+  const responses = await responsesForInspection(ctx.db, f.organizationId, f.inspectionId!);
+  if (responses.unreviewed.length) {
+    problems.push(
+      `${responses.unreviewed.length} service request${responses.unreviewed.length === 1 ? "" : "s"} at this site since the last report ${responses.unreviewed.length === 1 ? "has" : "have"} not been reviewed for reporting (owner complaint, monitoring notice or not reportable)`,
+    );
+  }
+  for (const r of responses.reported.filter((x) => !x.responseAction)) {
+    problems.push(`The ${r.classification === "owner_complaint" ? "owner complaint" : "monitoring notice"} received ${r.receivedAt.slice(0, 10)} has no recorded response`);
+  }
+  return problems;
+}
+
+/**
+ * Checks a pending filing once its documents exist and moves it to ready, with its
+ * submission package stored, or to needs_review with the reasons. Ready email filings
+ * are queued straight away when the profile allows automatic submission. Safe to call
+ * any number of times.
+ */
+export async function prepareFilingById(ctx: ComplianceContext, organizationId: string, filingId: string, actorUserId: string | null = null) {
+  const f = await loadFiling(ctx.db, organizationId, filingId);
   if (!f || f.status !== "pending") return f;
   const resolved = await recordedJurisdiction(ctx.db, f);
   const adapter = resolved && makeAdapter(ctx, resolved);
@@ -289,27 +448,56 @@ export async function prepareFiling(ctx: ComplianceContext, organizationId: stri
     await ctx.db.transaction().execute((trx) => move(trx, f, "needs_review", at, { reviewReason: resolved ? NO_ADAPTER : NO_AUTHORITY }, null));
     return f;
   }
-  const insp = await loadCanonicalInspection(ctx.db, organizationId, inspectionId);
-  const artifacts = await adapter.render(insp);
-  // The authority report is not made yet; the reports task calls again when it is.
-  if (artifacts.length === 0) return f;
-  const check = await adapter.validate(insp);
-  await ctx.db.transaction().execute(async (trx) => {
-    if (!check.ok) {
-      const reason = check.problems.join("; ");
-      await move(trx, f, "needs_review", at, { reviewReason: reason }, { type: "filing_needs_review", summary: `Filing needs review: ${reason}`, details: { problems: check.problems } }, actorUserId);
-      return;
+  const problems: string[] = [];
+  if (f.kind === "inspection_report") {
+    const report = await latestAuthorityReport(ctx.db, organizationId, f.inspectionId!);
+    // The authority report is not made yet; the reports task calls again when it is.
+    if (!report) return f;
+    // Complaint responses reviewed after the report was drawn: draw it again before it goes.
+    const responses = await currentAuthorityResponses(ctx.db, organizationId, f.inspectionId!);
+    if (!sameResponses((report.snapshot as { responses?: typeof responses }).responses, responses)) {
+      await writeReportVersion(ctx.db, ctx.store, {
+        organizationId,
+        inspectionId: f.inspectionId!,
+        audience: "authority",
+        reason: "Owner complaint and monitoring notice responses updated before filing",
+        actorUserId,
+        now: at,
+      });
     }
+    problems.push(...(await inspectionProblems(ctx, f, adapter)));
+  }
+  problems.push(...(await packageProblems(ctx.db, f, resolved, at)));
+  if (problems.length) {
+    const reason = problems.join("; ");
+    await ctx.db
+      .transaction()
+      .execute((trx) => move(trx, f, "needs_review", at, { reviewReason: reason }, { type: "filing_needs_review", summary: `Filing needs review: ${reason}`, details: { problems } }, actorUserId));
+    return f;
+  }
+  let pkg;
+  try {
+    pkg = await ensurePackage(ctx, f, resolved);
+  } catch (err) {
+    if (!(err instanceof PackageNotReady)) throw err;
+    if (f.kind === "contract" && !f.signedDocumentId) {
+      await ctx.db.transaction().execute((trx) => move(trx, f, "needs_review", at, { reviewReason: NO_SIGNED_CONTRACT }, { type: "filing_needs_review", summary: `Filing needs review: ${NO_SIGNED_CONTRACT}` }, actorUserId));
+    }
+    // Otherwise a document is still rendering; its task calls again.
+    return f;
+  }
+  const reportId = pkg.documents.find((d) => d.role === "inspection_report")?.sourceId ?? null;
+  await ctx.db.transaction().execute(async (trx) => {
     await move(
       trx,
       f,
       "ready",
       at,
-      { reportId: artifacts[0]!.reportId, reviewReason: null },
-      { type: "filing_ready", summary: `Authority report ready to file with ${resolved.authorityName}` },
+      { reportId, reviewReason: null },
+      { type: "filing_ready", summary: `${f.kind === "contract" ? "Contract" : "Authority report"} package ready to file with ${resolved.authorityName}`, details: { packageId: pkg.id, manifestSha256: pkg.manifestSha256 } },
       actorUserId,
     );
-    if (resolved.rules.filing.autoSubmit && f.submissionMethod === "email") {
+    if (mayAutoSubmit(resolved.rules) && f.submissionMethod === "email") {
       await move(trx, f, "queued", at, {}, null);
       await queueSubmit(trx, ctx, f, at);
     }
@@ -317,12 +505,18 @@ export async function prepareFiling(ctx: ComplianceContext, organizationId: stri
   return f;
 }
 
+/** `prepareFilingById` for the filing of a completed inspection. */
+export async function prepareFiling(ctx: ComplianceContext, organizationId: string, inspectionId: string, actorUserId: string | null = null) {
+  const found = await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).executeTakeFirst();
+  return found ? prepareFilingById(ctx, organizationId, found.id, actorUserId) : null;
+}
+
 /**
  * The `filings.submit` task: sends one email filing. Idempotent end to end: a filing
  * already sent (or taken over by hand) is left alone, and every retry of the same
- * submission reuses one idempotency key, so the transport delivers it at most once even
- * if an earlier try sent it but crashed before recording that. A failure is recorded on
- * the filing and rethrown so the queue retries with backoff.
+ * submission sends the same stored package under one idempotency key, so the transport
+ * delivers it at most once even if an earlier try sent it but crashed before recording
+ * that. A failure is recorded on the filing and rethrown so the queue retries with backoff.
  */
 export async function submitFiling(ctx: ComplianceContext, organizationId: string, filingId: string) {
   const at = ctx.now();
@@ -348,17 +542,26 @@ export async function submitFiling(ctx: ComplianceContext, organizationId: strin
     resolved = await recordedJurisdiction(ctx.db, f);
     const adapter = resolved && makeAdapter(ctx, resolved);
     if (!resolved || !adapter?.submit) throw new Error("No email adapter for this filing's authority");
-    const insp = await loadCanonicalInspection(ctx.db, organizationId, f.inspectionId);
-    const artifacts = await adapter.render(insp);
-    if (artifacts.length === 0) throw new Error("The authority report is missing");
-    const pkg = await adapter.buildSubmission(insp, artifacts, { filingId: f.id, submissionNo: f.submissionNo });
-    const result = await adapter.submit(pkg, organizationId);
+    const stored = await ensurePackage(ctx, f, resolved);
+    await ctx.db.updateTable("filingAttempts").set({ packageId: stored.id, recipient: stored.recipient }).where("id", "=", attemptId).execute();
+    const result = await adapter.submit(
+      {
+        method: stored.method,
+        destination: stored.recipient,
+        portalUrl: resolved.rules.submission.portalUrl,
+        subject: stored.subject,
+        body: stored.body,
+        artifacts: stored.documents.map((d) => ({ reportId: d.sourceId ?? "", storageKey: d.storageKey, filename: d.filename, contentType: d.contentType, sha256: d.sha256 })),
+        idempotencyKey: `filing-${f.id}-submission-${f.submissionNo}`,
+      },
+      organizationId,
+    );
     const done = ctx.now();
     const proof: FilingProof = { kind: "email_message_id", reference: result.reference, at: result.acceptedAt };
     await ctx.db.transaction().execute(async (trx) => {
       await trx
         .updateTable("filingAttempts")
-        .set({ status: "succeeded", finishedAt: done, response: JSON.stringify({ ...result.response, messageId: result.reference, to: pkg.destination }) })
+        .set({ status: "succeeded", finishedAt: done, response: JSON.stringify({ ...result.response, messageId: result.reference, to: stored.recipient, manifestSha256: stored.manifestSha256 }) })
         .where("id", "=", attemptId)
         .execute();
       await move(
@@ -369,8 +572,8 @@ export async function submitFiling(ctx: ComplianceContext, organizationId: strin
         { sentAt: done, proof: JSON.stringify(proof), lastError: null },
         {
           type: "filing_sent",
-          summary: `Sent to ${resolved!.authorityName} by email; waiting for their confirmation`,
-          details: { messageId: result.reference, to: pkg.destination, nextDueOn: f.nextDueOn },
+          summary: `Sent to ${resolved!.authorityName} by email (${stored.recipient}); the mail provider accepted it. ${resolved!.rules.confirmation.mode === "none_published" ? "This authority publishes no acknowledgment." : "Waiting for their confirmation."}`,
+          details: { messageId: result.reference, to: stored.recipient, packageId: stored.id, manifestSha256: stored.manifestSha256, nextDueOn: f.nextDueOn },
         },
       );
     });
@@ -434,16 +637,45 @@ export async function retryFiling(trx: Transaction<DB>, ctx: Pick<ComplianceCont
 }
 
 /** A new submission after the authority rejected the last one. */
-export async function resubmitFiling(trx: Transaction<DB>, ctx: Pick<ComplianceContext, "enqueue">, f: FilingRow, a: ActionArgs) {
+export async function resubmitFiling(trx: Transaction<DB>, _ctx: Pick<ComplianceContext, "enqueue">, f: FilingRow, a: ActionArgs) {
   if (f.status !== "rejected") throw new FilingStateError("Only a rejected filing can be resubmitted");
+  // A new submission with its own package, built from the latest report version and the
+  // site's current identifiers once the filing is checked again (call prepareFilingById
+  // after committing). The rejected submission's package stays as it was.
   f.submissionNo += 1;
-  const set = { submissionNo: f.submissionNo, sentAt: null, proof: null, lastError: null };
-  if (f.submissionMethod === "email") {
-    await move(trx, f, "queued", a.at, set, { type: "filing_resubmitted", summary: "Filing resubmitted" }, a.actorUserId);
-    await queueSubmit(trx, ctx, f, a.at);
-  } else {
-    await move(trx, f, "ready", a.at, set, { type: "filing_resubmitted", summary: "Filing reopened to file again by hand" }, a.actorUserId);
-  }
+  await move(
+    trx,
+    f,
+    "pending",
+    a.at,
+    { submissionNo: f.submissionNo, sentAt: null, proof: null, lastError: null, reviewReason: null },
+    { type: "filing_resubmitted", summary: `Filing resubmitted (submission ${f.submissionNo})` },
+    a.actorUserId,
+  );
+}
+
+/**
+ * A corrected authority report after a rejection: a new report version linked to the one
+ * the authority refused, with the reason (and any corrected answers) printed on it, then
+ * a new submission. Earlier versions and packages are never changed.
+ */
+export async function correctFiling(
+  ctx: ComplianceContext,
+  f: FilingRow,
+  a: ActionArgs & { reason: string; amendments: InspectionValues },
+): Promise<{ reportId: string; version: number }> {
+  if (f.status !== "rejected") throw new FilingStateError("Only a rejected filing can be corrected");
+  if (f.kind !== "inspection_report" || !f.inspectionId) throw new FilingStateError("Contract filings are corrected by uploading the corrected signed contract");
+  const report = await writeReportVersion(ctx.db, ctx.store, {
+    organizationId: f.organizationId,
+    inspectionId: f.inspectionId,
+    audience: "authority",
+    reason: a.reason,
+    amendments: a.amendments,
+    actorUserId: a.actorUserId,
+    now: a.at,
+  });
+  return { reportId: report.id, version: report.version };
 }
 
 /** Switches a filing to the manual portal/export fallback. */
@@ -466,6 +698,7 @@ export async function useManualFiling(trx: Transaction<DB>, f: FilingRow, a: Act
 /** Records that the office filed it by hand (portal, mail, counter), with any reference. */
 export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: ActionArgs & { reference: string | null; note: string | null; actorName: string }) {
   if (f.status !== "ready" || f.submissionMethod !== "manual_export") throw new FilingStateError("Only a ready filing that is filed by hand can be marked as sent");
+  const pkg = await findPackage(trx, f.organizationId, f.id, f.submissionNo);
   const last = await trx.selectFrom("filingAttempts").select(sql<number>`coalesce(max(attempt_no), 0)::int`.as("n")).where("filingId", "=", f.id).executeTakeFirstOrThrow();
   await trx
     .insertInto("filingAttempts")
@@ -479,8 +712,10 @@ export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: A
       status: "succeeded",
       startedAt: a.at,
       finishedAt: a.at,
-      response: JSON.stringify({ reference: a.reference, note: a.note, by: a.actorUserId }),
+      response: JSON.stringify({ reference: a.reference, note: a.note, by: a.actorUserId, manifestSha256: pkg?.manifestSha256 ?? null }),
       error: null,
+      packageId: pkg?.id ?? null,
+      recipient: pkg?.recipient ?? null,
     })
     .execute();
   const proof: FilingProof = { kind: "manual_submission", reference: a.reference, at: a.at.toISOString(), note: a.note, by: a.actorName };
@@ -491,22 +726,31 @@ export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: A
     "sent",
     a.at,
     { sentAt: a.at, proof: JSON.stringify(proof), lastError: null },
-    { type: "filing_sent", summary: `Filed by hand with ${name}${a.reference ? ` (portal reference ${a.reference})` : ""}; waiting for their confirmation`, details: { nextDueOn: f.nextDueOn } },
+    {
+      type: "filing_sent",
+      summary: `Filed by hand with ${name}${a.reference ? ` (reference ${a.reference})` : ""}, as recorded by ${a.actorName}`,
+      details: { nextDueOn: f.nextDueOn, packageId: pkg?.id ?? null },
+    },
     a.actorUserId,
   );
 }
 
 /** The authority acknowledged the filing. Only this makes a filing confirmed. */
-export async function confirmFiling(trx: Transaction<DB>, f: FilingRow, a: ActionArgs & { reference: string; note: string | null }) {
+export async function confirmFiling(
+  trx: Transaction<DB>,
+  f: FilingRow,
+  a: ActionArgs & { reference: string; note: string | null; evidence?: { kind: string; receivedOn: string; from?: string | null } | null },
+) {
   if (f.status !== "sent") throw new FilingStateError("Only a sent filing can be confirmed");
   const name = await authorityName(trx, f);
+  const evidence = a.evidence ? { kind: a.evidence.kind, receivedOn: a.evidence.receivedOn, from: a.evidence.from ?? null } : null;
   await move(
     trx,
     f,
     "confirmed",
     a.at,
-    { confirmedAt: a.at, confirmationReference: a.reference, confirmationNote: a.note, confirmedBy: a.actorUserId },
-    { type: "filing_confirmed", summary: `${name} confirmed receipt (reference ${a.reference})`, details: { reference: a.reference } },
+    { confirmedAt: a.at, confirmationReference: a.reference, confirmationNote: a.note, confirmedBy: a.actorUserId, confirmationEvidence: evidence ? JSON.stringify(evidence) : null },
+    { type: "filing_confirmed", summary: `${name} acknowledged it (reference ${a.reference}${evidence ? `, ${evidence.kind.replaceAll("_", " ")} received ${evidence.receivedOn}` : ""})`, details: { reference: a.reference, evidence } },
     a.actorUserId,
   );
 }
@@ -519,23 +763,70 @@ export async function rejectFiling(trx: Transaction<DB>, f: FilingRow, a: Action
 
 /**
  * Looks again at a filing that needs review, after the office fixed the cause (set the
- * site's authority, for example). Re-resolves the authority as of the inspection date
- * and puts the filing back to pending; call `prepareFiling` after committing.
+ * site's authority, added an identifier, uploaded the signed contract). Re-resolves the
+ * authority and puts the filing back to pending; call `prepareFilingById` after committing.
  */
 export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: ActionArgs) {
   if (f.status !== "needs_review") throw new FilingStateError("Only a filing that needs review can be checked again");
+  const catalog = await loadCatalog(trx);
+  if (f.kind === "contract") {
+    const c = await trx
+      .selectFrom("contracts as c")
+      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
+      .innerJoin("organizations as o", "o.id", "c.organizationId")
+      .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
+      .select(["c.signedDocumentId", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+      .where("c.organizationId", "=", f.organizationId)
+      .where("c.id", "=", f.contractId!)
+      .executeTakeFirstOrThrow();
+    const resolution = explainSite(catalog, c, dateInZone(a.at, c.timezone));
+    const resolved = resolution.resolved;
+    const document = c.signedDocumentId
+      ? null
+      : await trx.selectFrom("contractDocuments").select("id").where("organizationId", "=", f.organizationId).where("contractId", "=", f.contractId!).orderBy("createdAt", "desc").executeTakeFirst();
+    const problem = !resolved
+      ? (resolution.reviewReason ?? NO_AUTHORITY)
+      : !contractFilingRequired(resolved.rules)
+        ? `${resolved.authorityName} does not ask for contracts to be filed.`
+        : !c.signedDocumentId && !document
+          ? NO_SIGNED_CONTRACT
+          : null;
+    if (problem || !resolved) {
+      await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
+      return;
+    }
+    const deadline = contractDeadline(resolved.rules, c.previousEndOn);
+    const set = {
+      jurisdictionId: resolved.jurisdictionId,
+      rulesetId: resolved.rulesetId,
+      rulesetVersion: resolved.rules.version,
+      submissionMethod: resolved.rules.submission.method,
+      methodVersion: adapterVersion(resolved.key),
+      deadlineOn: deadline.deadlineOn,
+      deadlineBasis: deadline.basis,
+      warningDays: resolved.rules.filing.warningDays,
+      signedDocumentId: c.signedDocumentId,
+      contractDocumentId: document?.id ?? null,
+      reviewReason: null,
+    };
+    await move(trx, f, "pending", a.at, set, { type: "filing_rechecked", summary: `Contract filing checked again for ${resolved.authorityName}` }, a.actorUserId);
+    Object.assign(f, { rulesetId: set.rulesetId, jurisdictionId: set.jurisdictionId, submissionMethod: set.submissionMethod, signedDocumentId: set.signedDocumentId, contractDocumentId: set.contractDocumentId });
+    return;
+  }
   const insp = await trx
     .selectFrom("inspections as i")
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
     .innerJoin("organizations as o", "o.id", "i.organizationId")
     .select(["i.completedAt", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
     .where("i.organizationId", "=", f.organizationId)
-    .where("i.id", "=", f.inspectionId)
+    .where("i.id", "=", f.inspectionId!)
     .executeTakeFirstOrThrow();
   const completedOn = dateInZone(insp.completedAt!, insp.timezone);
-  const resolved = resolveSite(await loadCatalog(trx), insp, completedOn);
-  if (!resolved || !adapterVersion(resolved.key)) {
-    await move(trx, f, "needs_review", a.at, { reviewReason: resolved ? NO_ADAPTER : NO_AUTHORITY }, null, a.actorUserId);
+  const resolution = explainSite(catalog, insp, completedOn);
+  const resolved = resolution.resolved;
+  const problem = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !adapterVersion(resolved.key) ? NO_ADAPTER : reportsUnknown(resolved);
+  if (problem || !resolved) {
+    await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
     return;
   }
   const terms = termsFor(resolved, completedOn);
