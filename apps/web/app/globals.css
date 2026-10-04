@@ -69,3 +69,20 @@ tr:last-child td { border-bottom: none; }
 .badge.completed { background: #e3f4ec; color: var(--accent); border-color: transparent; }
 tr.overdue td:first-child { border-left: 3px solid var(--error); }
 table.compact th, table.compact td { padding: 6px 10px; }
+
+.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.weekday { display: flex; flex-direction: column; align-items: flex-start; gap: 0; background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; }
+.weekday.today strong { color: var(--accent); }
+.weekday.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.schedule { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 20px; align-items: start; }
+.schedule > section:first-child { max-height: 75vh; overflow-y: auto; padding-right: 4px; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.card.tight { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.overdue-card { border-left: 3px solid var(--error); }
+.restriction { color: var(--warn-text); }
+.stop-number { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 0.8rem; font-weight: 600; }
+@media (max-width: 800px) { .schedule { grid-template-columns: 1fr; } .week { grid-template-columns: repeat(4, 1fr); } }
+.card.tight > .row { flex-wrap: nowrap; gap: 8px; }
+.card.tight > .row > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.tight > .row > button { flex-shrink: 0; }
+.card.tight > button.link { align-self: flex-start; }

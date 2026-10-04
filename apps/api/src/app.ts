@@ -15,6 +15,7 @@ import { HttpError } from "./lib/errors.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
+import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 
 export interface AppOptions {
@@ -90,6 +91,7 @@ export async function buildApp({ db, production = false, logger = false, loginRa
   await app.register(customerRoutes, { db });
   await app.register(siteRoutes, { db });
   await app.register(contractRoutes, { db, now });
+  await app.register(scheduleRoutes, { db, now });
 
   return app;
 }

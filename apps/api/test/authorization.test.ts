@@ -72,6 +72,13 @@ describe("deny by default", () => {
       api.post(`/contracts/${id}/renew`, {}),
       api.post(`/contracts/${id}/cancel`, {}),
       api.get("/obligations/due"),
+      api.get("/technicians"),
+      api.get("/schedule?from=2026-01-01&to=2026-01-02"),
+      api.get("/route"),
+      api.post("/jobs", {}),
+      api.patch(`/jobs/${id}`, {}),
+      api.post(`/jobs/${id}/cancel`, {}),
+      api.post("/schedule/reorder", {}),
     ];
     for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(401);
   });

@@ -463,16 +463,24 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     async (req) => {
       const { organizationId } = req.requireAuth();
       const asOf = await today(organizationId);
-      const { through = addDays(asOf, 30), siteId, overdueOnly, limit, offset } = req.query;
+      const { through = addDays(asOf, 30), siteId, overdueOnly, unscheduledOnly, limit, offset } = req.query;
       let base = db
         .selectFrom("serviceObligations as o")
         .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
         .innerJoin("customers as cu", (j) => j.onRef("cu.id", "=", "s.customerId").onRef("cu.organizationId", "=", "s.organizationId"))
+        .leftJoin("jobs as j", (join) =>
+          join
+            .onRef("j.obligationId", "=", "o.id")
+            .onRef("j.organizationId", "=", "o.organizationId")
+            .on("j.status", "<>", "cancelled"),
+        )
+        .leftJoin("users as tu", "tu.id", "j.technicianUserId")
         .where("o.organizationId", "=", organizationId)
         .where("o.status", "=", "open")
         .where("o.dueOn", "<=", through);
       if (siteId) base = base.where("o.siteId", "=", siteId);
       if (overdueOnly) base = base.where("o.dueOn", "<", asOf);
+      if (unscheduledOnly) base = base.where("j.id", "is", null);
       const [rows, count] = await Promise.all([
         base
           .select(OBLIGATION_COLUMNS)
@@ -483,6 +491,10 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             "s.schedulingNotes",
             "cu.id as customerId",
             "cu.displayName as customerName",
+            "j.id as jobId",
+            "j.scheduledDate as jobDate",
+            "j.technicianUserId as jobTechnicianId",
+            "tu.name as jobTechnicianName",
           ])
           .orderBy("o.dueOn")
           .orderBy("o.id")
@@ -494,9 +506,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       return {
         today: asOf,
         total: count.total,
-        items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, ...o }) => ({
+        items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, ...o }) => ({
           ...obligation.parse(jsonRow(o)),
           overdue: o.dueOn < asOf,
+          job:
+            jobId && jobDate && jobTechnicianId
+              ? { id: jobId, scheduledDate: jobDate, technicianId: jobTechnicianId, technicianName: jobTechnicianName ?? "" }
+              : null,
           site: { id: o.siteId, addressLine1, city, safetyFlags, schedulingNotes },
           customer: { id: customerId, displayName: customerName },
         })),

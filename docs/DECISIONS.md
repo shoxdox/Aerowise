@@ -31,3 +31,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Renewal, minimal version.** "Renew" creates the next term starting the day after the old one ends, linked by `previous_contract_id`, with the same terms unless a plan or price is given. The old contract and its visits are untouched. A contract can be renewed once. Campaigns, e-signature and payment stay out of scope; `renewal_status` is the seam for them.
 - **Cancelling** keeps the contract with its reason and time, cancels its open visits and keeps completed ones as history.
 - **The due-inspections list** shows open visits due on or before a date (default today + 30 days), overdue first. It becomes the left column of the scheduling screen in the next module.
+
+## 2026-10-04 · Jobs and scheduling
+
+- **A job is a visit put on a technician's day.** It has a date and a stop order, not a clock time; providers plan by day and route. A clock-time window can be added if customers need appointments.
+- **Unscheduled work is derived:** an open visit with no live job. Cancelling (unscheduling) a job puts its visit back in the list. A partial unique index allows at most one live job per visit.
+- **Versioned job state machine** (`packages/domain/src/jobs.ts`): scheduled → in progress → completed, with cancel from scheduled or in progress. Each job stores the version it was created under. This module only uses scheduled and cancelled; the inspection module drives the rest.
+- **Who can be assigned:** active members with the technician or owner role, because small providers often have the owner inspecting too. Office and read-only members cannot be put on a route.
+- **Stop order is manual** (move up/down, or `POST /schedule/reorder` with the full list). A moved job goes to the end of its new day. Route optimization stays out of scope.
+- **The technician route** (`GET /route`) returns only the signed-in user's stops for a day, with what the stop card needs: address and coordinates, gate code, access and scheduling notes, safety flags, permit, customer phone and the system on site. The technician app in the next module reads this.
