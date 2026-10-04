@@ -19,8 +19,9 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Inspection templates, idempotent inspection sync, photo uploads with signed links, supervisor override (API) | Done |
 | Technician phone app (`/tech`) that works offline, with an exactly-once sync test | Done |
 | Customer and authority PDF reports (immutable), per-site compliance history, background worker | Done |
-| Compliance engine and filing (fake `tx-example-county`, email + manual adapter) | Next |
-| Exception inbox, imports | Planned, in that order |
+| Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation (fake `tx-example-county` only) | Done |
+| Exception inbox | Next |
+| Imports | Planned |
 
 Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
 
@@ -64,8 +65,9 @@ CI runs all of these against Postgres on every pull request, plus a Docker build
 apps/
   api/        Fastify REST API; routes declare a permission or they refuse to load
   web/        Next.js office app and technician phone app (/tech); /api/* is proxied to the API
-  worker/     Runs background tasks (report PDFs) from the Postgres queue
+  worker/     Runs background tasks (report PDFs, filing emails) from the Postgres queue
 packages/
+  compliance/ Jurisdiction rulesets (rulesets/<key>/v<n>.json), resolver, adapters, filing workflow
   db/         SQL migrations, migration runner, Kysely types, seed script
   domain/     Roles and permissions, Zod schemas shared by API and web
   reports/    Report snapshot and PDF rendering
@@ -73,11 +75,13 @@ packages/
   tasks/      Background task queue and task handlers
 ```
 
-Planned packages from [ARCHITECTURE.md](docs/engineering/ARCHITECTURE.md) (`compliance`, `jurisdictions`) are added with the modules that need them.
+[ARCHITECTURE.md](docs/engineering/ARCHITECTURE.md) plans separate `compliance` and `jurisdictions` packages; while there is one adapter they live together in `packages/compliance`.
 
 ## Stubbed or deferred
 
 - Files (photos, report PDFs) are stored on local disk behind an interface; an S3-compatible store is needed before production.
 - Corrected report versions are not built yet; reports are made once per inspection and never change.
-- `sites.jurisdiction_id` arrives with the compliance engine; `sites.county` is free text for now.
+- **The only jurisdiction is fictional.** `tx-example-county` (counties named "Example County") exists to exercise the engine; its rules are made up. Real authorities need rulesets written from their published requirements before anyone files with them.
+- **Filing emails are not really sent.** They are written as `.eml` files to `<org>/outbox/` in file storage. Production needs a mail provider that honours an idempotency key (for example Resend's `Idempotency-Key`) behind the `EmailTransport` interface.
+- Confirmations are recorded by hand (the authority's reference number); nothing reads the authority's replies yet, and receipts cannot be uploaded yet.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.

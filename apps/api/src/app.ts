@@ -1,3 +1,4 @@
+import { OutboxTransport, syncRulesets, type EmailTransport } from "@aerowise/compliance";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
@@ -13,6 +14,7 @@ import {
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { filingRoutes } from "./routes/filings.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
@@ -21,6 +23,7 @@ import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
+import { enqueue } from "@aerowise/tasks";
 
 export interface AppOptions {
   db: Database;
@@ -34,6 +37,8 @@ export interface AppOptions {
   store?: ObjectStore;
   /** Secret for signed file links. Required in production. */
   fileSigningSecret?: string;
+  /** How filings are emailed. Defaults to the development outbox in file storage. */
+  mail?: EmailTransport;
 }
 
 export async function buildApp({
@@ -44,8 +49,11 @@ export async function buildApp({
   now = () => new Date(),
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
+  mail,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
+  // Reporting authorities' rules ship with the code; make sure the database has them.
+  await syncRulesets(db);
   const signer = new UrlSigner(fileSigningSecret ?? "aerowise-development-only-signing-secret");
 
   const app = Fastify({
@@ -113,6 +121,7 @@ export async function buildApp({
   await app.register(scheduleRoutes, { db, now });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
+  await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
 
   return app;
 }

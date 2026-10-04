@@ -22,6 +22,7 @@ export const complianceEvent = z.object({
   summary: z.string(),
   actorName: z.string().nullable(),
   inspectionId: id.nullable(),
+  filingId: id.nullable(),
   report: report.pick({ id: true, audience: true, url: true }).nullable(),
 });
 

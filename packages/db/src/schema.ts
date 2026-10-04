@@ -1,5 +1,5 @@
 import type { ColumnType, Generated } from "kysely";
-import type { Role } from "@aerowise/domain";
+import type { FilingStatus, Role, SubmissionMethod } from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
 // migrations/*.sql.
@@ -85,6 +85,7 @@ export interface SitesTable {
   gateCode: string | null;
   safetyFlags: Generated<string[]>;
   schedulingNotes: string | null;
+  jurisdictionId: ColumnType<string | null, string | null | undefined, string | null>;
   active: Generated<boolean>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
@@ -327,8 +328,78 @@ export interface ComplianceEventsTable {
   actorUserId: string | null;
   inspectionId: string | null;
   reportId: string | null;
+  filingId: ColumnType<string | null, string | null | undefined, never>;
   summary: string;
   details: ColumnType<unknown, string | undefined, never>;
+}
+
+export interface JurisdictionsTable {
+  id: Generated<string>;
+  key: string;
+  state: string;
+  authorityName: string;
+  type: string;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+}
+
+export interface JurisdictionRulesetsTable {
+  id: Generated<string>;
+  jurisdictionId: string;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  rules: ColumnType<unknown, string, never>;
+  sha256: string;
+  sourceReference: string;
+  status: Generated<"published" | "retired">;
+  createdAt: CreatedAt;
+}
+
+export interface FilingsTable {
+  id: Generated<string>;
+  organizationId: string;
+  inspectionId: string;
+  siteId: string;
+  jurisdictionId: string | null;
+  rulesetId: string | null;
+  rulesetVersion: number | null;
+  templateId: string;
+  status: FilingStatus;
+  stateMachineVersion: number;
+  submissionMethod: SubmissionMethod | null;
+  methodVersion: string | null;
+  submissionNo: Generated<number>;
+  reportId: string | null;
+  deadlineOn: string | null;
+  warningDays: Generated<number>;
+  nextDueOn: string | null;
+  sentAt: Timestamp | null;
+  confirmedAt: Timestamp | null;
+  confirmationReference: string | null;
+  confirmationNote: string | null;
+  confirmedBy: string | null;
+  proof: ColumnType<unknown, string | null | undefined, string | null>;
+  rejectionReason: string | null;
+  reviewReason: string | null;
+  lastError: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface FilingAttemptsTable {
+  id: Generated<string>;
+  organizationId: string;
+  filingId: string;
+  attemptNo: number;
+  submissionNo: number;
+  method: SubmissionMethod;
+  idempotencyKey: string;
+  status: "started" | "succeeded" | "failed";
+  startedAt: Timestamp;
+  finishedAt: Timestamp | null;
+  response: ColumnType<unknown, string | undefined, string>;
+  error: string | null;
 }
 
 export interface DB {
@@ -353,4 +424,8 @@ export interface DB {
   backgroundTasks: BackgroundTasksTable;
   reports: ReportsTable;
   complianceEvents: ComplianceEventsTable;
+  jurisdictions: JurisdictionsTable;
+  jurisdictionRulesets: JurisdictionRulesetsTable;
+  filings: FilingsTable;
+  filingAttempts: FilingAttemptsTable;
 }

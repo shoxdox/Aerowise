@@ -34,6 +34,7 @@ test("two inspections done with no signal reach the office exactly once", async 
       inspections: await count("select count(*) as n from inspections"),
       attachments: await count("select count(*) as n from attachments"),
       completed: await count("select count(*) as n from audit_events where action = 'inspection.completed'"),
+      filings: await count("select count(*) as n from filings"),
       jobsDone: await count("select count(*) as n from jobs j join service_obligations o on o.id = j.obligation_id where j.status = 'completed' and o.status = 'completed'"),
     };
     // Two inspections, both with photos, with no signal.
@@ -48,6 +49,8 @@ test("two inspections done with no signal reach the office exactly once", async 
       for (const pass of await page.getByRole("button", { name: "Pass", exact: true }).all()) await pass.click();
       await page.getByRole("group", { name: "Chlorine device" }).getByRole("button", { name: "Working" }).click();
       await page.getByLabel("Chlorine level").fill("1.5");
+      // Optional in the template, required by the (fake) county some seeded sites are in.
+      await page.getByLabel("Air pressure").fill("4");
       await page.getByRole("group", { name: "Odor" }).getByRole("button", { name: "None" }).click();
       await page.getByRole("group", { name: "Pumping needed" }).getByRole("button", { name: "No" }).click();
 
@@ -99,6 +102,8 @@ test("two inspections done with no signal reach the office exactly once", async 
     expect(await count("select count(*) as n from attachments")).toBe(before.attachments + 4);
     expect(await count("select count(*) as n from audit_events where action = 'inspection.completed'")).toBe(before.completed + 2);
     expect(await count("select count(*) as n from audit_events where action = 'inspection.completion_rejected'")).toBe(0);
+    // Each completed inspection opened exactly one filing.
+    expect(await count("select count(*) as n from filings")).toBe(before.filings + 2);
     expect(await count("select count(*) as n from jobs j join service_obligations o on o.id = j.obligation_id where j.status = 'completed' and o.status = 'completed'")).toBe(
       before.jobsDone + 2,
     );

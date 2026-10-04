@@ -29,6 +29,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aerowise/compliance':
+        specifier: workspace:*
+        version: link:../../packages/compliance
       '@aerowise/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -121,6 +124,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@aerowise/compliance':
+        specifier: workspace:*
+        version: link:../../packages/compliance
       '@aerowise/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -137,6 +143,25 @@ importers:
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+
+  packages/compliance:
+    dependencies:
+      '@aerowise/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aerowise/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@aerowise/storage':
+        specifier: workspace:*
+        version: link:../storage
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
 
   packages/db:
     dependencies:
@@ -194,6 +219,9 @@ importers:
 
   packages/tasks:
     dependencies:
+      '@aerowise/compliance':
+        specifier: workspace:*
+        version: link:../compliance
       '@aerowise/db':
         specifier: workspace:*
         version: link:../db

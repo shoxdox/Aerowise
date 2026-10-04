@@ -144,7 +144,8 @@ describe("compliance timeline", () => {
     const res = await s.api.get(`/sites/${s.site.id}/compliance-events`);
     expect(res.statusCode).toBe(200);
     const items = res.json().items as { eventType: string; inspectionId: string; actorName: string | null; report: { audience: string; url: string } | null }[];
-    expect(items.map((e) => e.eventType).sort()).toEqual(["inspection_completed", "report_generated", "report_generated"]);
+    // This site has no county, so its filing waits for the office to choose an authority.
+    expect(items.map((e) => e.eventType).sort()).toEqual(["filing_needs_review", "inspection_completed", "report_generated", "report_generated"]);
     expect(items.every((e) => e.inspectionId === insp.id)).toBe(true);
     expect(items.find((e) => e.eventType === "inspection_completed")!.actorName).toBe("technician user");
     const reportEvent = items.find((e) => e.report?.audience === "customer")!;

@@ -1,3 +1,4 @@
+import { loadCatalog, requirementsOf, resolveSite } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
   canTransition,
@@ -59,6 +60,8 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "s.schedulingNotes",
         "s.safetyFlags",
         "s.permitNumber",
+        "s.county",
+        "s.jurisdictionId",
         "c.id as customerId",
         "c.displayName as customerName",
       ])
@@ -213,7 +216,13 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const { organizationId, userId } = req.requireAuth();
       const day = req.query.date ?? (await organizationToday(db, organizationId, now()));
       const rows = await stopQuery(organizationId).where("j.technicianUserId", "=", userId).where("j.scheduledDate", "=", day).execute();
-      return { date: day, items: rows.map(toStop) };
+      // The phone checks the authority's requirements offline, so each stop carries them.
+      const catalog = await loadCatalog(db);
+      const items = rows.map((r) => {
+        const resolved = resolveSite(catalog, { county: r.county, state: r.state, jurisdictionId: r.jurisdictionId }, day);
+        return { ...toStop(r), requirements: resolved ? requirementsOf(resolved) : null };
+      });
+      return { date: day, items };
     },
   );
 

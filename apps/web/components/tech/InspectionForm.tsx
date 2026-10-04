@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  applyRequirements,
   ISSUE_SEVERITIES,
   ISSUE_TYPES,
   validateInspection,
@@ -129,7 +130,8 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   if (template === undefined) return <p className="muted">Loading form…</p>;
   if (template === null) return <p className="error">The form for this inspection is not on this phone. Open the app once with signal.</p>;
 
-  const def = template.definition;
+  // The county's requirements, saved with the route, make extra fields required.
+  const def = applyRequirements(template.definition, stop.requirements);
   const readOnly = insp.status === "completed";
   const fields = visibleFields(def, insp.values);
   const photos = visiblePhotos(def, insp.values);
@@ -192,6 +194,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         <p className="muted">
           {stop.customer.displayName} · {stop.site.addressLine1}
         </p>
+        {stop.requirements && <p className="muted small">Reported to {stop.requirements.authorityName}</p>}
         {readOnly && <p className="badge ok">Finished on this phone</p>}
       </div>
 

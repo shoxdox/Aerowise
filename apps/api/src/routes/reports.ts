@@ -85,7 +85,7 @@ export const reportRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .selectFrom("complianceEvents as e")
         .leftJoin("users as u", "u.id", "e.actorUserId")
         .leftJoin("reports as r", (j) => j.onRef("r.id", "=", "e.reportId").onRef("r.organizationId", "=", "e.organizationId"))
-        .select(["e.id", "e.eventType", "e.occurredAt", "e.summary", "e.inspectionId", "u.name as actorName", "r.id as reportId", "r.audience"])
+        .select(["e.id", "e.eventType", "e.occurredAt", "e.summary", "e.inspectionId", "e.filingId", "u.name as actorName", "r.id as reportId", "r.audience"])
         .where("e.organizationId", "=", organizationId)
         .where("e.siteId", "=", site.id)
         .orderBy("e.occurredAt", "desc")
@@ -99,6 +99,7 @@ export const reportRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         summary: r.summary,
         actorName: r.actorName,
         inspectionId: r.inspectionId,
+        filingId: r.filingId,
         report: r.reportId && r.audience ? { id: r.reportId, audience: r.audience, url: reportUrl(organizationId, r.reportId) } : null,
       }));
       return { items };
