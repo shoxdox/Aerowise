@@ -41,6 +41,9 @@ importers:
       '@aerowise/payments':
         specifier: workspace:*
         version: link:../../packages/payments
+      '@aerowise/quickbooks':
+        specifier: workspace:*
+        version: link:../../packages/quickbooks
       '@aerowise/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -139,6 +142,9 @@ importers:
       '@aerowise/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@aerowise/quickbooks':
+        specifier: workspace:*
+        version: link:../../packages/quickbooks
       '@aerowise/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -223,6 +229,25 @@ importers:
         specifier: ^22.0.0
         version: 22.20.5
 
+  packages/quickbooks:
+    dependencies:
+      '@aerowise/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aerowise/domain':
+        specifier: workspace:*
+        version: link:../domain
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@22.20.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/reports:
     dependencies:
       '@aerowise/domain':
@@ -259,6 +284,9 @@ importers:
       '@aerowise/payments':
         specifier: workspace:*
         version: link:../payments
+      '@aerowise/quickbooks':
+        specifier: workspace:*
+        version: link:../quickbooks
       '@aerowise/reports':
         specifier: workspace:*
         version: link:../reports

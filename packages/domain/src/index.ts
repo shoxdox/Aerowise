@@ -9,3 +9,4 @@ export * from "./filings.ts";
 export * from "./inbox.ts";
 export * from "./imports.ts";
 export * from "./invoices.ts";
+export * from "./quickbooks.ts";

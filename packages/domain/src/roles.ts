@@ -22,6 +22,8 @@ export const PERMISSIONS = [
   "invoices:read",
   "invoices:write",
   "billing:manage",
+  "quickbooks:read",
+  "quickbooks:write",
   "org:manage",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -44,11 +46,13 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "invoices:read",
     "invoices:write",
     "billing:manage",
+    "quickbooks:read",
+    "quickbooks:write",
     "org:manage",
   ],
-  office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "schedule:read", "schedule:write", "route:read", "inspections:read", "inspections:review", "filings:read", "filings:write", "invoices:read", "invoices:write"],
+  office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "schedule:read", "schedule:write", "route:read", "inspections:read", "inspections:review", "filings:read", "filings:write", "invoices:read", "invoices:write", "quickbooks:read", "quickbooks:write"],
   technician: ["self:read", "crm:read", "contracts:read", "schedule:read", "route:read", "inspections:read", "inspections:write"],
-  read_only: ["self:read", "crm:read", "contracts:read", "schedule:read", "inspections:read", "filings:read", "invoices:read"],
+  read_only: ["self:read", "crm:read", "contracts:read", "schedule:read", "inspections:read", "filings:read", "invoices:read", "quickbooks:read"],
 };
 
 export function roleHasPermission(role: Role, permission: Permission): boolean {

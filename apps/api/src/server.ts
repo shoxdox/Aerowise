@@ -2,6 +2,7 @@ import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
 import { LocalDiskStore } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
+import { quickBooksFromEnv } from "@aerowise/quickbooks";
 
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
@@ -13,13 +14,16 @@ const stripeKey = process.env.STRIPE_SECRET_KEY;
 const payments = stripeKey
   ? new StripeProvider({ secretKey: stripeKey, webhookSecrets: (process.env.STRIPE_WEBHOOK_SECRET ?? "").split(",").map((s) => s.trim()).filter(Boolean) })
   : undefined;
+const production = process.env.NODE_ENV === "production";
 const app = await buildApp({
   db,
-  production: process.env.NODE_ENV === "production",
+  production,
   logger: true,
   store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
   fileSigningSecret: process.env.FILE_SIGNING_SECRET,
   payments,
+  // Intuit keys connect real QuickBooks companies; without them, a test company outside production.
+  quickbooks: quickBooksFromEnv(db, process.env, production),
   appUrl: process.env.PUBLIC_APP_URL,
 });
 

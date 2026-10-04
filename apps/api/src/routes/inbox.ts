@@ -23,6 +23,7 @@ import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
 import { dollars } from "@aerowise/payments";
+import { listQuickBooksRecords } from "../lib/quickbooks.ts";
 import { organizationToday } from "../lib/today.ts";
 
 const params = z.object({ id });
@@ -350,6 +351,24 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     ];
   }
 
+  /** QuickBooks records waiting on a person, per customer. */
+  async function quickbooksExceptions(organizationId: string): Promise<InboxException[]> {
+    const records = await listQuickBooksRecords(db, organizationId, { attention: true, limit: PER_KIND });
+    return records
+      .filter((r) => r.customer)
+      .map((r) => ({
+        key: `quickbooks:${r.id}`,
+        kind: r.status === "conflict" ? ("quickbooks_conflict" as const) : ("quickbooks_failed" as const),
+        severity: "medium" as const,
+        title: `QuickBooks: ${r.title ?? "needs attention"}`,
+        detail: r.status === "failed" ? `${r.label}: ${r.syncError ?? "could not be sent"}` : r.label,
+        dueOn: null,
+        site: null,
+        customer: r.customer!,
+        target: { type: "quickbooks" as const, id: r.id },
+      }));
+  }
+
   app.get(
     "/inbox",
     {
@@ -372,6 +391,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           openIssues(organizationId),
           contractEnds(organizationId, today),
           invoiceExceptions(organizationId, today),
+          quickbooksExceptions(organizationId),
         ]),
         db
           .selectFrom("serviceObligations")
@@ -401,6 +421,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           .executeTakeFirstOrThrow(),
       ]);
       const items = sortExceptions(groups.flat());
+      const qb = await db.selectFrom("quickbooksConnections").select(["status", "setupState"]).where("organizationId", "=", organizationId).executeTakeFirst();
       return {
         today,
         counts: {
@@ -412,6 +433,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           unpaidCents: Number(unpaid.cents),
         },
         items,
+        quickbooks: qb ? { status: qb.status, setupState: qb.setupState, attention: items.filter((e) => e.kind.startsWith("quickbooks_")).length } : null,
         routes: routes.map((r) => ({ ...r, stops: Number(r.stops), done: Number(r.done) })),
       };
     },

@@ -15,7 +15,7 @@ import {
   refundInput,
 } from "@aerowise/domain";
 import { dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
-import { billingEmail } from "@aerowise/tasks";
+import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -307,6 +307,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           at,
         });
         await audit(trx, req, { action: "invoice.issued", entityType: "invoice", entityId: req.params.id, changes: { number: issued.number, send: req.body.send } });
+        await queueQuickBooksSync(trx, organizationId, at);
       });
       return detail(organizationId, req.params.id);
     },
@@ -374,6 +375,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await recalcInvoice(trx, organizationId, inv.id, at);
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "voided", summary: `Voided: ${req.body.reason}`, actorUserId: userId, at });
         await audit(trx, req, { action: "invoice.voided", entityType: "invoice", entityId: inv.id, changes: { reason: req.body.reason } });
+        await queueQuickBooksSync(trx, organizationId, at);
         return trx
           .updateTable("checkoutSessions")
           .set({ status: "expired" })
@@ -470,6 +472,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "payment_succeeded", summary: `Payment recorded: ${what}`, actorUserId: userId, paymentId: p.id, at });
         await paymentOnTimeline(trx, { organizationId, invoiceId: inv.id, amountCents: req.body.amountCents, method: req.body.method, actorUserId: userId, at });
         await audit(trx, req, { action: "payment.recorded", entityType: "invoice", entityId: inv.id, changes: { paymentId: p.id, ...req.body } });
+        await queueQuickBooksSync(trx, organizationId, at);
       });
       return detail(organizationId, req.params.id);
     },

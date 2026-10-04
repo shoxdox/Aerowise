@@ -151,3 +151,15 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .pay-card { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 .pay-card .amount { font-size: 2rem; font-weight: 700; }
 .pay-card .test-mode { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 8px 12px; font-size: 0.9rem; }
+
+/* QuickBooks */
+.qb-review td { vertical-align: top; }
+.qb-review label.check { align-items: flex-start; margin-right: 0; }
+.qb-record label.check { align-items: flex-start; margin-right: 0; }
+@media (max-width: 640px) {
+  .qb-review thead { display: none; }
+  .qb-review tr { display: block; border-bottom: 1px solid var(--border); }
+  .qb-review td { display: block; border-bottom: none; padding: 6px 12px; }
+}
+.qb-review input[type="radio"], .qb-record input[type="radio"] { min-width: 0; min-height: auto; width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
+.qb-record .badge { text-transform: none; }

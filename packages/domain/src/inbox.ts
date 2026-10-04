@@ -18,6 +18,8 @@ export const EXCEPTION_KINDS = [
   "invoice_overdue",
   "payment_failed",
   "invoice_overpaid",
+  "quickbooks_conflict",
+  "quickbooks_failed",
 ] as const;
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number];
 
@@ -48,7 +50,7 @@ export const inboxException = z.object({
   site: z.object({ id, addressLine1: z.string(), city: z.string() }).nullable(),
   customer: z.object({ id, displayName: z.string() }),
   /** The record to open to deal with it. */
-  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice"]), id }),
+  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice", "quickbooks"]), id }),
 });
 export type InboxException = z.infer<typeof inboxException>;
 
@@ -64,6 +66,8 @@ export const inbox = z.object({
     unpaidCents: z.number().int(),
   }),
   items: z.array(inboxException),
+  /** QuickBooks sync health, when the organization has connected QuickBooks. */
+  quickbooks: z.object({ status: z.enum(["connected", "needs_reauth", "disconnected"]), setupState: z.enum(["review", "active"]), attention: z.number().int() }).nullable(),
   routes: z.array(z.object({ technicianId: id, name: z.string(), stops: z.number().int(), done: z.number().int() })),
 });
 export type Inbox = z.infer<typeof inbox>;

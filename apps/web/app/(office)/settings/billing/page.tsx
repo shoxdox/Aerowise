@@ -1,6 +1,7 @@
 "use client";
 
 import type { BillingSettings } from "@aerowise/domain";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
@@ -74,6 +75,13 @@ function Billing() {
             </button>
           </div>
         )}
+      </section>
+
+      <section className="card row">
+        <h2>Accounting</h2>
+        <span className="muted">Send invoices, payments and customers to QuickBooks Online.</span>
+        <span className="spacer" />
+        <Link href="/quickbooks">QuickBooks settings</Link>
       </section>
 
       <form className="card grid" onSubmit={save}>

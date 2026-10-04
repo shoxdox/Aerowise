@@ -5,6 +5,9 @@ import type {
   InvoiceStatus,
   PaymentMethod,
   PaymentRecordStatus,
+  QuickBooksConflictKind,
+  QuickBooksEntityType,
+  QuickBooksSyncStatus,
   RefundStatus,
   Role,
   SubmissionMethod,
@@ -573,6 +576,65 @@ export interface InvoiceEventsTable {
   occurredAt: Timestamp;
 }
 
+export interface QuickbooksConnectionsTable {
+  organizationId: string;
+  environment: "test" | "sandbox" | "production";
+  realmId: string;
+  companyName: string | null;
+  accessTokenEnc: string | null;
+  refreshTokenEnc: string | null;
+  accessExpiresAt: Timestamp | null;
+  refreshExpiresAt: Timestamp | null;
+  status: Generated<"connected" | "needs_reauth" | "disconnected">;
+  setupState: Generated<"review" | "active">;
+  syncFrom: string;
+  defaultItemId: string | null;
+  defaultItemName: string | null;
+  reviewFetchedAt: Timestamp | null;
+  reviewRemoteCount: number | null;
+  changesSince: Timestamp | null;
+  syncLockUntil: Timestamp | null;
+  lastSyncStartedAt: Timestamp | null;
+  lastSyncFinishedAt: Timestamp | null;
+  lastSyncError: string | null;
+  connectedBy: string | null;
+  connectedAt: Timestamp;
+  disconnectedAt: Timestamp | null;
+  updatedAt: Timestamp;
+}
+
+export interface QuickbooksLinksTable {
+  id: Generated<string>;
+  organizationId: string;
+  entityType: QuickBooksEntityType;
+  entityId: string;
+  externalId: string | null;
+  syncToken: string | null;
+  status: QuickBooksSyncStatus;
+  conflictKind: QuickBooksConflictKind | null;
+  conflict: ColumnType<unknown, string | null | undefined, string | null>;
+  decision: "match" | "create" | "skip" | null;
+  force: Generated<boolean>;
+  syncError: string | null;
+  retryCount: Generated<number>;
+  nextAttemptAt: Timestamp | null;
+  lastSyncedAt: Timestamp | null;
+  lastSourceModifiedAt: Timestamp | null;
+  pushedHash: string | null;
+  remoteUpdatedAt: string | null;
+  remoteState: string | null;
+  generation: Generated<number>;
+  mappingVersion: Generated<number>;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface QuickbooksTestCompaniesTable {
+  realmId: string;
+  data: ColumnType<unknown, string, string>;
+  updatedAt: Timestamp;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -608,4 +670,7 @@ export interface DB {
   checkoutSessions: CheckoutSessionsTable;
   stripeEvents: StripeEventsTable;
   invoiceEvents: InvoiceEventsTable;
+  quickbooksConnections: QuickbooksConnectionsTable;
+  quickbooksLinks: QuickbooksLinksTable;
+  quickbooksTestCompanies: QuickbooksTestCompaniesTable;
 }

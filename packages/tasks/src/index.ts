@@ -4,9 +4,12 @@ import type { ObjectStore } from "@aerowise/storage";
 import { claimNext, enqueue, markDone, markFailed, type Task } from "./queue.ts";
 import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
+import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
+import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 
 export * from "./queue.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
+export { queueQuickBooksSync, scheduleQuickBooksSyncs, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -21,6 +24,8 @@ export interface TaskContext {
   invoiceMailFrom?: string;
   /** Where customers open pay links: the web app's public address. */
   appUrl?: string;
+  /** QuickBooks Online; without it, sync tasks do nothing. */
+  quickbooks?: { provider: QuickBooksProvider; cipher: TokenCipher } | null;
 }
 
 export const DEFAULT_APP_URL = "http://localhost:3000";
@@ -48,6 +53,13 @@ async function run(ctx: TaskContext, task: Task) {
         Number(payload.sendNo),
       );
       return;
+    case SYNC_QUICKBOOKS: {
+      if (!ctx.quickbooks) return;
+      const r = await syncOrganization({ db: ctx.db, now: ctx.now, ...ctx.quickbooks }, payload.organizationId!);
+      // A big backlog goes in several runs, one after another.
+      if (r.more) await queueQuickBooksSync(ctx.db, payload.organizationId!, ctx.now());
+      return;
+    }
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
       return;
