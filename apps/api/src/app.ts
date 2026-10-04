@@ -17,6 +17,8 @@ import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
 import { inboxRoutes } from "./routes/inbox.ts";
+import { invoiceRoutes } from "./routes/invoices.ts";
+import { paymentRoutes } from "./routes/payments.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
@@ -25,7 +27,8 @@ import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
-import { enqueue } from "@aerowise/tasks";
+import { DEFAULT_APP_URL, enqueue } from "@aerowise/tasks";
+import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 
 export interface AppOptions {
   db: Database;
@@ -41,6 +44,13 @@ export interface AppOptions {
   fileSigningSecret?: string;
   /** How filings are emailed. Defaults to the development outbox in file storage. */
   mail?: EmailTransport;
+  /**
+   * Takes card and bank payments. Defaults to the built-in test provider outside
+   * production; in production, online payments are off unless Stripe is configured.
+   */
+  payments?: PaymentProvider | null;
+  /** The web app's public address, used in pay links. */
+  appUrl?: string;
 }
 
 export async function buildApp({
@@ -52,6 +62,8 @@ export async function buildApp({
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
   mail,
+  payments = production ? null : new TestPaymentProvider(),
+  appUrl = DEFAULT_APP_URL,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -125,6 +137,8 @@ export async function buildApp({
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db });
+  await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
+  await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, production });
   await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
 
   return app;

@@ -4,6 +4,7 @@ import type { CustomerDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { CustomerInvoices } from "@/components/CustomerInvoices";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -162,6 +163,8 @@ export default function CustomerPage() {
           </Link>
         ))}
       </section>
+
+      {me.role !== "technician" && <CustomerInvoices customerId={id} editable={editable} />}
 
       <section className="stack">
         <div className="row">

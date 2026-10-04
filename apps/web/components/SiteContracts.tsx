@@ -1,6 +1,7 @@
 "use client";
 
 import type { ContractDetail, Plan } from "@aerowise/domain";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -18,6 +19,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -113,6 +115,14 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               {c.autoRenew ? " · auto-renews" : ""}
             </span>
             <span className="spacer" />
+            {editable && c.status === "active" && (
+              <button
+                className="secondary"
+                onClick={() => run(async () => router.push(`/invoices/${(await api<{ id: string }>(`/contracts/${c.id}/invoice`, { method: "POST", body: {} })).id}`))}
+              >
+                Bill next installment
+              </button>
+            )}
             {editable && c.status === "active" && !c.renewedById && (
               <button className="secondary" onClick={() => run(() => api(`/contracts/${c.id}/renew`, { method: "POST", body: {} }))}>
                 Renew

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day } from "@/lib/format";
+import { day, money } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 const SEVERITY_CLASS: Record<InboxException["severity"], string> = { high: "danger", medium: "warn", low: "" };
@@ -20,7 +20,9 @@ function href(e: InboxException): string | null {
       return "/schedule";
     case "contract":
     case "site":
-      return `/sites/${e.site.id}`;
+      return e.site ? `/sites/${e.site.id}` : null;
+    case "invoice":
+      return `/invoices/${e.target.id}`;
     default:
       return null;
   }
@@ -36,6 +38,9 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   filing_unconfirmed: "Record confirmation",
   contract_expiring: "Renew",
   contract_expired: "Renew",
+  invoice_overdue: "Open invoice",
+  payment_failed: "Open invoice",
+  invoice_overpaid: "Refund",
 };
 
 /** Accept an unfinished inspection, or close an issue, without leaving the inbox. */
@@ -93,6 +98,7 @@ export default function InboxPage() {
     { label: "Overdue", value: data.counts.overdue, href: "/due", alert: data.counts.overdue > 0 },
     { label: "Filings at risk", value: data.counts.filingsAtRisk, href: "/filings", alert: data.counts.filingsAtRisk > 0 },
     { label: "Contracts expiring", value: data.counts.contractsExpiring, href: "/sites" },
+    { label: `Unpaid invoices · ${money(data.counts.unpaidCents)}`, value: data.counts.unpaidInvoices, href: "/invoices" },
   ];
 
   return (
@@ -135,10 +141,16 @@ export default function InboxPage() {
                     )}
                   </div>
                   <div className="small">
-                    <Link href={`/sites/${e.site.id}`}>
-                      {e.site.addressLine1}, {e.site.city}
-                    </Link>{" "}
-                    <span className="muted">· {e.customer.displayName}</span>
+                    {e.site ? (
+                      <>
+                        <Link href={`/sites/${e.site.id}`}>
+                          {e.site.addressLine1}, {e.site.city}
+                        </Link>{" "}
+                        <span className="muted">· {e.customer.displayName}</span>
+                      </>
+                    ) : (
+                      <Link href={`/customers/${e.customer.id}`}>{e.customer.displayName}</Link>
+                    )}
                   </div>
                   {e.detail && <div className="muted small">{e.detail}</div>}
                 </li>

@@ -13,6 +13,7 @@
     "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
     "@aerowise/domain": "workspace:*",
+    "@aerowise/payments": "workspace:*",
     "@aerowise/reports": "workspace:*",
     "@aerowise/storage": "workspace:*",
     "kysely": "^0.29.6"

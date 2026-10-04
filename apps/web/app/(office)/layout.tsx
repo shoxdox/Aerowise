@@ -14,10 +14,12 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/schedule", label: "Schedule" },
     { href: "/due", label: "Due" },
     { href: "/filings", label: "Filings" },
+    { href: "/invoices", label: "Invoices" },
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },
     ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
+    ...(me.role === "owner" ? [{ href: "/settings/billing", label: "Billing" }] : []),
   ];
   async function signOut() {
     await api("/auth/logout", { method: "POST", body: {} });

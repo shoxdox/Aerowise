@@ -22,8 +22,10 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation (fake `tx-example-county` only) | Done |
 | Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
 | CSV/XLSX customer import with column detection, preview, duplicate flags and all-or-nothing commit | Done |
+| Invoices (drafts, contract installments, tax, discounts, PDF, email), manual payments, refunds | Done |
+| Online card and bank (ACH) payments through Stripe Connect, with signed, idempotent webhooks | Done |
 
-Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
+QuickBooks, e-signature, automatic renewals, the customer portal, SMS and route optimization are not built yet.
 
 ## Run it
 
@@ -43,7 +45,7 @@ pnpm db:seed            # applies migrations, then loads demo data
 pnpm dev                # API on :4000, web on :3000, plus the background worker
 ```
 
-Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. All demo names, addresses and permit numbers are made up.
+Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. To try invoicing, sign in as the owner, choose Billing and connect the (test) Stripe account, then use "Bill next installment" on any site's contract; the invoice's pay link opens the page a homeowner would see. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
@@ -65,11 +67,12 @@ CI runs all of these against Postgres on every pull request. It also brings the 
 apps/
   api/        Fastify REST API; routes declare a permission or they refuse to load
   web/        Next.js office app and technician phone app (/tech); /api/* is proxied to the API
-  worker/     Runs background tasks (report PDFs, filing emails) from the Postgres queue
+  worker/     Runs background tasks (report PDFs, filing and invoice emails) from the Postgres queue
 packages/
   compliance/ Jurisdiction rulesets (rulesets/<key>/v<n>.json), resolver, adapters, filing workflow
   db/         SQL migrations, migration runner, Kysely types, seed script
   domain/     Roles and permissions, Zod schemas shared by API and web
+  payments/   Stripe Connect provider, the built-in test provider, webhook handling, payment ledger
   reports/    Report snapshot and PDF rendering
   storage/    File storage interface (local disk for now)
   tasks/      Background task queue and task handlers
@@ -86,4 +89,7 @@ packages/
 - Confirmations are recorded by hand (the authority's reference number); nothing reads the authority's replies yet, and receipts cannot be uploaded yet.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.
 - **Imports** read the first sheet of an `.xlsx` or a CSV, up to 10 MB and 5,000 rows; old `.xls` files are refused. A committed import cannot be undone from the screen yet, though every customer and site it created carries its `import_id`.
-- Payments, invoicing, QuickBooks, e-signature, automatic renewals, the customer portal, SMS and route optimization are not built (see the scope note above).
+- **Stripe runs in test mode by default.** Without `STRIPE_SECRET_KEY`, a built-in test provider stands in outside production: "Connect Stripe" is ready at once and checkout opens Aerowise's own test page, which plays signed webhooks through the real handler. With keys, set the Connect webhook endpoint to `/api/webhooks/stripe` (events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `account.updated`) and enable card and US bank account payment methods for connected accounts.
+- **Invoice emails are not really sent** either; they go to the same outbox as filings.
+- No autopay or saved payment methods yet, no processing-fee pass-through, no recurring automatic invoicing (the office bills each contract installment); credit notes are done by voiding and reissuing.
+- QuickBooks, e-signature, automatic renewals, the customer portal, SMS and route optimization are not built yet.
