@@ -13,9 +13,11 @@ export default function LoginPage() {
     setError(null);
     const { email, password } = formValues(event.currentTarget);
     try {
-      await api("/auth/login", { method: "POST", body: { email, password: password ?? "" } });
+      const me = await api<{ role: string }>("/auth/login", { method: "POST", body: { email, password: password ?? "" } });
       const next = new URLSearchParams(window.location.search).get("next");
-      window.location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      // Technicians land on their phone app; everyone else on the office screens.
+      const home = me.role === "technician" ? "/tech" : "/";
+      window.location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : home;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not sign in");
       setBusy(false);
