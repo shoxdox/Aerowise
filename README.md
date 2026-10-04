@@ -19,7 +19,8 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Inspection templates, idempotent inspection sync, photo uploads with signed links, supervisor override (API) | Done |
 | Technician phone app (`/tech`) that works offline, with an exactly-once sync test | Done |
 | Customer and authority PDF reports (immutable), per-site compliance history, background worker | Done |
-| Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation (fake `tx-example-county` only) | Done |
+| Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation | Done |
+| Filing readiness: draft LCRA and Harris County profiles (never auto-send), reviewed site-to-authority assignment with evidence, licenses and registrations checked before release, immutable submission packages with the LCRA cover sheet, contract filings, complaint and monitoring-notice review, corrected report versions, customer delivery records | Built and tested locally; **not used for a real filing yet** |
 | Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
 | CSV/XLSX customer import with column detection, preview, duplicate flags and all-or-nothing commit | Done |
 | Invoices (drafts, contract installments, tax, discounts, PDF, email), manual payments, refunds | Done |
@@ -92,10 +93,11 @@ packages/
 ## Stubbed or deferred
 
 - Files (photos, report PDFs) are stored on local disk behind an interface; an S3-compatible store is needed before production.
-- Corrected report versions are not built yet; reports are made once per inspection and never change.
-- **The only jurisdiction is fictional.** `tx-example-county` (counties named "Example County") exists to exercise the engine; its rules are made up. Real authorities need rulesets written from their published requirements before anyone files with them.
+- **Real authorities are drafts.** `tx-lcra-ossf` and `tx-harris-county-oce` are written from public pages (docs/jurisdictions/) and list their open questions; a draft never sends on its own and Harris inspection reports are never sent (submission unpublished). Brazoria has no ruleset (its site refused every fetch). `tx-example-county` is fictional and is not loaded in production.
+- Authority boundaries are not automated: sites in counties LCRA or Harris County partly cover wait for a person to choose the authority with evidence.
+- The LCRA cover sheet is a reproduction of the form's fields, not LCRA's original PDF layout.
 - **Filing emails are not really sent.** They are written as `.eml` files to `<org>/outbox/` in file storage. Production needs a mail provider that honours an idempotency key (for example Resend's `Idempotency-Key`) behind the `EmailTransport` interface.
-- Confirmations are recorded by hand (the authority's reference number); nothing reads the authority's replies yet, and receipts cannot be uploaded yet.
+- Acknowledgments are recorded by hand (reference, kind of evidence, date, from whom); nothing reads the authority's replies, and receipt files cannot be uploaded yet. Neither LCRA nor Harris County publishes an acknowledgment process.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.
 - **Imports** read the first sheet of an `.xlsx` or a CSV, up to 10 MB and 5,000 rows; old `.xls` files are refused. A committed import cannot be undone from the screen yet, though every customer and site it created carries its `import_id`.
 - **Stripe runs in test mode by default.** Without `STRIPE_SECRET_KEY`, a built-in test provider stands in outside production: "Connect Stripe" is ready at once and checkout opens Aerowise's own test page, which plays signed webhooks through the real handler. With keys, set the Connect webhook endpoint to `/api/webhooks/stripe` (events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `account.updated`) and enable card and US bank account payment methods for connected accounts.
@@ -105,4 +107,3 @@ packages/
 - QuickBooks sync is one-way (Aerowise to QuickBooks). Sales tax, refunds, sub-customers per site and estimates are not sent yet; an invoice with tax waits in the conflict center to be entered by hand.
 - **Texts run in test mode by default.** Without `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`, a built-in test provider stands in outside production: nothing is sent, each text shows as delivered on the Texts page, Twilio's magic numbers (`+15005550001` invalid, `+15005550009` not a mobile, `+15005550004` unsubscribed) fail the way Twilio fails them, and the Texts page can play a customer's reply. With Twilio keys, the owner enters the organization's Twilio number on the Texts page and points that number's incoming messages at `<PUBLIC_APP_URL>/api/webhooks/sms/inbound` (or set `SMS_WEBHOOK_BASE_URL` to the API's public address plus `/api`). Twilio's request signatures are checked against that exact URL. US numbers also need A2P 10DLC registration in Twilio before carriers deliver them. The Twilio client is covered by unit tests with a stubbed network, not yet by a run against a Twilio account.
 - **Sites are found on the map with the US Census geocoder in production** (free, no key; `GEOCODER=off` turns it off). Outside production the built-in test geocoder gives each address a made-up, repeatable spot near central Texas (ZIP `00000` is not found). Lookups run in the worker. Driving times are estimates from straight-line distance; see docs/DECISIONS.md.
-- Route optimization is not built yet.

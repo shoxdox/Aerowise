@@ -288,6 +288,8 @@ export const jurisdiction = z.object({
   counties: z.array(z.string()),
   /** `reviewed`: a site is never matched by county alone; a person assigns it with evidence. */
   assignment: z.enum(["county", "reviewed"]),
+  /** For `reviewed` authorities: how to tell whether a site is theirs. */
+  howToDecide: z.string().nullable(),
   profileStatus: z.enum(PROFILE_STATUSES),
 });
 export type Jurisdiction = z.infer<typeof jurisdiction>;
@@ -399,6 +401,13 @@ export const filingAttempt = z.object({
 });
 
 export const CONFIRMATION_EVIDENCE_KINDS = ["authority_email_reply", "portal_confirmation", "phone_call", "letter", "other"] as const;
+export const CONFIRMATION_EVIDENCE_LABELS: Record<(typeof CONFIRMATION_EVIDENCE_KINDS)[number], string> = {
+  authority_email_reply: "Email reply from the authority",
+  portal_confirmation: "Confirmation on the authority's portal",
+  phone_call: "Phone call with the authority",
+  letter: "Letter from the authority",
+  other: "Other",
+};
 
 export const confirmationEvidence = z.object({
   kind: z.enum(CONFIRMATION_EVIDENCE_KINDS),

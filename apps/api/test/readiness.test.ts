@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { contractDeadline, explainSite, loadCatalog } from "@aerowise/compliance";
+import { bundledRulesets, contractDeadline, explainSite, loadCatalog } from "@aerowise/compliance";
 import { complianceContext, drainTasks, runContractFilings } from "@aerowise/tasks";
-import type { RulesetRules } from "@aerowise/domain";
+import { contractFilingRequired, mayAutoSubmit, profileStatus, type RulesetRules } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
@@ -80,6 +80,29 @@ async function readyLcraFiling(c: TestContext, name = "Org A") {
   expect((await s.api.post(`/filings/${f!.id}/recheck`, {})).json()).toMatchObject({ status: "ready" });
   return { s, j, filingId: f!.id };
 }
+
+describe("authority profiles", () => {
+  const ruleset = (key: string) => bundledRulesets().find((r) => r.jurisdiction.key === key)!;
+
+  it("never let a draft profile send on its own", () => {
+    const example = ruleset("tx-example-county");
+    expect(profileStatus(example)).toBe("fictional");
+    expect(mayAutoSubmit(example)).toBe(true);
+    const draft = { ...example, profile: { status: "draft" as const, verifiedOn: "2026-10-04", sources: [], unresolved: ["x"] } };
+    expect(mayAutoSubmit(draft)).toBe(false);
+    expect(mayAutoSubmit({ ...draft, profile: { ...draft.profile, status: "verified" as const, unresolved: [] } })).toBe(true);
+  });
+
+  it("read the LCRA and Harris drafts as written", () => {
+    const lcra = ruleset("tx-lcra-ossf");
+    expect(lcra.applicability.assignment).toBe("reviewed");
+    expect(lcra.coverSheet?.fields.filter((f) => f.required).map((f) => f.label)).toEqual(["Date", "Maintenance Provider Name", "TCEQ MP #", "LCRA OSSF Application Number"]);
+    expect(contractFilingRequired(lcra)).toBe(true);
+    const harris = ruleset("tx-harris-county-oce");
+    expect(harris.inspectionReports?.submission).toBe("unknown");
+    expect(harris.effectiveFrom).toBe("2026-10-04");
+  });
+});
 
 describe("authority selection", () => {
   it("does not guess LCRA from the county: the site waits for a reviewed choice with evidence", async () => {

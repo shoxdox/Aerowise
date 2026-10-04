@@ -52,7 +52,10 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
     if (!value) return;
     const y = doc.y;
     doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(label, left, y, { width: 120 });
+    const labelBottom = doc.y;
     doc.font("Helvetica").fontSize(10).fillColor("#000").text(value, left + 125, y, { width: width - 125 });
+    // A label that wraps (a long credential name) must not run into the next row.
+    doc.y = Math.max(doc.y, labelBottom);
     doc.moveDown(0.2);
   };
   const heading = (title: string) => {
@@ -107,7 +110,7 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
   if (s.responses) {
     heading("Owner complaints and monitoring notices since the last report");
     if (s.responses.length === 0) {
-      doc.font("Helvetica").fontSize(10).fillColor("#000").text("None received.", left, doc.y);
+      doc.font("Helvetica").fontSize(10).fillColor("#000").text("None recorded in Aerowise.", left, doc.y);
     }
     for (const r of s.responses) {
       if (doc.y > doc.page.height - 100) doc.addPage();

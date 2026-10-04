@@ -73,6 +73,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       rulesetVersion: rs?.version ?? null,
       counties: rs?.rules.applicability.counties ?? [],
       assignment: rs?.rules.applicability.assignment ?? "county",
+      howToDecide: rs?.rules.applicability.howToDecide ?? null,
       profileStatus: rs ? profileStatus(rs.rules) : "fictional",
     };
   };
