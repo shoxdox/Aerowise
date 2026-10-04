@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { bundledRulesets, contractDeadline, explainSite, loadCatalog, submitFiling } from "@aerowise/compliance";
 import { complianceContext, drainTasks, runContractFilings } from "@aerowise/tasks";
-import { contractFilingRequired, mayAutoSubmit, profileStatus, type RulesetRules } from "@aerowise/domain";
+import { contractFilingRequired, mayAutoSubmit, profileStatus, type ContractFilingBasis, type RulesetRules } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
@@ -77,8 +77,18 @@ async function readyLcraFiling(c: TestContext, name = "Org A") {
   const j = await assignLcra(s);
   await credentialsAndIdentifier(s, j);
   const [f] = await filings(s, "inspection_report");
-  expect((await s.api.post(`/filings/${f!.id}/recheck`, {})).json()).toMatchObject({ status: "ready" });
+  // Everything else is in place; only the maintenance provider's signature holds it.
+  expect((await s.api.post(`/filings/${f!.id}/recheck`, {})).json()).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("sign the authority report (version 1)") });
+  expect(await signReport(s, f!.id)).toMatchObject({ status: "ready" });
   return { s, j, filingId: f!.id };
+}
+
+/** The owner, who holds the MP license, signs the latest authority report of the filing's inspection. */
+async function signReport(s: Setup, filingId: string, typedName = "Owner Person") {
+  const inspectionId = (await detailOf(s, filingId)).inspection.id as string;
+  const res = await s.api.post(`/inspections/${inspectionId}/signature`, { typedName });
+  expect(res.statusCode, res.body).toBe(200);
+  return (await filings(s, "inspection_report")).find((f) => f.id === filingId)!;
 }
 
 describe("authority profiles", () => {
@@ -192,7 +202,13 @@ describe("credentials and identifiers", () => {
     expect(lapsed).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("MP0001234 expired on 2026-02-01") });
 
     await s.api.patch(`/credentials/${mp.id}`, { expiresOn: "2027-02-01" });
-    const ready = (await s.api.post(`/filings/${f!.id}/recheck`, {})).json();
+    expect((await s.api.post(`/filings/${f!.id}/recheck`, {})).json()).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("285.7(b)(3)") });
+    // Signing takes an MP license someone has checked against TCEQ's license search.
+    const inspectionId = (await detailOf(s, f!.id)).inspection.id;
+    expect((await s.api.get(`/inspections/${inspectionId}/signature`)).json()).toMatchObject({ problems: [expect.stringContaining("has not been checked against TCEQ's license search")], signature: null });
+    expect((await s.api.post(`/inspections/${inspectionId}/signature`, { typedName: "Owner Person" })).statusCode).toBe(422);
+    await s.api.patch(`/credentials/${mp.id}`, { verifiedOn: "2026-02-20", verificationSource: "TCEQ license search" });
+    const ready = await signReport(s, f!.id);
     // A draft profile never sends on its own: ready, not queued.
     expect(ready).toMatchObject({ status: "ready" });
     const calls = mail.calls;
@@ -206,6 +222,8 @@ describe("credentials and identifiers", () => {
     const pkg = detail.packages[0];
     expect(pkg).toMatchObject({ submissionNo: 1, method: "email", recipient: "ossf@lcra.org", subject: expect.stringContaining("OSSF-2019-0412"), manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect(pkg.documents.map((d: { role: string }) => d.role)).toEqual(["cover_sheet", "inspection_report"]);
+    // The maintenance provider's signed copy goes out, not the unsigned report.
+    expect(pkg.documents[1].filename).toBe("inspection-report-v1-signed.pdf");
     const field = (label: string) => pkg.fields.find((x: { label: string }) => x.label === label)?.value;
     expect(field("TCEQ MP #")).toBe("MP0001234");
     expect(field("Maintenance Provider Name")).toBe("Owner Person");
@@ -242,10 +260,15 @@ describe("deadlines", () => {
     expect(await detailOf(s, filingId)).toMatchObject({ deadlineOn: "2026-03-15", deadlineBasis: expect.stringContaining("14 days") });
 
     const rules = { contracts: { filingRequired: true, renewalDaysBeforePreviousEnd: 30, note: "" } } as unknown as RulesetRules;
-    expect(contractDeadline(rules, "2026-11-30")).toMatchObject({ deadlineOn: "2026-10-31" });
-    // A first contract in Aerowise: the end of what it replaces is unknown, so no date is invented.
-    expect(contractDeadline(rules, null)).toMatchObject({ deadlineOn: null, basis: expect.stringContaining("initial two-year service policy") });
-    expect(contractDeadline({ contracts: { filingRequired: true, note: "" } } as unknown as RulesetRules, "2026-11-30")).toMatchObject({ deadlineOn: null });
+    const on = (basis: ContractFilingBasis | null, basisOn: string | null = null) => contractDeadline(rules, { basis, basisOn, derived: false });
+    // 30 TAC 285.7 gives each kind of contract its own deadline.
+    expect(on("renewal", "2026-11-30")).toMatchObject({ deadlineOn: "2026-10-31", basis: expect.stringContaining("285.7(d)(2)") });
+    expect(on("after_initial_policy", "2026-11-30")).toMatchObject({ deadlineOn: "2026-10-31", basis: expect.stringContaining("initial two-year service policy expires") });
+    expect(on("replacement", "2026-11-30")).toMatchObject({ deadlineOn: "2026-12-30", basis: expect.stringContaining("285.7(d)(3)(C)") });
+    expect(on("initial_policy")).toMatchObject({ deadlineOn: null, basis: expect.stringContaining("before the system is approved for use (30 TAC 285.7(c))") });
+    // Unknown kind: no date is invented.
+    expect(on(null)).toMatchObject({ deadlineOn: null, basis: expect.stringContaining("record whether this is the initial two-year service policy") });
+    expect(contractDeadline({ contracts: { filingRequired: true, note: "" } } as unknown as RulesetRules, { basis: "renewal", basisOn: "2026-11-30", derived: false })).toMatchObject({ deadlineOn: null });
 
     const renewed = await s.api.post(`/contracts/${s.contract.id}/renew`, {});
     expect(renewed.statusCode).toBe(201);
@@ -315,8 +338,10 @@ describe("complaints and monitoring notices", () => {
     const [f] = await filings(s, "inspection_report");
     const held = (await s.api.post(`/filings/${f!.id}/recheck`, {})).json();
     expect(held).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("1 service request at this site since the last report has not been reviewed") });
-    // Marking it not reportable releases the filing at once; nothing else holds it.
+    // Marking it not reportable releases the filing at once; only the signature is left.
     await s.api.post(`/service-requests/${inPeriod.id}/classify`, { classification: "not_reportable" });
+    expect(await detailOf(s, f!.id)).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("285.7(b)(3)") });
+    await signReport(s, f!.id);
     const ready = await detailOf(s, f!.id);
     expect(ready.status).toBe("ready");
     expect(await responsesOf(ready.reports[0].id)).toEqual([]);
@@ -340,10 +365,13 @@ describe("complaints and monitoring notices", () => {
     await s.api.post(`/service-requests/${alarm.id}/classify`, { classification: "monitoring_notice" });
     expect((await s.api.post(`/service-requests/${fixed.id}/response`, { action: "Too early", respondedAt: "2026-02-01T00:00:00Z", outcome: "resolved" })).statusCode).toBe(422);
 
-    // Recording the responses checked the held filing again: nothing waits on a repair.
-    const [f] = await filings(s, "inspection_report");
-    expect(f!.status).toBe("ready");
-    const detail = await detailOf(s, f!.id);
+    // Recording the responses checked the held filing again: nothing waits on a repair, only
+    // on the provider signing the version that has the responses.
+    const [held] = await filings(s, "inspection_report");
+    expect(held).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("(version 2)") });
+    const f = await signReport(s, held!.id);
+    expect(f.status).toBe("ready");
+    const detail = await detailOf(s, f.id);
     // The report drawn before the classifications was replaced by one that has them.
     expect(detail.reports.map((r: { version: number }) => r.version)).toEqual([2, 1]);
     expect(detail.reports[0]).toMatchObject({ supersedesReportId: detail.reports[1].id, correctionReason: expect.stringContaining("complaint") });
@@ -363,7 +391,10 @@ describe("complaints and monitoring notices", () => {
     // A response recorded after the package was made but before sending: that package is
     // never sent; a new submission carries a report with the response.
     await s.api.post(`/service-requests/${complaint.id}/response`, { action: "Called the owner, visit booked", respondedAt: "2026-02-28T15:00:00Z", outcome: "outstanding" });
-    const redone = await detailOf(s, f!.id);
+    // The signature on version 2 does not carry over to the redrawn version 3.
+    expect(await detailOf(s, f.id)).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("(version 3)") });
+    await signReport(s, f.id);
+    const redone = await detailOf(s, f.id);
     expect(redone).toMatchObject({ status: "ready", submissionNo: 2, attempts: [] });
     expect(redone.packages.map((p: { submissionNo: number }) => p.submissionNo)).toEqual([2, 1]);
     expect(redone.packages[1]).toEqual(detail.packages[0]);
@@ -485,7 +516,7 @@ describe("delivery evidence", () => {
     expect(sent.attempts).toEqual([expect.objectContaining({ status: "succeeded", recipient: "ossf@lcra.org", packageId: sent.packages[0].id })]);
     expect(sent.attempts[0].response).toMatchObject({ manifestSha256: sent.packages[0].manifestSha256 });
     const toLcra = [...mail.delivered.values()].find((m) => m.to === "ossf@lcra.org")!;
-    expect(toLcra.attachments.map((a) => a.filename)).toEqual(["cover-sheet.pdf", "inspection-report-v1.pdf"]);
+    expect(toLcra.attachments.map((a) => a.filename)).toEqual(["cover-sheet.pdf", "inspection-report-v1-signed.pdf"]);
     // Customer delivery rows are untouched by the authority send.
     expect(await ctx.db.selectFrom("customerDeliveries").select("id").execute()).toHaveLength(1);
   });
@@ -519,8 +550,10 @@ describe("delivery evidence", () => {
     expect((await s.api.post(`/filings/${filingId}/correct`, { reason: "Fix", amendments: { not_a_field: 1 } })).statusCode).toBe(422);
     const corrected = await s.api.post(`/filings/${filingId}/correct`, { reason: "Chlorine residual corrected from the technician's notes", amendments: { chlorine_level: 2 } });
     expect(corrected.statusCode).toBe(200);
-    const after = corrected.json();
-    expect(after).toMatchObject({ status: "ready", submissionNo: 2 });
+    // The corrected version needs the provider's signature before it can go.
+    expect(corrected.json()).toMatchObject({ status: "needs_review", submissionNo: 2, reviewReason: expect.stringContaining("(version 2)") });
+    await signReport(s, filingId);
+    expect(await detailOf(s, filingId)).toMatchObject({ status: "ready", submissionNo: 2 });
     const detail = await detailOf(s, filingId);
     expect(detail.reports.map((r: { version: number }) => r.version)).toEqual([2, 1]);
     expect(detail.reports[0]).toMatchObject({ supersedesReportId: detail.reports[1].id, correctionReason: "Chlorine residual corrected from the technician's notes" });
@@ -540,6 +573,150 @@ describe("delivery evidence", () => {
     const resent = await detailOf(s, filingId);
     expect(resent.status).toBe("sent");
     expect(resent.attempts.map((a: { packageId: string }) => a.packageId)).toEqual([detail.packages[0].id, detail.packages[1].id]);
+  });
+});
+
+describe("maintenance provider signature (30 TAC 285.7(b)(3))", () => {
+  async function unsignedFiling() {
+    const s = await lcraSetup(ctx);
+    await complete(s);
+    await runWorker(ctx);
+    const j = await assignLcra(s);
+    const creds = await credentialsAndIdentifier(s, j);
+    const [f] = await filings(s, "inspection_report");
+    await s.api.post(`/filings/${f!.id}/recheck`, {});
+    const inspectionId = (await detailOf(s, f!.id)).inspection.id as string;
+    return { s, ...creds, filingId: f!.id, sig: `/inspections/${inspectionId}/signature`, inspectionId };
+  }
+
+  it("lets only a licensed maintenance provider sign, attesting to the technician's supervision, and sends the signed copy", async () => {
+    mail.mode = "ok";
+    const { s, mp, mt, filingId, sig, inspectionId } = await unsignedFiling();
+    const inbox = (await s.api.get("/inbox")).json().items as { kind: string; target: { id: string } }[];
+    expect(inbox.find((i) => i.kind === "report_unsigned")).toMatchObject({ target: { id: filingId } });
+
+    // Office staff and technicians without an MP license cannot sign; read-only users may not try.
+    const office = client(ctx.app, await login(ctx.app, (await createUser(ctx.db, s.org.id, "office")).email));
+    expect((await office.get(sig)).json()).toMatchObject({ version: 1, signature: null, problems: [expect.stringContaining("Only a TCEQ licensed maintenance provider (MP) can sign")] });
+    expect((await office.post(sig, { typedName: "office user" })).statusCode).toBe(422);
+    expect((await s.techApi.post(sig, { typedName: "Tech Person" })).statusCode).toBe(422);
+    const readOnly = client(ctx.app, await login(ctx.app, (await createUser(ctx.db, s.org.id, "read_only")).email));
+    expect((await readOnly.post(sig, { typedName: "x y" })).statusCode).toBe(403);
+
+    // Someone else inspected: they must have been registered that day.
+    await s.api.patch(`/credentials/${mt.id}`, { expiresOn: "2026-02-01" });
+    expect((await s.api.get(sig)).json().problems).toEqual([expect.stringContaining("had no active TCEQ maintenance technician registration or MP license on record for 2026-03-01")]);
+    await s.api.patch(`/credentials/${mt.id}`, { expiresOn: "2027-01-31" });
+
+    const preview = (await s.api.get(sig)).json();
+    expect(preview).toMatchObject({ problems: [], holderName: "Owner Person", signature: null });
+    expect(preview.statement).toContain("I, Owner Person, TCEQ licensed maintenance provider MP0001234, have reviewed this maintenance report (version 1)");
+    expect(preview.statement).toContain("by technician user (TCEQ registered maintenance technician MT0005678), who is employed by Org A and works under my direct supervision");
+    expect((await s.api.post(sig, { typedName: "Someone Else" })).json()).toMatchObject({ message: expect.stringContaining("Type your name as it appears on your MP license: Owner Person") });
+
+    const signed = await s.api.post(sig, { typedName: "  owner   person " });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json().signature).toMatchObject({ signedByName: "owner user", typedName: "owner   person", licenseNumber: "MP0001234", statement: preview.statement });
+    expect((await s.api.post(sig, { typedName: "Owner Person" })).json()).toMatchObject({ message: expect.stringContaining("already signed") });
+
+    // The signed copy is stored beside the unsigned report, which is unchanged.
+    const report = await ctx.db.selectFrom("reports").select(["id", "sha256", "storageKey"]).where("audience", "=", "authority").executeTakeFirstOrThrow();
+    const row = await ctx.db.selectFrom("reportSignatures").selectAll().executeTakeFirstOrThrow();
+    expect(row).toMatchObject({ reportId: report.id, reportSha256: report.sha256, credentialId: mp.id, signedBy: s.owner.id });
+    const signedPdf = (await ctx.store.get(row.storageKey))!;
+    expect(createHash("sha256").update(signedPdf).digest("hex")).toBe(row.sha256);
+    expect(row.sha256).not.toBe(report.sha256);
+    expect(createHash("sha256").update((await ctx.store.get(report.storageKey))!).digest("hex")).toBe(report.sha256);
+    await expect(sql`update report_signatures set typed_name = 'x'`.execute(ctx.db)).rejects.toThrow(/immutable/);
+    const event = await ctx.db.selectFrom("complianceEvents").select("summary").where("eventType", "=", "report_signed").where("inspectionId", "=", inspectionId).executeTakeFirstOrThrow();
+    expect(event.summary).toBe("Authority report version 1 signed by Owner Person, MP MP0001234");
+
+    // The filing is ready with the signed copy, and the inbox no longer asks.
+    const detail = await detailOf(s, filingId);
+    expect(detail.status).toBe("ready");
+    expect(detail.packages[0].documents[1]).toMatchObject({ filename: "inspection-report-v1-signed.pdf", sha256: row.sha256, sourceId: report.id });
+    expect(((await s.api.get("/inbox")).json().items as { kind: string }[]).some((i) => i.kind === "report_unsigned")).toBe(false);
+  });
+
+  it("lets a technician who holds an MP license sign their own inspection", async () => {
+    const { s, sig } = await unsignedFiling();
+    await s.api.post("/credentials", { userId: s.tech.id, holderName: "Tech Person", kind: "tceq_maintenance_provider", number: "MP0009999", verifiedOn: "2026-02-20", verificationSource: "TCEQ license search" });
+    // Technicians cannot open filings, but signing is open to them.
+    expect((await s.techApi.get(sig)).statusCode).toBe(403);
+    const res = await s.techApi.post(sig, { typedName: "Tech Person" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().signature.statement).toMatch(/^I, Tech Person, TCEQ licensed maintenance provider MP0009999, .* I performed the inspection on 2026-03-01\.$/);
+  });
+});
+
+describe("contract deadlines by kind (30 TAC 285.7(c), (d))", () => {
+  it("asks which kind of contract it is, then sets that kind's deadline until the filing goes out", async () => {
+    mail.mode = "ok";
+    const { s } = await readyLcraFiling(ctx);
+    await runContractFilings(complianceContext(tasks(ctx)), s.org.id);
+    const [cf] = await filings(s, "contract");
+    const basisUrl = `/contracts/${s.contract.id}/filing-basis`;
+    // A first contract in Aerowise: whether it follows an initial policy, renews another
+    // provider's contract or replaces a terminated one is not guessed.
+    expect(await detailOf(s, cf!.id)).toMatchObject({ deadlineOn: null, deadlineBasis: expect.stringContaining("record whether this is the initial two-year service policy") });
+    expect((await s.api.get(`/contracts/${s.contract.id}/filing-status`)).json().basis).toEqual({ basis: null, basisOn: null, note: null, derived: false });
+
+    expect((await s.api.put(basisUrl, { basis: "renewal" })).statusCode).toBe(400);
+    const set = await s.api.put(basisUrl, { basis: "replacement", basisOn: "2025-11-20", note: "Previous provider ended service; the owner's letter is on file" });
+    expect(set.json()).toEqual({ basis: "replacement", basisOn: "2025-11-20", note: "Previous provider ended service; the owner's letter is on file", derived: false });
+    expect(await detailOf(s, cf!.id)).toMatchObject({ deadlineOn: "2025-12-20", deadlineBasis: expect.stringContaining("30 TAC 285.7(d)(3)(C)") });
+    const changed = await ctx.db.selectFrom("complianceEvents").select("summary").where("filingId", "=", cf!.id).where("eventType", "=", "filing_deadline_changed").execute();
+    expect(changed).toEqual([{ summary: expect.stringContaining("Contract filing due 2025-12-20") }]);
+
+    await s.api.put(basisUrl, { basis: "after_initial_policy", basisOn: "2026-01-15" });
+    expect(await detailOf(s, cf!.id)).toMatchObject({ deadlineOn: "2025-12-16", deadlineBasis: expect.stringContaining("initial two-year service policy expires on 2026-01-15") });
+    await s.api.put(basisUrl, { basis: "initial_policy", basisOn: "2026-01-15" });
+    expect(await detailOf(s, cf!.id)).toMatchObject({ deadlineOn: null, deadlineBasis: expect.stringContaining("before the system is approved for use (30 TAC 285.7(c))") });
+    expect((await s.api.get(`/contracts/${s.contract.id}/filing-status`)).json()).toMatchObject({ basis: { basis: "initial_policy", basisOn: null }, authority: { deadlineBasis: expect.stringContaining("285.7(c)") } });
+
+    // Once sent, the filing keeps the deadline it was sent against.
+    await s.api.put(basisUrl, { basis: "renewal", basisOn: "2025-12-31" });
+    await s.api.post(`/contracts/${s.contract.id}/document`, { filename: "Signed contract.pdf", contentBase64: PDF.toString("base64"), signedOn: "2025-11-20" });
+    await s.api.post(`/filings/${cf!.id}/submit`, {});
+    await runWorker(ctx);
+    expect(await detailOf(s, cf!.id)).toMatchObject({ status: "sent", deadlineOn: "2025-12-01" });
+    await s.api.put(basisUrl, { basis: "replacement", basisOn: "2025-11-20" });
+    expect(await detailOf(s, cf!.id)).toMatchObject({ deadlineOn: "2025-12-01" });
+
+    // Office staff record it; technicians cannot.
+    expect((await s.techApi.put(basisUrl, { basis: "initial_policy" })).statusCode).toBe(403);
+  });
+
+  it("records who ended a contract and reminds the office of the written notice owed before service stops", async () => {
+    const s = await lcraSetup(ctx);
+    const notice = `/contracts/${s.contract.id}/discontinuation-notice`;
+    expect((await s.api.post(notice, { sentOn: "2026-03-01", note: "Too early" })).json()).toMatchObject({ message: "Only a cancelled contract has a discontinuation notice" });
+    const cancel = await s.api.post(`/contracts/${s.contract.id}/cancel`, { reason: "Provider is leaving the area", discontinuedBy: "provider", serviceEndsOn: "2026-03-20" });
+    expect(cancel.statusCode).toBe(200);
+    const status = (await s.api.get(`/contracts/${s.contract.id}/filing-status`)).json();
+    // The provider ended it, so the owner is written to as well, 30 days ahead: already late here.
+    expect(status.discontinuation).toEqual({
+      discontinuedBy: "provider",
+      serviceEndsOn: "2026-03-20",
+      noticeDueOn: "2026-02-18",
+      recipients: ["the permitting authority", "the system's manufacturer", "the owner"],
+      noticeSentOn: null,
+      noticeNote: null,
+    });
+    const item = ((await s.api.get("/inbox")).json().items as { kind: string; severity: string; title: string; detail: string; dueOn: string }[]).find((i) => i.kind === "discontinuation_notice_due");
+    expect(item).toMatchObject({ severity: "high", title: "Notice that service is ending is late", dueOn: "2026-02-18", detail: expect.stringContaining("and the owner by 2026-02-18 (30 TAC 285.7(d)(3))") });
+
+    const recorded = await s.api.post(notice, { sentOn: "2026-03-01", note: "Emailed the county and the owner, letter to the manufacturer" });
+    expect(recorded.json()).toMatchObject({ noticeSentOn: "2026-03-01", noticeNote: "Emailed the county and the owner, letter to the manufacturer" });
+    expect((await s.api.post(notice, { sentOn: "2026-03-02", note: "Again" })).json()).toMatchObject({ message: "The notice is already recorded" });
+    expect(((await s.api.get("/inbox")).json().items as { kind: string }[]).some((i) => i.kind === "discontinuation_notice_due")).toBe(false);
+
+    // The owner ended this one: the provider writes to the authority and the manufacturer.
+    const next = (await s.api.post(`/sites/${s.site.id}/contracts`, { planId: s.contract.planId, startOn: "2026-04-01" })).json();
+    await s.api.post(`/contracts/${next.id}/cancel`, { reason: "Owner switched providers", discontinuedBy: "owner", serviceEndsOn: "2026-06-30" });
+    expect((await s.api.get(`/contracts/${next.id}/filing-status`)).json().discontinuation).toMatchObject({ recipients: ["the permitting authority", "the system's manufacturer"], noticeDueOn: "2026-05-31" });
+    const later = ((await s.api.get("/inbox")).json().items as { kind: string; severity: string; title: string }[]).find((i) => i.kind === "discontinuation_notice_due");
+    expect(later).toMatchObject({ severity: "medium", title: "Send notice that service is ending" });
   });
 });
 

@@ -365,7 +365,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       await db.transaction().execute(async (trx) => {
         const updated = await trx
           .updateTable("contracts")
-          .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: req.body.reason, updatedAt: new Date() })
+          .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: req.body.reason, discontinuedBy: req.body.discontinuedBy ?? null, serviceEndsOn: req.body.serviceEndsOn ?? null, updatedAt: new Date() })
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .where("status", "=", "active")

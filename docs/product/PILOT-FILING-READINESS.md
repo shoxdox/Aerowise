@@ -37,6 +37,7 @@ Draft profiles are guarded in `submitFiling`, so every path through the queue is
 | Action on a draft-profile filing | Allowed? |
 |---|---|
 | Preparing the package, cover sheet and report | Yes |
+| Signing the authority report (a licensed MP; required before the package is made) | Yes |
 | **Send now** by a person | Yes |
 | Queue retries of that same Send request (same submission number) | Yes |
 | **Retry now** by a person after a failure | Yes |
@@ -71,41 +72,77 @@ Profiles now keep two dates apart:
 
 ### Contract-submission deadline
 
-- **Governing rule:** 30 TAC §285.7(d)(2). A renewal contract must reach the permitting authority at least 30 days before the current contract expires.
-- **Exception:** §285.7(d)(4), for an owner who maintains their own system. Aerowise doesn't support that case.
-- **Corroboration:** Fort Bend County's OSSF page cites (d)(2) and the 30-day requirement.
-- Aerowise computes the deadline only when the previous contract's end date is known. For a first contract it shows no deadline and explains that the initial two-year service policy covers that period. It never invents one.
-- **Caveat:** the rule text was read through a summarizer of TCEQ's adoption PDF. Cornell LII could not be fetched from this environment. Someone should read the rule text directly.
+Superseded by section 3 below: each kind of contract now has its own deadline.
+
 - **Six-month monitoring:** the six-month schedule, for systems with electronic monitoring and automatic notification, is not offered. `intervalMonths` stays 4 until the qualifying conditions can be recorded and checked.
 
 ### Official LCRA cover sheet
 
 The cover sheet now uses LCRA's own fillable PDF, filled with pdf-lib and flattened, with the field mapping in the ruleset. Whether LCRA accepts a typed and flattened copy by email has not been confirmed. It stays the first open question in the profile.
 
-## 3. Open questions and blockers
+## 3. Follow-up after merge (30 TAC 285.7)
 
-1. Confirm with LCRA that a filled and flattened copy of their cover sheet is accepted by email.
-2. Read 30 TAC §285.7(d) directly, rather than through a summarizer.
-3. Find out how Harris County takes inspection reports. Until then, Harris filings are held for review and only contracts apply.
-4. Brazoria County: every fetch returned 403, so there is no ruleset.
-5. Choose a real mail provider with idempotency keys. Filing mail currently goes to `.eml` files.
-6. Set up production file storage (S3-compatible) for packages and reports.
+Codex's merge review found the full rule text and raised one new blocker. This round covers both. On 2026-10-04 the text of §285.7(b), (c) and (d) was read from Cornell LII's republished copy, through a fetch tool asked for verbatim quotes. It matches the (d)(2) quote from TCEQ's 2022 adoption cited in review.
+
+### Maintenance provider signature (285.7(b)(3))
+
+"The maintenance provider must sign all maintenance reports."
+
+- An inspection filing for a real authority profile does not become Ready until the latest authority report version is signed. Until then it shows "Waiting for a licensed maintenance provider to sign…" and an inbox item, "Authority report waiting for the provider's signature".
+- Only someone with their own MP license can sign. The license must be active, unexpired and checked against TCEQ's license search. They sign by typing their name as it appears on the license. Office staff, technicians without an MP license and read-only users cannot sign.
+- When someone else inspected, that technician's registration must have been valid on the inspection date. The signer attests that the technician is employed by the provider and works under their direct supervision (285.7(b)(1), 285.2). Aerowise checks the registration. Employment and supervision are only attested.
+- The signature row is immutable, one per report version. It holds the signer, the license, the typed name, the statement, the time, the hash of the unsigned report it covers, and a signed copy (the report plus a signature block). The unsigned report is never changed. The package sends the signed copy, named `inspection-report-vN-signed.pdf`.
+- A corrected version, or one redrawn with complaint responses, needs a new signature.
+- Fictional demo rulesets (no profile, never loaded in production) skip the signature, so demo data and the older tests are unchanged.
+
+### Contract deadline by kind (285.7(c), (d)(2), (d)(3)(C))
+
+| Kind | Deadline |
+|---|---|
+| Initial two-year service policy | Before the system is approved for use. No date is set because Aerowise does not know it. |
+| First contract after the initial policy | 30 days before the policy expires |
+| Renewal | At least 30 days before the current contract expires. A contract renewed in Aerowise is treated as this automatically. |
+| Replacement after a discontinued contract | No later than 30 days after termination |
+
+A first contract in Aerowise has no deadline until the office records which kind it is. Aerowise does not guess. Changing the kind updates a filing that has not gone out yet. A filing already sent keeps its deadline.
+
+### Ending a contract (285.7(d)(3)(A), (B))
+
+Cancelling a contract now asks who ended it and the last day of service. The provider must write to the permitting authority and the manufacturer at least 30 days before service stops, and to the owner too when the provider ended the contract. The inbox shows the notice as due, or as late. The office records when it was sent and to whom. Aerowise does not send the notice.
+
+### Harris and Brazoria (from the merge review, not read by Claude)
+
+- **Harris County:** the testing acknowledgment form names Engineering–Permits as the recipient. It requires quarterly visits for residential systems and monthly visits for commercial systems of the listed types, plus annual BOD/TSS tests. Harris inspection reports stay disabled. They need a v2 profile with those schedules and a confirmed submission channel. The PDF is blocked to the fetch tool by robots.txt.
+- **Brazoria County:** the county's contact page names ehmaintenance@brazoriacountytx.gov for contracts and reports. That is the recipient only, so there is still no ruleset. The page still returns 403.
+
+## 4. Open questions and blockers
+
+1. Confirm with LCRA that a filled and flattened copy of their cover sheet is accepted by email, using a synthetic sample.
+2. Ask the authorities whether a typed-name signature on the report, plus an attestation block, satisfies 285.7(b)(3). Some authorities may want a handwritten or digital certificate signature.
+3. Find out how Harris County takes inspection reports, and model its quarterly and monthly schedules and annual tests before enabling them.
+4. Brazoria County: the recipient is known, but nothing else is, so there is no ruleset.
+5. Email: Resend is a candidate. Its idempotency keys last 24 hours, so a send whose outcome is uncertain must be reconciled before any retry after that window. Domain verification and delivery handling are also needed. Filing mail currently goes to `.eml` files.
+6. Storage: a private S3-compatible bucket (for example Cloudflare R2), with access controls and recovery checks.
 7. Assign each pilot site by hand using LCRA's map, and record its application number.
-8. Enter real MP and MT credentials, checked against TCEQ's license search.
+8. Enter real MP and MT credentials, checked against TCEQ's license search, and record which MP signs.
 9. Neither authority publishes an acknowledgment process.
+10. The ruleset notes for v1 still say the 285.7 timing was read through a summarizer, because published v1 files cannot change. Update them in a v2 profile.
+11. Technicians who hold an MP license can sign through the API, but they cannot open the filing screen (it needs filings access), so signing from the technician app is not built.
 
-## 4. Needs independent review
+## 5. Needs independent review
 
 - The complaint period starts at the previous inspection, or the day before the contract started. Check this against how the authorities define the reporting period.
 - Carry-over: unresolved requests repeat on every report until resolved.
 - Replacing an unsent Ready package when responses change.
 - The draft send guard in `packages/compliance/src/filings.ts` (`submitFiling`).
-- The reading of §285.7(d)(2) and (d)(4).
+- The signing rules in `packages/compliance/src/signatures.ts`: who may sign, the attestation wording, typed-name matching, and requiring a signature only for profiled rulesets.
+- Whether any MP in the organization may sign, or only the responsible MP named on the contract (285.7(d)(1)(C)). Aerowise currently allows any MP with their own valid, checked license.
+- The contract-kind deadlines and the replacement date (termination date + 30) in `contractDeadline`.
+- The discontinuation notice: Aerowise only records it. Recipients come from 285.7(d)(3)(A) and (B).
 - The LCRA form field mapping. Field names like `Textfield-0` were matched to labels by position on the page.
-- The new dependency: `pdf-lib` in `packages/reports`.
-- `tx-lcra-ossf` v1 and migration 0015 changed during review. Both are unreleased and have only been applied to disposable databases. A database that synced the earlier v1 must drop it.
+- Migration 0016 (report signatures and contract columns).
 
-## 5. How to verify
+## 6. How to verify
 
 You need Node 22, pnpm and Docker.
 
@@ -116,7 +153,7 @@ export TEST_DATABASE_URL=postgres://aerowise:aerowise@localhost:5432/aerowise_te
 
 pnpm lint && pnpm typecheck
 pnpm test                                              # all packages
-pnpm --filter @aerowise/api exec vitest run test/readiness.test.ts   # this branch's scenarios
+pnpm --filter @aerowise/api exec vitest run test/readiness.test.ts   # filing readiness, signatures, contract deadlines
 pnpm build
 (cd apps/web && pnpm e2e)                              # Playwright; set CHROMIUM_PATH if Chromium is preinstalled
 ./scripts/compose-smoke.sh                             # Docker Compose smoke test, as CI runs it

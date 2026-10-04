@@ -1,4 +1,5 @@
 import type { Database } from "@aerowise/db";
+import { AWAITING_SIGNATURE } from "@aerowise/compliance";
 import {
   addDays,
   CONTRACT_EXPIRED_WINDOW_DAYS,
@@ -137,6 +138,9 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         case "rejected":
           return { ...base, key: `filing_rejected:${r.id}`, kind: "filing_rejected", severity: "high", title: `${authority(r.authorityName)} rejected a filing`, detail: r.rejectionReason };
         case "needs_review":
+          if (r.reviewReason?.startsWith(AWAITING_SIGNATURE)) {
+            return { ...base, key: `report_unsigned:${r.id}`, kind: "report_unsigned", severity: "high", title: "Authority report waiting for the provider's signature", detail: r.reviewReason };
+          }
           return { ...base, key: `filing_needs_review:${r.id}`, kind: "filing_needs_review", severity: "high", title: "Filing needs review", detail: r.reviewReason };
         case "sent":
           return {
@@ -374,6 +378,44 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
+  /**
+   * Contracts that were ended with a last day of service, where the written notice to the
+   * authority and the manufacturer (and the owner, when the provider ended it) is not
+   * recorded yet. 30 TAC 285.7(d)(3): due 30 days before service stops.
+   */
+  async function discontinuationNotices(organizationId: string, today: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("contracts as k")
+      .innerJoin("sites as s", "s.id", "k.siteId")
+      .innerJoin("customers as c", "c.id", "s.customerId")
+      .select(["k.id", "k.planName", "k.serviceEndsOn", "k.discontinuedBy", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("k.organizationId", "=", organizationId)
+      .where("k.status", "=", "cancelled")
+      .where("k.noticeSentOn", "is", null)
+      .where("k.serviceEndsOn", "is not", null)
+      .where("k.serviceEndsOn", ">=", addDays(today, -CONTRACT_EXPIRED_WINDOW_DAYS))
+      .orderBy("k.serviceEndsOn")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => {
+      const dueOn = addDays(r.serviceEndsOn!, -30);
+      return {
+        key: `discontinuation_notice_due:${r.id}`,
+        kind: "discontinuation_notice_due",
+        severity: dueOn <= today ? "high" : "medium",
+        title: dueOn < today ? "Notice that service is ending is late" : "Send notice that service is ending",
+        detail: [
+          `${r.planName} service ends ${r.serviceEndsOn}`,
+          `write to the permitting authority and the manufacturer${r.discontinuedBy === "owner" ? "" : ", and the owner"} by ${dueOn} (30 TAC 285.7(d)(3))`,
+        ].join(" · "),
+        dueOn,
+        site: site(r),
+        customer: customer(r),
+        target: { type: "contract", id: r.id },
+      };
+    });
+  }
+
   /** Texts from customers that are not STOP or START and nobody has dealt with yet. */
   async function smsReplies(organizationId: string): Promise<InboxException[]> {
     const rows = await db
@@ -504,6 +546,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           renewalExceptions(organizationId),
           serviceRequests(organizationId),
           unresolvedComplaints(organizationId),
+          discontinuationNotices(organizationId, today),
           smsReplies(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),

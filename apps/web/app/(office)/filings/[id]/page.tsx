@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
+import { ReportSignature } from "@/components/ReportSignature";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, when } from "@/lib/format";
@@ -161,6 +162,7 @@ export default function FilingPage() {
       )}
 
       {f.status === "needs_review" && <p className="card restriction">{f.reviewReason}</p>}
+      {f.inspection && f.profile && <ReportSignature inspectionId={f.inspection.id} editable={editable} onSigned={() => void reload()} />}
       {f.status === "failed" && <p className="card restriction">Sending failed: {f.lastError}. It retries automatically.</p>}
       {f.status === "rejected" && <p className="card restriction">The authority rejected it: {f.rejectionReason}</p>}
 

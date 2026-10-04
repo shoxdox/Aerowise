@@ -35,7 +35,24 @@ Email to ossf@lcra.org with the cover sheet and the authority report (or signed 
 
 ## Contract requirements
 
-Contracts are filed with the cover sheet. Timing, 30 TAC 285.7(d)(2) (TCEQ's 2022 adoption, 47 TexReg 8898, read through a summarizer; also quoted by Fort Bend County): the signed contract goes to the permitting authority 30 days before the initial two-year service policy expires, and each later contract at least 30 days before the current one expires. Aerowise sets the deadline only when it knows the end of the contract being replaced; otherwise the filing says why there is no date. Exception: a single-family owner who maintains the system personally (285.7(d)(4)), which never applies to a provider's contract; not for commercial, speculative residential or multifamily property. Confirm against the official Texas Administrative Code text before enforcing.
+Contracts are filed with the cover sheet. 30 TAC 285.7 sets a different deadline for each kind of contract. The paragraph text was read on 2026-10-04 from Cornell LII's republished §285.7, through a fetch tool asked for verbatim quotes, and it matches the quote in TCEQ's 2022 adoption cited in review:
+
+| Kind (recorded on the contract) | Deadline | Rule |
+|---|---|---|
+| Initial two-year service policy | Before the system is approved for use. Aerowise does not know that date, so it sets none. | 285.7(c) |
+| First contract after the initial policy | 30 days before the policy expires | 285.7(d)(2) |
+| Later contract (renewal) | At least 30 days before the current contract expires. A contract renewed in Aerowise is treated as this automatically. | 285.7(d)(2) |
+| Replacement after a contract was discontinued | No later than 30 days after termination | 285.7(d)(3)(C) |
+
+A first contract in Aerowise has no deadline until someone records which kind it is. Aerowise does not guess.
+
+**Ending a contract.** Under 285.7(d)(3)(A) and (B), the maintenance provider notifies the permitting authority and the manufacturer in writing at least 30 days before service stops, and also notifies the owner when the provider ends the contract. Aerowise asks who ended the contract and the last day of service, puts the notice in the inbox, and records it when it is sent. It does not send the notice itself.
+
+**Exception.** 285.7(d)(4) covers a single-family owner who maintains the system personally. That is never a provider's contract, and it does not apply to commercial or multifamily property.
+
+## Report signature
+
+Under 285.7(b)(3), the maintenance provider must sign all maintenance reports. An inspection filing waits until someone with their own active MP license, checked against TCEQ's license search, signs the latest authority report version by typing their name. The filing then sends the signed copy. When someone else inspected, the signer attests that the technician is employed by the provider and works under their direct supervision (285.7(b)(1), 285.2). The technician's registration on the inspection date is checked; employment and supervision are only attested. A later report version, whether a correction or one redrawn with complaint responses, needs its own signature.
 
 ## Confirmation / proof
 

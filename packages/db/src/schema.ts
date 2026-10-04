@@ -214,6 +214,16 @@ export interface ContractsTable {
   signedDocumentId: ColumnType<string | null, string | null | undefined, string | null>;
   cancelledAt: Timestamp | null;
   cancelReason: string | null;
+  filingBasis: ColumnType<"initial_policy" | "after_initial_policy" | "renewal" | "replacement" | null, string | null | undefined, string | null>;
+  filingBasisOn: ColumnType<string | null, string | null | undefined, string | null>;
+  filingBasisNote: ColumnType<string | null, string | null | undefined, string | null>;
+  filingBasisSetBy: ColumnType<string | null, string | null | undefined, string | null>;
+  filingBasisSetAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  serviceEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
+  discontinuedBy: ColumnType<"provider" | "owner" | null, string | null | undefined, string | null>;
+  noticeSentOn: ColumnType<string | null, string | null | undefined, string | null>;
+  noticeNote: ColumnType<string | null, string | null | undefined, string | null>;
+  noticeRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
   notes: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
@@ -525,6 +535,21 @@ export interface SiteAuthorityIdentifiersTable {
   updatedBy: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
+}
+
+export interface ReportSignaturesTable {
+  id: Generated<string>;
+  organizationId: string;
+  reportId: string;
+  signedBy: string;
+  credentialId: string;
+  typedName: string;
+  statement: string;
+  signedAt: ColumnType<Date, Date | string, never>;
+  reportSha256: string;
+  storageKey: string;
+  sha256: string;
+  byteSize: number;
 }
 
 export interface ContractDocumentsTable {
@@ -975,5 +1000,6 @@ export interface DB {
   siteAuthorityAssignments: SiteAuthorityAssignmentsTable;
   siteAuthorityIdentifiers: SiteAuthorityIdentifiersTable;
   contractDocuments: ContractDocumentsTable;
+  reportSignatures: ReportSignaturesTable;
   customerDeliveries: CustomerDeliveriesTable;
 }

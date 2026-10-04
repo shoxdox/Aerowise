@@ -138,3 +138,88 @@ export const customerDelivery = z.object({
   error: z.string().nullable(),
 });
 export type CustomerDelivery = z.infer<typeof customerDelivery>;
+
+// ---- Maintenance provider signature on authority reports (30 TAC 285.7(b)(3)) ----
+
+export const signReportInput = z.object({
+  /** The signer's full name, as it appears on their MP license. */
+  typedName: z.string().trim().min(2).max(200),
+});
+
+export const reportSigning = z.object({
+  reportId: id,
+  version: z.number().int(),
+  /** The statement the signature will carry, in the signer's words. */
+  statement: z.string(),
+  /** The name on the signer's MP license, which they type to sign. */
+  holderName: z.string().nullable(),
+  /** Why this person cannot sign now. Empty when they can. */
+  problems: z.array(z.string()),
+  signature: z
+    .object({
+      signedByName: z.string(),
+      typedName: z.string(),
+      licenseNumber: z.string(),
+      statement: z.string(),
+      signedAt: datetime,
+      sha256: z.string(),
+    })
+    .nullable(),
+});
+export type ReportSigning = z.infer<typeof reportSigning>;
+
+// ---- Which 30 TAC 285.7 deadline a contract filing has ----
+
+export const CONTRACT_FILING_BASES = ["initial_policy", "after_initial_policy", "renewal", "replacement"] as const;
+export type ContractFilingBasis = (typeof CONTRACT_FILING_BASES)[number];
+export const CONTRACT_FILING_BASIS_LABELS: Record<ContractFilingBasis, string> = {
+  initial_policy: "Initial two-year service policy (new system)",
+  after_initial_policy: "First contract after the initial two-year policy",
+  renewal: "Renewal of a contract that is expiring",
+  replacement: "Replacement after a contract was discontinued",
+};
+/** The date each basis is counted from, as the office is asked for it. */
+export const CONTRACT_FILING_BASIS_DATE_LABELS: Record<ContractFilingBasis, string | null> = {
+  initial_policy: null,
+  after_initial_policy: "Initial policy expires on",
+  renewal: "Current contract expires on",
+  replacement: "Previous contract ended on",
+};
+
+export const contractFilingBasisInput = z
+  .object({
+    basis: z.enum(CONTRACT_FILING_BASES),
+    basisOn: date.nullish(),
+    note: z.string().trim().max(1000).nullish(),
+  })
+  .refine((v) => v.basis === "initial_policy" || Boolean(v.basisOn), { message: "Give the date the deadline counts from", path: ["basisOn"] });
+
+export const contractFilingBasis = z.object({
+  basis: z.enum(CONTRACT_FILING_BASES).nullable(),
+  basisOn: date.nullable(),
+  note: z.string().nullable(),
+  /** Worked out from the contract this one renews in Aerowise, not entered by a person. */
+  derived: z.boolean(),
+});
+export type ContractFilingBasisState = z.infer<typeof contractFilingBasis>;
+
+// ---- Ending a contract: the provider's written notice (30 TAC 285.7(d)(3)(A), (B)) ----
+
+export const DISCONTINUED_BY = ["provider", "owner"] as const;
+
+export const discontinuationNoticeInput = z.object({
+  sentOn: date,
+  /** Who was written to, and how (for example "LCRA by email, Acme Aerobics by letter, owner by email"). */
+  note: z.string().trim().min(3).max(1000),
+});
+
+export const contractDiscontinuation = z.object({
+  discontinuedBy: z.enum(DISCONTINUED_BY).nullable(),
+  serviceEndsOn: date.nullable(),
+  /** The latest day the written notice can go out: 30 days before service ends. */
+  noticeDueOn: date.nullable(),
+  /** Who must receive the notice under 285.7(d)(3). */
+  recipients: z.array(z.string()),
+  noticeSentOn: date.nullable(),
+  noticeNote: z.string().nullable(),
+});

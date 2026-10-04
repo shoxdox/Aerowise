@@ -1,11 +1,19 @@
 "use client";
 
-import type { CustomerDelivery, FilingStatus } from "@aerowise/domain";
+import {
+  CONTRACT_FILING_BASES,
+  CONTRACT_FILING_BASIS_DATE_LABELS,
+  CONTRACT_FILING_BASIS_LABELS,
+  type ContractFilingBasis,
+  type ContractFilingBasisState,
+  type CustomerDelivery,
+  type FilingStatus,
+} from "@aerowise/domain";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { FilingStatusBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, formValues } from "@/lib/api";
 import { day, when } from "@/lib/format";
 
 interface Status {
@@ -13,7 +21,16 @@ interface Status {
   signedDocumentSha256: string | null;
   uploadedDocuments: { id: string; filename: string; sha256: string; signedOn: string | null; uploadedAt: string; url: string }[];
   customerCopy: CustomerDelivery[];
-  authority: { filingId: string; status: FilingStatus; deadlineOn: string | null; sentAt: string | null; confirmedAt: string | null; reviewReason: string | null } | null;
+  authority: { filingId: string; status: FilingStatus; deadlineOn: string | null; deadlineBasis: string | null; sentAt: string | null; confirmedAt: string | null; reviewReason: string | null } | null;
+  basis: ContractFilingBasisState;
+  discontinuation: {
+    discontinuedBy: "provider" | "owner" | null;
+    serviceEndsOn: string | null;
+    noticeDueOn: string | null;
+    recipients: string[];
+    noticeSentOn: string | null;
+    noticeNote: string | null;
+  } | null;
 }
 
 /**
@@ -39,6 +56,35 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
     } finally {
       setBusy(false);
     }
+  }
+
+  const [basisChoice, setBasisChoice] = useState<ContractFilingBasis | "">("");
+  const [editingBasis, setEditingBasis] = useState(false);
+
+  async function save(path: string, method: "PUT" | "POST", body: object) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/contracts/${contractId}/${path}`, { method, body });
+      setEditingBasis(false);
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function saveBasis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    void save("filing-basis", "PUT", { basis: v.basis, basisOn: v.basisOn || null, note: v.note || null });
+  }
+
+  function saveNotice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    void save("discontinuation-notice", "POST", { sentOn: v.sentOn, note: v.note });
   }
 
   if (!data) return null;
@@ -89,6 +135,87 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
       </dd>
       <dt>Acknowledged</dt>
       <dd>{a?.confirmedAt ? when(a.confirmedAt) : <span className="muted">Not yet</span>}</dd>
+      {a && (
+        <>
+          <dt>Deadline</dt>
+          <dd>
+            {data.basis.basis ? CONTRACT_FILING_BASIS_LABELS[data.basis.basis] : <span className="muted">Kind of contract not recorded</span>}
+            {a.deadlineBasis && <div className="muted small">{a.deadlineBasis}</div>}
+            {data.basis.note && <div className="muted small">Note: {data.basis.note}</div>}
+            {editable && !editingBasis && (
+              <button className="link" onClick={() => setEditingBasis(true)}>
+                {data.basis.basis && !data.basis.derived ? "Change" : "Record which deadline applies"}
+              </button>
+            )}
+            {editable && editingBasis && (
+              <form className="stack" onSubmit={saveBasis}>
+                <select name="basis" required value={basisChoice} onChange={(e) => setBasisChoice(e.target.value as ContractFilingBasis)}>
+                  <option value="" disabled>
+                    What kind of contract is this?
+                  </option>
+                  {CONTRACT_FILING_BASES.map((b) => (
+                    <option key={b} value={b}>
+                      {CONTRACT_FILING_BASIS_LABELS[b]}
+                    </option>
+                  ))}
+                </select>
+                {basisChoice && CONTRACT_FILING_BASIS_DATE_LABELS[basisChoice] && (
+                  <label>
+                    {CONTRACT_FILING_BASIS_DATE_LABELS[basisChoice]}
+                    <input name="basisOn" type="date" required />
+                  </label>
+                )}
+                <input name="note" placeholder="Where this came from (optional)" />
+                <button className="primary" disabled={busy}>
+                  Save
+                </button>
+              </form>
+            )}
+          </dd>
+        </>
+      )}
+      {data.discontinuation && (
+        <>
+          <dt>Service ends</dt>
+          <dd>
+            {data.discontinuation.serviceEndsOn ? (
+              <>
+                Last day of service {day(data.discontinuation.serviceEndsOn)}
+                {data.discontinuation.discontinuedBy && `, ended by the ${data.discontinuation.discontinuedBy}`}
+              </>
+            ) : (
+              <span className="muted">Last day of service not recorded</span>
+            )}
+          </dd>
+          <dt>Ending notice</dt>
+          <dd>
+            {data.discontinuation.noticeSentOn ? (
+              <>
+                Sent {day(data.discontinuation.noticeSentOn)}: {data.discontinuation.noticeNote}
+              </>
+            ) : (
+              <>
+                <span className="restriction">
+                  Not recorded. Write to {data.discontinuation.recipients.join(", ").replace(/, ([^,]*)$/, " and $1")}
+                  {data.discontinuation.noticeDueOn && ` by ${day(data.discontinuation.noticeDueOn)}`} (30 TAC 285.7(d)(3)).
+                </span>
+                {editable && (
+                  <form className="stack" onSubmit={saveNotice}>
+                    <label>
+                      Notice sent on
+                      <input name="sentOn" type="date" required />
+                    </label>
+                    <input name="note" required placeholder="Who you wrote to, and how" />
+                    <button className="primary" disabled={busy}>
+                      Record notice
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+          </dd>
+        </>
+      )}
     </dl>
   );
 }

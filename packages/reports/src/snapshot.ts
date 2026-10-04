@@ -29,9 +29,13 @@ export interface ReportSnapshot {
    * response to each, as the authority requires (authority copy only).
    */
   responses?: { classification: "owner_complaint" | "monitoring_notice"; receivedAt: string; description: string; responseAction: string | null; respondedAt: string | null; outcome?: "resolved" | "outstanding" | null; carriedOver?: boolean }[];
-  /** Set on a corrected version: what it replaces and why. */
   /** Set on a corrected version. `amendments` are every corrected answer so far, by field key. */
   correction?: { version: number; supersedesReportId: string; reason: string; amendedFields: string[]; amendments?: { key: string; value: string | number | boolean | null }[] } | null;
+  /**
+   * Only on the signed copy of an authority report: the licensed maintenance provider's
+   * signature (30 TAC 285.7(b)(3)). The stored report snapshot never has it.
+   */
+  signature?: { name: string; licenseLabel: string; licenseNumber: string; typedName: string; statement: string; signedAt: string; reportVersion: number; reportSha256: string } | null;
   inspection: {
     id: string;
     arrivedAt: string;

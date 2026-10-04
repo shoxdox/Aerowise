@@ -17,7 +17,8 @@ import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction, type Updateable } from "kysely";
 import { adapterFor, adapterVersion, type CanonicalInspection, type JurisdictionAdapter } from "./adapter.ts";
 import type { EmailTransport } from "./email.ts";
-import { contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
+import { providerSignatureRequired, reportSignature } from "./signatures.ts";
+import { contractBasisOf, contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
 import { amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
 import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
 
@@ -206,6 +207,9 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
 }
 
 const NO_ADAPTER = "There is no way to file with this authority yet.";
+/** The review reason while a filing waits only for the maintenance provider's signature. */
+export const AWAITING_SIGNATURE = "Waiting for a licensed maintenance provider to sign the authority report";
+export const awaitingSignature = (version: number) => `${AWAITING_SIGNATURE} (version ${version}), as 30 TAC 285.7(b)(3) requires`;
 const reportsUnknown = (resolved: ResolvedJurisdiction) =>
   resolved.rules.inspectionReports?.submission === "unknown" ? `${resolved.authorityName} has not published how inspection reports are submitted, so this report cannot be filed through Aerowise.` : null;
 
@@ -316,7 +320,7 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
     .innerJoin("organizations as o", "o.id", "c.organizationId")
     .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
-    .select(["c.id", "c.siteId", "c.status", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+    .select(["c.id", "c.siteId", "c.status", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
     .where("c.organizationId", "=", args.organizationId)
     .where("c.id", "=", args.contractId)
     .executeTakeFirst();
@@ -339,7 +343,7 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
   const document = c.signedDocumentId
     ? null
     : await trx.selectFrom("contractDocuments").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", c.id).orderBy("createdAt", "desc").executeTakeFirst();
-  const deadline = resolved ? contractDeadline(resolved.rules, c.previousEndOn) : { deadlineOn: null, basis: null };
+  const deadline = resolved ? contractDeadline(resolved.rules, contractBasisOf(c)) : { deadlineOn: null, basis: null };
   const reviewReason = !resolved ? resolution.reviewReason : !c.signedDocumentId && !document ? NO_SIGNED_CONTRACT : null;
   const inserted = await trx
     .insertInto("filings")
@@ -470,6 +474,11 @@ export async function prepareFilingById(ctx: ComplianceContext, organizationId: 
     }
   }
   problems.push(...(await packageProblems(ctx.db, f, resolved, at)));
+  // Last, so it asks for a signature only on the version that will go out.
+  if (f.kind === "inspection_report" && !problems.length && providerSignatureRequired(resolved.rules)) {
+    const report = (await latestAuthorityReport(ctx.db, organizationId, f.inspectionId!))!;
+    if (!(await reportSignature(ctx.db, organizationId, report.id))) problems.push(awaitingSignature(report.version));
+  }
   if (problems.length) {
     const reason = problems.join("; ");
     await ctx.db
@@ -789,7 +798,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
       .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
       .innerJoin("organizations as o", "o.id", "c.organizationId")
       .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
-      .select(["c.signedDocumentId", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+      .select(["c.signedDocumentId", "c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
       .where("c.organizationId", "=", f.organizationId)
       .where("c.id", "=", f.contractId!)
       .executeTakeFirstOrThrow();
@@ -809,7 +818,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
       await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
       return;
     }
-    const deadline = contractDeadline(resolved.rules, c.previousEndOn);
+    const deadline = contractDeadline(resolved.rules, contractBasisOf(c));
     const set = {
       jurisdictionId: resolved.jurisdictionId,
       rulesetId: resolved.rulesetId,
@@ -882,4 +891,35 @@ export async function refreshFiling(ctx: ComplianceContext, organizationId: stri
     }
   });
   return prepareFilingById(ctx, organizationId, filingId, actorUserId);
+}
+
+/**
+ * Works out a contract filing's deadline again after its 285.7 basis was recorded. Only a
+ * filing that has not gone out changes; one already sent keeps the deadline it was sent
+ * against. Runs in the caller's transaction.
+ */
+export async function updateContractFilingDeadline(trx: Transaction<DB>, args: { organizationId: string; contractId: string; actorUserId: string | null; at: Date }) {
+  const filing = await trx.selectFrom("filings").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", args.contractId).executeTakeFirst();
+  if (!filing) return null;
+  const f = (await loadFiling(trx, args.organizationId, filing.id, true))!;
+  if (!["pending", "needs_review", "ready", "queued", "failed"].includes(f.status)) return f;
+  const resolved = await recordedJurisdiction(trx, f);
+  if (!resolved) return f;
+  const c = await trx
+    .selectFrom("contracts as c")
+    .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
+    .select(["c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn"])
+    .where("c.organizationId", "=", args.organizationId)
+    .where("c.id", "=", args.contractId)
+    .executeTakeFirstOrThrow();
+  const deadline = contractDeadline(resolved.rules, contractBasisOf(c));
+  const current = await trx.selectFrom("filings").select(["deadlineOn", "deadlineBasis"]).where("organizationId", "=", args.organizationId).where("id", "=", f.id).executeTakeFirstOrThrow();
+  if (deadline.deadlineOn === current.deadlineOn && deadline.basis === current.deadlineBasis) return f;
+  await trx.updateTable("filings").set({ deadlineOn: deadline.deadlineOn, deadlineBasis: deadline.basis, updatedAt: args.at }).where("organizationId", "=", args.organizationId).where("id", "=", f.id).execute();
+  await recordEvent(trx, f, args.at, args.actorUserId, {
+    type: "filing_deadline_changed",
+    summary: deadline.deadlineOn ? `Contract filing due ${deadline.deadlineOn}: ${deadline.basis}` : `Contract filing has no deadline: ${deadline.basis}`,
+    details: { deadlineOn: deadline.deadlineOn, previousDeadlineOn: current.deadlineOn },
+  });
+  return f;
 }

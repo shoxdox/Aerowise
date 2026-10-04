@@ -1,16 +1,24 @@
 import { createHash } from "node:crypto";
-import { openContractFiling, refreshFiling, type ComplianceContext } from "@aerowise/compliance";
+import { openContractFiling, refreshFiling, updateContractFilingDeadline, contractBasisOf, SignatureError, signAuthorityReport, signingPreview, type ComplianceContext } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
+  addDays,
   classifyInput,
+  contractDiscontinuation,
+  contractFilingBasis,
+  contractFilingBasisInput,
+  discontinuationNoticeInput,
   credential,
   credentialInput,
   credentialPatch,
   customerDelivery,
   id,
   officeServiceRequestInput,
+  reportSigning,
   responseInput,
   serviceRequestDetail,
+  signReportInput,
+  type ReportSigning,
   type Credential,
   type ServiceRequestDetail,
 } from "@aerowise/domain";
@@ -22,6 +30,27 @@ import { notFound, unprocessable } from "../lib/errors.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 
 const params = z.object({ id });
+
+/**
+ * The written notice a provider owes when a contract ends (30 TAC 285.7(d)(3)): to the
+ * permitting authority and the manufacturer, and to the owner too when the provider ends
+ * it, at least 30 days before service stops.
+ */
+export function discontinuationOf(
+  c: { discontinuedBy: "provider" | "owner" | null; serviceEndsOn: string | null; noticeSentOn: string | null; noticeNote: string | null },
+  authorityName: string | null,
+) {
+  const recipients = [authorityName ?? "the permitting authority", "the system's manufacturer"];
+  if (c.discontinuedBy !== "owner") recipients.push(c.discontinuedBy === "provider" ? "the owner" : "the owner, if the provider ended the contract");
+  return {
+    discontinuedBy: c.discontinuedBy,
+    serviceEndsOn: c.serviceEndsOn,
+    noticeDueOn: c.serviceEndsOn ? addDays(c.serviceEndsOn, -30) : null,
+    recipients,
+    noticeSentOn: c.noticeSentOn,
+    noticeNote: c.noticeNote,
+  };
+}
 const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
 
 /**
@@ -262,6 +291,78 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
   );
 
   /** Inspection filings at the site not yet sent, checked again now that a request's review or response changed. */
+  // ---- Maintenance provider signature (30 TAC 285.7(b)(3)) ----
+
+  async function signingState(organizationId: string, inspectionId: string, userId: string): Promise<ReportSigning> {
+    const insp = await db.selectFrom("inspections").select("id").where("organizationId", "=", organizationId).where("id", "=", inspectionId).executeTakeFirst();
+    if (!insp) throw notFound("Inspection not found");
+    let preview;
+    try {
+      preview = await signingPreview(db, { organizationId, inspectionId, userId, at: now() });
+    } catch (err) {
+      if (err instanceof SignatureError) throw notFound(err.message);
+      throw err;
+    }
+    const s = preview.existing;
+    return {
+      reportId: preview.report.id,
+      version: preview.report.version,
+      statement: s?.statement ?? preview.statement,
+      holderName: preview.holderName,
+      problems: preview.problems,
+      signature: s
+        ? { signedByName: s.signedByName, typedName: s.typedName, licenseNumber: s.licenseNumber, statement: s.statement, signedAt: s.signedAt.toISOString(), sha256: s.sha256 }
+        : null,
+    };
+  }
+
+  app.get(
+    "/inspections/:id/signature",
+    {
+      config: { permission: "filings:read" },
+      schema: {
+        tags: ["readiness"],
+        summary: "The maintenance provider's signature on the latest authority report, or what signing it would say and what stops you",
+        params,
+        response: { 200: reportSigning },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      return signingState(organizationId, req.params.id, userId);
+    },
+  );
+
+  app.post(
+    "/inspections/:id/signature",
+    {
+      config: { permission: "reports:sign" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Sign the latest authority report as the licensed maintenance provider (30 TAC 285.7(b)(3))",
+        description:
+          "Only someone with their own active, checked MP license can sign, by typing their name as it appears on the license. The filing sends the signed copy. A later report version needs its own signature.",
+        params,
+        body: signReportInput,
+        response: { 200: reportSigning },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      await signingState(organizationId, req.params.id, userId);
+      try {
+        await signAuthorityReport({ db, store: compliance.store }, { organizationId, inspectionId: req.params.id, userId, typedName: req.body.typedName, at: now() });
+      } catch (err) {
+        if (err instanceof SignatureError) throw unprocessable(err.message);
+        throw err;
+      }
+      await audit(db, req, { action: "report.signed", entityType: "inspection", entityId: req.params.id, changes: { typedName: req.body.typedName } });
+      const filing = await db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "=", req.params.id).executeTakeFirst();
+      if (filing) await refreshFiling(ctx(), organizationId, filing.id, userId);
+      return signingState(organizationId, req.params.id, userId);
+    },
+  );
+
   async function recheckHeldFilings(organizationId: string, siteId: string, actorUserId: string) {
     const held = await db
       .selectFrom("filings")
@@ -383,6 +484,83 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     },
   );
 
+  app.put(
+    "/contracts/:id/filing-basis",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Record which 30 TAC 285.7 deadline the contract's filing has: initial policy, first contract after it, renewal or replacement",
+        description: "A filing that has not gone out gets the new deadline. One already sent keeps the deadline it was sent against.",
+        params,
+        body: contractFilingBasisInput,
+        response: { 200: contractFilingBasis },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const at = now();
+      const basisOn = req.body.basis === "initial_policy" ? null : (req.body.basisOn ?? null);
+      await db.transaction().execute(async (trx) => {
+        const updated = await trx
+          .updateTable("contracts")
+          .set({ filingBasis: req.body.basis, filingBasisOn: basisOn, filingBasisNote: req.body.note ?? null, filingBasisSetBy: userId, filingBasisSetAt: at, updatedAt: at })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", req.params.id)
+          .returning("id")
+          .executeTakeFirst();
+        if (!updated) throw notFound("Contract");
+        await audit(trx, req, { action: "contract.filing_basis_set", entityType: "contract", entityId: updated.id, changes: { basis: req.body.basis, basisOn, note: req.body.note ?? null } });
+        await updateContractFilingDeadline(trx, { organizationId, contractId: updated.id, actorUserId: userId, at });
+      });
+      return { basis: req.body.basis, basisOn, note: req.body.note ?? null, derived: false };
+    },
+  );
+
+  app.post(
+    "/contracts/:id/discontinuation-notice",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Record the written notice that service is ending, sent to the authority and the manufacturer (and the owner, when the provider ends it)",
+        description: "30 TAC 285.7(d)(3)(A) and (B): at least 30 days before service stops. Aerowise records the notice; it does not send it.",
+        params,
+        body: discontinuationNoticeInput,
+        response: { 200: contractDiscontinuation },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const c = await db.transaction().execute(async (trx) => {
+        const row = await trx
+          .updateTable("contracts")
+          .set({ noticeSentOn: req.body.sentOn, noticeNote: req.body.note, noticeRecordedBy: userId, updatedAt: now() })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", req.params.id)
+          .where("status", "=", "cancelled")
+          .where("noticeSentOn", "is", null)
+          .returning(["id", "discontinuedBy", "serviceEndsOn", "noticeSentOn", "noticeNote"])
+          .executeTakeFirst();
+        if (!row) {
+          const exists = await trx.selectFrom("contracts").select(["status", "noticeSentOn"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+          if (!exists) throw notFound("Contract");
+          throw unprocessable(exists.status !== "cancelled" ? "Only a cancelled contract has a discontinuation notice" : "The notice is already recorded");
+        }
+        await audit(trx, req, { action: "contract.discontinuation_notice_recorded", entityType: "contract", entityId: row.id, changes: req.body });
+        return row;
+      });
+      const filing = await db
+        .selectFrom("filings as f")
+        .leftJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
+        .select("j.authorityName")
+        .where("f.organizationId", "=", organizationId)
+        .where("f.contractId", "=", c.id)
+        .executeTakeFirst();
+      return discontinuationOf(c, filing?.authorityName ?? null);
+    },
+  );
+
   app.get(
     "/contracts/:id/filing-status",
     {
@@ -398,8 +576,20 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
             uploadedDocuments: z.array(z.object({ id, filename: z.string(), sha256: z.string(), signedOn: z.iso.date().nullable(), uploadedAt: z.iso.datetime({ offset: true }), url: z.string() })),
             customerCopy: z.array(customerDelivery),
             authority: z
-              .object({ filingId: id, status: z.string(), deadlineOn: z.iso.date().nullable(), sentAt: z.iso.datetime({ offset: true }).nullable(), confirmedAt: z.iso.datetime({ offset: true }).nullable(), reviewReason: z.string().nullable() })
+              .object({
+                filingId: id,
+                status: z.string(),
+                deadlineOn: z.iso.date().nullable(),
+                deadlineBasis: z.string().nullable(),
+                sentAt: z.iso.datetime({ offset: true }).nullable(),
+                confirmedAt: z.iso.datetime({ offset: true }).nullable(),
+                reviewReason: z.string().nullable(),
+              })
               .nullable(),
+            /** Which 30 TAC 285.7 deadline the contract filing has. */
+            basis: contractFilingBasis,
+            /** Set once the contract is cancelled: the notice the provider owes before service stops. */
+            discontinuation: contractDiscontinuation.nullable(),
           }),
         },
       },
@@ -409,7 +599,22 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       const c = await db
         .selectFrom("contracts as c")
         .leftJoin("signedDocuments as d", (j) => j.onRef("d.id", "=", "c.signedDocumentId").onRef("d.organizationId", "=", "c.organizationId"))
-        .select(["c.id", "c.signedDocumentId", "d.signedAt", "d.pdfSha256"])
+        .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
+        .select([
+          "c.id",
+          "c.status",
+          "c.signedDocumentId",
+          "d.signedAt",
+          "d.pdfSha256",
+          "c.filingBasis",
+          "c.filingBasisOn",
+          "c.filingBasisNote",
+          "p.endOn as previousEndOn",
+          "c.discontinuedBy",
+          "c.serviceEndsOn",
+          "c.noticeSentOn",
+          "c.noticeNote",
+        ])
         .where("c.organizationId", "=", organizationId)
         .where("c.id", "=", req.params.id)
         .executeTakeFirst();
@@ -425,8 +630,15 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
               .orderBy("attemptedAt", "desc")
               .execute()
           : [],
-        db.selectFrom("filings").select(["id", "status", "deadlineOn", "sentAt", "confirmedAt", "reviewReason"]).where("organizationId", "=", organizationId).where("contractId", "=", c.id).executeTakeFirst(),
+        db
+          .selectFrom("filings as f")
+          .leftJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
+          .select(["f.id", "f.status", "f.deadlineOn", "f.deadlineBasis", "f.sentAt", "f.confirmedAt", "f.reviewReason", "j.authorityName"])
+          .where("f.organizationId", "=", organizationId)
+          .where("f.contractId", "=", c.id)
+          .executeTakeFirst(),
       ]);
+      const basis = contractBasisOf(c);
       return {
         signedAt: c.signedAt?.toISOString() ?? null,
         signedDocumentSha256: c.pdfSha256 ?? null,
@@ -440,8 +652,18 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         })),
         customerCopy: deliveries.map((d) => ({ ...d, attemptedAt: d.attemptedAt.toISOString() })),
         authority: filing
-          ? { filingId: filing.id, status: filing.status, deadlineOn: filing.deadlineOn, sentAt: filing.sentAt?.toISOString() ?? null, confirmedAt: filing.confirmedAt?.toISOString() ?? null, reviewReason: filing.reviewReason }
+          ? {
+              filingId: filing.id,
+              status: filing.status,
+              deadlineOn: filing.deadlineOn,
+              deadlineBasis: filing.deadlineBasis,
+              sentAt: filing.sentAt?.toISOString() ?? null,
+              confirmedAt: filing.confirmedAt?.toISOString() ?? null,
+              reviewReason: filing.reviewReason,
+            }
           : null,
+        basis: { ...basis, note: c.filingBasisNote },
+        discontinuation: c.status === "cancelled" ? discontinuationOf(c, filing?.authorityName ?? null) : null,
       };
     },
   );

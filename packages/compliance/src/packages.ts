@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, CREDENTIAL_LABELS, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, type SubmissionMethod } from "@aerowise/domain";
+import { addDays, CREDENTIAL_LABELS, type ContractFilingBasis, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, type SubmissionMethod } from "@aerowise/domain";
 import { fillPdfForm, renderCoverSheet } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
 import { latestAuthorityReport } from "./reports.ts";
+import { reportSignature } from "./signatures.ts";
 import { dateInZone, type ResolvedJurisdiction } from "./rulesets.ts";
 
 // A submission package is everything one submission of a filing consists of: who it goes
@@ -217,14 +218,16 @@ async function documentsFor(db: Executor, f: PackageFiling): Promise<PackageDocu
   if (f.kind === "inspection_report") {
     const report = f.inspectionId ? await latestAuthorityReport(db, f.organizationId, f.inspectionId) : null;
     if (!report) throw new PackageNotReady("The authority report has not been made yet");
+    // The maintenance provider's signed copy goes out when there is one (285.7(b)(3)).
+    const signed = await reportSignature(db, f.organizationId, report.id);
     return [
       {
         role: "inspection_report",
-        filename: `inspection-report-v${report.version}.pdf`,
-        storageKey: report.storageKey,
+        filename: signed ? `inspection-report-v${report.version}-signed.pdf` : `inspection-report-v${report.version}.pdf`,
+        storageKey: signed?.storageKey ?? report.storageKey,
         contentType: report.contentType,
-        sha256: report.sha256,
-        byteSize: report.byteSize,
+        sha256: signed?.sha256 ?? report.sha256,
+        byteSize: signed?.byteSize ?? report.byteSize,
         sourceId: report.id,
         sourceVersion: report.version,
       },
@@ -347,18 +350,58 @@ export async function ensurePackage(ctx: { db: Database; store: ObjectStore; now
 }
 
 /** The contract filing deadline: N days before the previous contract ends, when there is one. */
-export function contractDeadline(rules: RulesetRules, previousEndOn: string | null): { deadlineOn: string | null; basis: string } {
-  // 30 TAC 285.7(d)(2): the owner gives the permitting authority the signed contract 30 days
-  // before the initial two-year service policy expires, and each later contract at least 30
-  // days before the current one expires. It does not apply when a single-family owner
-  // maintains the system personally (285.7(d)(4)), which is never a provider's contract.
+/** Which 285.7 deadline a contract filing has, and the date it counts from. */
+export interface ContractBasis {
+  basis: ContractFilingBasis | null;
+  basisOn: string | null;
+  /** Worked out from the contract this one renews in Aerowise. */
+  derived: boolean;
+}
+
+/**
+ * A contract's filing basis: what a person recorded, or, for a contract renewed in
+ * Aerowise, a renewal of the one it follows. Otherwise unknown: Aerowise does not guess
+ * whether a first contract follows an initial policy, renews another provider's contract
+ * or replaces a discontinued one.
+ */
+export function contractBasisOf(c: { filingBasis: ContractFilingBasis | null; filingBasisOn: string | null; previousEndOn: string | null }): ContractBasis {
+  if (c.filingBasis) return { basis: c.filingBasis, basisOn: c.filingBasisOn, derived: false };
+  if (c.previousEndOn) return { basis: "renewal", basisOn: c.previousEndOn, derived: true };
+  return { basis: null, basisOn: null, derived: false };
+}
+
+/** 285.7(d)(3)(C): a replacement contract is due no later than 30 days after termination. */
+const REPLACEMENT_DAYS = 30;
+
+/**
+ * The deadline for filing a contract under 30 TAC 285.7, which differs by kind of contract:
+ * - initial two-year service policy: before the system is approved for use (285.7(c)); no date Aerowise knows
+ * - first contract after that policy: 30 days before the policy expires (285.7(d)(2))
+ * - later contracts: at least 30 days before the current contract expires (285.7(d)(2))
+ * - a new contract after one was discontinued: no later than 30 days after termination (285.7(d)(3)(C))
+ * None of this applies when a single-family owner maintains the system personally
+ * (285.7(d)(4)), which is never a provider's contract.
+ */
+export function contractDeadline(rules: RulesetRules, b: ContractBasis): { deadlineOn: string | null; basis: string } {
   const days = rules.contracts?.renewalDaysBeforePreviousEnd ?? null;
   if (days === null) return { deadlineOn: null, basis: "This authority publishes no contract deadline" };
-  if (previousEndOn) {
-    return { deadlineOn: addDays(previousEndOn, -days), basis: `${days} days before the previous contract ends on ${previousEndOn} (30 TAC 285.7(d)(2))` };
+  switch (b.basis) {
+    case "initial_policy":
+      return { deadlineOn: null, basis: "Initial two-year service policy: due before the system is approved for use (30 TAC 285.7(c)). Aerowise does not know that date, so no deadline is set." };
+    case "after_initial_policy":
+      return { deadlineOn: addDays(b.basisOn!, -days), basis: `${days} days before the initial two-year service policy expires on ${b.basisOn} (30 TAC 285.7(d)(2))` };
+    case "renewal":
+      return {
+        deadlineOn: addDays(b.basisOn!, -days),
+        basis: `${days} days before the current contract expires on ${b.basisOn} (30 TAC 285.7(d)(2))${b.derived ? "; that is the contract this one renews in Aerowise" : ""}`,
+      };
+    case "replacement":
+      return { deadlineOn: addDays(b.basisOn!, REPLACEMENT_DAYS), basis: `No later than ${REPLACEMENT_DAYS} days after the previous contract ended on ${b.basisOn} (30 TAC 285.7(d)(3)(C))` };
+    default:
+      return {
+        deadlineOn: null,
+        basis:
+          "No deadline set: record whether this is the initial two-year service policy, the first contract after it, a renewal or a replacement after a contract was discontinued. 30 TAC 285.7 gives each a different deadline.",
+      };
   }
-  return {
-    deadlineOn: null,
-    basis: `Due ${days} days before the contract it replaces (or the initial two-year service policy) ends (30 TAC 285.7(d)(2)); that date is not in Aerowise for this site, so no deadline is set. File it promptly.`,
-  };
 }
