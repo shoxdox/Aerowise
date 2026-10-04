@@ -108,19 +108,21 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
   }
 
   if (s.responses) {
-    heading("Owner complaints and monitoring notices since the last report");
+    heading("Owner complaints and monitoring notices");
     if (s.responses.length === 0) {
       doc.font("Helvetica").fontSize(10).fillColor("#000").text("None recorded in Aerowise.", left, doc.y);
     }
     for (const r of s.responses) {
       if (doc.y > doc.page.height - 100) doc.addPage();
       const kind = r.classification === "owner_complaint" ? "Owner complaint" : "Monitoring notice";
-      doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text(`${kind}, received ${when(r.receivedAt, s.timezone)}`, left, doc.y);
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text(`${kind}, received ${when(r.receivedAt, s.timezone)}${r.carriedOver ? " (from an earlier period, still open)" : ""}`, left, doc.y);
       doc.font("Helvetica").fontSize(10).text(r.description);
+      if (r.responseAction && r.respondedAt) doc.text(`Response (${when(r.respondedAt, s.timezone)}): ${r.responseAction}`);
+      const resolved = r.responseAction && r.outcome === "resolved";
       doc
-        .font(r.responseAction ? "Helvetica" : "Helvetica-Bold")
-        .fillColor(r.responseAction ? "#000" : FAIL)
-        .text(r.responseAction && r.respondedAt ? `Response (${when(r.respondedAt, s.timezone)}): ${r.responseAction}` : "No response recorded");
+        .font(resolved ? "Helvetica" : "Helvetica-Bold")
+        .fillColor(resolved ? "#000" : FAIL)
+        .text(resolved ? "Status: resolved" : r.responseAction ? "Status: outstanding (not yet resolved)" : `Status: outstanding, no response recorded as of ${when(s.inspection.completedAt, s.timezone)}`);
       doc.fillColor("#000").moveDown(0.3);
     }
   }

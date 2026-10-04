@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { bundledRulesets, contractDeadline, explainSite, loadCatalog } from "@aerowise/compliance";
+import { bundledRulesets, contractDeadline, explainSite, loadCatalog, submitFiling } from "@aerowise/compliance";
 import { complianceContext, drainTasks, runContractFilings } from "@aerowise/tasks";
 import { contractFilingRequired, mayAutoSubmit, profileStatus, type RulesetRules } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, JPEG, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 const mail = new FakeMail();
@@ -88,7 +88,7 @@ describe("authority profiles", () => {
     const example = ruleset("tx-example-county");
     expect(profileStatus(example)).toBe("fictional");
     expect(mayAutoSubmit(example)).toBe(true);
-    const draft = { ...example, profile: { status: "draft" as const, verifiedOn: "2026-10-04", sources: [], unresolved: ["x"] } };
+    const draft = { ...example, profile: { status: "draft" as const, sourcesCheckedOn: "2026-10-04", requirementEffective: { date: null, basis: "x" }, sources: [], unresolved: ["x"] } };
     expect(mayAutoSubmit(draft)).toBe(false);
     expect(mayAutoSubmit({ ...draft, profile: { ...draft.profile, status: "verified" as const, unresolved: [] } })).toBe(true);
   });
@@ -100,7 +100,11 @@ describe("authority profiles", () => {
     expect(contractFilingRequired(lcra)).toBe(true);
     const harris = ruleset("tx-harris-county-oce");
     expect(harris.inspectionReports?.submission).toBe("unknown");
-    expect(harris.effectiveFrom).toBe("2026-10-04");
+    // The day the sources were read is not presented as when Harris County's rule took effect.
+    expect(harris.profile).toMatchObject({ sourcesCheckedOn: "2026-10-04", requirementEffective: { date: null } });
+    expect(lcra.profile?.requirementEffective.date).toBe("2010-04-05");
+    // The six-month electronic-monitoring schedule stays off: every real authority is four months.
+    for (const r of [lcra, harris]) expect(r.service.intervalMonths).toBe(4);
   });
 });
 
@@ -239,7 +243,9 @@ describe("deadlines", () => {
 
     const rules = { contracts: { filingRequired: true, renewalDaysBeforePreviousEnd: 30, note: "" } } as unknown as RulesetRules;
     expect(contractDeadline(rules, "2026-11-30")).toMatchObject({ deadlineOn: "2026-10-31" });
-    expect(contractDeadline(rules, null)).toMatchObject({ deadlineOn: null, basis: expect.stringContaining("first contract") });
+    // A first contract in Aerowise: the end of what it replaces is unknown, so no date is invented.
+    expect(contractDeadline(rules, null)).toMatchObject({ deadlineOn: null, basis: expect.stringContaining("initial two-year service policy") });
+    expect(contractDeadline({ contracts: { filingRequired: true, note: "" } } as unknown as RulesetRules, "2026-11-30")).toMatchObject({ deadlineOn: null });
 
     const renewed = await s.api.post(`/contracts/${s.contract.id}/renew`, {});
     expect(renewed.statusCode).toBe(201);
@@ -287,43 +293,170 @@ describe("contract filings", () => {
 });
 
 describe("complaints and monitoring notices", () => {
-  it("holds the report until each request is reviewed and answered, then prints the responses on a new version", async () => {
+  const log = (s: Setup, receivedAt: string, description: string, kind = "odor") =>
+    s.api.post("/service-requests", { siteId: s.site.id, kind, description, receivedAt }).then((r) => r.json() as { id: string });
+  const responsesOf = async (reportId: string) =>
+    ((await ctx.db.selectFrom("reports").select("snapshot").where("id", "=", reportId).executeTakeFirstOrThrow()).snapshot as {
+      responses: { classification: string; description: string; responseAction: string | null; outcome: string | null; carriedOver: boolean }[];
+    }).responses;
+
+  it("asks only about requests in this reporting period, before the report goes out", async () => {
     mail.mode = "ok";
     const s = await lcraSetup(ctx);
-    const req1 = (await s.api.post("/service-requests", { siteId: s.site.id, kind: "odor", description: "Owner called about a smell by the spray heads", receivedAt: "2026-02-10T16:00:00Z" })).json();
-    const req2 = (await s.api.post("/service-requests", { siteId: s.site.id, kind: "alarm", description: "Remote monitor: aerator alarm", receivedAt: "2026-02-12T09:00:00Z" })).json();
-    const req3 = (await s.api.post("/service-requests", { siteId: s.site.id, kind: "question", description: "Asked about invoice", receivedAt: "2026-02-13T09:00:00Z" })).json();
+    // Before the contract started (2025-12-01): history, never asked about.
+    await log(s, "2025-06-10T15:00:00Z", "Old call from before this contract");
+    // After the inspection: belongs to the next report.
+    await log(s, "2026-03-01T17:00:00Z", "Called after the visit");
+    const inPeriod = await log(s, "2026-02-13T09:00:00Z", "Asked about an invoice", "question");
     await complete(s);
     await runWorker(ctx);
     const j = await assignLcra(s);
     await credentialsAndIdentifier(s, j);
     const [f] = await filings(s, "inspection_report");
     const held = (await s.api.post(`/filings/${f!.id}/recheck`, {})).json();
-    expect(held).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("3 service requests") });
-
-    // Nothing is classified for the office; each is decided by a person.
-    expect((await s.api.post(`/service-requests/${req1.id}/classify`, { classification: "owner_complaint" })).json()).toMatchObject({ classification: "owner_complaint" });
-    await s.api.post(`/service-requests/${req2.id}/classify`, { classification: "monitoring_notice", note: "Alarm from the panel's auto-dialer" });
-    await s.api.post(`/service-requests/${req3.id}/classify`, { classification: "not_reportable" });
-    const unanswered = (await detailOf(s, f!.id));
-    expect(unanswered).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("owner complaint received 2026-02-10 has no recorded response") });
-
-    expect((await s.api.post(`/service-requests/${req1.id}/response`, { action: "Too early", respondedAt: "2026-02-01T00:00:00Z" })).statusCode).toBe(422);
-    await s.api.post(`/service-requests/${req1.id}/response`, { action: "Visited, cleaned the spray heads and adjusted the timer", respondedAt: "2026-02-11T15:00:00Z" });
-    await s.api.post(`/service-requests/${req2.id}/response`, { action: "Replaced the aerator", respondedAt: "2026-02-12T17:00:00Z", jobId: s.job.jobId });
+    expect(held).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("1 service request at this site since the last report has not been reviewed") });
+    // Marking it not reportable releases the filing at once; nothing else holds it.
+    await s.api.post(`/service-requests/${inPeriod.id}/classify`, { classification: "not_reportable" });
     const ready = await detailOf(s, f!.id);
     expect(ready.status).toBe("ready");
-    // The report drawn before the responses was replaced by a linked version that has them.
-    expect(ready.reports.map((r: { version: number }) => r.version)).toEqual([2, 1]);
-    expect(ready.reports[0]).toMatchObject({ supersedesReportId: ready.reports[1].id, correctionReason: expect.stringContaining("complaint") });
-    const snap = await ctx.db.selectFrom("reports").select("snapshot").where("id", "=", ready.reports[0].id).executeTakeFirstOrThrow();
-    const responses = (snap.snapshot as { responses: { classification: string; responseAction: string }[] }).responses;
-    expect(responses.map((r) => r.classification)).toEqual(["owner_complaint", "monitoring_notice"]);
-    expect(responses[1]!.responseAction).toBe("Replaced the aerator");
-    expect(ready.packages[0].documents[1]).toMatchObject({ role: "inspection_report", sourceVersion: 2 });
+    expect(await responsesOf(ready.reports[0].id)).toEqual([]);
+  });
+
+  it("reports an unanswered or unfinished complaint as outstanding without holding the filing, and escalates it", async () => {
+    mail.mode = "ok";
+    const s = await lcraSetup(ctx);
+    const complaint = await log(s, "2026-02-10T16:00:00Z", "Owner called about a smell by the spray heads");
+    const alarm = await log(s, "2026-02-12T09:00:00Z", "Remote monitor: aerator alarm", "alarm");
+    const fixed = await log(s, "2026-02-14T09:00:00Z", "Owner reported a tripped breaker", "repair");
+    await complete(s);
+    await runWorker(ctx);
+    const j = await assignLcra(s);
+    await credentialsAndIdentifier(s, j);
+    // The alarm got a visit but the replacement part is on order; the breaker was fixed.
+    expect((await s.api.post(`/service-requests/${alarm.id}/response`, { action: "Visited, aerator motor failing, part ordered", respondedAt: "2026-02-12T17:00:00Z" })).statusCode).toBe(400);
+    await s.api.post(`/service-requests/${alarm.id}/response`, { action: "Visited, aerator motor failing, part ordered", respondedAt: "2026-02-12T17:00:00Z", outcome: "outstanding" });
+    await s.api.post(`/service-requests/${fixed.id}/response`, { action: "Reset the breaker and checked the wiring", respondedAt: "2026-02-14T15:00:00Z", outcome: "resolved" });
+    for (const r of [complaint, fixed]) await s.api.post(`/service-requests/${r.id}/classify`, { classification: "owner_complaint" });
+    await s.api.post(`/service-requests/${alarm.id}/classify`, { classification: "monitoring_notice" });
+    expect((await s.api.post(`/service-requests/${fixed.id}/response`, { action: "Too early", respondedAt: "2026-02-01T00:00:00Z", outcome: "resolved" })).statusCode).toBe(422);
+
+    // Recording the responses checked the held filing again: nothing waits on a repair.
+    const [f] = await filings(s, "inspection_report");
+    expect(f!.status).toBe("ready");
+    const detail = await detailOf(s, f!.id);
+    // The report drawn before the classifications was replaced by one that has them.
+    expect(detail.reports.map((r: { version: number }) => r.version)).toEqual([2, 1]);
+    expect(detail.reports[0]).toMatchObject({ supersedesReportId: detail.reports[1].id, correctionReason: expect.stringContaining("complaint") });
+    expect(await responsesOf(detail.reports[0].id)).toEqual([
+      expect.objectContaining({ classification: "owner_complaint", responseAction: null, outcome: null, carriedOver: false }),
+      expect.objectContaining({ classification: "monitoring_notice", responseAction: "Visited, aerator motor failing, part ordered", outcome: "outstanding" }),
+      expect.objectContaining({ classification: "owner_complaint", outcome: "resolved" }),
+    ]);
+    expect(detail.packages[0].documents[1]).toMatchObject({ role: "inspection_report", sourceVersion: 2 });
     // The customer copy is not an authority filing and is unaffected.
-    const customer = await ctx.db.selectFrom("reports").select("version").where("audience", "=", "customer").execute();
-    expect(customer).toEqual([{ version: 1 }]);
+    expect(await ctx.db.selectFrom("reports").select("version").where("audience", "=", "customer").execute()).toEqual([{ version: 1 }]);
+
+    // The office is told about the two that are not resolved, not the fixed one.
+    const inbox = (await s.api.get("/inbox")).json().items as { kind: string; title: string }[];
+    expect(inbox.filter((i) => i.kind === "complaint_unresolved").map((i) => i.title).sort()).toEqual(["Monitoring notice still outstanding", "Owner complaint with no response yet"]);
+
+    // A response recorded after the package was made but before sending: that package is
+    // never sent; a new submission carries a report with the response.
+    await s.api.post(`/service-requests/${complaint.id}/response`, { action: "Called the owner, visit booked", respondedAt: "2026-02-28T15:00:00Z", outcome: "outstanding" });
+    const redone = await detailOf(s, f!.id);
+    expect(redone).toMatchObject({ status: "ready", submissionNo: 2, attempts: [] });
+    expect(redone.packages.map((p: { submissionNo: number }) => p.submissionNo)).toEqual([2, 1]);
+    expect(redone.packages[1]).toEqual(detail.packages[0]);
+    expect(redone.packages[0].documents[1]).toMatchObject({ sourceVersion: 3 });
+    expect((await responsesOf(redone.reports[0].id))[0]).toMatchObject({ responseAction: "Called the owner, visit booked", outcome: "outstanding" });
+  });
+
+  it("carries an unresolved complaint onto the next report until it is resolved", async () => {
+    mail.mode = "ok";
+    const s = await lcraSetup(ctx);
+    const alarm = await log(s, "2026-02-12T09:00:00Z", "Remote monitor: aerator alarm", "alarm");
+    await s.api.post(`/service-requests/${alarm.id}/classify`, { classification: "monitoring_notice" });
+    await s.api.post(`/service-requests/${alarm.id}/response`, { action: "Part ordered", respondedAt: "2026-02-12T17:00:00Z", outcome: "outstanding" });
+    const first = await complete(s);
+
+    // A second visit in the next period.
+    ctx.now = new Date("2026-06-01T18:00:00Z");
+    const job = (await s.api.post("/jobs", { obligationId: s.contract.obligations[1].id, technicianId: s.tech.id, scheduledDate: "2026-06-01" })).json();
+    const clientId = "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d02";
+    const p = { ...payload(s), clientId, jobId: job.jobId, arrivedAt: "2026-06-01T15:00:00Z" };
+    await s.techApi.put("/inspections/sync", p);
+    // Photo ids are global, so the second visit's photos get their own.
+    for (const [n, key] of [[1, "overview"], [2, "chlorinator"]] as const) {
+      const res = await s.techApi.putImage(`/inspections/${clientId}/photos/00000000-0000-4000-8000-00000000001${n}`, JPEG, { "x-photo-key": key, "x-captured-at": "2026-06-01T15:10:00Z" });
+      expect(res.statusCode).toBe(201);
+    }
+    const second = (await s.techApi.put("/inspections/sync", { ...p, status: "completed", completedAt: "2026-06-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } })).json();
+    expect(second.status).toBe("completed");
+    await runWorker(ctx);
+
+    const authorityReport = async (inspectionId: string) =>
+      (await ctx.db.selectFrom("reports").select("id").where("inspectionId", "=", inspectionId).where("audience", "=", "authority").orderBy("version", "desc").executeTakeFirstOrThrow()).id;
+    expect(await responsesOf(await authorityReport(first.id))).toEqual([expect.objectContaining({ outcome: "outstanding", carriedOver: false })]);
+    expect(await responsesOf(await authorityReport(second.id))).toEqual([expect.objectContaining({ description: "Remote monitor: aerator alarm", outcome: "outstanding", carriedOver: true })]);
+
+    // Resolved before a later inspection: it drops off reports after that.
+    await s.api.post(`/service-requests/${alarm.id}/response`, { action: "Replaced the aerator motor", respondedAt: "2026-06-05T15:00:00Z", outcome: "resolved" });
+    const { responsesForInspection } = await import("@aerowise/compliance");
+    // For the June inspection it was still open on the day (resolved afterwards).
+    expect((await responsesForInspection(ctx.db, s.org.id, second.id)).reported).toEqual([expect.objectContaining({ carriedOver: true, outcome: "resolved" })]);
+    expect((await s.api.get("/inbox")).json().items.filter((i: { kind: string }) => i.kind === "complaint_unresolved")).toEqual([]);
+  });
+});
+
+describe("draft authority profiles", () => {
+  it("are never sent by the background: not on ready, not by sweeps, not by a stray queued task", async () => {
+    mail.mode = "ok";
+    mail.delivered.clear();
+    const { s, filingId } = await readyLcraFiling(ctx);
+    const calls = mail.calls;
+    // The worker, the contract sweep and a recheck of every waiting filing send nothing.
+    await runWorker(ctx);
+    await runContractFilings(complianceContext(tasks(ctx)), s.org.id);
+    await runWorker(ctx);
+    expect(mail.calls).toBe(calls);
+    expect((await detailOf(s, filingId)).status).toBe("ready");
+
+    // Even a send task queued without a person asking (a bug, or a hand-edited row) is refused.
+    await sql`update filings set status = 'queued' where id = ${filingId}`.execute(ctx.db);
+    expect(await submitFiling(complianceContext(tasks(ctx)), s.org.id, filingId)).toBeNull();
+    expect(mail.calls).toBe(calls);
+    const held = await detailOf(s, filingId);
+    expect(held).toMatchObject({ status: "ready", attempts: [] });
+    expect(await ctx.db.selectFrom("complianceEvents").select("eventType").where("filingId", "=", filingId).where("eventType", "=", "filing_held").execute()).toHaveLength(1);
+  });
+
+  it("are sent when a person presses Send, and the queue may retry that same request", async () => {
+    mail.mode = "fail";
+    mail.delivered.clear();
+    const { s, filingId } = await readyLcraFiling(ctx);
+    expect((await s.api.post(`/filings/${filingId}/submit`, {})).statusCode).toBe(200);
+    await runWorker(ctx);
+    expect((await detailOf(s, filingId)).status).toBe("failed");
+    // The queue's automatic retry of the office's request goes out with the same package.
+    mail.mode = "ok";
+    later(ctx, 60_000);
+    await runWorker(ctx);
+    const sent = await detailOf(s, filingId);
+    expect(sent.status).toBe("sent");
+    expect(mail.delivered.size).toBe(1);
+    // A rejected one that is corrected goes back to Ready, not out: a new submission needs a new Send.
+    await s.api.post(`/filings/${filingId}/reject`, { reason: "Wrong application number" });
+    expect((await s.api.post(`/filings/${filingId}/resubmit`, {})).json()).toMatchObject({ status: "ready", submissionNo: 2 });
+    await runWorker(ctx);
+    expect(mail.delivered.size).toBe(1);
+  });
+
+  it("can always be filed by hand, with the package the office downloads", async () => {
+    const { s, filingId } = await readyLcraFiling(ctx);
+    expect((await s.api.post(`/filings/${filingId}/manual`, {})).json()).toMatchObject({ status: "ready", submissionMethod: "manual_export" });
+    const sent = await s.api.post(`/filings/${filingId}/mark-sent`, { reference: null, note: "Emailed from the office mailbox" });
+    expect(sent.json()).toMatchObject({ status: "sent", proof: { kind: "manual_submission" } });
+    expect((await detailOf(s, filingId)).packages).toHaveLength(1);
   });
 });
 

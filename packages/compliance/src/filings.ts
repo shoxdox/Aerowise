@@ -58,6 +58,7 @@ type FilingRow = {
   status: FilingStatus;
   submissionMethod: SubmissionMethod | null;
   submissionNo: number;
+  sendRequestedSubmission: number | null;
   rulesetId: string | null;
   jurisdictionId: string | null;
   nextDueOn: string | null;
@@ -75,6 +76,7 @@ const filingColumns = [
   "status",
   "submissionMethod",
   "submissionNo",
+  "sendRequestedSubmission",
   "rulesetId",
   "jurisdictionId",
   "nextDueOn",
@@ -426,9 +428,8 @@ async function inspectionProblems(ctx: ComplianceContext, f: FilingRow, adapter:
       `${responses.unreviewed.length} service request${responses.unreviewed.length === 1 ? "" : "s"} at this site since the last report ${responses.unreviewed.length === 1 ? "has" : "have"} not been reviewed for reporting (owner complaint, monitoring notice or not reportable)`,
     );
   }
-  for (const r of responses.reported.filter((x) => !x.responseAction)) {
-    problems.push(`The ${r.classification === "owner_complaint" ? "owner complaint" : "monitoring notice"} received ${r.receivedAt.slice(0, 10)} has no recorded response`);
-  }
+  // A reportable request without a response, or with a problem still outstanding, does not
+  // hold the filing: the report says so, and the inbox escalates it.
   return problems;
 }
 
@@ -524,6 +525,16 @@ export async function submitFiling(ctx: ComplianceContext, organizationId: strin
   const claimed = await ctx.db.transaction().execute(async (trx) => {
     const f = await loadFiling(trx, organizationId, filingId, true);
     if (!f || f.submissionMethod !== "email" || !["queued", "failed", "submitting"].includes(f.status)) return null;
+    // Draft requirements: only a submission a person asked for goes out (Send now or Retry
+    // now; the queue's automatic retries of that same request are fine). Anything else that
+    // got queued (a sweep, a recheck) goes back to Ready.
+    const rules = await recordedJurisdiction(trx, f);
+    if (rules && !mayAutoSubmit(rules.rules) && f.sendRequestedSubmission !== f.submissionNo) {
+      if (f.status === "queued" || f.status === "failed") {
+        await move(trx, f, "ready", at, {}, { type: "filing_held", summary: `Not sent: ${rules.authorityName}'s requirements are a draft, so a person has to press Send` });
+      }
+      return null;
+    }
     if (f.status !== "submitting") await move(trx, f, "submitting", at, {}, null);
     const last = await trx.selectFrom("filingAttempts").select(sql<number>`coalesce(max(attempt_no), 0)::int`.as("n")).where("filingId", "=", f.id).executeTakeFirstOrThrow();
     const attemptNo = Number(last.n) + 1;
@@ -626,14 +637,16 @@ async function authorityName(trx: Executor, f: FilingRow) {
 /** Sends a ready email filing now (for rulesets that do not submit automatically). */
 export async function submitNow(trx: Transaction<DB>, ctx: Pick<ComplianceContext, "enqueue">, f: FilingRow, a: ActionArgs) {
   if (f.status !== "ready" || f.submissionMethod !== "email") throw new FilingStateError("Only a ready email filing can be sent");
-  await move(trx, f, "queued", a.at, {}, null, a.actorUserId);
+  await move(trx, f, "queued", a.at, { sendRequestedBy: a.actorUserId, sendRequestedSubmission: f.submissionNo }, null, a.actorUserId);
+  f.sendRequestedSubmission = f.submissionNo;
   await queueSubmit(trx, ctx, f, a.at);
 }
 
 /** Retries a failed email filing now. The retry reuses the submission's idempotency key. */
 export async function retryFiling(trx: Transaction<DB>, ctx: Pick<ComplianceContext, "enqueue">, f: FilingRow, a: ActionArgs) {
   if (f.status !== "failed") throw new FilingStateError("Only a failed filing can be retried");
-  await move(trx, f, "queued", a.at, {}, { type: "filing_retried", summary: "Sending retried by the office" }, a.actorUserId);
+  await move(trx, f, "queued", a.at, { sendRequestedBy: a.actorUserId, sendRequestedSubmission: f.submissionNo }, { type: "filing_retried", summary: "Sending retried by the office" }, a.actorUserId);
+  f.sendRequestedSubmission = f.submissionNo;
   await queueSubmit(trx, ctx, f, a.at);
 }
 
@@ -844,9 +857,29 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
  * pending one is prepared. Filings past that point are left alone.
  */
 export async function refreshFiling(ctx: ComplianceContext, organizationId: string, filingId: string, actorUserId: string) {
+  const at = ctx.now();
   await ctx.db.transaction().execute(async (trx) => {
     const f = await loadFiling(trx, organizationId, filingId, true);
-    if (f?.status === "needs_review") await recheckFiling(trx, f, { organizationId, filingId, actorUserId, at: ctx.now() });
+    if (f?.status === "needs_review") await recheckFiling(trx, f, { organizationId, filingId, actorUserId, at });
+    // Ready but not sent, and the complaint responses changed since its package was made:
+    // that package must not go out. It stays on record as never sent; a new submission
+    // gets a redrawn report and its own package.
+    if (f?.status === "ready" && f.kind === "inspection_report" && f.inspectionId) {
+      const report = await latestAuthorityReport(trx, organizationId, f.inspectionId);
+      const responses = await currentAuthorityResponses(trx, organizationId, f.inspectionId);
+      if (report && !sameResponses((report.snapshot as { responses?: typeof responses }).responses, responses)) {
+        f.submissionNo += 1;
+        await move(
+          trx,
+          f,
+          "pending",
+          at,
+          { submissionNo: f.submissionNo, sendRequestedBy: null, sendRequestedSubmission: null },
+          { type: "filing_reprepared", summary: `Complaint responses changed before sending; submission ${f.submissionNo - 1} was not sent and is replaced by submission ${f.submissionNo}` },
+          actorUserId,
+        );
+      }
+    }
   });
   return prepareFilingById(ctx, organizationId, filingId, actorUserId);
 }

@@ -182,6 +182,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     "responseAction",
     "respondedAt",
     "responseJobId",
+    "responseOutcome",
   ] as const;
 
   async function loadRequest(organizationId: string, requestId: string): Promise<ServiceRequestDetail> {
@@ -260,7 +261,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     },
   );
 
-  /** Inspection filings at the site that were waiting on a request's review or response, checked again. */
+  /** Inspection filings at the site not yet sent, checked again now that a request's review or response changed. */
   async function recheckHeldFilings(organizationId: string, siteId: string, actorUserId: string) {
     const held = await db
       .selectFrom("filings")
@@ -268,7 +269,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       .where("organizationId", "=", organizationId)
       .where("siteId", "=", siteId)
       .where("kind", "=", "inspection_report")
-      .where("status", "in", ["pending", "needs_review"])
+      .where("status", "in", ["pending", "needs_review", "ready"])
       .execute();
     for (const f of held) await refreshFiling(ctx(), organizationId, f.id, actorUserId);
   }
@@ -310,7 +311,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       config: { permission: "filings:write" },
       schema: {
         tags: ["readiness"],
-        summary: "Record how and when the provider responded (a visit, a call), as the authority report will print it",
+        summary: "Record how and when the provider responded (a visit, a call) and whether the problem is resolved or still outstanding, as the authority report will print it",
         params,
         body: responseInput,
         response: { 200: serviceRequestDetail },
@@ -330,7 +331,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         }
         await trx
           .updateTable("serviceRequests")
-          .set({ responseAction: req.body.action, respondedAt, responseJobId: req.body.jobId ?? null, responseRecordedBy: userId, updatedAt: now() })
+          .set({ responseAction: req.body.action, respondedAt, responseJobId: req.body.jobId ?? null, responseOutcome: req.body.outcome, responseRecordedBy: userId, updatedAt: now() })
           .where("id", "=", r.id)
           .execute();
         await audit(trx, req, { action: "service_request.responded", entityType: "service_request", entityId: r.id, changes: req.body });

@@ -141,6 +141,12 @@ export default function FilingPage() {
           <p className="restriction">
             This authority&apos;s requirements are a draft written from its public pages. Nothing is sent automatically; check the package below before sending.
           </p>
+          {f.profile!.sourcesCheckedOn && (
+            <p className="muted small">
+              Sources read {day(f.profile!.sourcesCheckedOn)}.{" "}
+              {f.profile!.requirementEffective?.date ? `Requirement in effect since ${day(f.profile!.requirementEffective.date)}.` : "When the requirement took effect is not published."}
+            </p>
+          )}
           {f.profile!.unresolved.length > 0 && (
             <details>
               <summary className="small">{f.profile!.unresolved.length} open questions</summary>
@@ -319,6 +325,9 @@ export default function FilingPage() {
           <div key={p.id} className="card stack">
             <div className="row">
               <strong>Submission {p.submissionNo}</strong>
+              {p.submissionNo < f.submissionNo && !f.attempts.some((a) => a.packageId === p.id) && !(f.proof && f.proof.kind === "manual_submission") && (
+                <span className="badge inactive">Never sent (replaced)</span>
+              )}
               <span className="muted small">
                 {p.method === "email" ? `Email to ${p.recipient ?? "—"}` : "By hand"} · made {when(p.createdAt)}
               </span>

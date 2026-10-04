@@ -82,10 +82,14 @@ export const classifyInput = z.object({
   note: z.string().trim().max(2000).nullish(),
 });
 
+export const RESPONSE_OUTCOMES = ["resolved", "outstanding"] as const;
+
 export const responseInput = z.object({
   action: z.string().trim().min(3).max(2000),
   respondedAt: datetime,
   jobId: id.nullish(),
+  /** Whether the problem is fixed, or still outstanding (a part on order, a repair scheduled). */
+  outcome: z.enum(RESPONSE_OUTCOMES),
 });
 
 export const serviceRequestDetail = z.object({
@@ -102,6 +106,7 @@ export const serviceRequestDetail = z.object({
   classifiedAt: datetime.nullable(),
   responseAction: z.string().nullable(),
   respondedAt: datetime.nullable(),
+  responseOutcome: z.enum(RESPONSE_OUTCOMES).nullable(),
   responseJobId: id.nullable(),
 });
 export type ServiceRequestDetail = z.infer<typeof serviceRequestDetail>;
@@ -114,6 +119,10 @@ export interface ReportedResponse {
   description: string;
   responseAction: string | null;
   respondedAt: string | null;
+  /** After the response: resolved, or still outstanding. Null when nothing was done yet. */
+  outcome: "resolved" | "outstanding" | null;
+  /** Received before this reporting period and still unresolved. */
+  carriedOver: boolean;
 }
 
 // Customer deliveries.

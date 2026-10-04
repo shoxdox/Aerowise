@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Database, DB } from "@aerowise/db";
 import { addDays, CREDENTIAL_LABELS, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, type SubmissionMethod } from "@aerowise/domain";
-import { renderCoverSheet } from "@aerowise/reports";
+import { fillPdfForm, renderCoverSheet } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
 import { latestAuthorityReport } from "./reports.ts";
@@ -13,6 +15,23 @@ import { dateInZone, type ResolvedJurisdiction } from "./rulesets.ts";
 // the office can always show exactly what was filed.
 
 type Executor = Database | Transaction<DB>;
+
+const FORMS_DIR = fileURLToPath(new URL("../forms/", import.meta.url));
+/** Official forms are US forms: dates go on them as MM/DD/YYYY. */
+const formValue = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v.slice(5, 7)}/${v.slice(8, 10)}/${v.slice(0, 4)}` : v);
+
+/** The authority's own form with the values filled in, after checking it is the copy the ruleset pinned. */
+export async function fillOfficialForm(sheet: NonNullable<RulesetRules["coverSheet"]>, fields: { label: string; value: string | null }[]) {
+  const form = sheet.officialForm!;
+  const template = readFileSync(FORMS_DIR + form.file);
+  if (sha256Hex(template) !== form.sha256) throw new Error(`The stored form ${form.file} is not the copy the ruleset was written against`);
+  const values: Record<string, string> = {};
+  for (const field of sheet.fields) {
+    const value = fields.find((x) => x.label === field.label)?.value;
+    if (field.formField && value) values[field.formField] = formValue(value);
+  }
+  return fillPdfForm(template, values);
+}
 
 export interface PackageFiling {
   id: string;
@@ -274,7 +293,9 @@ export async function ensurePackage(ctx: { db: Database; store: ObjectStore; now
   const sheet = rules.coverSheet?.appliesTo.includes(f.kind) ? rules.coverSheet : null;
   const fields = sheet ? sheet.fields.map((field) => ({ label: field.label, value: fieldValue(field, facts), required: field.required })) : [];
   if (sheet) {
-    const pdf = await renderCoverSheet({ title: sheet.title, formReference: sheet.formReference, fields, instructions: sheet.instructions ?? null, packageReference: id, generatedAt: at.toISOString() });
+    const pdf = sheet.officialForm
+      ? await fillOfficialForm(sheet, fields)
+      : await renderCoverSheet({ title: sheet.title, formReference: sheet.formReference, fields, instructions: sheet.instructions ?? null, packageReference: id, generatedAt: at.toISOString() });
     const storageKey = `${f.organizationId}/filings/${f.id}/package-${id}/cover-sheet.pdf`;
     await ctx.store.put(storageKey, pdf, "application/pdf");
     documents.unshift({ role: "cover_sheet", filename: "cover-sheet.pdf", storageKey, contentType: "application/pdf", sha256: sha256Hex(pdf), byteSize: pdf.length, sourceId: null, sourceVersion: null });
@@ -327,9 +348,17 @@ export async function ensurePackage(ctx: { db: Database; store: ObjectStore; now
 
 /** The contract filing deadline: N days before the previous contract ends, when there is one. */
 export function contractDeadline(rules: RulesetRules, previousEndOn: string | null): { deadlineOn: string | null; basis: string } {
+  // 30 TAC 285.7(d)(2): the owner gives the permitting authority the signed contract 30 days
+  // before the initial two-year service policy expires, and each later contract at least 30
+  // days before the current one expires. It does not apply when a single-family owner
+  // maintains the system personally (285.7(d)(4)), which is never a provider's contract.
   const days = rules.contracts?.renewalDaysBeforePreviousEnd ?? null;
-  if (previousEndOn && days !== null) {
-    return { deadlineOn: addDays(previousEndOn, -days), basis: `${days} days before the previous contract ends on ${previousEndOn} (30 TAC 285.7)` };
+  if (days === null) return { deadlineOn: null, basis: "This authority publishes no contract deadline" };
+  if (previousEndOn) {
+    return { deadlineOn: addDays(previousEndOn, -days), basis: `${days} days before the previous contract ends on ${previousEndOn} (30 TAC 285.7(d)(2))` };
   }
-  return { deadlineOn: null, basis: "No deadline is published for a first contract; file it promptly" };
+  return {
+    deadlineOn: null,
+    basis: `Due ${days} days before the contract it replaces (or the initial two-year service policy) ends (30 TAC 285.7(d)(2)); that date is not in Aerowise for this site, so no deadline is set. File it promptly.`,
+  };
 }

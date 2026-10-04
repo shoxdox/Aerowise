@@ -421,6 +421,8 @@ export interface FilingsTable {
   contractDocumentId: ColumnType<string | null, string | null | undefined, string | null>;
   deadlineBasis: ColumnType<string | null, string | null | undefined, string | null>;
   confirmationEvidence: ColumnType<unknown, string | null | undefined, string | null>;
+  sendRequestedBy: ColumnType<string | null, string | null | undefined, string | null>;
+  sendRequestedSubmission: ColumnType<number | null, number | null | undefined, number | null>;
   siteId: string;
   jurisdictionId: string | null;
   rulesetId: string | null;
@@ -883,6 +885,7 @@ export interface ServiceRequestsTable {
   respondedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   responseJobId: ColumnType<string | null, string | null | undefined, string | null>;
   responseRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
+  responseOutcome: ColumnType<"resolved" | "outstanding" | null, "resolved" | "outstanding" | null | undefined, "resolved" | "outstanding" | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }

@@ -9,8 +9,10 @@ import { when } from "@/lib/format";
 /**
  * Calls, portal requests and monitoring alerts at the site, each reviewed by a person:
  * an owner complaint or monitoring notice goes on the next authority report with the
- * response, everything else is marked not reportable. Nothing is classified automatically,
- * and an inspection filing waits until every request since the last report is reviewed.
+ * response and whether it is resolved, everything else is marked not reportable. Nothing
+ * is classified automatically. An inspection filing waits only for requests in its own
+ * reporting period to be reviewed; an unanswered or unresolved complaint is reported as
+ * outstanding rather than holding the filing.
  */
 export function SiteServiceRequests({ siteId, editable }: { siteId: string; editable: boolean }) {
   const { data, reload } = useLoad<{ items: ServiceRequestDetail[] }>(`/sites/${siteId}/service-requests`);
@@ -132,10 +134,11 @@ function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable:
           Response:{" "}
           {r.responseAction ? (
             <>
-              {r.responseAction} ({when(r.respondedAt)})
+              {r.responseAction} ({when(r.respondedAt)}){" "}
+              {r.responseOutcome === "resolved" ? <span className="badge completed">Resolved</span> : <span className="badge warn">Still outstanding</span>}
             </>
           ) : (
-            <span className="restriction">None recorded; the next authority report waits for it</span>
+            <span className="restriction">None recorded. Reports to the authority say it is outstanding until a response is recorded.</span>
           )}
           {editable && !responding && (
             <>
@@ -153,7 +156,7 @@ function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable:
           onSubmit={(event) => {
             event.preventDefault();
             const v = formValues(event.currentTarget);
-            void send(`/service-requests/${r.id}/response`, { action: v.action, respondedAt: new Date(v.respondedAt!).toISOString() }).then((ok) => ok && setResponding(false));
+            void send(`/service-requests/${r.id}/response`, { action: v.action, respondedAt: new Date(v.respondedAt!).toISOString(), outcome: v.outcome }).then((ok) => ok && setResponding(false));
           }}
         >
           <label>
@@ -163,6 +166,13 @@ function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable:
           <label>
             When
             <input name="respondedAt" type="datetime-local" required />
+          </label>
+          <label>
+            Is the problem resolved?
+            <select name="outcome" defaultValue={r.responseOutcome ?? "resolved"}>
+              <option value="resolved">Resolved</option>
+              <option value="outstanding">Still outstanding (part on order, repair scheduled)</option>
+            </select>
           </label>
           <div className="row">
             <button type="submit">Save</button>

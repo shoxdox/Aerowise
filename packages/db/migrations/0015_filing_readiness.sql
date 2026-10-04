@@ -103,6 +103,10 @@ alter table filings add column contract_document_id uuid;
 alter table filings add foreign key (organization_id, contract_document_id) references contract_documents (organization_id, id);
 -- Which event the deadline was counted from, in words, so nobody has to guess.
 alter table filings add column deadline_basis text;
+-- Who asked for which submission to be sent. Authorities with draft requirements never send
+-- on their own: the send task refuses a submission nobody asked for.
+alter table filings add column send_requested_by uuid references users (id);
+alter table filings add column send_requested_submission integer;
 -- What the office saw that showed the authority received or accepted it.
 alter table filings add column confirmation_evidence jsonb;
 alter table filings add constraint filings_kind_inspection check ((kind = 'inspection_report') = (inspection_id is not null and template_id is not null));
@@ -160,8 +164,11 @@ alter table service_requests add column responded_at timestamptz;
 alter table service_requests add column response_job_id uuid;
 alter table service_requests add foreign key (organization_id, response_job_id) references jobs (organization_id, id);
 alter table service_requests add column response_recorded_by uuid references users (id);
+-- Whether the problem is resolved or still outstanding after the response (a part on
+-- order, a repair scheduled). A response is reported either way; it need not be finished.
+alter table service_requests add column response_outcome text check (response_outcome in ('resolved', 'outstanding'));
 alter table service_requests add constraint service_requests_classified_check check ((report_classification is null) = (classified_at is null));
-alter table service_requests add constraint service_requests_response_check check ((responded_at is null) = (response_action is null));
+alter table service_requests add constraint service_requests_response_check check ((responded_at is null) = (response_action is null) and (response_action is null) = (response_outcome is null));
 create index service_requests_site_idx on service_requests (organization_id, site_id, received_at);
 
 -- Documents sent to customers (never to an authority; authority sends are filing attempts).

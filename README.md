@@ -95,7 +95,7 @@ packages/
 - Files (photos, report PDFs) are stored on local disk behind an interface; an S3-compatible store is needed before production.
 - **Real authorities are drafts.** `tx-lcra-ossf` and `tx-harris-county-oce` are written from public pages (docs/jurisdictions/) and list their open questions; a draft never sends on its own and Harris inspection reports are never sent (submission unpublished). Brazoria has no ruleset (its site refused every fetch). `tx-example-county` is fictional and is not loaded in production.
 - Authority boundaries are not automated: sites in counties LCRA or Harris County partly cover wait for a person to choose the authority with evidence.
-- The LCRA cover sheet is a reproduction of the form's fields, not LCRA's original PDF layout.
+- The LCRA cover sheet is LCRA's own fillable PDF, filled in and flattened. LCRA has not confirmed it accepts it filled electronically and emailed.
 - **Filing emails are not really sent.** They are written as `.eml` files to `<org>/outbox/` in file storage. Production needs a mail provider that honours an idempotency key (for example Resend's `Idempotency-Key`) behind the `EmailTransport` interface.
 - Acknowledgments are recorded by hand (reference, kind of evidence, date, from whom); nothing reads the authority's replies, and receipt files cannot be uploaded yet. Neither LCRA nor Harris County publishes an acknowledgment process.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.

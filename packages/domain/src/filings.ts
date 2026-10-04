@@ -28,8 +28,10 @@ export const FILING_STATE_MACHINE = {
   version: 2,
   transitions: {
     pending: ["ready", "needs_review"],
-    ready: ["queued", "sent", "needs_review"],
-    queued: ["submitting"],
+    // ready -> pending: its package went stale before sending (complaint responses changed).
+    ready: ["queued", "sent", "needs_review", "pending"],
+    // queued -> ready: the send task refused a submission nobody asked for (draft profile).
+    queued: ["submitting", "ready"],
     submitting: ["sent", "failed"],
     sent: ["confirmed", "rejected"],
     confirmed: [],
@@ -96,6 +98,11 @@ export const rulesetRules = z.object({
     type: z.enum(["county", "city", "state", "district", "river_authority"]),
   }),
   version: z.number().int().min(1),
+  /**
+   * When Aerowise starts applying this ruleset version (inspections and contracts dated
+   * from then use it). For real authorities this is not a claim about when the law took
+   * effect: that is `profile.requirementEffective`.
+   */
   effectiveFrom: isoDate,
   effectiveTo: isoDate.nullable().default(null),
   /** Where the rules came from. Placeholder rulesets must say they are not real. */
@@ -107,7 +114,10 @@ export const rulesetRules = z.object({
   profile: z
     .object({
       status: z.enum(PROFILE_STATUSES),
-      verifiedOn: isoDate,
+      /** When someone last read the sources below. Not an effective date. */
+      sourcesCheckedOn: isoDate,
+      /** When the authority's requirement took legal effect, with the evidence; null date when unpublished. */
+      requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string().min(1).max(500) }),
       sources: z.array(z.object({ title: z.string().min(1), url: z.url(), retrievedOn: isoDate, note: z.string().optional() })).min(1),
       /** Requirements not yet confirmed. A verified profile has none. */
       unresolved: z.array(z.string().min(1)),
@@ -177,10 +187,25 @@ export const rulesetRules = z.object({
             /** For `identifier`: which identifier key. */
             identifier: fieldKey.optional(),
             required: z.boolean(),
+            /** With `officialForm`: the name of the form's own field this value goes in. */
+            formField: z.string().min(1).max(200).optional(),
           }),
         )
         .min(1),
       instructions: z.string().max(500).optional(),
+      /**
+       * The authority's own fillable PDF, kept in packages/compliance/forms, pinned by hash.
+       * When set, the package carries that form filled in; otherwise Aerowise draws a sheet
+       * with the same fields.
+       */
+      officialForm: z
+        .object({
+          file: z.string().regex(/^[a-z0-9-]+\/[a-z0-9-]+\.pdf$/),
+          sha256: z.string().regex(/^[0-9a-f]{64}$/),
+          obtainedOn: isoDate,
+          obtainedFrom: z.string().min(1).max(500),
+        })
+        .optional(),
     })
     .optional(),
   service: z.object({
@@ -330,7 +355,7 @@ export const siteJurisdiction = z.object({
       assignedBy: z.string().nullable(),
     })
     .nullable(),
-  profile: z.object({ status: z.enum(PROFILE_STATUSES), unresolved: z.array(z.string()), howToDecide: z.string().nullable() }).nullable(),
+  profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), howToDecide: z.string().nullable() }).nullable(),
   identifiers: z.array(authorityIdentifierStatus),
 });
 export type SiteJurisdiction = z.infer<typeof siteJurisdiction>;
@@ -464,7 +489,7 @@ export const filingDetail = filingListItem.extend({
   /** Every package made for this filing, newest first. Each is exactly what was (or will be) sent. */
   packages: z.array(submissionPackage),
   confirmationEvidence: confirmationEvidence.nullable(),
-  profile: z.object({ status: z.enum(PROFILE_STATUSES), unresolved: z.array(z.string()), confirmationMode: z.enum(["manual_reference", "none_published"]), confirmationNote: z.string().nullable() }).nullable(),
+  profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), confirmationMode: z.enum(["manual_reference", "none_published"]), confirmationNote: z.string().nullable() }).nullable(),
   /** Report versions for an inspection filing, newest first; corrections link to what they replace. */
   reports: z.array(z.object({ id, version: z.number().int(), sha256: z.string(), supersedesReportId: id.nullable(), correctionReason: z.string().nullable(), generatedAt: z.iso.datetime({ offset: true }) })),
 });

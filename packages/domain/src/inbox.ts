@@ -17,6 +17,7 @@ export const EXCEPTION_KINDS = [
   "contract_expired",
   "renewal_needs_review",
   "service_request",
+  "complaint_unresolved",
   "sms_reply",
   "invoice_overdue",
   "payment_failed",

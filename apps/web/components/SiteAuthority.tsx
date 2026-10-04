@@ -4,7 +4,7 @@ import { AUTHORITY_EVIDENCE_KINDS, AUTHORITY_EVIDENCE_LABELS, type Jurisdiction,
 import { useState } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
-import { when } from "@/lib/format";
+import { day, when } from "@/lib/format";
 
 type EvidenceKind = (typeof AUTHORITY_EVIDENCE_KINDS)[number];
 
@@ -97,6 +97,12 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
             </button>
           </>
         )}
+          {data.profile?.sourcesCheckedOn && (
+            <p className="muted small">
+              Requirements read from the authority&apos;s public sources on {day(data.profile.sourcesCheckedOn)}.{" "}
+              {data.profile.requirementEffective?.date ? `In effect since ${day(data.profile.requirementEffective.date)}.` : "The authority does not publish when its requirement took effect."}
+            </p>
+          )}
         {data.assignment && (
           <p className="muted small">
             Based on: {AUTHORITY_EVIDENCE_LABELS[data.assignment.evidenceKind]}, {data.assignment.evidenceReference}

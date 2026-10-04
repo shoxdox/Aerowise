@@ -8,43 +8,96 @@
   "version": 1,
   "effectiveFrom": "2026-10-04",
   "effectiveTo": null,
-  "sourceReference": "DRAFT profile written 2026-10-04 from Harris County Engineering's Wastewater Quality Permitting page and TCEQ's OSSF maintenance page. Contract submission only; inspection report submission is not published. See docs/jurisdictions/tx-harris-county-oce.md.",
+  "sourceReference": "DRAFT profile, sources read 2026-10-04, from Harris County Engineering's Wastewater Quality Permitting page and TCEQ's OSSF maintenance page. Contract submission only; inspection report submission is not published. See docs/jurisdictions/tx-harris-county-oce.md.",
   "profile": {
     "status": "draft",
-    "verifiedOn": "2026-10-04",
+    "sourcesCheckedOn": "2026-10-04",
+    "requirementEffective": {
+      "date": null,
+      "basis": "Not published on Harris County's page. The contract requirement comes from 30 TAC 285.7 (in force for many years; the text read here is from the 2022 adoption, 47 TexReg 8898). Aerowise applies this ruleset from 2026-10-04 only because that is when the profile was written; that is not the legal effective date."
+    },
     "sources": [
-      { "title": "Harris County Engineering: Wastewater Quality Permitting", "url": "https://oce.harriscountytx.gov/Divisions/Watershed-Protection/Wastewater/Wastewater-Quality-Permitting", "retrievedOn": "2026-10-04", "note": "An owner of an approved and permitted OSSF system is required to have a Maintenance Contract with an OSSF Maintenance Provider ... Please submit your current Maintenance Contract to wastewater@harriscountytx.gov. Nothing about inspection reports. No last-updated date shown." },
-      { "title": "TCEQ OSSF maintenance requirements", "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html", "retrievedOn": "2026-10-04", "note": "Last modified 2026-03-03. Four-month reporting to the permitting authority and owner, within 14 days of the test." }
+      {
+        "title": "Harris County Engineering: Wastewater Quality Permitting",
+        "url": "https://oce.harriscountytx.gov/Divisions/Watershed-Protection/Wastewater/Wastewater-Quality-Permitting",
+        "retrievedOn": "2026-10-04",
+        "note": "An owner of an approved and permitted OSSF system is required to have a Maintenance Contract with an OSSF Maintenance Provider ... Please submit your current Maintenance Contract to wastewater@harriscountytx.gov. Nothing about inspection reports. No last-updated date shown."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-04",
+        "note": "Last modified 2026-03-03. Four-month reporting to the permitting authority and owner, within 14 days of the test."
+      },
+      {
+        "title": "TCEQ rule adoption, 30 TAC Chapter 285 (Project 2021-030-285-CE)",
+        "url": "https://www.tceq.texas.gov/downloads/rules/adoptions/21030285_ado-clean.pdf",
+        "retrievedOn": "2026-10-04",
+        "note": "Published 47 TexReg 8898 (2022-12-30). §285.7(d)(2): contract to the permitting authority 30 days before the initial two-year policy expires; later contracts at least 30 days before the contract expires. §285.7: the report includes any responses to owner complaints and goes to the permitting authority and owner within 14 days of the test. Read through a summarizer."
+      },
+      {
+        "title": "Fort Bend County: annual maintenance contract renewal",
+        "url": "https://www.fortbendcountytx.gov/government/departments/health-and-human-services/environmental-health/annual-maintenance-contract-renewal-fee",
+        "retrievedOn": "2026-10-04",
+        "note": "Quotes TAC 285.7(d)(2), including 'at least 30 days before the contract expires'. Fort Bend is not an authority in Aerowise; used only as a second reading of the rule."
+      }
     ],
     "unresolved": [
       "Harris County does not say on this page how maintenance inspection reports are submitted, so inspection filings are held for review and never sent.",
       "Which parts of Harris County this office covers (cities may run their own programs) is not stated; every site needs a reviewed assignment.",
-      "No contract filing deadline is published by Harris County; the 30-day renewal timing comes from 30 TAC 285.7.",
       "Harris County publishes no acknowledgment process.",
-      "The date Harris County's requirement took effect is not published; this profile applies from the day it was written."
+      "Harris County does not publish when its requirement took effect. The ruleset's start date (2026-10-04) is the day the profile was written, so Harris inspections and contracts dated earlier are held for review.",
+      "The 30-day contract timing was read from TCEQ's 2022 adoption of 30 TAC 285.7 through a page summarizer, not the official Texas Administrative Code text; confirm against the current rule before relying on the deadline in enforcement.",
+      "The six-month inspection schedule for systems with electronic monitoring is not available: Aerowise does not record whether a system has qualifying monitoring and automatic notification, so every site is held to four months."
     ]
   },
   "applicability": {
-    "counties": ["Harris"],
+    "counties": [
+      "Harris"
+    ],
     "assignment": "reviewed",
     "howToDecide": "Confirm with Harris County Engineering (Watershed Protection, Wastewater) or the site's OSSF permit that the county, not a city, permits this system. Record what you checked."
   },
-  "provider": { "responsibleProviderRequired": false },
-  "inspectionReports": { "submission": "unknown", "note": "Harris County publishes maintenance contract submission instructions only." },
+  "provider": {
+    "responsibleProviderRequired": false
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Harris County publishes maintenance contract submission instructions only."
+  },
   "contracts": {
     "filingRequired": true,
     "renewalDaysBeforePreviousEnd": 30,
-    "note": "Harris County: submit your current maintenance contract to wastewater@harriscountytx.gov. Timing from 30 TAC 285.7."
+    "note": "Harris County: submit your current maintenance contract to wastewater@harriscountytx.gov. Timing from 30 TAC 285.7(d)(2) (text read in TCEQ's 2022 adoption, 47 TexReg 8898; also quoted by Fort Bend County): the signed contract goes to the permitting authority 30 days before the initial two-year service policy expires, and each later contract at least 30 days before the current one expires. Not required when a single-family owner maintains the system personally (285.7(d)(4)); not for commercial, speculative residential or multifamily property."
   },
-  "service": { "intervalMonths": 4 },
-  "inspection": { "requiredFields": [], "requiredPhotos": [], "technicianLicenseRequired": false },
-  "filing": { "deadlineDays": 14, "warningDays": 5, "autoSubmit": false },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
   "submission": {
     "method": "email",
-    "email": { "to": "wastewater@harriscountytx.gov", "subject": "OSSF maintenance report, permit {permitNumber}", "contractSubject": "OSSF maintenance contract, permit {permitNumber}" },
+    "email": {
+      "to": "wastewater@harriscountytx.gov",
+      "subject": "OSSF maintenance report, permit {permitNumber}",
+      "contractSubject": "OSSF maintenance contract, permit {permitNumber}"
+    },
     "fallback": "manual_export",
     "portalUrl": null
   },
-  "customerCopy": { "required": true },
-  "confirmation": { "mode": "none_published", "note": "Harris County describes no reply to submitted contracts." }
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Harris County describes no reply to submitted contracts."
+  }
 }

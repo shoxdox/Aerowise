@@ -62,6 +62,9 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 ) => {
   const ctx = (): ComplianceContext => ({ ...compliance, db, now });
 
+  /** When the sources were read and when the requirement took effect: two different dates, kept apart. */
+  const profileDates = (rules: RulesetRules) => ({ sourcesCheckedOn: rules.profile?.sourcesCheckedOn ?? null, requirementEffective: rules.profile?.requirementEffective ?? null });
+
   const toJurisdiction = (entry: Awaited<ReturnType<typeof loadCatalog>>[number], onDate: string): Jurisdiction => {
     const rs = rulesetOn(entry, onDate) ?? entry.rulesets[0] ?? null;
     return {
@@ -137,7 +140,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             }
           : null,
       profile: resolved
-        ? { status: profileStatus(resolved.rules), unresolved: resolved.rules.profile?.unresolved ?? [], howToDecide: resolved.rules.applicability.howToDecide ?? null }
+        ? { status: profileStatus(resolved.rules), ...profileDates(resolved.rules), unresolved: resolved.rules.profile?.unresolved ?? [], howToDecide: resolved.rules.applicability.howToDecide ?? null }
         : null,
       identifiers: (resolved?.rules.identifiers ?? []).map((i) => {
         const value = values.find((v) => v.kind === i.key)?.value ?? null;
@@ -453,7 +456,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         createdAt: p.createdAt.toISOString(),
       })),
       profile: rules
-        ? { status: profileStatus(rules), unresolved: rules.profile?.unresolved ?? [], confirmationMode: rules.confirmation.mode, confirmationNote: rules.confirmation.note ?? null }
+        ? { status: profileStatus(rules), ...profileDates(rules), unresolved: rules.profile?.unresolved ?? [], confirmationMode: rules.confirmation.mode, confirmationNote: rules.confirmation.note ?? null }
         : null,
       reports: reports.map((r) => ({ ...r, generatedAt: r.generatedAt.toISOString() })),
     };

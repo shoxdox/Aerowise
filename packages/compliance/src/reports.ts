@@ -76,9 +76,18 @@ async function loadInspection(db: Executor, organizationId: string, inspectionId
 }
 
 /**
- * Owner complaints and monitoring notices at the site since the previous completed
- * inspection, up to this one, as the office classified them. Unreviewed requests in the
- * same window come back separately: a filing waits until each has been looked at.
+ * What the authority report says about owner complaints and monitoring notices, and which
+ * requests still need a person to look at them.
+ *
+ * The reporting period runs from the previous completed inspection (or, for a site's first
+ * report, from the day before the contract in force started) up to this inspection.
+ * - `reported`: requests in the period that the office classified as an owner complaint or
+ *   monitoring notice, plus earlier ones still unresolved (no response yet, or a response
+ *   that left the problem outstanding), carried forward until they are resolved.
+ * - `unreviewed`: requests in the period nobody has classified yet. Only these hold a
+ *   filing. A missing or unfinished response does not: it is reported as outstanding
+ *   (30 TAC 285.7 asks for "any responses to owner complaints", not finished repairs).
+ * Requests from before the period are not asked about again.
  */
 export async function responsesForInspection(db: Executor, organizationId: string, inspectionId: string) {
   const insp = await db
@@ -88,27 +97,48 @@ export async function responsesForInspection(db: Executor, organizationId: strin
     .where("id", "=", inspectionId)
     .executeTakeFirstOrThrow();
   if (!insp.completedAt) return { reported: [] as ReportedResponse[], unreviewed: [] as { id: string; receivedAt: string; description: string }[], since: null as string | null };
+  const completedAt = insp.completedAt;
   const previous = await db
     .selectFrom("inspections")
     .select("completedAt")
     .where("organizationId", "=", organizationId)
     .where("siteId", "=", insp.siteId)
     .where("status", "=", "completed")
-    .where("completedAt", "<", insp.completedAt)
+    .where("completedAt", "<", completedAt)
     .orderBy("completedAt", "desc")
     .limit(1)
     .executeTakeFirst();
-  let q = db
+  let since: Date | null = previous?.completedAt ?? null;
+  if (!since) {
+    const day = completedAt.toISOString().slice(0, 10);
+    const contract = await db
+      .selectFrom("contracts")
+      .select("startOn")
+      .where("organizationId", "=", organizationId)
+      .where("siteId", "=", insp.siteId)
+      .where("startOn", "<=", day)
+      .where("endOn", ">=", day)
+      .orderBy("startOn", "desc")
+      .executeTakeFirst();
+    // A day early, so no time zone can push a request on the start date out of the period.
+    if (contract) since = new Date(new Date(`${contract.startOn}T00:00:00Z`).getTime() - 86_400_000);
+  }
+  const rows = await db
     .selectFrom("serviceRequests")
-    .select(["id", "description", "receivedAt", "reportClassification", "responseAction", "respondedAt"])
+    .select(["id", "description", "receivedAt", "reportClassification", "responseAction", "respondedAt", "responseOutcome"])
     .where("organizationId", "=", organizationId)
     .where("siteId", "=", insp.siteId)
-    .where("receivedAt", "<=", insp.completedAt);
-  if (previous?.completedAt) q = q.where("receivedAt", ">", previous.completedAt);
-  const rows = await q.orderBy("receivedAt").orderBy("id").execute();
+    .where("receivedAt", "<=", completedAt)
+    .orderBy("receivedAt")
+    .orderBy("id")
+    .execute();
+  const inPeriod = (r: (typeof rows)[number]) => !since || r.receivedAt > since;
+  const reportable = (r: (typeof rows)[number]) => r.reportClassification === "owner_complaint" || r.reportClassification === "monitoring_notice";
+  // Resolved as of this inspection: a response recorded by then that closed the problem.
+  const resolvedBy = (r: (typeof rows)[number]) => r.responseOutcome === "resolved" && r.respondedAt !== null && r.respondedAt <= completedAt;
   return {
     reported: rows
-      .filter((r) => r.reportClassification === "owner_complaint" || r.reportClassification === "monitoring_notice")
+      .filter((r) => reportable(r) && (inPeriod(r) || !resolvedBy(r)))
       .map(
         (r): ReportedResponse => ({
           requestId: r.id,
@@ -117,10 +147,12 @@ export async function responsesForInspection(db: Executor, organizationId: strin
           description: r.description,
           responseAction: r.responseAction,
           respondedAt: r.respondedAt?.toISOString() ?? null,
+          outcome: r.responseAction ? (r.responseOutcome ?? "outstanding") : null,
+          carriedOver: !inPeriod(r),
         }),
       ),
-    unreviewed: rows.filter((r) => r.reportClassification === null).map((r) => ({ id: r.id, receivedAt: r.receivedAt.toISOString(), description: r.description })),
-    since: previous?.completedAt?.toISOString() ?? null,
+    unreviewed: rows.filter((r) => inPeriod(r) && r.reportClassification === null).map((r) => ({ id: r.id, receivedAt: r.receivedAt.toISOString(), description: r.description })),
+    since: since?.toISOString() ?? null,
   };
 }
 
@@ -383,7 +415,8 @@ export async function latestAuthorityReport(db: Executor, organizationId: string
 /** Two lists of responses say the same thing (what the authority would read). */
 export function sameResponses(a: ReportSnapshot["responses"] | undefined, b: ReportSnapshot["responses"] | undefined) {
   // Field by field: jsonb does not keep key order, so the stored copy cannot be compared as text.
-  const flat = (rs: ReportSnapshot["responses"] | undefined) => JSON.stringify((rs ?? []).map((r) => [r.classification, r.receivedAt, r.description, r.responseAction, r.respondedAt]));
+  const flat = (rs: ReportSnapshot["responses"] | undefined) =>
+    JSON.stringify((rs ?? []).map((r) => [r.classification, r.receivedAt, r.description, r.responseAction, r.respondedAt, r.outcome ?? null, r.carriedOver ?? false]));
   return flat(a) === flat(b);
 }
 
