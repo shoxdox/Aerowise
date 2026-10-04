@@ -8,7 +8,7 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 test.use({ geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"], serviceWorkers: "allow" });
 
-test("an inspection done with no signal reaches the office exactly once", async ({ page, context }) => {
+test("two inspections done with no signal reach the office exactly once", async ({ page, context }) => {
   const db = new pg.Client({ connectionString: databaseUrl });
   await db.connect();
   const count = async (query: string) => Number((await db.query(query)).rows[0].n);
@@ -36,34 +36,41 @@ test("an inspection done with no signal reaches the office exactly once", async 
       completed: await count("select count(*) as n from audit_events where action = 'inspection.completed'"),
       jobsDone: await count("select count(*) as n from jobs j join service_obligations o on o.id = j.obligation_id where j.status = 'completed' and o.status = 'completed'"),
     };
-    const card = page.locator(".stop-card", { hasText: "To do" }).first();
-    const customer = await card.locator("strong").innerText();
-    const stop = page.locator(".stop-card", { hasText: customer });
-    await card.click();
-    await page.getByRole("button", { name: "Arrive and start inspection" }).click();
+    // Two inspections, both with photos, with no signal.
+    const stops = [];
+    for (let i = 0; i < 2; i++) {
+      const card = page.locator(".stop-card", { hasText: "To do" }).first();
+      const customer = await card.locator("strong").innerText();
+      await card.click();
+      await page.getByRole("button", { name: "Arrive and start inspection" }).click();
 
-    await expect(page.getByRole("group", { name: "Aerator" })).toBeVisible();
-    for (const pass of await page.getByRole("button", { name: "Pass", exact: true }).all()) await pass.click();
-    await page.getByRole("group", { name: "Chlorine device" }).getByRole("button", { name: "Working" }).click();
-    await page.getByLabel("Chlorine level").fill("1.5");
-    await page.getByRole("group", { name: "Odor" }).getByRole("button", { name: "None" }).click();
-    await page.getByRole("group", { name: "Pumping needed" }).getByRole("button", { name: "No" }).click();
+      await expect(page.getByRole("group", { name: "Aerator" })).toBeVisible();
+      for (const pass of await page.getByRole("button", { name: "Pass", exact: true }).all()) await pass.click();
+      await page.getByRole("group", { name: "Chlorine device" }).getByRole("button", { name: "Working" }).click();
+      await page.getByLabel("Chlorine level").fill("1.5");
+      await page.getByRole("group", { name: "Odor" }).getByRole("button", { name: "None" }).click();
+      await page.getByRole("group", { name: "Pumping needed" }).getByRole("button", { name: "No" }).click();
 
-    // Finishing without photos is refused on the phone, with the reason.
-    await page.getByRole("button", { name: "Finish inspection" }).click();
-    await expect(page.locator(".problems")).toContainText("Overview of the unit: 1 more photo needed");
+      if (i === 0) {
+        // Finishing without photos is refused on the phone, with the reason.
+        await page.getByRole("button", { name: "Finish inspection" }).click();
+        await expect(page.locator(".problems")).toContainText("Overview of the unit: 1 more photo needed");
+      }
 
-    await page.getByLabel("Add photo: Overview of the unit").setInputFiles({ name: "overview.png", mimeType: "image/png", buffer: PNG });
-    await page.getByLabel("Add photo: Chlorinator").setInputFiles({ name: "chlorinator.png", mimeType: "image/png", buffer: PNG });
-    await expect(page.locator('[data-photo="chlorinator"]')).toContainText("1 taken");
-    await page.getByRole("button", { name: "Finish inspection" }).click();
+      await page.getByLabel("Add photo: Overview of the unit").setInputFiles({ name: "overview.png", mimeType: "image/png", buffer: PNG });
+      await page.getByLabel("Add photo: Chlorinator").setInputFiles({ name: "chlorinator.png", mimeType: "image/png", buffer: PNG });
+      await expect(page.locator('[data-photo="chlorinator"]')).toContainText("1 taken");
+      await page.getByRole("button", { name: "Finish inspection" }).click();
 
-    await expect(stop).toContainText("Done · not sent yet");
+      const stop = page.locator(".stop-card", { hasText: customer });
+      await expect(stop).toContainText("Done · not sent yet");
+      stops.push(stop);
+    }
     await expect(page.getByTestId("sync-status")).toContainText("No signal");
 
     // Closing and reopening the app with no signal loses nothing.
     await page.reload();
-    await expect(stop).toContainText("Done · not sent yet");
+    for (const stop of stops) await expect(stop).toContainText("Done · not sent yet");
     expect(await count("select count(*) as n from inspections")).toBe(before.inspections);
 
     // Back in signal, the first answer to the completing request is lost on the way
@@ -82,16 +89,18 @@ test("an inspection done with no signal reaches the office exactly once", async 
     await expect.poll(() => dropped, { timeout: 30_000 }).toBe(1);
     await page.getByRole("button", { name: "Try now" }).click({ timeout: 30_000 }).catch(() => {});
     await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
-    await expect(stop).toContainText("Done");
-    await expect(stop).not.toContainText("not sent");
+    for (const stop of stops) {
+      await expect(stop).toContainText("Done");
+      await expect(stop).not.toContainText("not sent");
+    }
 
-    // Exactly once on the server: one inspection, two photos, one completion.
-    expect(await count("select count(*) as n from inspections")).toBe(before.inspections + 1);
-    expect(await count("select count(*) as n from attachments")).toBe(before.attachments + 2);
-    expect(await count("select count(*) as n from audit_events where action = 'inspection.completed'")).toBe(before.completed + 1);
+    // Exactly once on the server: two inspections, four photos, two completions.
+    expect(await count("select count(*) as n from inspections")).toBe(before.inspections + 2);
+    expect(await count("select count(*) as n from attachments")).toBe(before.attachments + 4);
+    expect(await count("select count(*) as n from audit_events where action = 'inspection.completed'")).toBe(before.completed + 2);
     expect(await count("select count(*) as n from audit_events where action = 'inspection.completion_rejected'")).toBe(0);
     expect(await count("select count(*) as n from jobs j join service_obligations o on o.id = j.obligation_id where j.status = 'completed' and o.status = 'completed'")).toBe(
-      before.jobsDone + 1,
+      before.jobsDone + 2,
     );
   } finally {
     await db.end();
