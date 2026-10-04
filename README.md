@@ -57,7 +57,7 @@ pnpm build
 pnpm --filter @aerowise/web e2e   # offline sync test; run after `pnpm build`, needs Postgres on :5432 and ports 3000/4000 free
 ```
 
-CI runs all of these against Postgres on every pull request, plus a Docker build. The end-to-end test resets and seeds its own `aerowise_e2e` database.
+CI runs all of these against Postgres on every pull request. It also brings the stack up with `docker compose up`, seeds it, and runs `scripts/compose-smoke.sh`, which signs in through the web app as the office (inbox, a CSV import) and as the technician (today's route). The end-to-end test resets and seeds its own `aerowise_e2e` database.
 
 ## Layout
 
@@ -85,3 +85,5 @@ packages/
 - **Filing emails are not really sent.** They are written as `.eml` files to `<org>/outbox/` in file storage. Production needs a mail provider that honours an idempotency key (for example Resend's `Idempotency-Key`) behind the `EmailTransport` interface.
 - Confirmations are recorded by hand (the authority's reference number); nothing reads the authority's replies yet, and receipts cannot be uploaded yet.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.
+- **Imports** read the first sheet of an `.xlsx` or a CSV, up to 10 MB and 5,000 rows; old `.xls` files are refused. A committed import cannot be undone from the screen yet, though every customer and site it created carries its `import_id`.
+- Payments, invoicing, QuickBooks, e-signature, automatic renewals, the customer portal, SMS and route optimization are not built (see the scope note above).

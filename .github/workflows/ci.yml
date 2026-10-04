@@ -43,7 +43,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose build
+      # The README's Docker path, exactly as written, then a smoke test through the web app.
+      - run: docker compose up -d --build
+      - run: docker compose run --rm api pnpm db:seed
+      - run: ./scripts/compose-smoke.sh
+      - if: failure()
+        run: docker compose logs --no-color
 
   e2e:
     runs-on: ubuntu-latest
