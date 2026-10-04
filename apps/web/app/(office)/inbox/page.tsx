@@ -23,12 +23,16 @@ function href(e: InboxException): string | null {
       return e.site ? `/sites/${e.site.id}` : null;
     case "invoice":
       return `/invoices/${e.target.id}`;
+    case "quickbooks":
+      return "/quickbooks";
     default:
       return null;
   }
 }
 
 const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
+  quickbooks_conflict: "Decide",
+  quickbooks_failed: "Open QuickBooks",
   inspection_overdue: "Schedule",
   next_visit_late: "Schedule",
   filing_failed: "Open filing",
@@ -99,6 +103,16 @@ export default function InboxPage() {
     { label: "Filings at risk", value: data.counts.filingsAtRisk, href: "/filings", alert: data.counts.filingsAtRisk > 0 },
     { label: "Contracts expiring", value: data.counts.contractsExpiring, href: "/sites" },
     { label: `Unpaid invoices · ${money(data.counts.unpaidCents)}`, value: data.counts.unpaidInvoices, href: "/invoices" },
+    ...(data.quickbooks
+      ? [
+          {
+            label: data.quickbooks.status === "needs_reauth" ? "QuickBooks needs reconnecting" : data.quickbooks.setupState === "review" ? "QuickBooks: review matches" : "QuickBooks to decide",
+            value: data.quickbooks.attention,
+            href: data.quickbooks.setupState === "review" ? "/quickbooks/review" : "/quickbooks",
+            alert: data.quickbooks.status === "needs_reauth" || data.quickbooks.attention > 0,
+          },
+        ]
+      : []),
   ];
 
   return (

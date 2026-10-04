@@ -15,6 +15,7 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/due", label: "Due" },
     { href: "/filings", label: "Filings" },
     { href: "/invoices", label: "Invoices" },
+    ...(me.role !== "technician" ? [{ href: "/quickbooks", label: "QuickBooks" }] : []),
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },

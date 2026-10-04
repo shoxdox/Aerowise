@@ -2,9 +2,10 @@ import { hostname } from "node:os";
 import { syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
-import { runNextTask } from "@aerowise/tasks";
+import { quickBooksFromEnv } from "@aerowise/quickbooks";
+import { runNextTask, scheduleQuickBooksSyncs } from "@aerowise/tasks";
 
-// Runs background tasks (report PDFs, filing submissions) from the Postgres queue.
+// Runs background tasks (report PDFs, filing submissions, invoices, QuickBooks sync) from the Postgres queue.
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
@@ -17,7 +18,11 @@ const ctx = {
   mailFrom: process.env.FILING_EMAIL_FROM,
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
   appUrl: process.env.PUBLIC_APP_URL,
+  quickbooks: quickBooksFromEnv(db, process.env, process.env.NODE_ENV === "production"),
 };
+// Every connected QuickBooks company is synced at least this often (and soon after each change).
+const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);
+let nextSweep = 0;
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
 
@@ -32,6 +37,10 @@ console.log(`worker ${workerId} started`);
 while (!stopping) {
   let worked = false;
   try {
+    if (ctx.quickbooks && Date.now() >= nextSweep) {
+      nextSweep = Date.now() + quickbooksEveryMs;
+      await scheduleQuickBooksSyncs(db, new Date(), quickbooksEveryMs);
+    }
     worked = await runNextTask(ctx, workerId, console.log);
   } catch (err) {
     console.error("worker loop error", err);

@@ -11,6 +11,7 @@
   "dependencies": {
     "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
+    "@aerowise/quickbooks": "workspace:*",
     "@aerowise/storage": "workspace:*",
     "@aerowise/tasks": "workspace:*"
   },

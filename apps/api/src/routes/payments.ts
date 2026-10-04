@@ -1,7 +1,7 @@
 import type { Database } from "@aerowise/db";
 import { amountDue, billingSettings, billingSettingsInput, invoiceSnapshot, publicInvoice, type BillingSettings, type PublicInvoice } from "@aerowise/domain";
 import { applyStripeEvent, TestPaymentProvider, WebhookSignatureError } from "@aerowise/payments";
-import { billingEmail, payUrlFor } from "@aerowise/tasks";
+import { billingEmail, payUrlFor, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -261,6 +261,9 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           throw err;
         }
         const outcome = await applyStripeEvent(db, event, now());
+        // A cleared payment goes on to QuickBooks.
+        const applied = await db.selectFrom("stripeEvents").select("organizationId").where("id", "=", event.id).executeTakeFirst();
+        if (applied?.organizationId) await queueQuickBooksSync(db, applied.organizationId, now());
         req.log.info({ stripeEvent: event.id, type: event.type, outcome }, "stripe webhook");
         return reply.send({ received: true, outcome });
       },
