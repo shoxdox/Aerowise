@@ -30,7 +30,8 @@ export interface ReportSnapshot {
    */
   responses?: { classification: "owner_complaint" | "monitoring_notice"; receivedAt: string; description: string; responseAction: string | null; respondedAt: string | null }[];
   /** Set on a corrected version: what it replaces and why. */
-  correction?: { version: number; supersedesReportId: string; reason: string; amendedFields: string[] } | null;
+  /** Set on a corrected version. `amendments` are every corrected answer so far, by field key. */
+  correction?: { version: number; supersedesReportId: string; reason: string; amendedFields: string[]; amendments?: { key: string; value: string | number | boolean | null }[] } | null;
   inspection: {
     id: string;
     arrivedAt: string;

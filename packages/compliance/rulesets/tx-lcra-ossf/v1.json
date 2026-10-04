@@ -35,7 +35,7 @@
   "identifiers": [
     { "key": "lcra_ossf_application_number", "label": "LCRA OSSF Application Number", "required": true, "help": "Marked REQUIRED on LCRA's cover sheet. Find it on the LCRA permit or license to operate." }
   ],
-  "provider": { "responsibleProviderRequired": true },
+  "provider": { "responsibleProviderRequired": true, "technicianCredentialRequired": true },
   "inspectionReports": { "submission": "supported" },
   "contracts": {
     "filingRequired": true,

@@ -453,9 +453,11 @@ export async function prepareFilingById(ctx: ComplianceContext, organizationId: 
     const report = await latestAuthorityReport(ctx.db, organizationId, f.inspectionId!);
     // The authority report is not made yet; the reports task calls again when it is.
     if (!report) return f;
-    // Complaint responses reviewed after the report was drawn: draw it again before it goes.
+    problems.push(...(await inspectionProblems(ctx, f, adapter)));
+    // Complaint responses reviewed after the report was drawn: once nothing else holds the
+    // filing, draw it again (a linked version) so what goes out has them.
     const responses = await currentAuthorityResponses(ctx.db, organizationId, f.inspectionId!);
-    if (!sameResponses((report.snapshot as { responses?: typeof responses }).responses, responses)) {
+    if (!problems.length && !sameResponses((report.snapshot as { responses?: typeof responses }).responses, responses)) {
       await writeReportVersion(ctx.db, ctx.store, {
         organizationId,
         inspectionId: f.inspectionId!,
@@ -465,7 +467,6 @@ export async function prepareFilingById(ctx: ComplianceContext, organizationId: 
         now: at,
       });
     }
-    problems.push(...(await inspectionProblems(ctx, f, adapter)));
   }
   problems.push(...(await packageProblems(ctx.db, f, resolved, at)));
   if (problems.length) {
@@ -835,4 +836,17 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
   f.jurisdictionId = terms.jurisdictionId;
   f.submissionMethod = terms.submissionMethod;
   f.nextDueOn = terms.nextDueOn;
+}
+
+/**
+ * Checks a filing again after something it was waiting on changed (a signed contract
+ * uploaded, a complaint response recorded): a filing held in review is re-evaluated, and a
+ * pending one is prepared. Filings past that point are left alone.
+ */
+export async function refreshFiling(ctx: ComplianceContext, organizationId: string, filingId: string, actorUserId: string) {
+  await ctx.db.transaction().execute(async (trx) => {
+    const f = await loadFiling(trx, organizationId, filingId, true);
+    if (f?.status === "needs_review") await recheckFiling(trx, f, { organizationId, filingId, actorUserId, at: ctx.now() });
+  });
+  return prepareFilingById(ctx, organizationId, filingId, actorUserId);
 }

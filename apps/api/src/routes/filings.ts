@@ -405,9 +405,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           destination: current?.recipient ?? rules.submission.email?.to ?? null,
           portalUrl: rules.submission.portalUrl,
           subject: current?.subject ?? null,
+          // The filed document itself (report or contract), not the cover sheet.
           reportUrl: current
             ? currentDocs.length
-              ? packageFileUrl(organizationId, current.id, currentDocs.findIndex((d) => d.role !== "cover_sheet") === -1 ? 0 : currentDocs.findIndex((d) => d.role !== "cover_sheet"))
+              ? packageFileUrl(organizationId, current.id, Math.max(0, currentDocs.findIndex((d) => d.role !== "cover_sheet")))
               : null
             : f.reportId
               ? signer.url(organizationId, f.reportId, now().getTime(), "report-files")

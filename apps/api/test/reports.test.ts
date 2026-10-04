@@ -76,7 +76,8 @@ describe("inspection reports", () => {
     expect(customer!.photos).toHaveLength(2);
     expect(authority!.photos).toHaveLength(0);
     expect(customer!.issues.map((i) => i.type)).toEqual(["Pump-out needed", "Noncompliance"]);
-    expect(authority!.issues.map((i) => i.type)).toEqual(["Noncompliance"]);
+    // The authority sees every finding (pumping, failures, repairs), only not estimates.
+    expect(authority!.issues.map((i) => i.type)).toEqual(["Pump-out needed", "Noncompliance"]);
     expect(customer!.sha256).not.toBe(authority!.sha256);
   });
 

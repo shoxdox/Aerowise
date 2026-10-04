@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, CREDENTIAL_LABELS, credentialProblems, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, type SubmissionMethod } from "@aerowise/domain";
+import { addDays, CREDENTIAL_LABELS, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, type SubmissionMethod } from "@aerowise/domain";
 import { renderCoverSheet } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
@@ -74,9 +74,23 @@ async function filingFacts(db: Executor, f: PackageFiling, resolved: ResolvedJur
       : undefined,
   ]);
   let inspectionDate: string | null = null;
+  let technician: { userId: string; name: string; credentials: { kind: string; number: string; active: boolean; expiresOn: string | null }[] } | null = null;
   if (f.inspectionId) {
-    const insp = await db.selectFrom("inspections").select("completedAt").where("organizationId", "=", f.organizationId).where("id", "=", f.inspectionId).executeTakeFirstOrThrow();
+    const insp = await db
+      .selectFrom("inspections as i")
+      .innerJoin("users as u", "u.id", "i.technicianUserId")
+      .select(["i.completedAt", "i.technicianUserId", "u.name"])
+      .where("i.organizationId", "=", f.organizationId)
+      .where("i.id", "=", f.inspectionId)
+      .executeTakeFirstOrThrow();
     inspectionDate = insp.completedAt ? dateInZone(insp.completedAt, site.timezone) : null;
+    const credentials = await db
+      .selectFrom("providerCredentials")
+      .select(["kind", "number", "active", "expiresOn"])
+      .where("organizationId", "=", f.organizationId)
+      .where("userId", "=", insp.technicianUserId)
+      .execute();
+    technician = { userId: insp.technicianUserId, name: insp.name, credentials };
   }
   // The contract the filing is for, or the one in force on the inspection date.
   let contractQ = db
@@ -93,6 +107,7 @@ async function filingFacts(db: Executor, f: PackageFiling, resolved: ResolvedJur
     timezone: site.timezone,
     providerName: site.orgName,
     responsible: responsible ?? null,
+    technician,
     ownerName: site.displayName,
     address: [site.addressLine1, site.addressLine2, site.city, [site.state, site.postalCode].filter(Boolean).join(" ")].filter(Boolean).join(", "),
     permitNumber: site.permitNumber,
@@ -161,6 +176,11 @@ export async function packageProblems(db: Executor, f: PackageFiling, resolved: 
     if (!facts.responsible) problems.push("No responsible licensed maintenance provider is set for the organization (Settings, Credentials)");
     else if (facts.responsible.kind !== "tceq_maintenance_provider") problems.push(`The responsible provider's credential is a ${CREDENTIAL_LABELS[facts.responsible.kind as CredentialKind]}, not a TCEQ maintenance provider (MP) license`);
     else for (const p of credentialProblems(facts.responsible, facts.today)) problems.push(`The responsible provider's MP license ${facts.responsible.number} ${p}`);
+  }
+  if (f.kind === "inspection_report" && rules.provider?.technicianCredentialRequired && facts.technician) {
+    const onDate = facts.inspectionDate ?? facts.today;
+    const usable = facts.technician.credentials.filter((c) => INSPECTING_CREDENTIALS.includes(c.kind as CredentialKind) && !credentialProblems(c, onDate).length);
+    if (!usable.length) problems.push(`${facts.technician.name} has no active TCEQ maintenance provider license or maintenance technician registration on record for ${onDate} (Settings, Credentials)`);
   }
   const sheet = rules.coverSheet;
   if (sheet?.appliesTo.includes(f.kind)) {

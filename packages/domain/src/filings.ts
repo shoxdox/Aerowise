@@ -142,8 +142,12 @@ export const rulesetRules = z.object({
       }),
     )
     .optional(),
-  /** The licensed maintenance provider responsible for the filing must be on record. */
-  provider: z.object({ responsibleProviderRequired: z.boolean() }).optional(),
+  /**
+   * Credentials the authority needs on record: the licensed maintenance provider responsible
+   * for the filing, and (for inspection reports) an active MP license or maintenance
+   * technician registration held by whoever did the inspection, on the inspection date.
+   */
+  provider: z.object({ responsibleProviderRequired: z.boolean(), technicianCredentialRequired: z.boolean().optional() }).optional(),
   /**
    * Whether the authority has said how inspection reports reach it. `unknown` holds every
    * inspection filing in review: nothing is sent to a guessed address.

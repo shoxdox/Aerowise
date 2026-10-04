@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { openContractFiling, prepareFilingById, type ComplianceContext } from "@aerowise/compliance";
+import { openContractFiling, refreshFiling, type ComplianceContext } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
   classifyInput,
@@ -260,17 +260,17 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     },
   );
 
-  /** Filings that were held because this request was unreviewed or unanswered, checked again. */
-  async function recheckHeldFilings(organizationId: string, siteId: string) {
+  /** Inspection filings at the site that were waiting on a request's review or response, checked again. */
+  async function recheckHeldFilings(organizationId: string, siteId: string, actorUserId: string) {
     const held = await db
       .selectFrom("filings")
       .select("id")
       .where("organizationId", "=", organizationId)
       .where("siteId", "=", siteId)
       .where("kind", "=", "inspection_report")
-      .where("status", "=", "pending")
+      .where("status", "in", ["pending", "needs_review"])
       .execute();
-    for (const f of held) await prepareFilingById(ctx(), organizationId, f.id);
+    for (const f of held) await refreshFiling(ctx(), organizationId, f.id, actorUserId);
   }
 
   app.post(
@@ -298,7 +298,9 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           .execute();
         await audit(trx, req, { action: "service_request.classified", entityType: "service_request", entityId: r.id, changes: req.body });
       });
-      return loadRequest(organizationId, req.params.id);
+      const detail = await loadRequest(organizationId, req.params.id);
+      await recheckHeldFilings(organizationId, detail.siteId, userId);
+      return detail;
     },
   );
 
@@ -334,7 +336,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         await audit(trx, req, { action: "service_request.responded", entityType: "service_request", entityId: r.id, changes: req.body });
       });
       const detail = await loadRequest(organizationId, req.params.id);
-      await recheckHeldFilings(organizationId, detail.siteId);
+      await recheckHeldFilings(organizationId, detail.siteId, userId);
       return detail;
     },
   );
@@ -375,7 +377,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         await openContractFiling(trx, { organizationId, contractId: contract.id, actorUserId: userId, at: now() });
       });
       const filing = await db.selectFrom("filings").select(["id", "status", "signedDocumentId", "contractDocumentId"]).where("organizationId", "=", organizationId).where("contractId", "=", contract.id).executeTakeFirst();
-      if (filing?.status === "pending") await prepareFilingById(ctx(), organizationId, filing.id, userId);
+      if (filing) await refreshFiling(ctx(), organizationId, filing.id, userId);
       return reply.status(201).send({ id: docId, sha256, byteSize: bytes.length, filingId: filing?.id ?? null });
     },
   );

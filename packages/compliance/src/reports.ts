@@ -301,8 +301,7 @@ export async function writeReportVersion(
     .executeTakeFirst();
   if (!latest) throw new ReportCorrectionError("This inspection has no report to correct yet");
   // Corrections build on each other: earlier amendments stay unless amended again.
-  const earlier = ((latest.snapshot as ReportSnapshot).correction as (ReportSnapshot["correction"] & { amendments?: InspectionValues }) | null | undefined)?.amendments ?? {};
-  const amendments: InspectionValues = { ...earlier, ...(args.amendments ?? {}) };
+  const amendments: InspectionValues = { ...amendmentsOf(latest.snapshot), ...(args.amendments ?? {}) };
   const reportId = crypto.randomUUID();
   const version = latest.version + 1;
   const amendedFields = Object.keys(args.amendments ?? {});
@@ -319,8 +318,9 @@ export async function writeReportVersion(
     const problems = validateInspection(def, answers, photoCounts).filter((p) => amendedFields.includes(p.key));
     if (problems.length) throw new ReportCorrectionError(problems.map((p) => p.message).join("; "));
   }
-  // Kept on the snapshot so the next correction, and the filing checks, see them.
-  (snapshot.correction as ReportSnapshot["correction"] & { amendments: InspectionValues }).amendments = amendments;
+  // Kept on the snapshot so the next correction, and the filing checks, see them. Stored as
+  // a list: jsonb object keys come back camelCased by the database client, field keys would not.
+  snapshot.correction!.amendments = Object.entries(amendments).map(([key, value]) => ({ key, value }));
   const pdf = await renderReport(snapshot, images);
   const storageKey = `${args.organizationId}/reports/${args.inspectionId}/${args.audience}-v${version}-${reportId}.pdf`;
   await store.put(storageKey, pdf, "application/pdf");
@@ -382,12 +382,15 @@ export async function latestAuthorityReport(db: Executor, organizationId: string
 
 /** Two lists of responses say the same thing (what the authority would read). */
 export function sameResponses(a: ReportSnapshot["responses"] | undefined, b: ReportSnapshot["responses"] | undefined) {
-  return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+  // Field by field: jsonb does not keep key order, so the stored copy cannot be compared as text.
+  const flat = (rs: ReportSnapshot["responses"] | undefined) => JSON.stringify((rs ?? []).map((r) => [r.classification, r.receivedAt, r.description, r.responseAction, r.respondedAt]));
+  return flat(a) === flat(b);
 }
 
 /** Answers on the latest authority report: the inspection's, with any corrections over them. */
 export function amendmentsOf(snapshot: unknown): InspectionValues {
-  return ((snapshot as ReportSnapshot | null)?.correction as { amendments?: InspectionValues } | null | undefined)?.amendments ?? {};
+  const list = (snapshot as ReportSnapshot | null)?.correction?.amendments ?? [];
+  return Object.fromEntries(list.map((a) => [a.key, a.value as InspectionValues[string]]));
 }
 
 /** Rebuilds what the authority copy would say now, without storing anything. */
