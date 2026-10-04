@@ -18,6 +18,7 @@ import {
   type ValidationProblem,
   RENEWAL_STATUS_LABELS,
   SERVICE_REQUEST_LABELS,
+  formatPhone,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -343,6 +344,31 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
+  /** Texts from customers that are not STOP or START and nobody has dealt with yet. */
+  async function smsReplies(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("smsMessages as m")
+      .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "m.customerId").onRef("c.organizationId", "=", "m.organizationId"))
+      .select(["m.id", "m.body", "m.phone", "m.createdAt", "c.id as customerId", "c.displayName"])
+      .where("m.organizationId", "=", organizationId)
+      .where("m.direction", "=", "inbound")
+      .where("m.handledAt", "is", null)
+      .orderBy("m.createdAt")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      key: `sms_reply:${r.id}`,
+      kind: "sms_reply",
+      severity: "medium",
+      title: "Customer texted back",
+      detail: [`“${r.body.length > 140 ? `${r.body.slice(0, 140)}…` : r.body}”`, r.phone ? `from ${formatPhone(r.phone)}` : null, `received ${r.createdAt.toISOString().slice(0, 10)}`].filter(Boolean).join(" · "),
+      dueOn: null,
+      site: null,
+      customer: customer(r),
+      target: { type: "sms_message", id: r.id },
+    }));
+  }
+
   /** Overdue invoices, failed bank payments still owed, and money to give back. */
   async function invoiceExceptions(organizationId: string, today: string): Promise<InboxException[]> {
     const base = () =>
@@ -447,6 +473,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),
           serviceRequests(organizationId),
+          smsReplies(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),
         ]),

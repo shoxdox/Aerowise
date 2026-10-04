@@ -27,6 +27,8 @@ function href(e: InboxException): string | null {
       return "/quickbooks";
     case "renewal":
       return `/renewals/${e.target.id}`;
+    case "sms_message":
+      return "/sms?filter=replies";
     default:
       return null;
   }
@@ -48,7 +50,30 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   invoice_overdue: "Open invoice",
   payment_failed: "Open invoice",
   invoice_overpaid: "Refund",
+  sms_reply: "All texts",
 };
+
+/** A customer's text needs no written resolution: someone read it and acted. */
+function HandledButton({ e, onDone }: { e: InboxException; onDone: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  async function done() {
+    setError(null);
+    try {
+      await api(`/sms/messages/${e.target.id}/handled`, { method: "POST", body: {} });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save");
+    }
+  }
+  return (
+    <>
+      <button className="secondary" onClick={() => void done()}>
+        Mark handled
+      </button>
+      {error && <span className="error">{error}</span>}
+    </>
+  );
+}
 
 /** Accept an unfinished inspection, or close an issue or a service request, without leaving the inbox. */
 function InlineAction({ e, onDone }: { e: InboxException; onDone: () => void }) {
@@ -152,6 +177,7 @@ export default function InboxPage() {
                     {e.dueOn && <span className="muted small">{day(e.dueOn)}</span>}
                     <span className="spacer" />
                     {inline && <InlineAction e={e} onDone={() => void reload()} />}
+                    {editable && e.target.type === "sms_message" && <HandledButton e={e} onDone={() => void reload()} />}
                     {link && (
                       <Link href={link} className="button secondary">
                         {ACTION_LABEL[e.kind] ?? "Open"}

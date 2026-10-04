@@ -3,6 +3,7 @@ import { buildApp } from "./app.ts";
 import { LocalDiskStore } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
+import { smsFromEnv } from "@aerowise/sms";
 
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
@@ -25,6 +26,8 @@ const app = await buildApp({
   // Intuit keys connect real QuickBooks companies; without them, a test company outside production.
   quickbooks: quickBooksFromEnv(db, process.env, production),
   appUrl: process.env.PUBLIC_APP_URL,
+  // Twilio keys send real texts; without them, a test provider outside production.
+  sms: smsFromEnv(process.env, production),
 });
 
 const shutdown = async () => {

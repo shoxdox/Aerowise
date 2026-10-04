@@ -11,6 +11,7 @@ import {
   id,
   site,
   siteInput,
+  toE164,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -223,6 +224,17 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (ap
     if (!found) throw unprocessable("siteId does not belong to this customer");
   };
 
+  /**
+   * A number that replied STOP gets no texts until the customer texts START; the office
+   * cannot sign it back up.
+   */
+  const assertNotOptedOut = async (organizationId: string, phone: string | null | undefined) => {
+    const e164 = toE164(phone);
+    if (!e164) return;
+    const out = await db.selectFrom("smsOptOuts").select("phone").where("organizationId", "=", organizationId).where("phone", "=", e164).executeTakeFirst();
+    if (out) throw unprocessable("This number replied STOP to our texts. Only the customer can turn texts back on, by texting START.");
+  };
+
   app.post(
     "/customers/:id/contacts",
     {
@@ -233,6 +245,7 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (ap
       const { organizationId } = req.requireAuth();
       const parent = await findCustomer(organizationId, req.params.id);
       await assertSiteBelongsToCustomer(organizationId, parent.id, req.body.siteId);
+      if (req.body.consentSms) await assertNotOptedOut(organizationId, req.body.phone);
       const row = await db.transaction().execute(async (trx) => {
         const created = await trx
           .insertInto("contacts")
@@ -256,12 +269,16 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (ap
       const { organizationId } = req.requireAuth();
       const existing = await db
         .selectFrom("contacts")
-        .select(["id", "customerId"])
+        .select(["id", "customerId", "phone", "consentSms"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", req.params.id)
         .executeTakeFirst();
       if (!existing) throw notFound("Contact");
       await assertSiteBelongsToCustomer(organizationId, existing.customerId, req.body.siteId);
+      const consentSms = req.body.consentSms ?? existing.consentSms;
+      if (consentSms && (req.body.consentSms === true || req.body.phone !== undefined)) {
+        await assertNotOptedOut(organizationId, req.body.phone !== undefined ? req.body.phone : existing.phone);
+      }
       return db.transaction().execute(async (trx) => {
         const updated = await trx
           .updateTable("contacts")

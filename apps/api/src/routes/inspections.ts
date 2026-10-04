@@ -22,7 +22,7 @@ import {
   type TemplateDefinition,
 } from "@aerowise/domain";
 import { openFiling, siteRequirements } from "@aerowise/compliance";
-import { enqueue, GENERATE_REPORTS } from "@aerowise/tasks";
+import { enqueue, GENERATE_REPORTS, queueSms } from "@aerowise/tasks";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
@@ -257,6 +257,8 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
     // The filing waits for the authority report, which the reports task makes next.
     await openFiling(trx, { organizationId, inspectionId, actorUserId: req.requireAuth().userId, at });
     await enqueue(trx, { kind: GENERATE_REPORTS, organizationId, payload: { inspectionId }, dedupeKey: `reports:${inspectionId}`, runAt: at });
+    const site = await trx.selectFrom("sites").select("customerId").where("organizationId", "=", organizationId).where("id", "=", job.siteId).executeTakeFirstOrThrow();
+    await queueSms(trx, organizationId, { kind: "inspection_completed", customerId: site.customerId, siteId: job.siteId, relatedType: "inspection", relatedId: inspectionId, dedupeKey: `inspection_completed:${inspectionId}` }, at);
   }
 
   app.get(

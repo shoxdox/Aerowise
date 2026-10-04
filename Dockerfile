@@ -15,6 +15,7 @@ COPY packages/payments/package.json packages/payments/
 COPY packages/quickbooks/package.json packages/quickbooks/
 COPY packages/renewals/package.json packages/renewals/
 COPY packages/reports/package.json packages/reports/
+COPY packages/sms/package.json packages/sms/
 COPY packages/storage/package.json packages/storage/
 COPY packages/tasks/package.json packages/tasks/
 RUN pnpm install --frozen-lockfile

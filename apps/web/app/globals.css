@@ -182,3 +182,4 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 /* Customer portal */
 .ok-text { color: #17603f; }
 .portal-url { word-break: break-all; font-size: 0.85rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.notice { background: var(--warn-bg); color: var(--warn-text); padding: 8px 12px; border-radius: 8px; margin: 0; }

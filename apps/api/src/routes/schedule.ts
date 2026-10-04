@@ -43,6 +43,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "j.technicianUserId as technicianId",
         "u.name as technicianName",
         "j.notes",
+        "j.onTheWayAt",
         "o.id as obligationId",
         "o.sequence",
         "o.dueOn",
@@ -102,6 +103,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     technicianId: r.technicianId,
     technicianName: r.technicianName,
     notes: r.notes,
+    onTheWayAt: r.onTheWayAt?.toISOString() ?? null,
     obligation: r.obligationId && r.sequence !== null && r.dueOn && r.windowEnd
       ? { id: r.obligationId, sequence: r.sequence, dueOn: r.dueOn, windowEnd: r.windowEnd }
       : null,
