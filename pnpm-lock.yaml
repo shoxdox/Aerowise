@@ -47,6 +47,9 @@ importers:
       '@aerowise/renewals':
         specifier: workspace:*
         version: link:../../packages/renewals
+      '@aerowise/routing':
+        specifier: workspace:*
+        version: link:../../packages/routing
       '@aerowise/sms':
         specifier: workspace:*
         version: link:../../packages/sms
@@ -151,6 +154,9 @@ importers:
       '@aerowise/quickbooks':
         specifier: workspace:*
         version: link:../../packages/quickbooks
+      '@aerowise/routing':
+        specifier: workspace:*
+        version: link:../../packages/routing
       '@aerowise/sms':
         specifier: workspace:*
         version: link:../../packages/sms
@@ -289,6 +295,22 @@ importers:
         specifier: ^0.17.6
         version: 0.17.6
 
+  packages/routing:
+    dependencies:
+      '@aerowise/db':
+        specifier: workspace:*
+        version: link:../db
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@22.20.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/sms:
     dependencies:
       '@aerowise/db':
@@ -337,6 +359,9 @@ importers:
       '@aerowise/reports':
         specifier: workspace:*
         version: link:../reports
+      '@aerowise/routing':
+        specifier: workspace:*
+        version: link:../routing
       '@aerowise/sms':
         specifier: workspace:*
         version: link:../sms

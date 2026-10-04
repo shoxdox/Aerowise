@@ -12,6 +12,7 @@
     "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
     "@aerowise/quickbooks": "workspace:*",
+    "@aerowise/routing": "workspace:*",
     "@aerowise/sms": "workspace:*",
     "@aerowise/storage": "workspace:*",
     "@aerowise/tasks": "workspace:*"

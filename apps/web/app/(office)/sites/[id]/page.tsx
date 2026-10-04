@@ -37,7 +37,10 @@ export default function SitePage() {
     event.preventDefault();
     const v = formValues(event.currentTarget);
     const flags = new FormData(event.currentTarget).getAll("safetyFlags").map(String);
+    // Typed coordinates pin the site; clearing a pin hands it back to the address lookup.
+    const pin = v.lat && v.lng ? { lat: Number(v.lat), lng: Number(v.lng) } : site!.locationSource === "manual" ? { lat: null, lng: null } : {};
     void save(`/sites/${id}`, "PATCH", {
+      ...pin,
       addressLine1: v.addressLine1,
       city: v.city,
       postalCode: v.postalCode ?? null,
@@ -116,6 +119,14 @@ export default function SitePage() {
             Gate code
             <input name="gateCode" defaultValue={site.gateCode ?? ""} />
           </label>
+          <label>
+            Latitude
+            <input name="lat" inputMode="decimal" defaultValue={site.locationSource === "manual" ? String(site.lat) : ""} placeholder="Found from the address" />
+          </label>
+          <label>
+            Longitude
+            <input name="lng" inputMode="decimal" defaultValue={site.locationSource === "manual" ? String(site.lng) : ""} placeholder="Found from the address" />
+          </label>
           <fieldset className="wide">
             <legend>Safety and access</legend>
             {SAFETY_FLAGS.map((f) => (
@@ -146,6 +157,16 @@ export default function SitePage() {
           <dd>{site.county ?? "—"}</dd>
           <dt>Gate code</dt>
           <dd>{site.gateCode ?? "—"}</dd>
+          <dt>Location</dt>
+          <dd>
+            {site.lat !== null
+              ? site.locationSource === "manual"
+                ? "Placed by hand"
+                : "Found from the address"
+              : site.geocodeStatus === "not_found"
+                ? "Address not found on the map. Correct it, or enter latitude and longitude."
+                : "Being looked up"}
+          </dd>
           <dt>Access notes</dt>
           <dd>{site.accessNotes ?? "—"}</dd>
           <dt>Scheduling</dt>

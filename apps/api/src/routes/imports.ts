@@ -15,6 +15,7 @@ import {
   type ColumnMapping,
   type ExistingRecords,
 } from "@aerowise/domain";
+import { queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Insertable, type Transaction } from "kysely";
 import { z } from "zod";
@@ -35,7 +36,7 @@ function chunks<T>(items: T[]): T[][] {
   return out;
 }
 
-export const importRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (app, { db }) => {
+export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }> = async (app, { db, now }) => {
   async function findImport(organizationId: string, importId: string) {
     const row = await db
       .selectFrom("imports")
@@ -308,6 +309,8 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (app,
             .executeTakeFirst();
           // Two commits at once: the second finds the import already committed.
           if (!done) throw new HttpError(409, "import_closed", "This import was committed by someone else");
+          // Put the new sites on the map.
+          await queueSiteLocating(trx, organizationId, `import:${imp.id}`, now());
           await audit(trx, req, { action: "import.committed", entityType: "import", entityId: imp.id, changes: { ...result, rows: included.length } });
         });
       } catch (err) {

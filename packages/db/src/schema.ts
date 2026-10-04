@@ -47,6 +47,13 @@ export interface OrganizationsTable {
   smsEnabled: Generated<boolean>;
   smsKinds: ColumnType<SmsKind[], SmsKind[] | undefined, SmsKind[]>;
   smsFromNumber: ColumnType<string | null, string | null | undefined, string | null>;
+  routeStartAddress: ColumnType<string | null, string | null | undefined, string | null>;
+  routeStartLat: ColumnType<number | null, number | null | undefined, number | null>;
+  routeStartLng: ColumnType<number | null, number | null | undefined, number | null>;
+  routeReturnToStart: Generated<boolean>;
+  routeStopMinutes: Generated<number>;
+  routeDayMinutes: Generated<number>;
+  routeSpeedMph: Generated<number>;
   createdAt: CreatedAt;
 }
 
@@ -109,6 +116,8 @@ export interface SitesTable {
   county: string | null;
   lat: number | null;
   lng: number | null;
+  locationSource: ColumnType<"manual" | "geocoder" | null, "manual" | "geocoder" | null | undefined, "manual" | "geocoder" | null>;
+  geocodeStatus: ColumnType<"not_found" | null, "not_found" | null | undefined, "not_found" | null>;
   permitNumber: string | null;
   accessNotes: string | null;
   gateCode: string | null;

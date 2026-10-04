@@ -28,6 +28,7 @@ import { inspectionRoutes } from "./routes/inspections.ts";
 import { reportRoutes } from "./routes/reports.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
+import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
@@ -36,6 +37,7 @@ import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
 import { TestSmsProvider, type SmsConfig } from "@aerowise/sms";
+import { CensusGeocoder, TestGeocoder, type Geocoder } from "@aerowise/routing";
 
 export interface AppOptions {
   db: Database;
@@ -68,6 +70,11 @@ export interface AppOptions {
    * production, texting is off unless Twilio is configured.
    */
   sms?: SmsConfig | null;
+  /**
+   * Finds addresses on the map. Defaults to the built-in test geocoder outside production
+   * and the US Census geocoder in production.
+   */
+  geocoder?: Geocoder | null;
 }
 
 export async function buildApp({
@@ -83,6 +90,7 @@ export async function buildApp({
   appUrl = DEFAULT_APP_URL,
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
+  geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -148,20 +156,21 @@ export async function buildApp({
   });
 
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(customerRoutes, { db });
-  await app.register(siteRoutes, { db });
+  await app.register(customerRoutes, { db, now });
+  await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });
   await app.register(scheduleRoutes, { db, now });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });
-  await app.register(importRoutes, { db });
+  await app.register(importRoutes, { db, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, production });
   await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(portalRoutes, { db, now, store, appUrl });
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
+  await app.register(routingRoutes, { db, now, geocoder });
   await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
 
   return app;

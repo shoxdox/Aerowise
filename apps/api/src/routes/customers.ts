@@ -13,6 +13,7 @@ import {
   siteInput,
   toE164,
 } from "@aerowise/domain";
+import { queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -49,6 +50,8 @@ export const SITE_COLUMNS = [
   "county",
   "lat",
   "lng",
+  "locationSource",
+  "geocodeStatus",
   "permitNumber",
   "accessNotes",
   "gateCode",
@@ -72,7 +75,7 @@ const listQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-export const customerRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (app, { db }) => {
+export const customerRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }> = async (app, { db, now }) => {
   const findCustomer = async (organizationId: string, customerId: string) => {
     const row = await db
       .selectFrom("customers")
@@ -303,11 +306,15 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database }> = async (ap
       const { organizationId } = req.requireAuth();
       const parent = await findCustomer(organizationId, req.params.id);
       const row = await db.transaction().execute(async (trx) => {
+        const { lat, lng, ...fields } = definedOnly(req.body);
+        const located = lat != null && lng != null;
+        if (!located && (lat != null || lng != null)) throw unprocessable("Give both lat and lng, or neither");
         const created = await trx
           .insertInto("sites")
-          .values({ ...definedOnly(req.body), organizationId, customerId: parent.id })
+          .values({ ...fields, ...(located ? { lat, lng, locationSource: "manual" as const } : {}), organizationId, customerId: parent.id })
           .returning(SITE_COLUMNS)
           .executeTakeFirstOrThrow();
+        if (!located) await queueSiteLocating(trx, organizationId, `site:${created.id}`, now());
         await audit(trx, req, { action: "site.created", entityType: "site", entityId: created.id, changes: req.body });
         return created;
       });

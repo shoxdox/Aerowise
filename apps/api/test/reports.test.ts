@@ -1,7 +1,7 @@
 import { DEFAULT_TEMPLATE } from "@aerowise/domain";
 import type { ReportSnapshot } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
-import { drainTasks, generateReports } from "@aerowise/tasks";
+import { drainTasks, GENERATE_REPORTS, generateReports } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
@@ -44,6 +44,7 @@ const snapshots = async (c: TestContext, inspectionId: string) => {
 describe("inspection reports", () => {
   it("makes a customer and an authority PDF once the inspection is completed", async () => {
     const s = await setup(ctx);
+    await runWorker(ctx); // puts the new site on the map
     const insp = await complete(s);
 
     const before = (await s.api.get(`/inspections/${insp.id}/reports`)).json();
@@ -113,7 +114,7 @@ describe("inspection reports", () => {
       get: (key) => ctx.store.get(key),
     };
     await runWorker(ctx, flaky);
-    const task = await ctx.db.selectFrom("backgroundTasks").selectAll().executeTakeFirstOrThrow();
+    const task = await ctx.db.selectFrom("backgroundTasks").selectAll().where("kind", "=", GENERATE_REPORTS).executeTakeFirstOrThrow();
     expect(task).toMatchObject({ attempts: 1, completedAt: null, failedAt: null });
     expect(task.lastError).toMatch(/storage unavailable/);
 

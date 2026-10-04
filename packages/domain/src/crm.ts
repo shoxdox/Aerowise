@@ -119,6 +119,10 @@ export const site = z.object({
   county: z.string().nullable(),
   lat: z.number().nullable(),
   lng: z.number().nullable(),
+  /** Coordinates typed in by a person, or found from the address. */
+  locationSource: z.enum(["manual", "geocoder"]).nullable(),
+  /** `not_found`: the address could not be found on the map. */
+  geocodeStatus: z.enum(["not_found"]).nullable(),
   permitNumber: z.string().nullable(),
   accessNotes: z.string().nullable(),
   gateCode: z.string().nullable(),
