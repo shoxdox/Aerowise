@@ -1,0 +1,10 @@
+{
+  "name": "Aerowise Technician",
+  "short_name": "Aerowise",
+  "start_url": "/tech",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f5",
+  "theme_color": "#1f6f5c",
+  "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

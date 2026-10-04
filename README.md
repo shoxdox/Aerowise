@@ -17,8 +17,9 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Due-inspections list for the office | Done |
 | Jobs, office scheduling screen, technician daily route | Done |
 | Inspection templates, idempotent inspection sync, photo uploads with signed links, supervisor override (API) | Done |
-| Technician PWA with offline inspections | Next |
-| Reports, filing, compliance ledger, exception inbox, imports | Planned, in that order |
+| Technician phone app (`/tech`) that works offline, with an exactly-once sync test | Done |
+| PDF inspection reports | Next |
+| Filing, compliance ledger, exception inbox, imports | Planned, in that order |
 
 Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
 
@@ -40,7 +41,7 @@ pnpm db:seed            # applies migrations, then loads demo data
 pnpm dev                # API on :4000, web on :3000
 ```
 
-Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. All demo names, addresses and permit numbers are made up.
+Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
@@ -51,16 +52,17 @@ pnpm lint
 pnpm typecheck
 pnpm test      # needs TEST_DATABASE_URL; the test database is created and migrated automatically
 pnpm build
+pnpm --filter @aerowise/web e2e   # offline sync test; run after `pnpm build`, needs Postgres on :5432 and ports 3000/4000 free
 ```
 
-CI runs all four against Postgres on every pull request, plus a Docker build.
+CI runs all of these against Postgres on every pull request, plus a Docker build. The end-to-end test resets and seeds its own `aerowise_e2e` database.
 
 ## Layout
 
 ```
 apps/
   api/        Fastify REST API; routes declare a permission or they refuse to load
-  web/        Next.js office app; /api/* is proxied to the API
+  web/        Next.js office app and technician phone app (/tech); /api/* is proxied to the API
 packages/
   db/         SQL migrations, migration runner, Kysely types, seed script
   domain/     Roles and permissions, Zod schemas shared by API and web
