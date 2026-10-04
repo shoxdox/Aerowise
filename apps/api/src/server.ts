@@ -1,6 +1,6 @@
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
-import { LocalDiskStore } from "./storage/store.ts";
+import { LocalDiskStore } from "@aerowise/storage";
 
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));

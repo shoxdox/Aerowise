@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
+import { ComplianceTimeline } from "@/components/ComplianceTimeline";
 import { SiteContracts } from "@/components/SiteContracts";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -152,6 +153,7 @@ export default function SitePage() {
       )}
 
       <SiteContracts siteId={site.id} editable={editable} />
+      <ComplianceTimeline siteId={site.id} />
 
       <section className="stack">
         <div className="row">

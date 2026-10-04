@@ -1,52 +1,9 @@
 import { DEFAULT_TEMPLATE } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
-import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
+import { client, createUser, login, setupTestApp } from "./helpers.ts";
+import { completeValues, JPEG, payload, photoUrl, setup, uploadRequiredPhotos } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
-
-const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 0xff, 0xd9]);
-
-/** A tenant with a technician who has one scheduled visit today. Today is 2026-03-01. */
-async function setup(c: TestContext, name = "Org A") {
-  const t = await createTenant(c, name);
-  const plan = (await t.api.post("/plans", { name: "Annual", termMonths: 12, visitsPerTerm: 3, priceCents: 27500 })).json();
-  const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2025-12-01" })).json();
-  const tech = await createUser(c.db, t.org.id, "technician");
-  const techApi = client(c.app, await login(c.app, tech.email));
-  const visit = contract.obligations[0];
-  const job = (await t.api.post("/jobs", { obligationId: visit.id, technicianId: tech.id, scheduledDate: "2026-03-01" })).json();
-  const template = (await techApi.get("/inspection-template")).json();
-  return { ...t, contract, tech, techApi, visit, job, template };
-}
-
-/** Every required answer, passing, with a working chlorinator. */
-const completeValues = () => {
-  const values: Record<string, string | number | boolean> = {};
-  for (const f of DEFAULT_TEMPLATE.definition.fields) if (f.type === "pass_fail") values[f.key] = "pass";
-  return { ...values, chlorinator: "working", chlorine_level: 1.5, odor: "none", pumping_needed: false };
-};
-
-function payload(s: Awaited<ReturnType<typeof setup>>, overrides: Record<string, unknown> = {}) {
-  return {
-    clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d01",
-    jobId: s.job.jobId,
-    templateId: s.template.id,
-    status: "draft",
-    arrivedAt: "2026-03-01T15:00:00Z",
-    arrivalGps: { lat: 30.27, lng: -97.74, accuracyM: 8 },
-    values: { aerator: "pass" },
-    ...overrides,
-  };
-}
-
-const photoUrl = (clientId: string, n: number) => `/inspections/${clientId}/photos/00000000-0000-4000-8000-00000000000${n}`;
-
-async function uploadRequiredPhotos(s: Awaited<ReturnType<typeof setup>>, clientId: string) {
-  for (const [n, key] of [[1, "overview"], [2, "chlorinator"]] as const) {
-    const res = await s.techApi.putImage(photoUrl(clientId, n), JPEG, { "x-photo-key": key, "x-captured-at": "2026-03-01T15:10:00Z" });
-    expect(res.statusCode).toBe(201);
-  }
-}
 
 describe("inspection templates", () => {
   it("serves the built-in aerobic template until the organization saves its own version", async () => {

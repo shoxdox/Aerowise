@@ -6,7 +6,7 @@ import type { Role } from "@aerowise/domain";
 import { sql } from "kysely";
 import { afterAll, beforeEach } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
-import { LocalDiskStore } from "../src/storage/store.ts";
+import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { testDatabaseUrl } from "./db-url.ts";
 
 export const PASSWORD = "correct horse battery staple";
@@ -17,6 +17,8 @@ export interface TestContext {
   app: App;
   /** Pinned clock: tests set `ctx.now` to control "today". */
   now: Date;
+  /** Where uploads and reports go: a fresh temporary directory per test file. */
+  store: ObjectStore;
 }
 
 /** One app + db per test file; every table is emptied before each test. */
@@ -24,16 +26,12 @@ export function setupTestApp(): TestContext {
   const ctx = {} as TestContext;
   ctx.db = createDb(testDatabaseUrl());
   ctx.now = new Date("2026-03-01T18:00:00Z");
+  ctx.store = new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-files-")));
   beforeEach(async () => {
-    ctx.app ??= await buildApp({
-      db: ctx.db,
-      loginRateLimit: 1000,
-      now: () => ctx.now,
-      store: new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-files-"))),
-    });
+    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate audit_events, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate audit_events, background_tasks, compliance_events, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });

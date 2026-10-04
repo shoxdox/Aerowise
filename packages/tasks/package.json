@@ -1,0 +1,22 @@
+{
+  "name": "@aerowise/tasks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aerowise/db": "workspace:*",
+    "@aerowise/domain": "workspace:*",
+    "@aerowise/reports": "workspace:*",
+    "@aerowise/storage": "workspace:*",
+    "kysely": "^0.29.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

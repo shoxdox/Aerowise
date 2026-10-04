@@ -13,6 +13,8 @@
   "dependencies": {
     "@aerowise/db": "workspace:*",
     "@aerowise/domain": "workspace:*",
+    "@aerowise/storage": "workspace:*",
+    "@aerowise/tasks": "workspace:*",
     "@fastify/cookie": "^11.1.2",
     "@fastify/rate-limit": "^10.0.0",
     "@fastify/swagger": "^9.9.1",
@@ -23,6 +25,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@aerowise/reports": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.23.1",
     "pg": "^8.23.1",

@@ -20,13 +20,15 @@ import {
   type JobStatus,
   type TemplateDefinition,
 } from "@aerowise/domain";
+import { enqueue, GENERATE_REPORTS } from "@aerowise/tasks";
+import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { forbidden, HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
-import type { ObjectStore } from "../storage/store.ts";
+import type { ObjectStore } from "@aerowise/storage";
 
 type Executor = Database | Transaction<DB>;
 
@@ -208,11 +210,18 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
     return Object.fromEntries(rows.map((r) => [r.photoKey, Number(r.n)]));
   };
 
-  /** Marks the job, and the visit it fulfils, as done. */
-  async function completeJob(trx: Transaction<DB>, organizationId: string, jobId: string, at: Date) {
+  /**
+   * Marks the job, and the visit it fulfils, as done; records it on the site's compliance
+   * ledger; and queues the report PDFs. All in the caller's transaction.
+   */
+  async function completeJob(
+    trx: Transaction<DB>,
+    req: FastifyRequest,
+    { organizationId, jobId, inspectionId, at, summary }: { organizationId: string; jobId: string; inspectionId: string; at: Date; summary: string },
+  ) {
     const job = await trx
       .selectFrom("jobs")
-      .select(["id", "status", "obligationId"])
+      .select(["id", "status", "obligationId", "siteId"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", jobId)
       .executeTakeFirstOrThrow();
@@ -229,6 +238,21 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         .where("status", "=", "open")
         .execute();
     }
+    await trx
+      .insertInto("complianceEvents")
+      .values({
+        organizationId,
+        siteId: job.siteId,
+        eventType: "inspection_completed",
+        occurredAt: at,
+        actorUserId: req.requireAuth().userId,
+        inspectionId,
+        reportId: null,
+        summary,
+        details: JSON.stringify({ jobId: job.id, obligationId: job.obligationId }),
+      })
+      .execute();
+    await enqueue(trx, { kind: GENERATE_REPORTS, organizationId, payload: { inspectionId }, dedupeKey: `reports:${inspectionId}`, runAt: at });
   }
 
   app.get(
@@ -435,7 +459,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
               .where("organizationId", "=", organizationId)
               .where("id", "=", rowId)
               .execute();
-            await completeJob(trx, organizationId, job.id, at);
+            await completeJob(trx, req, { organizationId, jobId: job.id, inspectionId: rowId, at, summary: "Inspection completed" });
             await audit(trx, req, { action: "inspection.completed", entityType: "inspection", entityId: rowId });
           } else {
             await trx
@@ -597,7 +621,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
           .where("organizationId", "=", organizationId)
           .where("id", "=", row.id)
           .execute();
-        await completeJob(trx, organizationId, row.jobId, at);
+        await completeJob(trx, req, { organizationId, jobId: row.jobId, inspectionId: row.id, at, summary: `Inspection accepted by the office: ${req.body.reason}` });
         await audit(trx, req, {
           action: "inspection.overridden",
           entityType: "inspection",

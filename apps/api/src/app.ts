@@ -16,10 +16,11 @@ import { authRoutes } from "./routes/auth.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
+import { reportRoutes } from "./routes/reports.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
-import { LocalDiskStore, type ObjectStore } from "./storage/store.ts";
+import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 
 export interface AppOptions {
   db: Database;
@@ -111,6 +112,7 @@ export async function buildApp({
   await app.register(contractRoutes, { db, now });
   await app.register(scheduleRoutes, { db, now });
   await app.register(inspectionRoutes, { db, now, store, signer });
+  await app.register(reportRoutes, { db, now, store, signer });
 
   return app;
 }

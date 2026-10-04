@@ -26,6 +26,17 @@ services:
     depends_on:
       db: { condition: service_healthy }
 
+  worker:
+    build: .
+    command: pnpm --filter @aerowise/worker start
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://aerowise:aerowise@db:5432/aerowise
+      FILE_STORAGE_DIR: /data/files
+    volumes: [file-data:/data/files]
+    depends_on:
+      db: { condition: service_healthy }
+
   web:
     build: .
     command: pnpm --filter @aerowise/web start
