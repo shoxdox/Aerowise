@@ -21,6 +21,8 @@ const fieldBase = {
   required: z.boolean().default(false),
   showWhen: condition.optional(),
   help: z.string().max(500).optional(),
+  /** Which report copies show this field. Defaults to both. */
+  audiences: z.array(z.enum(["customer", "authority"])).min(1).optional(),
 };
 
 export const templateField = z.discriminatedUnion("type", [
@@ -226,7 +228,7 @@ export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; def
       { key: "bod", label: "BOD", section: "Lab values", type: "number", unit: "mg/L", min: 0, required: false },
       { key: "pumping_needed", label: "Pumping needed", section: "Wrap-up", type: "boolean", required: true },
       { key: "repairs_made", label: "Repairs made", section: "Wrap-up", type: "text", maxLength: 2000, required: false },
-      { key: "notes", label: "Notes", section: "Wrap-up", type: "text", maxLength: 5000, required: false },
+      { key: "notes", label: "Notes for the customer", section: "Wrap-up", type: "text", maxLength: 5000, required: false, audiences: ["customer"] },
     ],
     photos: [
       { key: "overview", label: "Overview of the unit", minCount: 1 },

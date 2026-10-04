@@ -87,6 +87,8 @@ describe("deny by default", () => {
       api.get(`/jobs/${id}/inspection`),
       api.post(`/inspections/${id}/override`, {}),
       api.putImage(`/inspections/${id}/photos/${id}`, Buffer.from("x")),
+      api.get(`/inspections/${id}/reports`),
+      api.get(`/sites/${id}/compliance-events`),
     ];
     for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(401);
   });

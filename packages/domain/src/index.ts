@@ -4,3 +4,4 @@ export * from "./schedule.ts";
 export * from "./contracts.ts";
 export * from "./jobs.ts";
 export * from "./inspections.ts";
+export * from "./reports.ts";

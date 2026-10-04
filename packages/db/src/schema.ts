@@ -285,6 +285,52 @@ export interface IssuesTable {
   updatedAt: Timestamp;
 }
 
+export interface BackgroundTasksTable {
+  id: Generated<string>;
+  organizationId: string | null;
+  kind: string;
+  payload: ColumnType<unknown, string | undefined, string>;
+  dedupeKey: string | null;
+  runAt: Timestamp;
+  attempts: Generated<number>;
+  maxAttempts: Generated<number>;
+  lockedAt: Timestamp | null;
+  lockedBy: string | null;
+  lastError: string | null;
+  completedAt: Timestamp | null;
+  failedAt: Timestamp | null;
+  createdAt: CreatedAt;
+}
+
+export interface ReportsTable {
+  id: Generated<string>;
+  organizationId: string;
+  inspectionId: string;
+  siteId: string;
+  audience: "customer" | "authority";
+  version: Generated<number>;
+  templateId: string;
+  snapshot: ColumnType<unknown, string, never>;
+  storageKey: string;
+  contentType: Generated<string>;
+  byteSize: number;
+  sha256: string;
+  generatedAt: CreatedAt;
+}
+
+export interface ComplianceEventsTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  eventType: string;
+  occurredAt: Timestamp;
+  actorUserId: string | null;
+  inspectionId: string | null;
+  reportId: string | null;
+  summary: string;
+  details: ColumnType<unknown, string | undefined, never>;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -304,4 +350,7 @@ export interface DB {
   inspectionValues: InspectionValuesTable;
   attachments: AttachmentsTable;
   issues: IssuesTable;
+  backgroundTasks: BackgroundTasksTable;
+  reports: ReportsTable;
+  complianceEvents: ComplianceEventsTable;
 }
