@@ -416,6 +416,40 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     });
   }
 
+  /**
+   * Visits kept for an ending contract whose job is on a day after the last day of service:
+   * they must be moved earlier, or they will be cancelled with the contract.
+   */
+  async function visitsAfterServiceEnd(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("jobs as j")
+      .innerJoin("serviceObligations as o", (k) => k.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
+      .innerJoin("contracts as k", (k) => k.onRef("k.id", "=", "o.contractId").onRef("k.organizationId", "=", "o.organizationId"))
+      .innerJoin("sites as s", "s.id", "k.siteId")
+      .innerJoin("customers as c", "c.id", "s.customerId")
+      .select(["o.id", "j.scheduledDate", "k.serviceEndsOn", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("j.organizationId", "=", organizationId)
+      .where("j.status", "=", "scheduled")
+      .where("o.status", "=", "open")
+      .where("k.status", "=", "active")
+      .where("k.serviceEndsOn", "is not", null)
+      .whereRef("j.scheduledDate", ">", "k.serviceEndsOn")
+      .orderBy("k.serviceEndsOn")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      key: `visit_after_service_end:${r.id}`,
+      kind: "visit_after_service_end",
+      severity: "high",
+      title: "Visit scheduled after service ends",
+      detail: `Scheduled ${r.scheduledDate}, but service ends after ${r.serviceEndsOn}: move it to ${r.serviceEndsOn} or earlier`,
+      dueOn: r.serviceEndsOn!,
+      site: site(r),
+      customer: customer(r),
+      target: { type: "obligation", id: r.id },
+    }));
+  }
+
   /** Texts from customers that are not STOP or START and nobody has dealt with yet. */
   async function smsReplies(organizationId: string): Promise<InboxException[]> {
     const rows = await db
@@ -547,6 +581,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           serviceRequests(organizationId),
           unresolvedComplaints(organizationId),
           discontinuationNotices(organizationId, today),
+          visitsAfterServiceEnd(organizationId),
           smsReplies(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),

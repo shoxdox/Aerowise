@@ -904,6 +904,61 @@ describe("contract deadlines by kind (30 TAC 285.7(c), (d))", () => {
   });
 });
 
+describe("ending service and the technician's route", () => {
+  const route = async (s: Setup, date: string) => ((await s.techApi.get(`/route?date=${date}`)).json().items as { jobId: string }[]).map((i) => i.jobId);
+
+  it("takes cancelled visits off the route, flags kept ones booked too late, and refuses days after service ends", async () => {
+    const s = await lcraSetup(ctx);
+    const [first, second] = s.contract.obligations as { id: string; windowStart: string }[];
+    expect(first!.windowStart <= "2026-03-20" && second!.windowStart > "2026-03-20").toBe(true);
+    // The first visit is booked for after the coming last day; the second has its own job.
+    expect((await s.api.patch(`/jobs/${s.job.jobId}`, { scheduledDate: "2026-03-25" })).statusCode).toBe(200);
+    const later = (await s.api.post("/jobs", { obligationId: second!.id, technicianId: s.tech.id, scheduledDate: "2026-04-10" })).json();
+    expect(await route(s, "2026-03-25")).toEqual([s.job.jobId]);
+    expect(await route(s, "2026-04-10")).toEqual([later.jobId]);
+
+    await s.api.post(`/contracts/${s.contract.id}/cancel`, { reason: "Owner switched providers", discontinuedBy: "owner", serviceEndsOn: "2026-03-20" });
+    // The visit that cannot start by the last day is cancelled with its job: off the route.
+    expect(await route(s, "2026-04-10")).toEqual([]);
+    expect(await ctx.db.selectFrom("jobs").select(["status", "cancelReason"]).where("id", "=", later.jobId).executeTakeFirstOrThrow()).toEqual({ status: "cancelled", cancelReason: "Service ends after 2026-03-20" });
+    // The kept visit stays, but its job is after the last day: the office is told to move it.
+    expect(await route(s, "2026-03-25")).toEqual([s.job.jobId]);
+    const flagged = ((await s.api.get("/inbox")).json().items as { kind: string; target: { id: string }; detail: string }[]).find((i) => i.kind === "visit_after_service_end");
+    expect(flagged).toMatchObject({ target: { id: first!.id }, detail: expect.stringContaining("move it to 2026-03-20 or earlier") });
+
+    // Nothing can be booked or moved past the last day.
+    expect((await s.api.patch(`/jobs/${s.job.jobId}`, { scheduledDate: "2026-03-21" })).json()).toMatchObject({ message: expect.stringContaining("ends after 2026-03-20") });
+    expect((await s.api.patch(`/jobs/${s.job.jobId}`, { scheduledDate: "2026-03-18" })).statusCode).toBe(200);
+    expect(await route(s, "2026-03-18")).toEqual([s.job.jobId]);
+    expect(((await s.api.get("/inbox")).json().items as { kind: string }[]).some((i) => i.kind === "visit_after_service_end")).toBe(false);
+    await s.api.post(`/jobs/${s.job.jobId}/cancel`, { reason: "Owner asked to rebook" });
+    expect((await s.api.post("/jobs", { obligationId: first!.id, technicianId: s.tech.id, scheduledDate: "2026-03-22" })).statusCode).toBe(422);
+    const rebooked = (await s.api.post("/jobs", { obligationId: first!.id, technicianId: s.tech.id, scheduledDate: "2026-03-19" })).json();
+    expect(await route(s, "2026-03-19")).toEqual([rebooked.jobId]);
+
+    // The visit was not done by the last day: the sweep closes the contract and the job leaves the route.
+    ctx.now = new Date("2026-03-21T18:00:00Z");
+    expect(await runContractFilings(complianceContext(tasks(ctx)), s.org.id)).toMatchObject({ ended: 1 });
+    expect(await route(s, "2026-03-19")).toEqual([]);
+    expect(await ctx.db.selectFrom("jobs").select("status").where("id", "=", rebooked.jobId).executeTakeFirstOrThrow()).toEqual({ status: "cancelled" });
+  });
+
+  it("keeps completed visits and takes unstarted jobs off the route when a contract is cancelled at once", async () => {
+    const s = await lcraSetup(ctx);
+    await complete(s);
+    const second = s.contract.obligations[1] as { id: string };
+    const next = (await s.api.post("/jobs", { obligationId: second.id, technicianId: s.tech.id, scheduledDate: "2026-04-10" })).json();
+    expect(await route(s, "2026-04-10")).toEqual([next.jobId]);
+    await s.api.post(`/contracts/${s.contract.id}/cancel`, { reason: "Owner sold the house", discontinuedBy: "owner" });
+    expect(await route(s, "2026-04-10")).toEqual([]);
+    const jobs = await ctx.db.selectFrom("jobs").select(["id", "status"]).where("organizationId", "=", s.org.id).execute();
+    expect(jobs.find((j) => j.id === s.job.jobId)!.status).toBe("completed");
+    expect(jobs.find((j) => j.id === next.jobId)!.status).toBe("cancelled");
+    const visits = await ctx.db.selectFrom("serviceObligations").select(["id", "status"]).where("organizationId", "=", s.org.id).execute();
+    expect(visits.find((v) => v.id === s.visit.id)!.status).toBe("completed");
+  });
+});
+
 describe("readiness access", () => {
   it("keeps credentials, packages, requests and contract files inside their organization", async () => {
     mail.mode = "ok";

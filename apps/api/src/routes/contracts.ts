@@ -1,5 +1,6 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
+import { cancelOpenVisits } from "@aerowise/tasks";
 import {
   addDays,
   cancelInput,
@@ -392,14 +393,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             if (!exists) throw notFound("Contract");
             throw new HttpError(409, "already_cancelled", exists.status === "cancelled" ? "This contract is already cancelled" : `This contract already ends after ${exists.serviceEndsOn}`);
           }
-          await trx
-            .updateTable("serviceObligations")
-            .set({ status: "cancelled", updatedAt: new Date() })
-            .where("organizationId", "=", organizationId)
-            .where("contractId", "=", updated.id)
-            .where("status", "=", "open")
-            .where("windowStart", ">", req.body.serviceEndsOn!)
-            .execute();
+          await cancelOpenVisits(trx, { organizationId, contractIds: [updated.id], windowStartAfter: req.body.serviceEndsOn!, reason: `Service ends after ${req.body.serviceEndsOn}`, at: new Date() });
           await audit(trx, req, { action: "contract.ending_scheduled", entityType: "contract", entityId: updated.id, changes: req.body });
         });
         return loadContractDetail(organizationId, req.params.id);
@@ -425,14 +419,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           if (!exists) throw notFound("Contract");
           throw new HttpError(409, "already_cancelled", exists.status === "cancelled" ? "This contract is already cancelled" : `This contract already ends after ${exists.serviceEndsOn}`);
         }
-        // Completed visits stay as history.
-        await trx
-          .updateTable("serviceObligations")
-          .set({ status: "cancelled", updatedAt: new Date() })
-          .where("organizationId", "=", organizationId)
-          .where("contractId", "=", updated.id)
-          .where("status", "=", "open")
-          .execute();
+        // Completed visits stay as history; unstarted jobs leave the route.
+        await cancelOpenVisits(trx, { organizationId, contractIds: [updated.id], reason: "Contract cancelled", at: new Date() });
         await audit(trx, req, { action: "contract.cancelled", entityType: "contract", entityId: updated.id, changes: req.body });
       });
       return loadContractDetail(organizationId, req.params.id);

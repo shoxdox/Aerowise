@@ -127,6 +127,7 @@ Cancelling a contract now asks who ended it and the last day of service. The pro
 - A next contract may start the day after the last day of service: the database's no-overlap rule now counts an ending contract only through its last day.
 - A last day already past, or before the term starts, cancels at once, as before.
 - The notice can be recorded while the contract is still active.
+- Jobs follow their visits (merge review P2): whenever visits are cancelled (a future last day, an immediate cancel, or the closing sweep), their unstarted jobs are cancelled too and leave the technician's route. Completed visits and jobs already under way are kept. A kept visit whose job is booked after the last day shows in the inbox as "Visit scheduled after service ends". Scheduling or moving a visit to a day after the last day of service is refused. Tested against the technician's route, not just visit status.
 
 ### Harris and Brazoria (from the merge review, not read by Claude)
 

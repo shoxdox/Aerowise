@@ -20,6 +20,7 @@ export const EXCEPTION_KINDS = [
   "complaint_unresolved",
   "report_unsigned",
   "discontinuation_notice_due",
+  "visit_after_service_end",
   "sms_reply",
   "invoice_overdue",
   "payment_failed",

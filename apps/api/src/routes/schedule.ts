@@ -13,6 +13,7 @@ import {
   type JobStatus,
   type Stop,
 } from "@aerowise/domain";
+import { serviceEndForVisit } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -158,6 +159,12 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     return toStop(row);
   };
 
+  /** A visit is never put on a day after its contract's recorded last day of service. */
+  const assertWithinService = async (organizationId: string, obligationId: string, scheduledDate: string) => {
+    const endsOn = await serviceEndForVisit(db, organizationId, obligationId);
+    if (endsOn && scheduledDate > endsOn) throw unprocessable(`Service under this contract ends after ${endsOn}, so the visit cannot be scheduled on ${scheduledDate}`);
+  };
+
   app.get(
     "/technicians",
     {
@@ -245,6 +252,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         .executeTakeFirst();
       if (!ob) throw unprocessable("obligationId does not match a visit in this organization");
       if (ob.status !== "open") throw unprocessable(`This visit is ${ob.status}`);
+      await assertWithinService(organizationId, ob.id, scheduledDate);
       await assertAssignable(organizationId, technicianId);
       const position = await nextPosition(organizationId, technicianId, scheduledDate);
       const jobId = await db.transaction().execute(async (trx) => {
@@ -285,7 +293,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const { organizationId } = req.requireAuth();
       const job = await db
         .selectFrom("jobs")
-        .select(["id", "status", "technicianUserId", "scheduledDate"])
+        .select(["id", "status", "technicianUserId", "scheduledDate", "obligationId"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", req.params.id)
         .executeTakeFirst();
@@ -293,6 +301,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (job.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${job.status.replace("_", " ")} job cannot be moved`);
       const technicianId = req.body.technicianId ?? job.technicianUserId;
       const scheduledDate = req.body.scheduledDate ?? job.scheduledDate;
+      if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, scheduledDate);
       const moved = technicianId !== job.technicianUserId || scheduledDate !== job.scheduledDate;
       if (req.body.technicianId) await assertAssignable(organizationId, technicianId);
       const routePosition = moved ? await nextPosition(organizationId, technicianId, scheduledDate) : undefined;

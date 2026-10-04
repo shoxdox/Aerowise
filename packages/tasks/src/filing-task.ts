@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { customerCopy, dateInZone, prepareFilingById, replaceUnsignedPackages, syncContractFilings, type ComplianceContext, type EmailTransport, UNSIGNED_CUSTOMER_COPY } from "@aerowise/compliance";
+import { cancelOpenVisits } from "./contract-end.ts";
 import type { Database, DB } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
@@ -42,7 +43,8 @@ export async function runContractFilings(ctx: ComplianceContext, organizationId:
 
 /**
  * Ends the contracts whose recorded last day of service has passed: cancelled from the day
- * after, with any visit still open cancelled too (it was not done while service lasted).
+ * after, with any visit still open cancelled too (it was not done while service lasted),
+ * and its unstarted job taken off the route.
  */
 export async function endContractsPastService(db: Database, organizationId: string, now: Date) {
   const org = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
@@ -56,19 +58,7 @@ export async function endContractsPastService(db: Database, organizationId: stri
       .where("serviceEndsOn", "<", today)
       .returning("id")
       .execute();
-    if (ended.length) {
-      await trx
-        .updateTable("serviceObligations")
-        .set({ status: "cancelled", updatedAt: now })
-        .where("organizationId", "=", organizationId)
-        .where(
-          "contractId",
-          "in",
-          ended.map((c) => c.id),
-        )
-        .where("status", "=", "open")
-        .execute();
-    }
+    await cancelOpenVisits(trx, { organizationId, contractIds: ended.map((c) => c.id), reason: "Service under the contract ended", at: now });
     return ended.length;
   });
 }
