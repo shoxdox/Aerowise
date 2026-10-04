@@ -1,11 +1,18 @@
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
+import { LocalDiskStore } from "./storage/store.ts";
 
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 
 const db = createDb(url);
-const app = await buildApp({ db, production: process.env.NODE_ENV === "production", logger: true });
+const app = await buildApp({
+  db,
+  production: process.env.NODE_ENV === "production",
+  logger: true,
+  store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
+  fileSigningSecret: process.env.FILE_SIGNING_SECRET,
+});
 
 const shutdown = async () => {
   await app.close();

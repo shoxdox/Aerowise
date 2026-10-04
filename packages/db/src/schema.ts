@@ -208,6 +208,83 @@ export interface JobsTable {
   updatedAt: Timestamp;
 }
 
+export interface InspectionTemplatesTable {
+  id: Generated<string>;
+  organizationId: string | null;
+  key: string;
+  version: number;
+  name: string;
+  definition: ColumnType<unknown, string, never>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
+export interface InspectionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  jobId: string;
+  siteId: string;
+  templateId: string;
+  technicianUserId: string;
+  status: Generated<"draft" | "completed">;
+  validationStatus: Generated<"pending" | "valid" | "invalid" | "overridden">;
+  validationProblems: ColumnType<unknown, string | undefined, string>;
+  overrideReason: string | null;
+  overrideBy: string | null;
+  arrivedAt: Timestamp;
+  completedAt: Timestamp | null;
+  arrivalLat: number | null;
+  arrivalLng: number | null;
+  arrivalAccuracyM: number | null;
+  completionLat: number | null;
+  completionLng: number | null;
+  completionAccuracyM: number | null;
+  accessIssue: string | null;
+  lockedAt: Timestamp | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface InspectionValuesTable {
+  organizationId: string;
+  inspectionId: string;
+  fieldKey: string;
+  valueJson: ColumnType<unknown, string, string>;
+  updatedAt: Generated<Date>;
+}
+
+export interface AttachmentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  inspectionId: string;
+  photoKey: string;
+  storageKey: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  capturedAt: Timestamp | null;
+  lat: number | null;
+  lng: number | null;
+  uploadedBy: string;
+  createdAt: CreatedAt;
+}
+
+export interface IssuesTable {
+  id: Generated<string>;
+  organizationId: string;
+  clientId: string;
+  inspectionId: string;
+  siteId: string;
+  type: string;
+  severity: Generated<string>;
+  description: Generated<string>;
+  status: Generated<"open" | "resolved">;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -222,4 +299,9 @@ export interface DB {
   contracts: ContractsTable;
   serviceObligations: ServiceObligationsTable;
   jobs: JobsTable;
+  inspectionTemplates: InspectionTemplatesTable;
+  inspections: InspectionsTable;
+  inspectionValues: InspectionValuesTable;
+  attachments: AttachmentsTable;
+  issues: IssuesTable;
 }
