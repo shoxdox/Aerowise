@@ -1,0 +1,99 @@
+import { describe, expect, it } from "vitest";
+import { addressKey, analyzeImport, detectColumns, normalizeDate, normalizePhone, summarize } from "./imports.ts";
+
+describe("detectColumns", () => {
+  it("matches common headers whatever their spelling", () => {
+    const headers = ["Client Name", "Service Address", "City", "Zip", "Permit #", "Cell Phone", "E-mail", "Make", "S/N", "Start Date"];
+    expect(detectColumns(headers, [])).toEqual({
+      customerName: 0,
+      addressLine1: 1,
+      city: 2,
+      postalCode: 3,
+      permitNumber: 4,
+      phone: 5,
+      email: 6,
+      manufacturer: 7,
+      serial: 8,
+      contractStart: 9,
+    });
+  });
+
+  it("uses first and last name only when there is no full name column", () => {
+    expect(detectColumns(["First Name", "Last Name", "Address", "Town"], [])).toMatchObject({ firstName: 0, lastName: 1, addressLine1: 2, city: 3 });
+    expect(detectColumns(["Name", "First", "Last"], [])).toEqual({ customerName: 0 });
+  });
+
+  it("recognizes unlabeled email, phone and ZIP columns by their values", () => {
+    const sample = [
+      ["a@x.com", "512-555-0100", "78701", "x"],
+      ["b@y.org", "(512) 555 0101", "78702", "y"],
+      ["c@z.net", "5125550102", "78703", "z"],
+    ];
+    expect(detectColumns(["Col A", "Col B", "Col C", "Col D"], sample)).toEqual({ email: 0, phone: 1, postalCode: 2 });
+  });
+});
+
+describe("normalizers", () => {
+  it("formats US phone numbers and rejects the rest", () => {
+    expect(normalizePhone("+1 512.555.0100")).toBe("(512) 555-0100");
+    expect(normalizePhone("555-0100")).toBeNull();
+  });
+
+  it("reads ISO and US dates and rejects impossible ones", () => {
+    expect(normalizeDate("2026-03-01")).toBe("2026-03-01");
+    expect(normalizeDate("3/1/26")).toBe("2026-03-01");
+    expect(normalizeDate("2/30/2026")).toBeNull();
+    expect(normalizeDate("next week")).toBeNull();
+  });
+
+  it("matches the same address however it was typed", () => {
+    expect(addressKey("12 Oak Road", "Austin")).toBe(addressKey("12 oak rd.", " AUSTIN "));
+  });
+});
+
+describe("analyzeImport", () => {
+  const mapping = { customerName: 0, phone: 1, addressLine1: 2, city: 3, permitNumber: 4, planName: 5, contractStart: 6 };
+  const existing = {
+    customers: [{ id: "c1", displayName: "Ann Lee", phones: ["(512) 555-0100"], emails: [] }],
+    sites: [{ id: "s1", addressLine1: "1 Main St", city: "Austin", permitNumber: "P-9" }],
+    plans: ["Annual Aerobic"],
+  };
+  const rows = (raws: string[][]) => raws.map((raw, i) => ({ rowNo: i + 2, raw, include: null }));
+
+  it("flags errors, duplicates and warnings, and groups a customer's sites", () => {
+    const out = analyzeImport(
+      rows([
+        ["Ann Lee", "512-555-0100", "9 Elm Rd", "Austin", "", "annual aerobic", "2026-04-01"],
+        ["Bo Diaz", "512-555-0111", "1 Main Street", "Austin", "", "", ""],
+        ["Cy Moss", "", "", "Austin", "", "", ""],
+        ["Di Fox", "512-555-0122", "5 Pine Ln", "Austin", "P-1", "", ""],
+        ["Di Fox", "512-555-0122", "5 Pine Lane", "Austin", "", "", ""],
+        ["Di Fox", "512-555-0122", "6 Pine Ln", "Austin", "p-9", "", ""],
+        ["Ed Ray", "12345", "7 Oak Dr", "Austin", "", "Gold", ""],
+      ]),
+      mapping,
+      existing,
+    );
+    expect(out.map((r) => r.status)).toEqual(["ready", "duplicate", "error", "ready", "duplicate", "duplicate", "warning"]);
+    expect(out[0]).toMatchObject({ existingCustomer: { id: "c1" }, record: { planName: "Annual Aerobic", contractStart: "2026-04-01" } });
+    expect(out[1]!.duplicateOf).toMatchObject({ kind: "site", siteId: "s1" });
+    expect(out[2]!.messages).toEqual(["No service address"]);
+    expect(out[4]!.duplicateOf).toMatchObject({ kind: "row", rowNo: 5 });
+    expect(out[5]!.duplicateOf).toMatchObject({ kind: "site", siteId: "s1" });
+    expect(out[5]!.customerKey).toBe(out[3]!.customerKey);
+    expect(out[6]!.messages).toEqual(['Phone "12345" is not a 10-digit US number and was left out', 'No active plan named "Gold"; no contract will be created']);
+    expect(summarize(out)).toEqual({ rows: 7, ready: 2, warning: 1, duplicate: 3, error: 1, included: 3 });
+  });
+
+  it("lets the user include a duplicate but never an error", () => {
+    const out = analyzeImport(
+      [
+        { rowNo: 2, raw: ["Bo", "", "1 Main St", "Austin"], include: true },
+        { rowNo: 3, raw: ["", "", "2 Main St", "Austin"], include: true },
+      ],
+      mapping,
+      existing,
+    );
+    expect(out.map((r) => [r.status, r.include])).toEqual([["duplicate", true], ["error", false]]);
+  });
+});

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { api } from "@/lib/api";
-import { SessionProvider, useSession } from "@/lib/session";
+import { canEdit, SessionProvider, useSession } from "@/lib/session";
 
 function Shell({ children }: { children: ReactNode }) {
   const me = useSession();
@@ -17,6 +17,7 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },
+    ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
   ];
   async function signOut() {
     await api("/auth/logout", { method: "POST", body: {} });

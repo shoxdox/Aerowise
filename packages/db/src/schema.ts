@@ -64,6 +64,7 @@ export interface CustomersTable {
   source: string | null;
   tags: Generated<string[]>;
   notes: string | null;
+  importId: ColumnType<string | null, string | null | undefined, never>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -86,6 +87,7 @@ export interface SitesTable {
   safetyFlags: Generated<string[]>;
   schedulingNotes: string | null;
   jurisdictionId: ColumnType<string | null, string | null | undefined, string | null>;
+  importId: ColumnType<string | null, string | null | undefined, never>;
   active: Generated<boolean>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
@@ -405,6 +407,31 @@ export interface FilingAttemptsTable {
   error: string | null;
 }
 
+export interface ImportsTable {
+  id: Generated<string>;
+  organizationId: string;
+  filename: string;
+  status: Generated<"preview" | "committed" | "failed" | "discarded">;
+  headers: ColumnType<unknown, string, never>;
+  mapping: ColumnType<unknown, string, string>;
+  createdBy: string;
+  createdAt: CreatedAt;
+  committedAt: Timestamp | null;
+  error: string | null;
+  result: ColumnType<unknown, string | null | undefined, string | null>;
+}
+
+export interface ImportRowsTable {
+  organizationId: string;
+  importId: string;
+  rowNo: number;
+  raw: ColumnType<unknown, string, never>;
+  include: boolean | null;
+  customerId: string | null;
+  siteId: string | null;
+  contractId: string | null;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -431,4 +458,6 @@ export interface DB {
   jurisdictionRulesets: JurisdictionRulesetsTable;
   filings: FilingsTable;
   filingAttempts: FilingAttemptsTable;
+  imports: ImportsTable;
+  importRows: ImportRowsTable;
 }
