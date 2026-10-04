@@ -50,7 +50,6 @@ const CONTRACT_COLUMNS = [
   "c.serviceType",
   "c.autoRenew",
   "c.status",
-  "c.renewalStatus",
   "c.previousContractId",
   "c.cancelledAt",
   "c.cancelReason",
@@ -87,6 +86,15 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .whereRef("r.previousContractId", "=", "c.id")
           .as("renewedById"),
       )
+      // The latest renewal of this contract, if one has been started.
+      .select((eb) =>
+        eb.selectFrom("renewals as rn").select("rn.id").whereRef("rn.contractId", "=", "c.id").orderBy("rn.createdAt", "desc").limit(1).as("renewalId"),
+      )
+      .select((eb) =>
+        eb.fn
+          .coalesce(eb.selectFrom("renewals as rn").select("rn.status").whereRef("rn.contractId", "=", "c.id").orderBy("rn.createdAt", "desc").limit(1), eb.val("not_started"))
+          .as("renewalStatus"),
+      )
       .where("c.organizationId", "=", organizationId);
 
   const toContract = <T extends { status: "active" | "cancelled"; startOn: string; endOn: string; cancelledAt: Date | null; createdAt: Date }>(
@@ -108,7 +116,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     const row = await contractQuery(organizationId).where("c.id", "=", contractId).executeTakeFirst();
     if (!row) throw notFound("Contract");
     const [obligations, asOf] = await Promise.all([loadObligations(organizationId, row.id), today(organizationId)]);
-    return { ...toContract({ ...row, renewedById: row.renewedById ?? null }, asOf), obligations };
+    return { ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf), obligations };
   }
 
   async function activePlanTerms(organizationId: string, planId: string, priceCents?: number): Promise<Terms> {
@@ -232,7 +240,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       ]);
       return {
         items: rows.map((row) => ({
-          ...toContract({ ...row, renewedById: row.renewedById ?? null }, asOf),
+          ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf),
           obligations: obligations.filter((o) => o.contractId === row.id).map(jsonRow),
         })),
       };

@@ -1,20 +1,17 @@
 import type { Database } from "@aerowise/db";
 import { amountDue, billingSettings, billingSettingsInput, invoiceSnapshot, publicInvoice, type BillingSettings, type PublicInvoice } from "@aerowise/domain";
 import { applyStripeEvent, TestPaymentProvider, WebhookSignatureError } from "@aerowise/payments";
-import { billingEmail, payUrlFor, queueQuickBooksSync } from "@aerowise/tasks";
+import { queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
+import { activatePaidRenewals } from "@aerowise/renewals";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { canPayOnline, invoiceByToken, notFoundLink, openCheckout } from "../lib/checkout.ts";
 import type { PaymentsConfig } from "../lib/invoices.ts";
 
-/** Reuse an open checkout page only if it stays payable for at least this long. */
-const REUSE_MIN_REMAINING_MS = 60 * 60 * 1000;
-
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
-const notFoundLink = () => new HttpError(404, "not_found", "This payment link is not valid. Contact your service provider for a new one.");
 const publicLimit = { max: 30, timeWindow: "1 minute" };
 
 /**
@@ -113,32 +110,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
 
   // ---- Customer pay page (no sign-in; the link is the key) ----
 
-  async function byToken(t: string) {
-    const inv = await db
-      .selectFrom("invoices as i")
-      .innerJoin("organizations as o", "o.id", "i.organizationId")
-      .select([
-        "i.id",
-        "i.organizationId",
-        "i.customerId",
-        "i.status",
-        "i.paymentStatus",
-        "i.snapshot",
-        "i.totalCents",
-        "i.paidCents",
-        "i.pendingCents",
-        "i.pdfStorageKey",
-        "o.stripeAccountId",
-        "o.stripeChargesEnabled",
-      ])
-      .where("i.publicToken", "=", t)
-      .executeTakeFirst();
-    // A void invoice's link stops working.
-    if (!inv || inv.status !== "open") throw notFoundLink();
-    return inv;
-  }
-
-  const canPayOnline = (inv: Awaited<ReturnType<typeof byToken>>) => !!provider && !!inv.stripeAccountId && inv.stripeChargesEnabled && amountDue(inv) > 0;
+  const byToken = (t: string) => invoiceByToken(db, t);
 
   app.get(
     "/pay/:token",
@@ -167,7 +139,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         paidCents: inv.paidCents,
         pendingCents: inv.pendingCents,
         amountDueCents: amountDue(inv),
-        canPayOnline: canPayOnline(inv),
+        canPayOnline: canPayOnline(provider, inv),
         pdfReady: !!inv.pdfStorageKey,
         testMode: provider?.kind === "test",
       };
@@ -199,45 +171,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         response: { 200: z.object({ url: z.string() }) },
       },
     },
-    async (req) => {
-      const inv = await byToken(req.params.token);
-      if (!canPayOnline(inv) || !provider) throw unprocessable(amountDue(inv) === 0 ? "Nothing is due on this invoice" : "Online payment is not available. Contact your service provider.");
-      const due = amountDue(inv);
-      const at = now();
-      return db.transaction().execute(async (trx) => {
-        // One checkout at a time per invoice.
-        await trx.selectFrom("invoices").select("id").where("id", "=", inv.id).forUpdate().executeTakeFirstOrThrow();
-        const open = await trx
-          .selectFrom("checkoutSessions")
-          .select(["url", "expiresAt"])
-          .where("organizationId", "=", inv.organizationId)
-          .where("invoiceId", "=", inv.id)
-          .where("status", "=", "open")
-          .where("amountCents", "=", due)
-          .where("expiresAt", ">", new Date(at.getTime() + REUSE_MIN_REMAINING_MS))
-          .orderBy("createdAt", "desc")
-          .executeTakeFirst();
-        if (open) return { url: open.url };
-        const s = invoiceSnapshot.parse(inv.snapshot);
-        const n = await trx.selectFrom("checkoutSessions").select(sql<number>`count(*)::int`.as("n")).where("invoiceId", "=", inv.id).executeTakeFirstOrThrow();
-        const payPage = payUrlFor(appUrl, req.params.token);
-        const session = await provider.createCheckout({
-          accountId: inv.stripeAccountId!,
-          idempotencyKey: `checkout-${inv.id}-${n.n + 1}-${due}`,
-          amountCents: due,
-          description: `${s.provider.name} invoice ${s.number}`,
-          customerEmail: (await billingEmail(trx, inv.organizationId, inv.customerId)) ?? s.billTo.email,
-          successUrl: `${payPage}?paid=1`,
-          cancelUrl: payPage,
-          metadata: { organizationId: inv.organizationId, invoiceId: inv.id },
-        });
-        await trx
-          .insertInto("checkoutSessions")
-          .values({ organizationId: inv.organizationId, invoiceId: inv.id, providerSessionId: session.sessionId, amountCents: due, url: session.url, expiresAt: session.expiresAt, createdAt: at })
-          .execute();
-        return { url: session.url };
-      });
-    },
+    async (req) => openCheckout(db, { provider, appUrl, token: req.params.token, inv: await byToken(req.params.token), now: now() }),
   );
 
   // ---- Stripe webhook ----
@@ -263,7 +197,11 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const outcome = await applyStripeEvent(db, event, now());
         // A cleared payment goes on to QuickBooks.
         const applied = await db.selectFrom("stripeEvents").select("organizationId").where("id", "=", event.id).executeTakeFirst();
-        if (applied?.organizationId) await queueQuickBooksSync(db, applied.organizationId, now());
+        if (applied?.organizationId) {
+          await queueQuickBooksSync(db, applied.organizationId, now());
+          // A renewal waiting on this payment becomes the next contract.
+          await activatePaidRenewals(db, { organizationId: applied.organizationId }, now());
+        }
         req.log.info({ stripeEvent: event.id, type: event.type, outcome }, "stripe webhook");
         return reply.send({ received: true, outcome });
       },

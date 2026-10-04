@@ -19,7 +19,11 @@ const OUTCOMES = [
  */
 function TestCheckout() {
   const { token } = useParams<{ token: string }>();
-  const sessionId = useSearchParams().get("session") ?? "";
+  const search = useSearchParams();
+  const sessionId = search.get("session") ?? "";
+  // Where Stripe would send the customer after paying: this site only.
+  const done = search.get("done");
+  const returnTo = done?.startsWith("/") && !done.startsWith("//") ? done : `/pay/${token}?paid=1`;
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,7 +33,7 @@ function TestCheckout() {
     setMessage(null);
     try {
       const res = await api<{ ok: boolean; message: string }>(`/pay/${token}/test-checkout`, { method: "POST", body: { sessionId, outcome } });
-      if (res.ok) router.push(`/pay/${token}?paid=1`);
+      if (res.ok) router.push(returnTo);
       else setMessage(res.message);
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : "Something went wrong");

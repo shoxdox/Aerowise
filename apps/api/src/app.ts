@@ -20,6 +20,7 @@ import { inboxRoutes } from "./routes/inbox.ts";
 import { invoiceRoutes } from "./routes/invoices.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { quickbooksRoutes } from "./routes/quickbooks.ts";
+import { renewalRoutes } from "./routes/renewals.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
@@ -148,6 +149,7 @@ export async function buildApp({
   await app.register(importRoutes, { db });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, production });
+  await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(filingRoutes, { db, now, signer, compliance: { store, mail: mail ?? new OutboxTransport(store, now), enqueue } });
 

@@ -6,10 +6,23 @@ import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
 import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
+import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
 
 export * from "./queue.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 export { queueQuickBooksSync, scheduleQuickBooksSyncs, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
+export {
+  queueRenewalEmail,
+  RENEWAL_AGREEMENT,
+  RENEWAL_EMAIL,
+  RENEWAL_SWEEP,
+  renderSignedAgreement,
+  renewUrlFor,
+  runRenewalSweep,
+  scheduleRenewalSweeps,
+  sendRenewalEmail,
+  type SweepResult,
+} from "./renewal-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -60,6 +73,21 @@ async function run(ctx: TaskContext, task: Task) {
       if (r.more) await queueQuickBooksSync(ctx.db, payload.organizationId!, ctx.now());
       return;
     }
+    case RENEWAL_EMAIL:
+      await sendRenewalEmail(
+        { db: ctx.db, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), appUrl: ctx.appUrl ?? DEFAULT_APP_URL, from: ctx.invoiceMailFrom },
+        task.organizationId!,
+        payload.renewalId!,
+        Number(payload.sendNo),
+        (task.payload as { reminder?: boolean }).reminder === true,
+      );
+      return;
+    case RENEWAL_AGREEMENT:
+      await renderSignedAgreement({ db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), from: ctx.invoiceMailFrom }, task.organizationId!, payload.documentId!);
+      return;
+    case RENEWAL_SWEEP:
+      await runRenewalSweep(ctx.db, payload.organizationId!, ctx.now());
+      return;
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
       return;

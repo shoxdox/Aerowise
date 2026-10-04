@@ -1,6 +1,7 @@
 "use client";
 
-import type { ContractDetail, Plan } from "@aerowise/domain";
+import { RENEWAL_STATUS_LABELS, type ContractDetail, type Plan, type RenewalStatus } from "@aerowise/domain";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
@@ -123,9 +124,28 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 Bill next installment
               </button>
             )}
+            {c.renewalId && (
+              <Link href={`/renewals/${c.renewalId}`} className="small">
+                Renewal: {RENEWAL_STATUS_LABELS[c.renewalStatus as RenewalStatus]?.toLowerCase() ?? c.renewalStatus}
+              </Link>
+            )}
+            {editable && c.status === "active" && !c.renewedById && (!c.renewalId || c.renewalStatus === "declined" || c.renewalStatus === "expired") && (
+              <button
+                className="secondary"
+                onClick={() => run(async () => router.push(`/renewals/${(await api<{ id: string }>(`/contracts/${c.id}/renewal`, { method: "POST", body: {} })).id}`))}
+              >
+                Start renewal
+              </button>
+            )}
             {editable && c.status === "active" && !c.renewedById && (
-              <button className="secondary" onClick={() => run(() => api(`/contracts/${c.id}/renew`, { method: "POST", body: {} }))}>
-                Renew
+              <button
+                className="link"
+                title="Create the next term now, without the customer signing or paying online"
+                onClick={() => {
+                  if (window.confirm("Create the next term now, without the customer signing or paying online?")) void run(() => api(`/contracts/${c.id}/renew`, { method: "POST", body: {} }));
+                }}
+              >
+                Renew now
               </button>
             )}
             {editable && c.status === "active" && (

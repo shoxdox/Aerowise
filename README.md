@@ -25,6 +25,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Invoices (drafts, contract installments, tax, discounts, PDF, email), manual payments, refunds | Done |
 | Online card and bank (ACH) payments through Stripe Connect, with signed, idempotent webhooks | Done |
 | QuickBooks Online sync (customers, invoices, payments) with a first-sync match review, item mapping, retries and a conflict center | Done |
+| Renewals: automatic campaign, one homeowner link to confirm details, choose add-ons, e-sign (typed or drawn) and pay, signed PDF, next term activated | Done |
 
 E-signature, automatic renewals, the customer portal, SMS and route optimization are not built yet.
 
@@ -46,7 +47,7 @@ pnpm db:seed            # applies migrations, then loads demo data
 pnpm dev                # API on :4000, web on :3000, plus the background worker
 ```
 
-Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. To try invoicing, sign in as the owner, choose Billing and connect the (test) Stripe account, then use "Bill next installment" on any site's contract; the invoice's pay link opens the page a homeowner would see. To try QuickBooks, choose QuickBooks and connect: a built-in test company stands in, pre-filled with near-copies of a few of your customers so the first-sync review has matches to decide. All demo names, addresses and permit numbers are made up.
+Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. To try invoicing, sign in as the owner, choose Billing and connect the (test) Stripe account, then use "Bill next installment" on any site's contract; the invoice's pay link opens the page a homeowner would see. To try renewals, choose Renewals and "Run campaign now", open a renewal and copy its link: that is the page a homeowner signs and pays on. To try QuickBooks, choose QuickBooks and connect: a built-in test company stands in, pre-filled with near-copies of a few of your customers so the first-sync review has matches to decide. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
@@ -68,12 +69,13 @@ CI runs all of these against Postgres on every pull request. It also brings the 
 apps/
   api/        Fastify REST API; routes declare a permission or they refuse to load
   web/        Next.js office app and technician phone app (/tech); /api/* is proxied to the API
-  worker/     Runs background tasks (report PDFs, filing and invoice emails, QuickBooks sync) from the Postgres queue
+  worker/     Runs background tasks (report PDFs, filing, invoice and renewal emails, QuickBooks sync, the hourly renewal campaign) from the Postgres queue
 packages/
   compliance/ Jurisdiction rulesets (rulesets/<key>/v<n>.json), resolver, adapters, filing workflow
   db/         SQL migrations, migration runner, Kysely types, seed script
   domain/     Roles and permissions, Zod schemas shared by API and web
   payments/   Stripe Connect provider, the built-in test provider, webhook handling, payment ledger
+  renewals/   Renewal offers, activation into the next contract, and contract creation shared with the API
   quickbooks/ QuickBooks Online client (OAuth, REST), the built-in test company, sync engine, first-sync review
   reports/    Report snapshot and PDF rendering
   storage/    File storage interface (local disk for now)

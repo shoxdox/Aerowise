@@ -17,6 +17,7 @@ import {
 import { dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
 import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
+import { activatePaidRenewals } from "@aerowise/renewals";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -474,6 +475,8 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await audit(trx, req, { action: "payment.recorded", entityType: "invoice", entityId: inv.id, changes: { paymentId: p.id, ...req.body } });
         await queueQuickBooksSync(trx, organizationId, at);
       });
+      // A renewal waiting on this payment becomes the next contract.
+      await activatePaidRenewals(db, { organizationId, invoiceId: req.params.id }, now());
       return detail(organizationId, req.params.id);
     },
   );
