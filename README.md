@@ -21,7 +21,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Customer and authority PDF reports (immutable), per-site compliance history, background worker | Done |
 | Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation (fake `tx-example-county` only) | Done |
 | Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
-| CSV/XLSX imports | Next |
+| CSV/XLSX customer import with column detection, preview, duplicate flags and all-or-nothing commit | Done |
 
 Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
 

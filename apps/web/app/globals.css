@@ -134,3 +134,12 @@ fieldset.plain { border: none; padding: 0; margin: 0; min-width: 0; }
 .exceptions .card { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; }
 .exceptions .badge { margin-left: 0; text-transform: capitalize; }
 .exceptions input { min-width: 260px; }
+
+/* Customer import */
+button.tile { background: var(--surface); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.tile.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.mapping { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; margin-top: 12px; }
+.mapping label { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; }
+.import-rows td { vertical-align: top; }
+.import-rows tr.skipped td { color: var(--muted); }
+.import-rows .badge { margin-left: 0; }

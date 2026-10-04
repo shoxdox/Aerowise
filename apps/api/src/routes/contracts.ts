@@ -1,7 +1,6 @@
-import type { Database, DB } from "@aerowise/db";
+import type { Database } from "@aerowise/db";
 import {
   addDays,
-  buildTermSchedule,
   cancelInput,
   contractDetail,
   contractInput,
@@ -16,11 +15,12 @@ import {
   renewInput,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql, type Transaction } from "kysely";
+import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { definedOnly, jsonRow } from "../lib/json.ts";
+import { insertContract, type Terms } from "../lib/contracts.ts";
 import { organizationToday } from "../lib/today.ts";
 
 const PLAN_COLUMNS = [
@@ -73,27 +73,6 @@ const OBLIGATION_COLUMNS = [
 
 const params = z.object({ id });
 
-interface Terms {
-  planId: string | null;
-  planName: string;
-  termMonths: number;
-  visitsPerTerm: number;
-  priceCents: number;
-  billingFrequency: DB["contracts"]["billingFrequency"];
-  serviceType: DB["contracts"]["serviceType"];
-}
-
-/** Maps Postgres constraint errors on contracts to API errors. */
-function contractConflict(err: unknown): never {
-  const code = (err as { code?: string }).code;
-  const constraint = (err as { constraint?: string }).constraint ?? "";
-  if (code === "23P01") throw new HttpError(409, "overlapping_contract", "This site already has a contract covering those dates");
-  if (code === "23505" && constraint.includes("previous_contract_id")) {
-    throw new HttpError(409, "already_renewed", "This contract has already been renewed");
-  }
-  throw err;
-}
-
 export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }> = async (app, { db, now }) => {
   const today = (organizationId: string) => organizationToday(db, organizationId, now());
 
@@ -130,49 +109,6 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     if (!row) throw notFound("Contract");
     const [obligations, asOf] = await Promise.all([loadObligations(organizationId, row.id), today(organizationId)]);
     return { ...toContract({ ...row, renewedById: row.renewedById ?? null }, asOf), obligations };
-  }
-
-  /** Inserts a contract and one open obligation per visit window, in the caller's transaction. */
-  async function insertContract(
-    trx: Transaction<DB>,
-    organizationId: string,
-    input: { siteId: string; startOn: string; terms: Terms; autoRenew: boolean; notes?: string | null; previousContractId?: string },
-  ) {
-    const schedule = buildTermSchedule(input.startOn, input.terms.termMonths, input.terms.visitsPerTerm);
-    const created = await trx
-      .insertInto("contracts")
-      .values({
-        organizationId,
-        siteId: input.siteId,
-        ...input.terms,
-        startOn: input.startOn,
-        endOn: schedule.endOn,
-        autoRenew: input.autoRenew,
-        notes: input.notes ?? null,
-        previousContractId: input.previousContractId ?? null,
-        cancelledAt: null,
-        cancelReason: null,
-      })
-      .returning("id")
-      .executeTakeFirstOrThrow()
-      .catch(contractConflict);
-    await trx
-      .insertInto("serviceObligations")
-      .values(
-        schedule.visits.map((v) => ({
-          organizationId,
-          contractId: created.id,
-          siteId: input.siteId,
-          serviceType: input.terms.serviceType,
-          sequence: v.sequence,
-          windowStart: v.windowStart,
-          windowEnd: v.windowEnd,
-          dueOn: v.dueOn,
-          completedAt: null,
-        })),
-      )
-      .execute();
-    return created.id;
   }
 
   async function activePlanTerms(organizationId: string, planId: string, priceCents?: number): Promise<Terms> {

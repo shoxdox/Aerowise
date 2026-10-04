@@ -6,3 +6,6 @@ export function day(date: string, opts: Intl.DateTimeFormatOptions = { month: "s
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { ...opts, timeZone: "UTC" });
 }
+
+/** A moment in time, in the browser's timezone. */
+export const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");

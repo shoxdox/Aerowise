@@ -7,10 +7,9 @@ import { useState, type FormEvent } from "react";
 import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day } from "@/lib/format";
+import { day, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
-const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
 export default function FilingPage() {
   const { id } = useParams<{ id: string }>();
