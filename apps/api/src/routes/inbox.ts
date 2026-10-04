@@ -1,4 +1,5 @@
 import type { Database } from "@aerowise/db";
+import { AWAITING_SIGNATURE } from "@aerowise/compliance";
 import {
   addDays,
   CONTRACT_EXPIRED_WINDOW_DAYS,
@@ -137,6 +138,9 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         case "rejected":
           return { ...base, key: `filing_rejected:${r.id}`, kind: "filing_rejected", severity: "high", title: `${authority(r.authorityName)} rejected a filing`, detail: r.rejectionReason };
         case "needs_review":
+          if (r.reviewReason?.startsWith(AWAITING_SIGNATURE)) {
+            return { ...base, key: `report_unsigned:${r.id}`, kind: "report_unsigned", severity: "high", title: "Authority report waiting for the provider's signature", detail: r.reviewReason };
+          }
           return { ...base, key: `filing_needs_review:${r.id}`, kind: "filing_needs_review", severity: "high", title: "Filing needs review", detail: r.reviewReason };
         case "sent":
           return {
@@ -256,6 +260,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .select((eb) => eb.selectFrom("renewals as rn").select("rn.id").whereRef("rn.contractId", "=", "k.id").orderBy("rn.createdAt", "desc").limit(1).as("renewalId"))
       .select((eb) => eb.selectFrom("renewals as rn").select("rn.status").whereRef("rn.contractId", "=", "k.id").orderBy("rn.createdAt", "desc").limit(1).as("renewalStatus"))
       .where("k.status", "=", "active")
+      .where("k.serviceEndsOn", "is", null)
       .where("s.active", "=", true)
       .where("k.endOn", ">=", addDays(today, -CONTRACT_EXPIRED_WINDOW_DAYS))
       .where("k.endOn", "<=", addDays(today, CONTRACT_EXPIRING_DAYS))
@@ -371,6 +376,77 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       site: site(r),
       customer: customer(r),
       target: { type: "site", id: r.siteId },
+    }));
+  }
+
+  /**
+   * Contracts that were ended with a last day of service, where the written notice to the
+   * authority and the manufacturer (and the owner, when the provider ended it) is not
+   * recorded yet. 30 TAC 285.7(d)(3): due 30 days before service stops.
+   */
+  async function discontinuationNotices(organizationId: string, today: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("contracts as k")
+      .innerJoin("sites as s", "s.id", "k.siteId")
+      .innerJoin("customers as c", "c.id", "s.customerId")
+      .select(["k.id", "k.planName", "k.serviceEndsOn", "k.discontinuedBy", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("k.organizationId", "=", organizationId)
+      .where("k.noticeSentOn", "is", null)
+      .where("k.serviceEndsOn", "is not", null)
+      .where("k.serviceEndsOn", ">=", addDays(today, -CONTRACT_EXPIRED_WINDOW_DAYS))
+      .orderBy("k.serviceEndsOn")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => {
+      const dueOn = addDays(r.serviceEndsOn!, -30);
+      return {
+        key: `discontinuation_notice_due:${r.id}`,
+        kind: "discontinuation_notice_due",
+        severity: dueOn <= today ? "high" : "medium",
+        title: dueOn < today ? "Notice that service is ending is late" : "Send notice that service is ending",
+        detail: [
+          `${r.planName} service ends ${r.serviceEndsOn}`,
+          `write to the permitting authority and the manufacturer${r.discontinuedBy === "owner" ? "" : ", and the owner"} by ${dueOn} (30 TAC 285.7(d)(3))`,
+        ].join(" · "),
+        dueOn,
+        site: site(r),
+        customer: customer(r),
+        target: { type: "contract", id: r.id },
+      };
+    });
+  }
+
+  /**
+   * Visits kept for an ending contract whose job is on a day after the last day of service:
+   * they must be moved earlier, or they will be cancelled with the contract.
+   */
+  async function visitsAfterServiceEnd(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("jobs as j")
+      .innerJoin("serviceObligations as o", (k) => k.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
+      .innerJoin("contracts as k", (k) => k.onRef("k.id", "=", "o.contractId").onRef("k.organizationId", "=", "o.organizationId"))
+      .innerJoin("sites as s", "s.id", "k.siteId")
+      .innerJoin("customers as c", "c.id", "s.customerId")
+      .select(["o.id", "j.scheduledDate", "k.serviceEndsOn", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("j.organizationId", "=", organizationId)
+      .where("j.status", "=", "scheduled")
+      .where("o.status", "=", "open")
+      .where("k.status", "=", "active")
+      .where("k.serviceEndsOn", "is not", null)
+      .whereRef("j.scheduledDate", ">", "k.serviceEndsOn")
+      .orderBy("k.serviceEndsOn")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      key: `visit_after_service_end:${r.id}`,
+      kind: "visit_after_service_end",
+      severity: "high",
+      title: "Visit scheduled after service ends",
+      detail: `Scheduled ${r.scheduledDate}, but service ends after ${r.serviceEndsOn}: move it to ${r.serviceEndsOn} or earlier`,
+      dueOn: r.serviceEndsOn!,
+      site: site(r),
+      customer: customer(r),
+      target: { type: "obligation", id: r.id },
     }));
   }
 
@@ -504,6 +580,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           renewalExceptions(organizationId),
           serviceRequests(organizationId),
           unresolvedComplaints(organizationId),
+          discontinuationNotices(organizationId, today),
+          visitsAfterServiceEnd(organizationId),
           smsReplies(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),

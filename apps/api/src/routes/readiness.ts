@@ -1,20 +1,29 @@
 import { createHash } from "node:crypto";
-import { openContractFiling, refreshFiling, type ComplianceContext } from "@aerowise/compliance";
+import { openContractFiling, refreshFiling, updateContractFilingDeadline, contractBasisOf, customerCopy, SignatureError, UNSIGNED_CUSTOMER_COPY, signAuthorityReport, signingPreview, type ComplianceContext } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
+  addDays,
   classifyInput,
+  contractDiscontinuation,
+  contractFilingBasis,
+  contractFilingBasisInput,
+  contractProviderInput,
+  discontinuationNoticeInput,
   credential,
   credentialInput,
   credentialPatch,
   customerDelivery,
   id,
   officeServiceRequestInput,
+  reportSigning,
   responseInput,
   serviceRequestDetail,
+  signReportInput,
+  type ReportSigning,
   type Credential,
   type ServiceRequestDetail,
 } from "@aerowise/domain";
-import { billingEmail, SEND_CUSTOMER_REPORT } from "@aerowise/tasks";
+import { billingEmail, queueSms, SEND_CUSTOMER_REPORT } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
@@ -22,6 +31,27 @@ import { notFound, unprocessable } from "../lib/errors.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 
 const params = z.object({ id });
+
+/**
+ * The written notice a provider owes when a contract ends (30 TAC 285.7(d)(3)): to the
+ * permitting authority and the manufacturer, and to the owner too when the provider ends
+ * it, at least 30 days before service stops.
+ */
+export function discontinuationOf(
+  c: { discontinuedBy: "provider" | "owner" | null; serviceEndsOn: string | null; noticeSentOn: string | null; noticeNote: string | null },
+  authorityName: string | null,
+) {
+  const recipients = [authorityName ?? "the permitting authority", "the system's manufacturer"];
+  if (c.discontinuedBy !== "owner") recipients.push(c.discontinuedBy === "provider" ? "the owner" : "the owner, if the provider ended the contract");
+  return {
+    discontinuedBy: c.discontinuedBy,
+    serviceEndsOn: c.serviceEndsOn,
+    noticeDueOn: c.serviceEndsOn ? addDays(c.serviceEndsOn, -30) : null,
+    recipients,
+    noticeSentOn: c.noticeSentOn,
+    noticeNote: c.noticeNote,
+  };
+}
 const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
 
 /**
@@ -262,6 +292,107 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
   );
 
   /** Inspection filings at the site not yet sent, checked again now that a request's review or response changed. */
+  // ---- Maintenance provider signature (30 TAC 285.7(b)(3)) ----
+
+  async function signingState(organizationId: string, inspectionId: string, userId: string): Promise<ReportSigning> {
+    const insp = await db.selectFrom("inspections").select("id").where("organizationId", "=", organizationId).where("id", "=", inspectionId).executeTakeFirst();
+    if (!insp) throw notFound("Inspection not found");
+    let preview;
+    try {
+      preview = await signingPreview(db, { organizationId, inspectionId, userId, at: now() });
+    } catch (err) {
+      if (err instanceof SignatureError) throw notFound(err.message);
+      throw err;
+    }
+    const s = preview.existing;
+    const customer = await db
+      .selectFrom("reports as r")
+      .leftJoin("reportSignatures as rs", (j) => j.onRef("rs.reportId", "=", "r.id").onRef("rs.organizationId", "=", "r.organizationId"))
+      .select(["r.id", "r.version", "rs.id as signatureId"])
+      .where("r.organizationId", "=", organizationId)
+      .where("r.inspectionId", "=", inspectionId)
+      .where("r.audience", "=", "customer")
+      .orderBy("r.version", "desc")
+      .executeTakeFirst();
+    return {
+      reportId: preview.report.id,
+      version: preview.report.version,
+      statement: s?.statement ?? preview.statement,
+      holderName: preview.holderName,
+      problems: preview.problems,
+      provider: preview.provider ? { name: preview.provider.holderName, number: preview.provider.number, source: preview.provider.source } : null,
+      delegationRequired: Boolean(preview.delegatedFrom),
+      customerCopy: customer ? { reportId: customer.id, version: customer.version, signed: Boolean(customer.signatureId) } : null,
+      signature: s
+        ? {
+            signedByName: s.signedByName,
+            typedName: s.typedName,
+            licenseNumber: s.licenseNumber,
+            delegationNote: s.delegationNote,
+            statement: s.statement,
+            signedAt: s.signedAt.toISOString(),
+            sha256: s.sha256,
+          }
+        : null,
+    };
+  }
+
+  app.get(
+    "/inspections/:id/signature",
+    {
+      config: { permission: "filings:read" },
+      schema: {
+        tags: ["readiness"],
+        summary: "The maintenance provider's signature on the latest authority report, or what signing it would say and what stops you",
+        params,
+        response: { 200: reportSigning },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      return signingState(organizationId, req.params.id, userId);
+    },
+  );
+
+  app.post(
+    "/inspections/:id/signature",
+    {
+      config: { permission: "reports:sign" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Sign the latest authority report as the licensed maintenance provider (30 TAC 285.7(b)(3))",
+        description:
+          "Only someone with their own active, checked MP license can sign, by typing their name as it appears on the license. The MP named on the site's contract (else the organization's responsible MP) signs by default; anyone else must describe the documented delegation and supervision that lets them sign for that MP. The authority and customer copies are signed together: the filing sends the signed authority copy and the customer gets the signed customer copy. A later report version needs its own signature.",
+        params,
+        body: signReportInput,
+        response: { 200: reportSigning },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      await signingState(organizationId, req.params.id, userId);
+      let signed;
+      try {
+        signed = await signAuthorityReport(
+          { db, store: compliance.store },
+          { organizationId, inspectionId: req.params.id, userId, typedName: req.body.typedName, delegationNote: req.body.delegationNote ?? null, at: now() },
+        );
+      } catch (err) {
+        if (err instanceof SignatureError) throw unprocessable(err.message);
+        throw err;
+      }
+      await audit(db, req, { action: "report.signed", entityType: "inspection", entityId: req.params.id, changes: { typedName: req.body.typedName, delegationNote: req.body.delegationNote ?? null } });
+      // Where the customer's copy waited for this signature, tell them it is ready now.
+      if (signed.customerReportId) {
+        const r = await db.selectFrom("reports as r").innerJoin("sites as s", (j) => j.onRef("s.id", "=", "r.siteId").onRef("s.organizationId", "=", "r.organizationId")).select(["r.id", "r.siteId", "s.customerId"]).where("r.id", "=", signed.customerReportId).executeTakeFirstOrThrow();
+        await queueSms(db, organizationId, { kind: "report_ready", customerId: r.customerId, siteId: r.siteId, relatedType: "report", relatedId: r.id, dedupeKey: `report_ready:${req.params.id}:signed` }, now());
+      }
+      const filing = await db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "=", req.params.id).executeTakeFirst();
+      if (filing) await refreshFiling(ctx(), organizationId, filing.id, userId);
+      return signingState(organizationId, req.params.id, userId);
+    },
+  );
+
   async function recheckHeldFilings(organizationId: string, siteId: string, actorUserId: string) {
     const held = await db
       .selectFrom("filings")
@@ -383,6 +514,127 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     },
   );
 
+  app.put(
+    "/contracts/:id/filing-basis",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Record which 30 TAC 285.7 deadline the contract's filing has: initial policy, first contract after it, renewal or replacement",
+        description: "A filing that has not gone out gets the new deadline. One already sent keeps the deadline it was sent against.",
+        params,
+        body: contractFilingBasisInput,
+        response: { 200: contractFilingBasis },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const at = now();
+      const basisOn = req.body.basis === "initial_policy" ? null : (req.body.basisOn ?? null);
+      await db.transaction().execute(async (trx) => {
+        const updated = await trx
+          .updateTable("contracts")
+          .set({ filingBasis: req.body.basis, filingBasisOn: basisOn, filingBasisNote: req.body.note ?? null, filingBasisSetBy: userId, filingBasisSetAt: at, updatedAt: at })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", req.params.id)
+          .returning("id")
+          .executeTakeFirst();
+        if (!updated) throw notFound("Contract");
+        await audit(trx, req, { action: "contract.filing_basis_set", entityType: "contract", entityId: updated.id, changes: { basis: req.body.basis, basisOn, note: req.body.note ?? null } });
+        await updateContractFilingDeadline(trx, { organizationId, contractId: updated.id, actorUserId: userId, at });
+      });
+      return { basis: req.body.basis, basisOn, note: req.body.note ?? null, derived: false };
+    },
+  );
+
+  async function contractProviderOf(organizationId: string, credentialId: string | null) {
+    const org = await db.selectFrom("organizations").select("responsibleCredentialId").where("id", "=", organizationId).executeTakeFirstOrThrow();
+    const chosen = credentialId ?? org.responsibleCredentialId;
+    if (!chosen) return null;
+    const c = await db.selectFrom("providerCredentials").select(["id", "holderName", "number"]).where("organizationId", "=", organizationId).where("id", "=", chosen).executeTakeFirstOrThrow();
+    return { credentialId: c.id, name: c.holderName, number: c.number, source: credentialId ? ("contract" as const) : ("organization" as const) };
+  }
+
+  app.put(
+    "/contracts/:id/provider",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Record the maintenance provider named on the contract, who signs the site's reports by default",
+        description: "Must be an MP license on file. Null falls back to the organization's responsible MP. Anyone else who signs needs a documented delegation and supervision.",
+        params,
+        body: contractProviderInput,
+        response: { 200: z.object({ provider: z.object({ credentialId: id, name: z.string(), number: z.string(), source: z.enum(["contract", "organization"]) }).nullable() }) },
+      },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const credentialId = req.body.credentialId;
+      if (credentialId) {
+        const c = await db.selectFrom("providerCredentials").select("kind").where("organizationId", "=", organizationId).where("id", "=", credentialId).executeTakeFirst();
+        if (!c) throw notFound("Credential");
+        if (c.kind !== "tceq_maintenance_provider") throw unprocessable("Only a TCEQ maintenance provider (MP) license can be named on a contract");
+      }
+      await db.transaction().execute(async (trx) => {
+        const updated = await trx
+          .updateTable("contracts")
+          .set({ providerCredentialId: credentialId, updatedAt: now() })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", req.params.id)
+          .returning("id")
+          .executeTakeFirst();
+        if (!updated) throw notFound("Contract");
+        await audit(trx, req, { action: "contract.provider_set", entityType: "contract", entityId: updated.id, changes: { credentialId } });
+      });
+      return { provider: await contractProviderOf(organizationId, credentialId) };
+    },
+  );
+
+  app.post(
+    "/contracts/:id/discontinuation-notice",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Record the written notice that service is ending, sent to the authority and the manufacturer (and the owner, when the provider ends it)",
+        description: "30 TAC 285.7(d)(3)(A) and (B): at least 30 days before service stops. Aerowise records the notice; it does not send it.",
+        params,
+        body: discontinuationNoticeInput,
+        response: { 200: contractDiscontinuation },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const c = await db.transaction().execute(async (trx) => {
+        const row = await trx
+          .updateTable("contracts")
+          .set({ noticeSentOn: req.body.sentOn, noticeNote: req.body.note, noticeRecordedBy: userId, updatedAt: now() })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", req.params.id)
+          .where((eb) => eb.or([eb("status", "=", "cancelled"), eb("serviceEndsOn", "is not", null)]))
+          .where("noticeSentOn", "is", null)
+          .returning(["id", "discontinuedBy", "serviceEndsOn", "noticeSentOn", "noticeNote"])
+          .executeTakeFirst();
+        if (!row) {
+          const exists = await trx.selectFrom("contracts").select(["status", "noticeSentOn"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+          if (!exists) throw notFound("Contract");
+          throw unprocessable(exists.noticeSentOn ? "The notice is already recorded" : "Only a contract that is ending or cancelled has a discontinuation notice");
+        }
+        await audit(trx, req, { action: "contract.discontinuation_notice_recorded", entityType: "contract", entityId: row.id, changes: req.body });
+        return row;
+      });
+      const filing = await db
+        .selectFrom("filings as f")
+        .leftJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
+        .select("j.authorityName")
+        .where("f.organizationId", "=", organizationId)
+        .where("f.contractId", "=", c.id)
+        .executeTakeFirst();
+      return discontinuationOf(c, filing?.authorityName ?? null);
+    },
+  );
+
   app.get(
     "/contracts/:id/filing-status",
     {
@@ -398,8 +650,22 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
             uploadedDocuments: z.array(z.object({ id, filename: z.string(), sha256: z.string(), signedOn: z.iso.date().nullable(), uploadedAt: z.iso.datetime({ offset: true }), url: z.string() })),
             customerCopy: z.array(customerDelivery),
             authority: z
-              .object({ filingId: id, status: z.string(), deadlineOn: z.iso.date().nullable(), sentAt: z.iso.datetime({ offset: true }).nullable(), confirmedAt: z.iso.datetime({ offset: true }).nullable(), reviewReason: z.string().nullable() })
+              .object({
+                filingId: id,
+                status: z.string(),
+                deadlineOn: z.iso.date().nullable(),
+                deadlineBasis: z.string().nullable(),
+                sentAt: z.iso.datetime({ offset: true }).nullable(),
+                confirmedAt: z.iso.datetime({ offset: true }).nullable(),
+                reviewReason: z.string().nullable(),
+              })
               .nullable(),
+            /** Which 30 TAC 285.7 deadline the contract filing has. */
+            basis: contractFilingBasis,
+            /** Set once the contract is cancelled: the notice the provider owes before service stops. */
+            discontinuation: contractDiscontinuation.nullable(),
+            /** The MP who signs this contract's reports by default: named on the contract, else the organization's responsible MP. */
+            provider: z.object({ credentialId: id, name: z.string(), number: z.string(), source: z.enum(["contract", "organization"]) }).nullable(),
           }),
         },
       },
@@ -409,11 +675,28 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       const c = await db
         .selectFrom("contracts as c")
         .leftJoin("signedDocuments as d", (j) => j.onRef("d.id", "=", "c.signedDocumentId").onRef("d.organizationId", "=", "c.organizationId"))
-        .select(["c.id", "c.signedDocumentId", "d.signedAt", "d.pdfSha256"])
+        .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
+        .select([
+          "c.id",
+          "c.status",
+          "c.signedDocumentId",
+          "d.signedAt",
+          "d.pdfSha256",
+          "c.filingBasis",
+          "c.filingBasisOn",
+          "c.filingBasisNote",
+          "p.endOn as previousEndOn",
+          "c.discontinuedBy",
+          "c.serviceEndsOn",
+          "c.noticeSentOn",
+          "c.noticeNote",
+          "c.providerCredentialId",
+        ])
         .where("c.organizationId", "=", organizationId)
         .where("c.id", "=", req.params.id)
         .executeTakeFirst();
       if (!c) throw notFound("Contract");
+      const provider = await contractProviderOf(organizationId, c.providerCredentialId);
       const [uploads, deliveries, filing] = await Promise.all([
         db.selectFrom("contractDocuments").select(["id", "filename", "sha256", "signedOn", "createdAt"]).where("organizationId", "=", organizationId).where("contractId", "=", c.id).orderBy("createdAt", "desc").execute(),
         c.signedDocumentId
@@ -425,8 +708,15 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
               .orderBy("attemptedAt", "desc")
               .execute()
           : [],
-        db.selectFrom("filings").select(["id", "status", "deadlineOn", "sentAt", "confirmedAt", "reviewReason"]).where("organizationId", "=", organizationId).where("contractId", "=", c.id).executeTakeFirst(),
+        db
+          .selectFrom("filings as f")
+          .leftJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
+          .select(["f.id", "f.status", "f.deadlineOn", "f.deadlineBasis", "f.sentAt", "f.confirmedAt", "f.reviewReason", "j.authorityName"])
+          .where("f.organizationId", "=", organizationId)
+          .where("f.contractId", "=", c.id)
+          .executeTakeFirst(),
       ]);
+      const basis = contractBasisOf(c);
       return {
         signedAt: c.signedAt?.toISOString() ?? null,
         signedDocumentSha256: c.pdfSha256 ?? null,
@@ -440,8 +730,19 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         })),
         customerCopy: deliveries.map((d) => ({ ...d, attemptedAt: d.attemptedAt.toISOString() })),
         authority: filing
-          ? { filingId: filing.id, status: filing.status, deadlineOn: filing.deadlineOn, sentAt: filing.sentAt?.toISOString() ?? null, confirmedAt: filing.confirmedAt?.toISOString() ?? null, reviewReason: filing.reviewReason }
+          ? {
+              filingId: filing.id,
+              status: filing.status,
+              deadlineOn: filing.deadlineOn,
+              deadlineBasis: filing.deadlineBasis,
+              sentAt: filing.sentAt?.toISOString() ?? null,
+              confirmedAt: filing.confirmedAt?.toISOString() ?? null,
+              reviewReason: filing.reviewReason,
+            }
           : null,
+        basis: { ...basis, note: c.filingBasisNote },
+        discontinuation: c.status === "cancelled" || c.serviceEndsOn ? discontinuationOf(c, filing?.authorityName ?? null) : null,
+        provider,
       };
     },
   );
@@ -487,6 +788,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         .executeTakeFirst();
       if (!r) throw notFound("Report");
       if (r.audience !== "customer") throw unprocessable("Only the customer copy can be sent to the customer");
+      if (!(await customerCopy(db, organizationId, r.id))!.ready) throw unprocessable(UNSIGNED_CUSTOMER_COPY);
       let to = req.body.to ?? null;
       to ??= await billingEmail(db, organizationId, r.customerId);
       if (!to) throw unprocessable("The customer has no contact with an email address");

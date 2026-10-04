@@ -322,6 +322,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .select(sql<number>`count(*)::int`.as("n"))
           .where("c.organizationId", "=", organizationId)
           .where("c.status", "=", "active")
+          .where("c.serviceEndsOn", "is", null)
           .where("c.endOn", ">=", today)
           .where("c.endOn", "<=", addDays(today, org.renewalWindowDays))
           .where((eb) => eb.not(eb.exists(eb.selectFrom("renewals as r").select("r.id").whereRef("r.contractId", "=", "c.id").where("r.status", "not in", ["declined", "expired"]))))

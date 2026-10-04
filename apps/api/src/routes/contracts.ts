@@ -1,5 +1,6 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
+import { cancelOpenVisits } from "@aerowise/tasks";
 import {
   addDays,
   cancelInput,
@@ -54,6 +55,9 @@ const CONTRACT_COLUMNS = [
   "c.previousContractId",
   "c.cancelledAt",
   "c.cancelReason",
+  "c.serviceEndsOn",
+  "c.discontinuedBy",
+  "c.providerCredentialId",
   "c.notes",
   "c.createdAt",
 ] as const;
@@ -315,6 +319,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const prev = await contractQuery(organizationId).where("c.id", "=", req.params.id).executeTakeFirst();
       if (!prev) throw notFound("Contract");
       if (prev.status === "cancelled") throw unprocessable("A cancelled contract cannot be renewed");
+      if (prev.serviceEndsOn) throw unprocessable(`This contract is ending: service stops after ${prev.serviceEndsOn}`);
       if (prev.renewedById) throw new HttpError(409, "already_renewed", "This contract has already been renewed");
       const terms: Terms = req.body.planId
         ? await activePlanTerms(organizationId, req.body.planId, req.body.priceCents)
@@ -354,7 +359,9 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       config: { permission: "contracts:write" },
       schema: {
         tags: ["contracts"],
-        summary: "Cancel a contract and its remaining open visits",
+        summary: "Cancel a contract and its remaining open visits, now or after a last day of service",
+        description:
+          "With a last day of service today or later, the contract stays active through that day with the visits that can start by then; the rest are cancelled now and the contract ends the day after. Without one (or with a past one), it is cancelled at once.",
         params,
         body: cancelInput,
         response: { 200: contractDetail },
@@ -362,33 +369,58 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
+      const asOf = await today(organizationId);
+      const current = await db.selectFrom("contracts").select("startOn").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+      if (!current) throw notFound("Contract");
+      // A last day before the term starts means no service at all: cancel now.
+      const endsLater = req.body.serviceEndsOn !== undefined && req.body.serviceEndsOn >= asOf && req.body.serviceEndsOn >= current.startOn;
+      if (endsLater) {
+        // Service continues through the last day: the contract stays active with the visits
+        // due before then, and the sweep ends it the day after. Visits that cannot start
+        // before the last day are cancelled now.
+        await db.transaction().execute(async (trx) => {
+          const updated = await trx
+            .updateTable("contracts")
+            .set({ cancelReason: req.body.reason, discontinuedBy: req.body.discontinuedBy ?? null, serviceEndsOn: req.body.serviceEndsOn!, updatedAt: new Date() })
+            .where("organizationId", "=", organizationId)
+            .where("id", "=", req.params.id)
+            .where("status", "=", "active")
+            .where("serviceEndsOn", "is", null)
+            .returning("id")
+            .executeTakeFirst();
+          if (!updated) {
+            const exists = await trx.selectFrom("contracts").select(["status", "serviceEndsOn"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+            if (!exists) throw notFound("Contract");
+            throw new HttpError(409, "already_cancelled", exists.status === "cancelled" ? "This contract is already cancelled" : `This contract already ends after ${exists.serviceEndsOn}`);
+          }
+          await cancelOpenVisits(trx, { organizationId, contractIds: [updated.id], windowStartAfter: req.body.serviceEndsOn!, reason: `Service ends after ${req.body.serviceEndsOn}`, at: new Date() });
+          await audit(trx, req, { action: "contract.ending_scheduled", entityType: "contract", entityId: updated.id, changes: req.body });
+        });
+        return loadContractDetail(organizationId, req.params.id);
+      }
       await db.transaction().execute(async (trx) => {
         const updated = await trx
           .updateTable("contracts")
-          .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: req.body.reason, updatedAt: new Date() })
+          .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: req.body.reason, discontinuedBy: req.body.discontinuedBy ?? null, serviceEndsOn: req.body.serviceEndsOn ?? null, updatedAt: new Date() })
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .where("status", "=", "active")
+          // An ending contract keeps its recorded last day; the sweep closes it after that.
+          .where("serviceEndsOn", "is", null)
           .returning("id")
           .executeTakeFirst();
         if (!updated) {
           const exists = await trx
             .selectFrom("contracts")
-            .select("id")
+            .select(["status", "serviceEndsOn"])
             .where("organizationId", "=", organizationId)
             .where("id", "=", req.params.id)
             .executeTakeFirst();
           if (!exists) throw notFound("Contract");
-          throw new HttpError(409, "already_cancelled", "This contract is already cancelled");
+          throw new HttpError(409, "already_cancelled", exists.status === "cancelled" ? "This contract is already cancelled" : `This contract already ends after ${exists.serviceEndsOn}`);
         }
-        // Completed visits stay as history.
-        await trx
-          .updateTable("serviceObligations")
-          .set({ status: "cancelled", updatedAt: new Date() })
-          .where("organizationId", "=", organizationId)
-          .where("contractId", "=", updated.id)
-          .where("status", "=", "open")
-          .execute();
+        // Completed visits stay as history; unstarted jobs leave the route.
+        await cancelOpenVisits(trx, { organizationId, contractIds: [updated.id], reason: "Contract cancelled", at: new Date() });
         await audit(trx, req, { action: "contract.cancelled", entityType: "contract", entityId: updated.id, changes: req.body });
       });
       return loadContractDetail(organizationId, req.params.id);

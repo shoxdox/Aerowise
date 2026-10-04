@@ -1,3 +1,4 @@
+import { customerCopy } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
   amountDue,
@@ -198,6 +199,8 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           .limit(50)
           .execute(),
       ]);
+      // A report waiting for the maintenance provider's signature is not shown yet (30 TAC 285.7(b)(3)).
+      const ready = new Set((await Promise.all(reports.map(async (x) => ((await customerCopy(db, organizationId, x.id))?.ready ? x.id : null)))).filter(Boolean));
 
       const sites: PortalSite[] = siteRows.map((s) => {
         const sys = systems.find((x) => x.siteId === s.id);
@@ -229,7 +232,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.publicToken) } : null,
           nextVisit: next ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate } : null,
           reports: reports
-            .filter((x) => x.siteId === s.id)
+            .filter((x) => x.siteId === s.id && ready.has(x.id))
             .map((x) => ({ id: x.id, inspectedOn: dateInZone(x.completedAt ?? x.arrivedAt, org.timezone), url: `/portal/${req.params.token}/reports/${x.id}` }))
             .sort((a, b) => b.inspectedOn.localeCompare(a.inspectedOn)),
           serviceRequests: requests
@@ -283,11 +286,13 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .where("r.audience", "=", "customer")
         .where("r.id", "=", req.params.reportId)
         .executeTakeFirst();
-      const data = row && (await store.get(row.storageKey));
-      if (!row || !data) throw notFound("Report");
+      // The signed copy when there is one; one still waiting for the signature is not out yet.
+      const copy = row && (await customerCopy(db, link.organizationId, req.params.reportId));
+      const data = copy?.ready ? await store.get(copy.storageKey) : null;
+      if (!row || !copy || !data) throw notFound("Report");
       return reply
         .type("application/pdf")
-        .header("content-disposition", `inline; filename="inspection-report-${row.inspectionId.slice(0, 8)}.pdf"`)
+        .header("content-disposition", `inline; filename="inspection-report-${row.inspectionId.slice(0, 8)}${copy.signed ? "-signed" : ""}.pdf"`)
         .header("x-content-type-options", "nosniff")
         .send(data);
     },

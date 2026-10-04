@@ -2,7 +2,7 @@ import { drainTasks } from "@aerowise/tasks";
 import { TEST_NUMBERS } from "@aerowise/sms";
 import { beforeEach, describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 beforeEach(() => {
@@ -125,6 +125,11 @@ describe("inspection completed and report ready", () => {
     await s.api.patch("/sms/settings", { kinds: ["inspection_completed", "report_ready"] });
     const insp = await complete(s);
     await runWorker(ctx);
+    // The report is made, but the customer hears about it only once the maintenance
+    // provider has signed it (30 TAC 285.7(b)(3)).
+    expect(textsTo(MOBILE).map((t) => t.body)).toEqual(["Org A: we finished the inspection of your septic system at 1 Main St. Your report will follow. Reply STOP to opt out."]);
+    await signAsProvider(s, insp.id);
+    await runWorker(ctx);
     const texts = textsTo(MOBILE);
     expect(texts.map((t) => t.body)).toEqual([
       "Org A: we finished the inspection of your septic system at 1 Main St. Your report will follow. Reply STOP to opt out.",
@@ -149,12 +154,14 @@ describe("inspection completed and report ready", () => {
 
   it("waits for the morning when a report is ready at night", async () => {
     const s = await texting();
-    await complete(s);
-    // The report is made at 10:30 pm in Austin.
+    const insp = await complete(s);
+    await runWorker(ctx);
+    // The report is signed at 10:30 pm in Austin.
     ctx.now = new Date("2026-03-02T04:30:00Z");
+    await signAsProvider(s, insp.id);
     await runWorker(ctx);
     expect(textsTo(MOBILE)).toHaveLength(0);
-    const task = await ctx.db.selectFrom("backgroundTasks").select(["runAt", "completedAt"]).where("kind", "=", "sms.send").executeTakeFirstOrThrow();
+    const task = await ctx.db.selectFrom("backgroundTasks").select(["runAt", "completedAt"]).where("kind", "=", "sms.send").where("completedAt", "is", null).executeTakeFirstOrThrow();
     expect(task.runAt.toISOString()).toBe("2026-03-02T14:00:00.000Z");
     expect(task.completedAt).toBeNull();
     ctx.now = new Date("2026-03-02T14:00:00Z");

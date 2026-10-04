@@ -48,3 +48,18 @@ export async function uploadRequiredPhotos(s: Setup, clientId: string) {
   }
 }
 
+
+/**
+ * The owner, as the organization's licensed maintenance provider, signs the inspection's
+ * reports (30 TAC 285.7(b)(3)); the technician is registered. Customer copies of real
+ * Texas sites only go out signed.
+ */
+export async function signAsProvider(s: Setup, inspectionId: string) {
+  const mp = await s.api.post("/credentials", { userId: s.owner.id, holderName: "Owner Person", kind: "tceq_maintenance_provider", number: "MP0001234", verifiedOn: "2026-02-20", verificationSource: "TCEQ license search" });
+  expect(mp.statusCode, mp.body).toBe(201);
+  await s.api.post("/credentials", { userId: s.tech.id, holderName: "Tech Person", kind: "tceq_maintenance_technician", number: "MT0005678", expiresOn: "2027-01-31" });
+  expect((await s.api.put("/settings/responsible-provider", { credentialId: mp.json().id })).statusCode).toBe(200);
+  const signed = await s.api.post(`/inspections/${inspectionId}/signature`, { typedName: "Owner Person" });
+  expect(signed.statusCode, signed.body).toBe(200);
+  return signed.json();
+}

@@ -55,7 +55,13 @@ export const renewInput = z.object({
   priceCents: money.optional(),
 });
 
-export const cancelInput = z.object({ reason: z.string().trim().min(1).max(2000) });
+export const cancelInput = z.object({
+  reason: z.string().trim().min(1).max(2000),
+  /** Who ended it: the provider or the owner. Decides who must get written notice (30 TAC 285.7(d)(3)). */
+  discontinuedBy: z.enum(["provider", "owner"]).optional(),
+  /** The last day of service. The provider's written notice is due 30 days before it. */
+  serviceEndsOn: z.iso.date().optional(),
+});
 
 export const obligation = z.object({
   id,
@@ -92,6 +98,14 @@ export const contract = z.object({
   renewedById: id.nullable(),
   cancelledAt: z.iso.datetime({ offset: true }).nullable(),
   cancelReason: z.string().nullable(),
+  /**
+   * The last day of service when the contract is ending or has ended. A contract with a
+   * later last day stays active until then, with the visits due before it.
+   */
+  serviceEndsOn: z.iso.date().nullable(),
+  discontinuedBy: z.enum(["provider", "owner"]).nullable(),
+  /** The MP license named on the contract, who signs its reports by default. Null: the organization's responsible MP. */
+  providerCredentialId: id.nullable(),
   notes: z.string().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
 });

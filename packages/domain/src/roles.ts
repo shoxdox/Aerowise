@@ -19,6 +19,7 @@ export const PERMISSIONS = [
   "inspections:review",
   "filings:read",
   "filings:write",
+  "reports:sign",
   "invoices:read",
   "invoices:write",
   "billing:manage",
@@ -45,6 +46,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "inspections:review",
     "filings:read",
     "filings:write",
+    "reports:sign",
     "invoices:read",
     "invoices:write",
     "billing:manage",
@@ -54,8 +56,9 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "sms:write",
     "org:manage",
   ],
-  office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "schedule:read", "schedule:write", "route:read", "inspections:read", "inspections:review", "filings:read", "filings:write", "invoices:read", "invoices:write", "quickbooks:read", "quickbooks:write", "sms:read", "sms:write"],
-  technician: ["self:read", "crm:read", "contracts:read", "schedule:read", "route:read", "inspections:read", "inspections:write"],
+  office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "schedule:read", "schedule:write", "route:read", "inspections:read", "inspections:review", "filings:read", "filings:write", "reports:sign", "invoices:read", "invoices:write", "quickbooks:read", "quickbooks:write", "sms:read", "sms:write"],
+  // Signing still needs the person's own MP license; the permission only opens the door.
+  technician: ["self:read", "crm:read", "contracts:read", "schedule:read", "route:read", "inspections:read", "inspections:write", "reports:sign"],
   read_only: ["self:read", "crm:read", "contracts:read", "schedule:read", "inspections:read", "filings:read", "invoices:read", "quickbooks:read", "sms:read"],
 };
 

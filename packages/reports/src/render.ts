@@ -162,6 +162,21 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
     if (col === 1) doc.y += size * 0.75 + 16;
   }
 
+  if (s.signature) {
+    const sig = s.signature;
+    heading("Maintenance provider signature");
+    doc.font("Helvetica").fontSize(9.5).fillColor("#000").text(sig.statement, left, doc.y, { width });
+    doc.moveDown(0.6);
+    if (doc.y > doc.page.height - 120) doc.addPage();
+    doc.font("Helvetica-Oblique").fontSize(14).text(`/s/ ${sig.typedName}`, left, doc.y);
+    doc.moveTo(left, doc.y + 2).lineTo(left + 260, doc.y + 2).strokeColor("#000").lineWidth(0.5).stroke();
+    doc.moveDown(0.5);
+    pair("Signed by", sig.name);
+    pair(sig.licenseLabel, sig.licenseNumber);
+    pair("Signed", when(sig.signedAt, s.timezone));
+    pair("Report signed", `Version ${sig.reportVersion}; unsigned copy SHA-256 ${sig.reportSha256}`);
+  }
+
   // Footer on every page: what this document is and how to identify it.
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {

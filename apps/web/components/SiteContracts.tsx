@@ -20,6 +20,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const { data, reload } = useLoad<{ items: ContractDetail[] }>(`/sites/${siteId}/contracts`);
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
   const [creating, setCreating] = useState(false);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -50,9 +51,11 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
     );
   }
 
-  function cancel(c: ContractDetail) {
-    const reason = window.prompt("Why is this contract being cancelled?");
-    if (reason) void run(() => api(`/contracts/${c.id}/cancel`, { method: "POST", body: { reason } }));
+  function cancel(c: ContractDetail, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    setCancelling(null);
+    void run(() => api(`/contracts/${c.id}/cancel`, { method: "POST", body: { reason: v.reason, discontinuedBy: v.discontinuedBy, serviceEndsOn: v.serviceEndsOn } }));
   }
 
   const offered = plans.data?.items.filter((p) => p.active) ?? [];
@@ -130,7 +133,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 Renewal: {RENEWAL_STATUS_LABELS[c.renewalStatus as RenewalStatus]?.toLowerCase() ?? c.renewalStatus}
               </Link>
             )}
-            {editable && c.status === "active" && !c.renewedById && (!c.renewalId || c.renewalStatus === "declined" || c.renewalStatus === "expired") && (
+            {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && (!c.renewalId || c.renewalStatus === "declined" || c.renewalStatus === "expired") && (
               <button
                 className="secondary"
                 onClick={() => run(async () => router.push(`/renewals/${(await api<{ id: string }>(`/contracts/${c.id}/renewal`, { method: "POST", body: {} })).id}`))}
@@ -138,7 +141,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 Start renewal
               </button>
             )}
-            {editable && c.status === "active" && !c.renewedById && (
+            {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && (
               <button
                 className="link"
                 title="Create the next term now, without the customer signing or paying online"
@@ -149,14 +152,47 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 Renew now
               </button>
             )}
-            {editable && c.status === "active" && (
-              <button className="link" onClick={() => cancel(c)}>
+            {editable && c.status === "active" && !c.serviceEndsOn && (
+              <button className="link" onClick={() => setCancelling((x) => (x === c.id ? null : c.id))}>
                 Cancel contract
               </button>
             )}
           </div>
-          {c.cancelReason && <p className="muted">Cancelled: {c.cancelReason}</p>}
-          {c.status === "active" && <ContractFilingStatus contractId={c.id} editable={editable} />}
+          {cancelling === c.id && (
+            <form className="card stack" onSubmit={(event) => cancel(c, event)}>
+              <label>
+                Why is this contract being cancelled?
+                <input name="reason" required />
+              </label>
+              <label>
+                Who is ending it?
+                <select name="discontinuedBy" required defaultValue="">
+                  <option value="" disabled>
+                    Choose
+                  </option>
+                  <option value="provider">We are (the provider)</option>
+                  <option value="owner">The owner</option>
+                </select>
+              </label>
+              <label>
+                Last day of service
+                <input name="serviceEndsOn" type="date" required />
+              </label>
+              <p className="muted small">A future last day keeps the contract active, with the visits due by then, until that day passes.</p>
+              <p className="muted small">
+                30 TAC 285.7(d)(3): the provider must notify the permitting authority and the system&apos;s manufacturer in writing, and the owner too when the provider ends the contract, at least
+                30 days before service stops. Aerowise reminds you and records the notice; it does not send it.
+              </p>
+              <button className="primary">Cancel contract</button>
+            </form>
+          )}
+          {c.status === "active" && c.serviceEndsOn && (
+            <p className="muted">
+              Ending: service stops after {day(c.serviceEndsOn)}. Visits due by then stay scheduled. {c.cancelReason}
+            </p>
+          )}
+          {c.status === "cancelled" && c.cancelReason && <p className="muted">Cancelled: {c.cancelReason}</p>}
+          <ContractFilingStatus key={`${c.id}-${c.status}-${c.serviceEndsOn ?? ""}`} contractId={c.id} editable={editable} />
           <table className="compact">
             <thead>
               <tr>

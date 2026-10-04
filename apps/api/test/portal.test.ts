@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import type { EmailMessage, EmailResult, EmailTransport } from "@aerowise/compliance";
 import { drainTasks } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 
@@ -52,6 +53,12 @@ describe("customer portal", () => {
     const stored = await ctx.db.selectFrom("portalLinks").select(["tokenHash"]).executeTakeFirstOrThrow();
     expect(stored.tokenHash.toString("hex")).not.toContain(Buffer.from(token).toString("hex"));
 
+    // Until the maintenance provider signs it, the customer's copy is neither listed nor served (30 TAC 285.7(b)(3)).
+    const customerReport = await ctx.db.selectFrom("reports").select("id").where("inspectionId", "=", insp.id).where("audience", "=", "customer").executeTakeFirstOrThrow();
+    expect((await anon().get(`/portal/${token}`)).json().sites[0].reports).toEqual([]);
+    expect((await anon().get(`/portal/${token}/reports/${customerReport.id}`)).statusCode).toBe(404);
+    await signAsProvider(s, insp.id);
+
     const view = await anon().get(`/portal/${token}`);
     expect(view.statusCode).toBe(200);
     const v = view.json();
@@ -71,6 +78,10 @@ describe("customer portal", () => {
     const pdf = await anon().get(site.reports[0].url);
     expect(pdf.statusCode).toBe(200);
     expect(pdf.headers["content-type"]).toBe("application/pdf");
+    // It is the signed copy.
+    const signature = await ctx.db.selectFrom("reportSignatures").select("sha256").where("reportId", "=", customerReport.id).executeTakeFirstOrThrow();
+    expect(createHash("sha256").update(pdf.rawPayload).digest("hex")).toBe(signature.sha256);
+    expect(pdf.headers["content-disposition"]).toContain("-signed.pdf");
 
     // The authority copy of the same inspection is not reachable from the portal.
     const authority = await ctx.db.selectFrom("reports").select("id").where("inspectionId", "=", insp.id).where("audience", "=", "authority").executeTakeFirstOrThrow();

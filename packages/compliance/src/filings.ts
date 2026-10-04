@@ -17,7 +17,8 @@ import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction, type Updateable } from "kysely";
 import { adapterFor, adapterVersion, type CanonicalInspection, type JurisdictionAdapter } from "./adapter.ts";
 import type { EmailTransport } from "./email.ts";
-import { contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
+import { providerSignatureRequired, reportSignature } from "./signatures.ts";
+import { contractBasisOf, contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
 import { amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
 import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
 
@@ -206,6 +207,9 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
 }
 
 const NO_ADAPTER = "There is no way to file with this authority yet.";
+/** The review reason while a filing waits only for the maintenance provider's signature. */
+export const AWAITING_SIGNATURE = "Waiting for a licensed maintenance provider to sign the authority report";
+export const awaitingSignature = (version: number) => `${AWAITING_SIGNATURE} (version ${version}), as 30 TAC 285.7(b)(3) requires`;
 const reportsUnknown = (resolved: ResolvedJurisdiction) =>
   resolved.rules.inspectionReports?.submission === "unknown" ? `${resolved.authorityName} has not published how inspection reports are submitted, so this report cannot be filed through Aerowise.` : null;
 
@@ -316,7 +320,7 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
     .innerJoin("organizations as o", "o.id", "c.organizationId")
     .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
-    .select(["c.id", "c.siteId", "c.status", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+    .select(["c.id", "c.siteId", "c.status", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
     .where("c.organizationId", "=", args.organizationId)
     .where("c.id", "=", args.contractId)
     .executeTakeFirst();
@@ -339,7 +343,7 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
   const document = c.signedDocumentId
     ? null
     : await trx.selectFrom("contractDocuments").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", c.id).orderBy("createdAt", "desc").executeTakeFirst();
-  const deadline = resolved ? contractDeadline(resolved.rules, c.previousEndOn) : { deadlineOn: null, basis: null };
+  const deadline = resolved ? contractDeadline(resolved.rules, contractBasisOf(c)) : { deadlineOn: null, basis: null };
   const reviewReason = !resolved ? resolution.reviewReason : !c.signedDocumentId && !document ? NO_SIGNED_CONTRACT : null;
   const inserted = await trx
     .insertInto("filings")
@@ -470,6 +474,11 @@ export async function prepareFilingById(ctx: ComplianceContext, organizationId: 
     }
   }
   problems.push(...(await packageProblems(ctx.db, f, resolved, at)));
+  // Last, so it asks for a signature only on the version that will go out.
+  if (f.kind === "inspection_report" && !problems.length && providerSignatureRequired(resolved.rules)) {
+    const report = (await latestAuthorityReport(ctx.db, organizationId, f.inspectionId!))!;
+    if (!(await reportSignature(ctx.db, organizationId, report.id))) problems.push(awaitingSignature(report.version));
+  }
   if (problems.length) {
     const reason = problems.join("; ");
     await ctx.db
@@ -514,6 +523,75 @@ export async function prepareFiling(ctx: ComplianceContext, organizationId: stri
 }
 
 /**
+ * The package for this submission would send an authority report the maintenance provider
+ * has not signed (30 TAC 285.7(b)(3)): no signature on its report version, or a package
+ * made from the unsigned copy before the report was signed (a filing prepared before
+ * signatures were required, or signed after it was ready).
+ */
+async function unsignedPackage(db: Executor, f: FilingRow, resolved: ResolvedJurisdiction) {
+  if (f.kind !== "inspection_report" || !f.inspectionId || !providerSignatureRequired(resolved.rules)) return false;
+  const pkg = await findPackage(db, f.organizationId, f.id, f.submissionNo);
+  if (!pkg) {
+    const report = await latestAuthorityReport(db, f.organizationId, f.inspectionId);
+    return !report || !(await reportSignature(db, f.organizationId, report.id));
+  }
+  const doc = pkg.documents.find((d) => d.role === "inspection_report");
+  if (!doc?.sourceId) return true;
+  const signature = await reportSignature(db, f.organizationId, doc.sourceId);
+  return !signature || signature.sha256 !== doc.sha256;
+}
+
+/**
+ * Takes an unsent submission out of the way: the filing goes back to pending under the next
+ * submission number, so it is prepared again with a new package. The old package stays on
+ * record as never sent. Mutates `f`. Call `prepareFilingById` after committing.
+ */
+async function replaceUnsentSubmission(trx: Transaction<DB>, f: FilingRow, at: Date, actorUserId: string | null, summary: string) {
+  // A send that was tried and not recorded as failed before it reached the transport may
+  // have delivered the old package; say so instead of claiming it never went out.
+  const tried = await trx.selectFrom("filingAttempts").select("id").where("filingId", "=", f.id).where("submissionNo", "=", f.submissionNo).where("status", "!=", "failed").executeTakeFirst();
+  if (tried) summary += `. An earlier attempt of submission ${f.submissionNo} did not record a result, so it may have been delivered: check the sending log`;
+  if (f.status === "submitting") await move(trx, f, "failed", at, { lastError: summary }, null);
+  if (f.status === "queued" || f.status === "failed") await move(trx, f, "ready", at, {}, null);
+  f.submissionNo += 1;
+  await move(trx, f, "pending", at, { submissionNo: f.submissionNo, sendRequestedBy: null, sendRequestedSubmission: null }, { type: "filing_reprepared", summary }, actorUserId);
+}
+
+const unsignedSummary = (f: FilingRow) =>
+  `Not sent: submission ${f.submissionNo} would have sent an authority report the maintenance provider has not signed (30 TAC 285.7(b)(3)); it is replaced by submission ${f.submissionNo + 1}`;
+
+/**
+ * Replaces every unsent inspection package that carries an unsigned authority report, so
+ * nothing prepared before signatures were required (or before the report was signed) can
+ * go out. Part of the filing sweep; safe to run any number of times.
+ */
+export async function replaceUnsignedPackages(ctx: ComplianceContext, organizationId: string) {
+  const open = await ctx.db
+    .selectFrom("filings")
+    .select("id")
+    .where("organizationId", "=", organizationId)
+    .where("kind", "=", "inspection_report")
+    .where("status", "in", ["ready", "queued", "failed"])
+    .execute();
+  let replaced = 0;
+  for (const { id } of open) {
+    const done = await ctx.db.transaction().execute(async (trx) => {
+      const f = await loadFiling(trx, organizationId, id, true);
+      if (!f || !["ready", "queued", "failed"].includes(f.status)) return false;
+      const resolved = await recordedJurisdiction(trx, f);
+      if (!resolved || !(await unsignedPackage(trx, f, resolved))) return false;
+      await replaceUnsentSubmission(trx, f, ctx.now(), null, unsignedSummary(f));
+      return true;
+    });
+    if (done) {
+      replaced += 1;
+      await prepareFilingById(ctx, organizationId, id);
+    }
+  }
+  return replaced;
+}
+
+/**
  * The `filings.submit` task: sends one email filing. Idempotent end to end: a filing
  * already sent (or taken over by hand) is left alone, and every retry of the same
  * submission sends the same stored package under one idempotency key, so the transport
@@ -535,6 +613,11 @@ export async function submitFiling(ctx: ComplianceContext, organizationId: strin
       }
       return null;
     }
+    // Last check before anything goes out: never an unsigned report (285.7(b)(3)).
+    if (rules && (await unsignedPackage(trx, f, rules))) {
+      await replaceUnsentSubmission(trx, f, at, null, unsignedSummary(f));
+      return { held: true as const };
+    }
     if (f.status !== "submitting") await move(trx, f, "submitting", at, {}, null);
     const last = await trx.selectFrom("filingAttempts").select(sql<number>`coalesce(max(attempt_no), 0)::int`.as("n")).where("filingId", "=", f.id).executeTakeFirstOrThrow();
     const attemptNo = Number(last.n) + 1;
@@ -547,6 +630,10 @@ export async function submitFiling(ctx: ComplianceContext, organizationId: strin
     return { f, attemptId: attempt.id };
   });
   if (!claimed) return null;
+  if ("held" in claimed) {
+    await prepareFilingById(ctx, organizationId, filingId);
+    return null;
+  }
   const { f, attemptId } = claimed;
 
   let resolved: ResolvedJurisdiction | null = null;
@@ -712,6 +799,10 @@ export async function useManualFiling(trx: Transaction<DB>, f: FilingRow, a: Act
 /** Records that the office filed it by hand (portal, mail, counter), with any reference. */
 export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: ActionArgs & { reference: string | null; note: string | null; actorName: string }) {
   if (f.status !== "ready" || f.submissionMethod !== "manual_export") throw new FilingStateError("Only a ready filing that is filed by hand can be marked as sent");
+  const resolved = await recordedJurisdiction(trx, f);
+  if (resolved && (await unsignedPackage(trx, f, resolved))) {
+    throw new FilingStateError("This package has an authority report the maintenance provider has not signed (30 TAC 285.7(b)(3)). Check the filing again to get a signed package.");
+  }
   const pkg = await findPackage(trx, f.organizationId, f.id, f.submissionNo);
   const last = await trx.selectFrom("filingAttempts").select(sql<number>`coalesce(max(attempt_no), 0)::int`.as("n")).where("filingId", "=", f.id).executeTakeFirstOrThrow();
   await trx
@@ -789,7 +880,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
       .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
       .innerJoin("organizations as o", "o.id", "c.organizationId")
       .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
-      .select(["c.signedDocumentId", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+      .select(["c.signedDocumentId", "c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
       .where("c.organizationId", "=", f.organizationId)
       .where("c.id", "=", f.contractId!)
       .executeTakeFirstOrThrow();
@@ -809,7 +900,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
       await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
       return;
     }
-    const deadline = contractDeadline(resolved.rules, c.previousEndOn);
+    const deadline = contractDeadline(resolved.rules, contractBasisOf(c));
     const set = {
       jurisdictionId: resolved.jurisdictionId,
       rulesetId: resolved.rulesetId,
@@ -864,22 +955,55 @@ export async function refreshFiling(ctx: ComplianceContext, organizationId: stri
     // Ready but not sent, and the complaint responses changed since its package was made:
     // that package must not go out. It stays on record as never sent; a new submission
     // gets a redrawn report and its own package.
-    if (f?.status === "ready" && f.kind === "inspection_report" && f.inspectionId) {
+    if (f && ["ready", "queued", "failed"].includes(f.status) && f.kind === "inspection_report" && f.inspectionId) {
       const report = await latestAuthorityReport(trx, organizationId, f.inspectionId);
       const responses = await currentAuthorityResponses(trx, organizationId, f.inspectionId);
+      const resolved = await recordedJurisdiction(trx, f);
       if (report && !sameResponses((report.snapshot as { responses?: typeof responses }).responses, responses)) {
-        f.submissionNo += 1;
-        await move(
+        await replaceUnsentSubmission(
           trx,
           f,
-          "pending",
           at,
-          { submissionNo: f.submissionNo, sendRequestedBy: null, sendRequestedSubmission: null },
-          { type: "filing_reprepared", summary: `Complaint responses changed before sending; submission ${f.submissionNo - 1} was not sent and is replaced by submission ${f.submissionNo}` },
           actorUserId,
+          `Complaint responses changed before sending; submission ${f.submissionNo} was not sent and is replaced by submission ${f.submissionNo + 1}`,
         );
+      } else if (resolved && (await unsignedPackage(trx, f, resolved))) {
+        // Signed after its package was made from the unsigned copy, or prepared before
+        // signatures were required: that package must not go out.
+        await replaceUnsentSubmission(trx, f, at, actorUserId, unsignedSummary(f));
       }
     }
   });
   return prepareFilingById(ctx, organizationId, filingId, actorUserId);
+}
+
+/**
+ * Works out a contract filing's deadline again after its 285.7 basis was recorded. Only a
+ * filing that has not gone out changes; one already sent keeps the deadline it was sent
+ * against. Runs in the caller's transaction.
+ */
+export async function updateContractFilingDeadline(trx: Transaction<DB>, args: { organizationId: string; contractId: string; actorUserId: string | null; at: Date }) {
+  const filing = await trx.selectFrom("filings").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", args.contractId).executeTakeFirst();
+  if (!filing) return null;
+  const f = (await loadFiling(trx, args.organizationId, filing.id, true))!;
+  if (!["pending", "needs_review", "ready", "queued", "failed"].includes(f.status)) return f;
+  const resolved = await recordedJurisdiction(trx, f);
+  if (!resolved) return f;
+  const c = await trx
+    .selectFrom("contracts as c")
+    .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
+    .select(["c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn"])
+    .where("c.organizationId", "=", args.organizationId)
+    .where("c.id", "=", args.contractId)
+    .executeTakeFirstOrThrow();
+  const deadline = contractDeadline(resolved.rules, contractBasisOf(c));
+  const current = await trx.selectFrom("filings").select(["deadlineOn", "deadlineBasis"]).where("organizationId", "=", args.organizationId).where("id", "=", f.id).executeTakeFirstOrThrow();
+  if (deadline.deadlineOn === current.deadlineOn && deadline.basis === current.deadlineBasis) return f;
+  await trx.updateTable("filings").set({ deadlineOn: deadline.deadlineOn, deadlineBasis: deadline.basis, updatedAt: args.at }).where("organizationId", "=", args.organizationId).where("id", "=", f.id).execute();
+  await recordEvent(trx, f, args.at, args.actorUserId, {
+    type: "filing_deadline_changed",
+    summary: deadline.deadlineOn ? `Contract filing due ${deadline.deadlineOn}: ${deadline.basis}` : `Contract filing has no deadline: ${deadline.basis}`,
+    details: { deadlineOn: deadline.deadlineOn, previousDeadlineOn: current.deadlineOn },
+  });
+  return f;
 }
