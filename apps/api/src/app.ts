@@ -13,6 +13,7 @@ import {
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { siteRoutes } from "./routes/sites.ts";
 
@@ -22,9 +23,11 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
+  /** Clock used for "today" in due dates and contract states. Tests pin it. */
+  now?: () => Date;
 }
 
-export async function buildApp({ db, production = false, logger = false, loginRateLimit = 10 }: AppOptions) {
+export async function buildApp({ db, production = false, logger = false, loginRateLimit = 10, now = () => new Date() }: AppOptions) {
   const app = Fastify({
     logger,
     genReqId: () => crypto.randomUUID(),
@@ -86,6 +89,7 @@ export async function buildApp({ db, production = false, logger = false, loginRa
   await app.register(authRoutes, { db, production, loginRateLimit });
   await app.register(customerRoutes, { db });
   await app.register(siteRoutes, { db });
+  await app.register(contractRoutes, { db, now });
 
   return app;
 }

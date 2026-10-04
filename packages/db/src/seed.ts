@@ -1,8 +1,10 @@
+import { addDays, addMonths, buildTermSchedule } from "@aerowise/domain";
 import type { Database } from "./client.ts";
 import { hashPassword } from "./password.ts";
 
-// Demo data for local development: one fictional provider, three users and ~50
-// customers with sites and systems. Every name, address and permit number is made up.
+// Demo data for local development: one fictional provider, three users, ~50
+// customers with sites and systems, two plans and a contract on most sites. Every
+// name, address and permit number is made up.
 
 export const DEMO_ORG_NAME = "Hill Country Aerobic Services (demo)";
 export const DEMO_PASSWORD = "aerowise-dev";
@@ -41,6 +43,10 @@ function rng(seed: number) {
     int: (max: number) => Math.floor(next() * max),
     pick: <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T,
   };
+}
+
+function todayInChicago(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 export async function seed(db: Database, log: (msg: string) => void = () => {}) {
@@ -87,6 +93,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
         .execute();
     }
 
+    const siteIds: string[] = [];
     for (let i = 0; i < 50; i++) {
       const first = r.pick(FIRST);
       const last = r.pick(LAST);
@@ -151,6 +158,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
           })
           .returning("id")
           .executeTakeFirstOrThrow();
+        siteIds.push(site.id);
 
         const maker = r.pick(MAKERS);
         await trx
@@ -171,7 +179,80 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
           .execute();
       }
     }
-    log(`seeded ${DEMO_ORG_NAME} (${org.id})`);
+    // Plans and contracts. Start dates are chosen relative to today so the demo always
+    // has a week of inspections coming due, a few overdue, and a few lapsed sites.
+    const plan = await trx
+      .insertInto("plans")
+      .values({ organizationId: org.id, name: "Residential annual", termMonths: 12, visitsPerTerm: 3, priceCents: 27500 })
+      .returning(["id", "name", "termMonths", "visitsPerTerm", "priceCents"])
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto("plans")
+      .values({ organizationId: org.id, name: "Two-year residential", termMonths: 24, visitsPerTerm: 6, priceCents: 49500 })
+      .execute();
+
+    const today = todayInChicago();
+    let contracts = 0;
+    for (const [i, siteId] of siteIds.entries()) {
+      let startOn: string;
+      if (i < 20) {
+        // First visit due within the next 7 days.
+        startOn = addMonths(addDays(today, (i % 7) + 1), -4);
+      } else if (i < 25) {
+        // First visit overdue by 1–5 days.
+        startOn = addMonths(addDays(today, -(i - 20)), -4);
+      } else if (i < 52) {
+        startOn = addDays(today, -r.int(330));
+      } else {
+        continue; // A few sites whose contract has lapsed.
+      }
+      const schedule = buildTermSchedule(startOn, plan.termMonths, plan.visitsPerTerm);
+      // Visits whose due date has passed were done on time, except the deliberately overdue ones.
+      const keepOverdue = i >= 20 && i < 25;
+      const contract = await trx
+        .insertInto("contracts")
+        .values({
+          organizationId: org.id,
+          siteId,
+          planId: plan.id,
+          planName: plan.name,
+          startOn,
+          endOn: schedule.endOn,
+          termMonths: plan.termMonths,
+          visitsPerTerm: plan.visitsPerTerm,
+          priceCents: plan.priceCents,
+          billingFrequency: "annual",
+          serviceType: "aerobic_inspection",
+          autoRenew: r.next() < 0.5,
+          previousContractId: null,
+          cancelledAt: null,
+          cancelReason: null,
+          notes: null,
+        })
+        .returning("id")
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto("serviceObligations")
+        .values(
+          schedule.visits.map((v) => ({
+            organizationId: org.id,
+            contractId: contract.id,
+            siteId,
+            serviceType: "aerobic_inspection" as const,
+            sequence: v.sequence,
+            windowStart: v.windowStart,
+            windowEnd: v.windowEnd,
+            dueOn: v.dueOn,
+            ...(v.dueOn < today && !keepOverdue
+              ? { status: "completed" as const, completedAt: new Date(`${addDays(v.dueOn, -10)}T16:00:00Z`) }
+              : { completedAt: null }),
+          })),
+        )
+        .execute();
+      contracts++;
+    }
+
+    log(`seeded ${DEMO_ORG_NAME} (${org.id}) with ${siteIds.length} sites and ${contracts} contracts`);
   });
 
   log(`log in as ${DEMO_USERS.map((u) => u.email).join(", ")} with password "${DEMO_PASSWORD}"`);

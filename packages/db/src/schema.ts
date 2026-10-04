@@ -135,6 +135,61 @@ export interface AuditEventsTable {
   occurredAt: CreatedAt;
 }
 
+export interface PlansTable {
+  id: Generated<string>;
+  organizationId: string;
+  name: string;
+  customerType: Generated<"residential" | "commercial">;
+  termMonths: number;
+  visitsPerTerm: number;
+  priceCents: number;
+  billingFrequency: Generated<"annual" | "semiannual" | "quarterly" | "monthly">;
+  serviceType: Generated<"aerobic_inspection">;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface ContractsTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  planId: string | null;
+  planName: string;
+  startOn: string;
+  endOn: string;
+  termMonths: number;
+  visitsPerTerm: number;
+  priceCents: number;
+  billingFrequency: "annual" | "semiannual" | "quarterly" | "monthly";
+  serviceType: "aerobic_inspection";
+  autoRenew: Generated<boolean>;
+  status: Generated<"active" | "cancelled">;
+  renewalStatus: Generated<string>;
+  previousContractId: string | null;
+  cancelledAt: Timestamp | null;
+  cancelReason: string | null;
+  notes: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface ServiceObligationsTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractId: string;
+  siteId: string;
+  serviceType: "aerobic_inspection";
+  sequence: number;
+  windowStart: string;
+  windowEnd: string;
+  dueOn: string;
+  status: Generated<"open" | "completed" | "cancelled">;
+  completedAt: Timestamp | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -145,4 +200,7 @@ export interface DB {
   contacts: ContactsTable;
   wastewaterSystems: WastewaterSystemsTable;
   auditEvents: AuditEventsTable;
+  plans: PlansTable;
+  contracts: ContractsTable;
+  serviceObligations: ServiceObligationsTable;
 }
