@@ -11,3 +11,4 @@ export * from "./imports.ts";
 export * from "./invoices.ts";
 export * from "./quickbooks.ts";
 export * from "./renewals.ts";
+export * from "./portal.ts";

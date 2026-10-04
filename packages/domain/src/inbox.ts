@@ -16,6 +16,7 @@ export const EXCEPTION_KINDS = [
   "contract_expiring",
   "contract_expired",
   "renewal_needs_review",
+  "service_request",
   "invoice_overdue",
   "payment_failed",
   "invoice_overpaid",
@@ -51,7 +52,7 @@ export const inboxException = z.object({
   site: z.object({ id, addressLine1: z.string(), city: z.string() }).nullable(),
   customer: z.object({ id, displayName: z.string() }),
   /** The record to open to deal with it. */
-  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice", "quickbooks", "renewal"]), id }),
+  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice", "quickbooks", "renewal", "service_request"]), id }),
 });
 export type InboxException = z.infer<typeof inboxException>;
 

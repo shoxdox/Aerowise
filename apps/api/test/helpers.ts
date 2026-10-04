@@ -31,7 +31,7 @@ export function setupTestApp(): TestContext {
     ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });

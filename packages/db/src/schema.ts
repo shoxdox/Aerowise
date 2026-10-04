@@ -718,6 +718,39 @@ export interface SignedDocumentsTable {
   createdAt: CreatedAt;
 }
 
+export interface PortalLinksTable {
+  id: Generated<string>;
+  organizationId: string;
+  customerId: string;
+  tokenHash: Buffer;
+  source: "office" | "email";
+  sentTo: string | null;
+  createdBy: string | null;
+  expiresAt: Timestamp;
+  revokedAt: Timestamp | null;
+  lastUsedAt: Timestamp | null;
+  createdAt: CreatedAt;
+}
+
+export type ServiceRequestKind = "alarm" | "odor" | "repair" | "pumping" | "question" | "other";
+
+export interface ServiceRequestsTable {
+  id: Generated<string>;
+  organizationId: string;
+  customerId: string;
+  siteId: string;
+  kind: ServiceRequestKind;
+  description: string;
+  contactPhone: string | null;
+  status: Generated<"open" | "closed">;
+  resolution: string | null;
+  closedAt: Timestamp | null;
+  closedBy: string | null;
+  portalLinkId: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -759,4 +792,6 @@ export interface DB {
   renewalAddons: RenewalAddonsTable;
   renewals: RenewalsTable;
   signedDocuments: SignedDocumentsTable;
+  portalLinks: PortalLinksTable;
+  serviceRequests: ServiceRequestsTable;
 }

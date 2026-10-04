@@ -6,6 +6,7 @@ import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
 import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
+import { PORTAL_LINK_EMAIL, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
 import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
 
 export * from "./queue.ts";
@@ -23,6 +24,7 @@ export {
   sendRenewalEmail,
   type SweepResult,
 } from "./renewal-task.ts";
+export { createPortalLink, hashPortalToken, PORTAL_LINK_EMAIL, portalUrlFor, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -87,6 +89,14 @@ async function run(ctx: TaskContext, task: Task) {
       return;
     case RENEWAL_SWEEP:
       await runRenewalSweep(ctx.db, payload.organizationId!, ctx.now());
+      return;
+    case PORTAL_LINK_EMAIL:
+      await sendPortalLink(
+        { db: ctx.db, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), appUrl: ctx.appUrl ?? DEFAULT_APP_URL, now: ctx.now, from: ctx.invoiceMailFrom },
+        task.organizationId!,
+        task.id,
+        task.payload as unknown as PortalLinkEmail,
+      );
       return;
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
