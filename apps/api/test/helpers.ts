@@ -1,8 +1,12 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createDb, hashPassword, type Database } from "@aerowise/db";
 import type { Role } from "@aerowise/domain";
 import { sql } from "kysely";
 import { afterAll, beforeEach } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
+import { LocalDiskStore } from "../src/storage/store.ts";
 import { testDatabaseUrl } from "./db-url.ts";
 
 export const PASSWORD = "correct horse battery staple";
@@ -21,10 +25,15 @@ export function setupTestApp(): TestContext {
   ctx.db = createDb(testDatabaseUrl());
   ctx.now = new Date("2026-03-01T18:00:00Z");
   beforeEach(async () => {
-    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now });
+    ctx.app ??= await buildApp({
+      db: ctx.db,
+      loginRateLimit: 1000,
+      now: () => ctx.now,
+      store: new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-files-"))),
+    });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate audit_events, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate audit_events, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });
@@ -87,5 +96,8 @@ export function client(app: App, cookie?: string) {
     get: (url: string) => app.inject({ method: "GET", url, headers }),
     post: (url: string, payload: object) => app.inject({ method: "POST", url, payload, headers }),
     patch: (url: string, payload: object) => app.inject({ method: "PATCH", url, payload, headers }),
+    put: (url: string, payload: object) => app.inject({ method: "PUT", url, payload, headers }),
+    putImage: (url: string, body: Buffer, extra: Record<string, string> = {}) =>
+      app.inject({ method: "PUT", url, payload: body, headers: { ...headers, "content-type": "image/jpeg", ...extra } }),
   };
 }

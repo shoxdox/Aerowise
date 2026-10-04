@@ -16,8 +16,9 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
 | Due-inspections list for the office | Done |
 | Jobs, office scheduling screen, technician daily route | Done |
+| Inspection templates, idempotent inspection sync, photo uploads with signed links, supervisor override (API) | Done |
 | Technician PWA with offline inspections | Next |
-| Inspection templates, reports, filing, compliance ledger, exception inbox, imports | Planned, in that order |
+| Reports, filing, compliance ledger, exception inbox, imports | Planned, in that order |
 
 Payments, invoicing, QuickBooks, e-signature, renewals, the customer portal, SMS and route optimization are out of scope for the first build.
 

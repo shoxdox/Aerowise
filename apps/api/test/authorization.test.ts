@@ -79,6 +79,14 @@ describe("deny by default", () => {
       api.patch(`/jobs/${id}`, {}),
       api.post(`/jobs/${id}/cancel`, {}),
       api.post("/schedule/reorder", {}),
+      api.get("/inspection-template"),
+      api.get(`/inspection-templates/${id}`),
+      api.post("/inspection-templates", {}),
+      api.put("/inspections/sync", {}),
+      api.get(`/inspections/${id}`),
+      api.get(`/jobs/${id}/inspection`),
+      api.post(`/inspections/${id}/override`, {}),
+      api.putImage(`/inspections/${id}/photos/${id}`, Buffer.from("x")),
     ];
     for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(401);
   });

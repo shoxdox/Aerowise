@@ -15,8 +15,11 @@ import { HttpError } from "./lib/errors.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
+import { inspectionRoutes } from "./routes/inspections.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
+import { UrlSigner } from "./storage/signed-urls.ts";
+import { LocalDiskStore, type ObjectStore } from "./storage/store.ts";
 
 export interface AppOptions {
   db: Database;
@@ -26,9 +29,24 @@ export interface AppOptions {
   loginRateLimit?: number;
   /** Clock used for "today" in due dates and contract states. Tests pin it. */
   now?: () => Date;
+  /** Where uploaded photos are kept. Defaults to ./.data/files on local disk. */
+  store?: ObjectStore;
+  /** Secret for signed file links. Required in production. */
+  fileSigningSecret?: string;
 }
 
-export async function buildApp({ db, production = false, logger = false, loginRateLimit = 10, now = () => new Date() }: AppOptions) {
+export async function buildApp({
+  db,
+  production = false,
+  logger = false,
+  loginRateLimit = 10,
+  now = () => new Date(),
+  store = new LocalDiskStore(".data/files"),
+  fileSigningSecret,
+}: AppOptions) {
+  if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
+  const signer = new UrlSigner(fileSigningSecret ?? "aerowise-development-only-signing-secret");
+
   const app = Fastify({
     logger,
     genReqId: () => crypto.randomUUID(),
@@ -92,6 +110,7 @@ export async function buildApp({ db, production = false, logger = false, loginRa
   await app.register(siteRoutes, { db });
   await app.register(contractRoutes, { db, now });
   await app.register(scheduleRoutes, { db, now });
+  await app.register(inspectionRoutes, { db, now, store, signer });
 
   return app;
 }

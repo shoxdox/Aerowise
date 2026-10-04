@@ -11,6 +11,8 @@ declare module "fastify" {
     permission?: Permission;
     /** Marks a route as callable without signing in (health, login). */
     public?: boolean;
+    /** Accepts a raw image body instead of JSON (photo uploads). */
+    imageUpload?: boolean;
   }
   interface FastifyRequest {
     auth: AuthContext | null;
@@ -44,10 +46,12 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     if (!req.routeOptions.url) return;
 
     // CSRF defense alongside SameSite=Lax cookies: state-changing requests must be JSON,
-    // which a cross-site HTML form cannot send without a CORS preflight.
+    // which a cross-site HTML form cannot send without a CORS preflight. Image uploads
+    // are allowed on routes that opt in: image/* is not a CORS-safelisted type either.
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       const type = req.headers["content-type"] ?? "";
-      if (!type.startsWith("application/json")) {
+      const allowed = type.startsWith("application/json") || (config.imageUpload === true && type.startsWith("image/"));
+      if (!allowed) {
         throw new HttpError(415, "unsupported_media_type", "Requests must send application/json");
       }
     }

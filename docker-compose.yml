@@ -20,6 +20,8 @@ services:
     environment:
       DATABASE_URL: postgres://aerowise:aerowise@db:5432/aerowise
       API_PORT: "4000"
+      FILE_STORAGE_DIR: /data/files
+    volumes: [file-data:/data/files]
     ports: ["4000:4000"]
     depends_on:
       db: { condition: service_healthy }
@@ -33,3 +35,4 @@ services:
 
 volumes:
   db-data:
+  file-data:
