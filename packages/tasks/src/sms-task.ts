@@ -1,4 +1,5 @@
 import type { Database, DB } from "@aerowise/db";
+import { customerCopy } from "@aerowise/compliance";
 import { addDays, amountDue, dateInZone, nextSmsTime, PAYMENT_REMINDER_DAYS, PAYMENT_REMINDER_GRACE_DAYS, SIGNABLE_STATUSES, type SmsQueueResult } from "@aerowise/domain";
 import { dollars } from "@aerowise/payments";
 import { deliverSms, recordSkip, resolveRecipient, smsKindOn, smsSettingsOf, type ComposedSms, type SmsConfig, type SmsRequest } from "@aerowise/sms";
@@ -71,6 +72,10 @@ export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Da
       case "report_ready": {
         const report = await db.selectFrom("reports").select(["siteId"]).where("organizationId", "=", organizationId).where("id", "=", req.relatedId).executeTakeFirst();
         if (!report) return null;
+        // A report that needs the maintenance provider's signature is announced when it is
+        // signed (that text's key ends in ":signed"), never before (30 TAC 285.7(b)(3)).
+        const copy = (await customerCopy(db, organizationId, req.relatedId))!;
+        if (copy.required && (!req.dedupeKey.endsWith(":signed") || !copy.signed)) return null;
         const to = await resolveRecipient(db, organizationId, req.customerId, req.siteId);
         // The link is made now, for this text only; the kept copy leaves it out.
         const link = await createPortalLink(db, { organizationId, customerId: req.customerId, source: "sms", sentTo: to.phone, createdBy: null, now: ctx.now() });

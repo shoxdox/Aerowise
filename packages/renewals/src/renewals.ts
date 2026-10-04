@@ -197,8 +197,9 @@ export async function createRenewal(trx: Transaction<DB>, organizationId: string
 
 /** Why a renewal cannot become a contract right now, or null when it can. */
 async function activationProblem(trx: Transaction<DB>, organizationId: string, r: { contractId: string; siteId: string; startOn: string; endOn: string }) {
-  const prev = await trx.selectFrom("contracts").select(["id", "status"]).where("organizationId", "=", organizationId).where("id", "=", r.contractId).forUpdate().executeTakeFirstOrThrow();
+  const prev = await trx.selectFrom("contracts").select(["id", "status", "serviceEndsOn"]).where("organizationId", "=", organizationId).where("id", "=", r.contractId).forUpdate().executeTakeFirstOrThrow();
   if (prev.status === "cancelled") return "The contract being renewed was cancelled";
+  if (prev.serviceEndsOn) return `The contract being renewed is ending (service stops after ${prev.serviceEndsOn})`;
   const renewed = await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("previousContractId", "=", prev.id).executeTakeFirst();
   if (renewed) return "This contract was already renewed another way";
   const overlap = await trx

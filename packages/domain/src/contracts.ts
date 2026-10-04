@@ -98,6 +98,14 @@ export const contract = z.object({
   renewedById: id.nullable(),
   cancelledAt: z.iso.datetime({ offset: true }).nullable(),
   cancelReason: z.string().nullable(),
+  /**
+   * The last day of service when the contract is ending or has ended. A contract with a
+   * later last day stays active until then, with the visits due before it.
+   */
+  serviceEndsOn: z.iso.date().nullable(),
+  discontinuedBy: z.enum(["provider", "owner"]).nullable(),
+  /** The MP license named on the contract, who signs its reports by default. Null: the organization's responsible MP. */
+  providerCredentialId: id.nullable(),
   notes: z.string().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
 });

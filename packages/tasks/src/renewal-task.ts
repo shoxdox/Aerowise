@@ -241,6 +241,8 @@ export async function runRenewalSweep(db: Database, organizationId: string, now:
     .select("c.id")
     .where("c.organizationId", "=", organizationId)
     .where("c.status", "=", "active")
+    // A contract that is ending (a last day of service recorded) is not renewed.
+    .where("c.serviceEndsOn", "is", null)
     .where("c.endOn", ">=", today)
     .where("c.endOn", "<=", addDays(today, org.renewalWindowDays))
     .where((eb) => eb.not(eb.exists(eb.selectFrom("renewals as r").select("r.id").whereRef("r.contractId", "=", "c.id"))))

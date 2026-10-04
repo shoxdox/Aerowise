@@ -31,6 +31,15 @@ interface Status {
     noticeSentOn: string | null;
     noticeNote: string | null;
   } | null;
+  provider: { credentialId: string; name: string; number: string; source: "contract" | "organization" } | null;
+}
+
+interface CredentialRow {
+  id: string;
+  kind: string;
+  holderName: string;
+  number: string;
+  active: boolean;
 }
 
 /**
@@ -60,6 +69,24 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
 
   const [basisChoice, setBasisChoice] = useState<ContractFilingBasis | "">("");
   const [editingBasis, setEditingBasis] = useState(false);
+  const [mps, setMps] = useState<CredentialRow[] | null>(null);
+
+  async function chooseProvider() {
+    setError(null);
+    try {
+      const all = await api<{ items: CredentialRow[] }>("/credentials");
+      setMps(all.items.filter((c) => c.kind === "tceq_maintenance_provider" && c.active));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load licenses");
+    }
+  }
+
+  async function saveProvider(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    await save("provider", "PUT", { credentialId: v.credentialId || null });
+    setMps(null);
+  }
 
   async function save(path: string, method: "PUT" | "POST", body: object) {
     setBusy(true);
@@ -115,6 +142,38 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
           </label>
         )}
         {error && <p className="error">{error}</p>}
+      </dd>
+      <dt>Signing MP</dt>
+      <dd>
+        {data.provider ? (
+          <>
+            {data.provider.name}, MP {data.provider.number}
+            <span className="muted">{data.provider.source === "contract" ? " (named on this contract)" : " (the organization's responsible MP)"}</span>
+          </>
+        ) : (
+          <span className="restriction">No maintenance provider named, so reports at this site cannot be signed</span>
+        )}
+        <div className="muted small">Signs this site&apos;s reports. Anyone else needs a documented delegation and supervision.</div>
+        {editable && !mps && (
+          <button className="link" onClick={() => void chooseProvider()}>
+            {data.provider?.source === "contract" ? "Change" : "Name the MP on this contract"}
+          </button>
+        )}
+        {editable && mps && (
+          <form className="stack" onSubmit={(e) => void saveProvider(e)}>
+            <select name="credentialId" defaultValue={data.provider?.source === "contract" ? data.provider.credentialId : ""}>
+              <option value="">The organization&apos;s responsible MP</option>
+              {mps.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.holderName}, MP {c.number}
+                </option>
+              ))}
+            </select>
+            <button className="primary" disabled={busy}>
+              Save
+            </button>
+          </form>
+        )}
       </dd>
       <dt>Customer copy</dt>
       <dd>{emailed ? `Emailed to ${emailed.recipient} ${when(emailed.attemptedAt)} (accepted by the mail provider)` : <span className="muted">Not emailed from Aerowise</span>}</dd>

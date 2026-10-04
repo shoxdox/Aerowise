@@ -46,13 +46,13 @@ Contracts are filed with the cover sheet. 30 TAC 285.7 sets a different deadline
 
 A first contract in Aerowise has no deadline until someone records which kind it is. Aerowise does not guess.
 
-**Ending a contract.** Under 285.7(d)(3)(A) and (B), the maintenance provider notifies the permitting authority and the manufacturer in writing at least 30 days before service stops, and also notifies the owner when the provider ends the contract. Aerowise asks who ended the contract and the last day of service, puts the notice in the inbox, and records it when it is sent. It does not send the notice itself.
+**Ending a contract.** Under 285.7(d)(3)(A) and (B), the maintenance provider notifies the permitting authority and the manufacturer in writing at least 30 days before service stops, and also notifies the owner when the provider ends the contract. Aerowise asks who ended the contract and the last day of service, puts the notice in the inbox, and records it when it is sent. It does not send the notice itself. A future last day keeps the contract and the visits due by then active; it ends the day after.
 
 **Exception.** 285.7(d)(4) covers a single-family owner who maintains the system personally. That is never a provider's contract, and it does not apply to commercial or multifamily property.
 
 ## Report signature
 
-Under 285.7(b)(3), the maintenance provider must sign all maintenance reports. An inspection filing waits until someone with their own active MP license, checked against TCEQ's license search, signs the latest authority report version by typing their name. The filing then sends the signed copy. When someone else inspected, the signer attests that the technician is employed by the provider and works under their direct supervision (285.7(b)(1), 285.2). The technician's registration on the inspection date is checked; employment and supervision are only attested. A later report version, whether a correction or one redrawn with complaint responses, needs its own signature.
+Under 285.7(b)(3), the maintenance provider must sign all maintenance reports. An inspection filing waits until someone with their own active MP license, checked against TCEQ's license search, signs the latest authority report version by typing their name. The filing then sends the signed copy. When someone else inspected, the signer attests that the technician is employed by the provider and works under their direct supervision (285.7(b)(1), 285.2). The technician's registration on the inspection date is checked; employment and supervision are only attested. A later report version, whether a correction or one redrawn with complaint responses, needs its own signature. The MP named on the site's contract signs by default; anyone else needs a described delegation. The customer copy is signed in the same step and held until then. Whether LCRA accepts a typed-name signature is unconfirmed and is a pilot blocker.
 
 ## Confirmation / proof
 

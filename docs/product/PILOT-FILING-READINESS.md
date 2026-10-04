@@ -90,10 +90,20 @@ Codex's merge review found the full rule text and raised one new blocker. This r
 
 - An inspection filing for a real authority profile does not become Ready until the latest authority report version is signed. Until then it shows "Waiting for a licensed maintenance provider to sign…" and an inbox item, "Authority report waiting for the provider's signature".
 - Only someone with their own MP license can sign. The license must be active, unexpired and checked against TCEQ's license search. They sign by typing their name as it appears on the license. Office staff, technicians without an MP license and read-only users cannot sign.
+- **Who signs by default (merge review decision):** the MP named on the site's contract. The office records that MP on the contract ("Signing MP"); until it does, the organization's responsible MP is used, and the screen says which. Another MP may sign only by describing the documented delegation and their supervision (at least 20 characters). The statement quotes it ("I sign for X (MP N), the maintenance provider named on this site's contract, under this documented delegation and supervision: …"), and the signature row keeps the MP signed for and the note. Aerowise records the delegation; it does not check that the document exists.
+- **Customer copy:** signing signs the latest customer copy too, with its own immutable signature row and signed PDF. Where a signature is required, the customer copy is held until it is signed. The portal does not list or serve it, emailing it is refused (and a queued email records a failed delivery instead of sending), and the "report ready" text goes out only after signing. The customer then gets the signed copy (`inspection-report-signed.pdf`). A signature is required for every real Texas site, because 285.7(b)(3) is statewide, including sites with no authority matched yet. Only inspections recorded under a fictional demo ruleset skip it.
 - When someone else inspected, that technician's registration must have been valid on the inspection date. The signer attests that the technician is employed by the provider and works under their direct supervision (285.7(b)(1), 285.2). Aerowise checks the registration. Employment and supervision are only attested.
 - The signature row is immutable, one per report version. It holds the signer, the license, the typed name, the statement, the time, the hash of the unsigned report it covers, and a signed copy (the report plus a signature block). The unsigned report is never changed. The package sends the signed copy, named `inspection-report-vN-signed.pdf`.
 - A corrected version, or one redrawn with complaint responses, needs a new signature.
 - Fictional demo rulesets (no profile, never loaded in production) skip the signature, so demo data and the older tests are unchanged.
+
+**Packages made before signing existed (merge review P1).** A filing that was Ready, Queued or retrying when this shipped could still hold a package with the unsigned report. Now:
+
+- The send task checks the package just before sending. A package whose authority report has no signature, or not the signature on file, is never sent. The filing moves to its next submission, the old package stays on record as never sent, and it is prepared again (waiting for the signature if there is none). If an earlier attempt of that submission recorded no result, the timeline says it may have been delivered.
+- The filing sweep does the same for every Ready, Queued and Failed inspection filing, so old packages are replaced without anyone pressing Send.
+- Signing a report whose filing is Ready, Queued or Failed with an unsigned package replaces that package, even when complaint responses did not change.
+- Marking a filing as filed by hand is refused while its package is unsigned.
+- Tested by building a PR #17-style Ready filing (package from the unsigned report), then sending it, sweeping it and signing it.
 
 ### Contract deadline by kind (285.7(c), (d)(2), (d)(3)(C))
 
@@ -110,6 +120,14 @@ A first contract in Aerowise has no deadline until the office records which kind
 
 Cancelling a contract now asks who ended it and the last day of service. The provider must write to the permitting authority and the manufacturer at least 30 days before service stops, and to the owner too when the provider ended the contract. The inbox shows the notice as due, or as late. The office records when it was sent and to whom. Aerowise does not send the notice.
 
+**A future last day keeps service going (merge review P1).** Recording the end no longer ends service:
+
+- With a last day of today or later, the contract stays active and shows "Ending". Visits whose window starts on or before that day stay open and scheduled; only the ones that cannot start by then are cancelled. It cannot be renewed or cancelled again, and it is not offered for renewal.
+- The day after the last day, the daily sweep closes the contract and cancels what is still open. Until the sweep runs, the contract already reads as cancelled.
+- A next contract may start the day after the last day of service: the database's no-overlap rule now counts an ending contract only through its last day.
+- A last day already past, or before the term starts, cancels at once, as before.
+- The notice can be recorded while the contract is still active.
+
 ### Harris and Brazoria (from the merge review, not read by Claude)
 
 - **Harris County:** the testing acknowledgment form names Engineering–Permits as the recipient. It requires quarterly visits for residential systems and monthly visits for commercial systems of the listed types, plus annual BOD/TSS tests. Harris inspection reports stay disabled. They need a v2 profile with those schedules and a confirmed submission channel. The PDF is blocked to the fetch tool by robots.txt.
@@ -118,13 +136,13 @@ Cancelling a contract now asks who ended it and the last day of service. The pro
 ## 4. Open questions and blockers
 
 1. Confirm with LCRA that a filled and flattened copy of their cover sheet is accepted by email, using a synthetic sample.
-2. Ask the authorities whether a typed-name signature on the report, plus an attestation block, satisfies 285.7(b)(3). Some authorities may want a handwritten or digital certificate signature.
+2. **Pilot blocker: signature acceptance.** Ask each authority whether a typed-name signature on the report, plus the attestation block and audit trail, satisfies 285.7(b)(3). The audit trail is evidence; it does not establish acceptance. Some authorities may want a handwritten or certificate signature. The same question applies to the customer copy (285.7(b)(3), (e)(1)).
 3. Find out how Harris County takes inspection reports, and model its quarterly and monthly schedules and annual tests before enabling them.
 4. Brazoria County: the recipient is known, but nothing else is, so there is no ruleset.
 5. Email: Resend is a candidate. Its idempotency keys last 24 hours, so a send whose outcome is uncertain must be reconciled before any retry after that window. Domain verification and delivery handling are also needed. Filing mail currently goes to `.eml` files.
 6. Storage: a private S3-compatible bucket (for example Cloudflare R2), with access controls and recovery checks.
 7. Assign each pilot site by hand using LCRA's map, and record its application number.
-8. Enter real MP and MT credentials, checked against TCEQ's license search, and record which MP signs.
+8. Enter real MP and MT credentials, checked against TCEQ's license search, and name the signing MP on each pilot contract. Keep any delegation documents outside Aerowise; it stores only the description.
 9. Neither authority publishes an acknowledgment process.
 10. The ruleset notes for v1 still say the 285.7 timing was read through a summarizer, because published v1 files cannot change. Update them in a v2 profile.
 11. Technicians who hold an MP license can sign through the API, but they cannot open the filing screen (it needs filings access), so signing from the technician app is not built.
@@ -136,11 +154,14 @@ Cancelling a contract now asks who ended it and the last day of service. The pro
 - Replacing an unsent Ready package when responses change.
 - The draft send guard in `packages/compliance/src/filings.ts` (`submitFiling`).
 - The signing rules in `packages/compliance/src/signatures.ts`: who may sign, the attestation wording, typed-name matching, and requiring a signature only for profiled rulesets.
-- Whether any MP in the organization may sign, or only the responsible MP named on the contract (285.7(d)(1)(C)). Aerowise currently allows any MP with their own valid, checked license.
+- Signer default: the MP named on the contract, else the organization's responsible MP; anyone else with a described delegation (`contractProvider` and `signingPreview` in `signatures.ts`). The 20-character minimum for the description is arbitrary.
+- Replacing unsigned unsent packages (`unsignedPackage`, `replaceUnsentSubmission`, `replaceUnsignedPackages` in `filings.ts`), including a `submitting` filing whose earlier attempt recorded no result.
+- Holding customer copies (`customerCopy`, `signatureRequiredForInspection`): a site with no authority matched counts as requiring a signature.
+- Ending contracts: `endContractsPastService` in `packages/tasks/src/filing-task.ts`, and the changed no-overlap constraint in migration 0016.
 - The contract-kind deadlines and the replacement date (termination date + 30) in `contractDeadline`.
 - The discontinuation notice: Aerowise only records it. Recipients come from 285.7(d)(3)(A) and (B).
 - The LCRA form field mapping. Field names like `Textfield-0` were matched to labels by position on the page.
-- Migration 0016 (report signatures and contract columns).
+- Migration 0016 (report signatures with delegation, contract columns including the signing MP, and the replaced no-overlap constraint).
 
 ## 6. How to verify
 

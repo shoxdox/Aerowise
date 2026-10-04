@@ -144,6 +144,11 @@ export type CustomerDelivery = z.infer<typeof customerDelivery>;
 export const signReportInput = z.object({
   /** The signer's full name, as it appears on their MP license. */
   typedName: z.string().trim().min(2).max(200),
+  /**
+   * Needed when the signer is not the MP named for the site's contract: the documented
+   * delegation and supervision that lets them sign for that MP. Quoted in the statement.
+   */
+  delegationNote: z.string().trim().max(2000).nullish(),
 });
 
 export const reportSigning = z.object({
@@ -155,11 +160,18 @@ export const reportSigning = z.object({
   holderName: z.string().nullable(),
   /** Why this person cannot sign now. Empty when they can. */
   problems: z.array(z.string()),
+  /** The MP who signs this site's reports by default: the one named on the contract, else the organization's responsible MP. */
+  provider: z.object({ name: z.string(), number: z.string(), source: z.enum(["contract", "organization"]) }).nullable(),
+  /** This person is not that MP, so signing needs a documented delegation and supervision. */
+  delegationRequired: z.boolean(),
+  /** The customer copy is signed with the authority copy; until then it is not delivered. */
+  customerCopy: z.object({ reportId: id, version: z.number().int(), signed: z.boolean() }).nullable(),
   signature: z
     .object({
       signedByName: z.string(),
       typedName: z.string(),
       licenseNumber: z.string(),
+      delegationNote: z.string().nullable(),
       statement: z.string(),
       signedAt: datetime,
       sha256: z.string(),
@@ -167,6 +179,11 @@ export const reportSigning = z.object({
     .nullable(),
 });
 export type ReportSigning = z.infer<typeof reportSigning>;
+
+export const contractProviderInput = z.object({
+  /** The MP license named on the contract, or null to fall back to the organization's responsible MP. */
+  credentialId: id.nullable(),
+});
 
 // ---- Which 30 TAC 285.7 deadline a contract filing has ----
 

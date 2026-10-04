@@ -21,8 +21,9 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
     event.preventDefault();
     setBusy(true);
     setError(null);
+    const v = formValues(event.currentTarget);
     try {
-      await api(`/inspections/${inspectionId}/signature`, { method: "POST", body: { typedName: formValues(event.currentTarget).typedName } });
+      await api(`/inspections/${inspectionId}/signature`, { method: "POST", body: { typedName: v.typedName, delegationNote: v.delegationNote || null } });
       await reload();
       onSigned();
     } catch (err) {
@@ -42,11 +43,21 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
             Report version {data.version} signed by <strong>{s.signedByName}</strong>, MP {s.licenseNumber}, {when(s.signedAt)}. The filing sends this signed copy.
           </p>
           <blockquote className="small" style={{ margin: 0, paddingLeft: 12, borderLeft: "3px solid #d9dfdc" }}>{s.statement}</blockquote>
+          {s.delegationNote && <div className="small">Signed under a documented delegation: {s.delegationNote}</div>}
           <div className="muted small">Signed copy SHA-256 {s.sha256}</div>
+          {data.customerCopy && <div className="muted small">Customer copy version {data.customerCopy.version}: {data.customerCopy.signed ? "signed, and the only copy the customer gets" : "not signed"}</div>}
         </>
       ) : (
         <>
-          <p className="small">30 TAC 285.7(b)(3) requires the licensed maintenance provider to sign every maintenance report. Report version {data.version} is not signed yet, so it cannot be filed.</p>
+          <p className="small">
+            30 TAC 285.7(b)(3) requires the licensed maintenance provider to sign every maintenance report. Report version {data.version} is not signed yet, so it cannot be filed, and the customer&apos;s
+            copy is held until it is. Signing signs both.
+          </p>
+          {data.provider && (
+            <p className="small">
+              Signs by default: <strong>{data.provider.name}</strong>, MP {data.provider.number} ({data.provider.source === "contract" ? "named on the site's contract" : "the organization's responsible MP"}).
+            </p>
+          )}
           <blockquote className="small" style={{ margin: 0, paddingLeft: 12, borderLeft: "3px solid #d9dfdc" }}>{data.statement}</blockquote>
           {data.problems.length > 0 ? (
             <ul className="restriction small">
@@ -61,6 +72,12 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
                   Type your name as it appears on your MP license{data.holderName ? ` (${data.holderName})` : ""} to sign
                   <input name="typedName" required autoComplete="off" />
                 </label>
+                {data.delegationRequired && (
+                  <label>
+                    You are signing for {data.provider?.name}. Describe the documented delegation and how you supervise this work
+                    <textarea name="delegationNote" required minLength={20} rows={3} />
+                  </label>
+                )}
                 <button className="primary" disabled={busy}>
                   Sign report version {data.version}
                 </button>

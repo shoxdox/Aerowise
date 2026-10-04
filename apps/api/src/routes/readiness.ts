@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { openContractFiling, refreshFiling, updateContractFilingDeadline, contractBasisOf, SignatureError, signAuthorityReport, signingPreview, type ComplianceContext } from "@aerowise/compliance";
+import { openContractFiling, refreshFiling, updateContractFilingDeadline, contractBasisOf, customerCopy, SignatureError, UNSIGNED_CUSTOMER_COPY, signAuthorityReport, signingPreview, type ComplianceContext } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
   addDays,
@@ -7,6 +7,7 @@ import {
   contractDiscontinuation,
   contractFilingBasis,
   contractFilingBasisInput,
+  contractProviderInput,
   discontinuationNoticeInput,
   credential,
   credentialInput,
@@ -22,7 +23,7 @@ import {
   type Credential,
   type ServiceRequestDetail,
 } from "@aerowise/domain";
-import { billingEmail, SEND_CUSTOMER_REPORT } from "@aerowise/tasks";
+import { billingEmail, queueSms, SEND_CUSTOMER_REPORT } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
@@ -304,14 +305,34 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       throw err;
     }
     const s = preview.existing;
+    const customer = await db
+      .selectFrom("reports as r")
+      .leftJoin("reportSignatures as rs", (j) => j.onRef("rs.reportId", "=", "r.id").onRef("rs.organizationId", "=", "r.organizationId"))
+      .select(["r.id", "r.version", "rs.id as signatureId"])
+      .where("r.organizationId", "=", organizationId)
+      .where("r.inspectionId", "=", inspectionId)
+      .where("r.audience", "=", "customer")
+      .orderBy("r.version", "desc")
+      .executeTakeFirst();
     return {
       reportId: preview.report.id,
       version: preview.report.version,
       statement: s?.statement ?? preview.statement,
       holderName: preview.holderName,
       problems: preview.problems,
+      provider: preview.provider ? { name: preview.provider.holderName, number: preview.provider.number, source: preview.provider.source } : null,
+      delegationRequired: Boolean(preview.delegatedFrom),
+      customerCopy: customer ? { reportId: customer.id, version: customer.version, signed: Boolean(customer.signatureId) } : null,
       signature: s
-        ? { signedByName: s.signedByName, typedName: s.typedName, licenseNumber: s.licenseNumber, statement: s.statement, signedAt: s.signedAt.toISOString(), sha256: s.sha256 }
+        ? {
+            signedByName: s.signedByName,
+            typedName: s.typedName,
+            licenseNumber: s.licenseNumber,
+            delegationNote: s.delegationNote,
+            statement: s.statement,
+            signedAt: s.signedAt.toISOString(),
+            sha256: s.sha256,
+          }
         : null,
     };
   }
@@ -341,7 +362,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         tags: ["readiness"],
         summary: "Sign the latest authority report as the licensed maintenance provider (30 TAC 285.7(b)(3))",
         description:
-          "Only someone with their own active, checked MP license can sign, by typing their name as it appears on the license. The filing sends the signed copy. A later report version needs its own signature.",
+          "Only someone with their own active, checked MP license can sign, by typing their name as it appears on the license. The MP named on the site's contract (else the organization's responsible MP) signs by default; anyone else must describe the documented delegation and supervision that lets them sign for that MP. The authority and customer copies are signed together: the filing sends the signed authority copy and the customer gets the signed customer copy. A later report version needs its own signature.",
         params,
         body: signReportInput,
         response: { 200: reportSigning },
@@ -350,13 +371,22 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       await signingState(organizationId, req.params.id, userId);
+      let signed;
       try {
-        await signAuthorityReport({ db, store: compliance.store }, { organizationId, inspectionId: req.params.id, userId, typedName: req.body.typedName, at: now() });
+        signed = await signAuthorityReport(
+          { db, store: compliance.store },
+          { organizationId, inspectionId: req.params.id, userId, typedName: req.body.typedName, delegationNote: req.body.delegationNote ?? null, at: now() },
+        );
       } catch (err) {
         if (err instanceof SignatureError) throw unprocessable(err.message);
         throw err;
       }
-      await audit(db, req, { action: "report.signed", entityType: "inspection", entityId: req.params.id, changes: { typedName: req.body.typedName } });
+      await audit(db, req, { action: "report.signed", entityType: "inspection", entityId: req.params.id, changes: { typedName: req.body.typedName, delegationNote: req.body.delegationNote ?? null } });
+      // Where the customer's copy waited for this signature, tell them it is ready now.
+      if (signed.customerReportId) {
+        const r = await db.selectFrom("reports as r").innerJoin("sites as s", (j) => j.onRef("s.id", "=", "r.siteId").onRef("s.organizationId", "=", "r.organizationId")).select(["r.id", "r.siteId", "s.customerId"]).where("r.id", "=", signed.customerReportId).executeTakeFirstOrThrow();
+        await queueSms(db, organizationId, { kind: "report_ready", customerId: r.customerId, siteId: r.siteId, relatedType: "report", relatedId: r.id, dedupeKey: `report_ready:${req.params.id}:signed` }, now());
+      }
       const filing = await db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "=", req.params.id).executeTakeFirst();
       if (filing) await refreshFiling(ctx(), organizationId, filing.id, userId);
       return signingState(organizationId, req.params.id, userId);
@@ -517,6 +547,50 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     },
   );
 
+  async function contractProviderOf(organizationId: string, credentialId: string | null) {
+    const org = await db.selectFrom("organizations").select("responsibleCredentialId").where("id", "=", organizationId).executeTakeFirstOrThrow();
+    const chosen = credentialId ?? org.responsibleCredentialId;
+    if (!chosen) return null;
+    const c = await db.selectFrom("providerCredentials").select(["id", "holderName", "number"]).where("organizationId", "=", organizationId).where("id", "=", chosen).executeTakeFirstOrThrow();
+    return { credentialId: c.id, name: c.holderName, number: c.number, source: credentialId ? ("contract" as const) : ("organization" as const) };
+  }
+
+  app.put(
+    "/contracts/:id/provider",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["readiness"],
+        summary: "Record the maintenance provider named on the contract, who signs the site's reports by default",
+        description: "Must be an MP license on file. Null falls back to the organization's responsible MP. Anyone else who signs needs a documented delegation and supervision.",
+        params,
+        body: contractProviderInput,
+        response: { 200: z.object({ provider: z.object({ credentialId: id, name: z.string(), number: z.string(), source: z.enum(["contract", "organization"]) }).nullable() }) },
+      },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const credentialId = req.body.credentialId;
+      if (credentialId) {
+        const c = await db.selectFrom("providerCredentials").select("kind").where("organizationId", "=", organizationId).where("id", "=", credentialId).executeTakeFirst();
+        if (!c) throw notFound("Credential");
+        if (c.kind !== "tceq_maintenance_provider") throw unprocessable("Only a TCEQ maintenance provider (MP) license can be named on a contract");
+      }
+      await db.transaction().execute(async (trx) => {
+        const updated = await trx
+          .updateTable("contracts")
+          .set({ providerCredentialId: credentialId, updatedAt: now() })
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", req.params.id)
+          .returning("id")
+          .executeTakeFirst();
+        if (!updated) throw notFound("Contract");
+        await audit(trx, req, { action: "contract.provider_set", entityType: "contract", entityId: updated.id, changes: { credentialId } });
+      });
+      return { provider: await contractProviderOf(organizationId, credentialId) };
+    },
+  );
+
   app.post(
     "/contracts/:id/discontinuation-notice",
     {
@@ -538,14 +612,14 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           .set({ noticeSentOn: req.body.sentOn, noticeNote: req.body.note, noticeRecordedBy: userId, updatedAt: now() })
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
-          .where("status", "=", "cancelled")
+          .where((eb) => eb.or([eb("status", "=", "cancelled"), eb("serviceEndsOn", "is not", null)]))
           .where("noticeSentOn", "is", null)
           .returning(["id", "discontinuedBy", "serviceEndsOn", "noticeSentOn", "noticeNote"])
           .executeTakeFirst();
         if (!row) {
           const exists = await trx.selectFrom("contracts").select(["status", "noticeSentOn"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
           if (!exists) throw notFound("Contract");
-          throw unprocessable(exists.status !== "cancelled" ? "Only a cancelled contract has a discontinuation notice" : "The notice is already recorded");
+          throw unprocessable(exists.noticeSentOn ? "The notice is already recorded" : "Only a contract that is ending or cancelled has a discontinuation notice");
         }
         await audit(trx, req, { action: "contract.discontinuation_notice_recorded", entityType: "contract", entityId: row.id, changes: req.body });
         return row;
@@ -590,6 +664,8 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
             basis: contractFilingBasis,
             /** Set once the contract is cancelled: the notice the provider owes before service stops. */
             discontinuation: contractDiscontinuation.nullable(),
+            /** The MP who signs this contract's reports by default: named on the contract, else the organization's responsible MP. */
+            provider: z.object({ credentialId: id, name: z.string(), number: z.string(), source: z.enum(["contract", "organization"]) }).nullable(),
           }),
         },
       },
@@ -614,11 +690,13 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           "c.serviceEndsOn",
           "c.noticeSentOn",
           "c.noticeNote",
+          "c.providerCredentialId",
         ])
         .where("c.organizationId", "=", organizationId)
         .where("c.id", "=", req.params.id)
         .executeTakeFirst();
       if (!c) throw notFound("Contract");
+      const provider = await contractProviderOf(organizationId, c.providerCredentialId);
       const [uploads, deliveries, filing] = await Promise.all([
         db.selectFrom("contractDocuments").select(["id", "filename", "sha256", "signedOn", "createdAt"]).where("organizationId", "=", organizationId).where("contractId", "=", c.id).orderBy("createdAt", "desc").execute(),
         c.signedDocumentId
@@ -663,7 +741,8 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
             }
           : null,
         basis: { ...basis, note: c.filingBasisNote },
-        discontinuation: c.status === "cancelled" ? discontinuationOf(c, filing?.authorityName ?? null) : null,
+        discontinuation: c.status === "cancelled" || c.serviceEndsOn ? discontinuationOf(c, filing?.authorityName ?? null) : null,
+        provider,
       };
     },
   );
@@ -709,6 +788,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         .executeTakeFirst();
       if (!r) throw notFound("Report");
       if (r.audience !== "customer") throw unprocessable("Only the customer copy can be sent to the customer");
+      if (!(await customerCopy(db, organizationId, r.id))!.ready) throw unprocessable(UNSIGNED_CUSTOMER_COPY);
       let to = req.body.to ?? null;
       to ??= await billingEmail(db, organizationId, r.customerId);
       if (!to) throw unprocessable("The customer has no contact with an email address");

@@ -221,6 +221,7 @@ export interface ContractsTable {
   filingBasisSetAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   serviceEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
   discontinuedBy: ColumnType<"provider" | "owner" | null, string | null | undefined, string | null>;
+  providerCredentialId: ColumnType<string | null, string | null | undefined, string | null>;
   noticeSentOn: ColumnType<string | null, string | null | undefined, string | null>;
   noticeNote: ColumnType<string | null, string | null | undefined, string | null>;
   noticeRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
@@ -550,6 +551,8 @@ export interface ReportSignaturesTable {
   storageKey: string;
   sha256: string;
   byteSize: number;
+  onBehalfOfCredentialId: ColumnType<string | null, string | null | undefined, never>;
+  delegationNote: ColumnType<string | null, string | null | undefined, never>;
 }
 
 export interface ContractDocumentsTable {

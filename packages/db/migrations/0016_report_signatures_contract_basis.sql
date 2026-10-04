@@ -2,8 +2,8 @@
 -- each contract filing knows which 285.7 deadline applies to it, and ending a contract
 -- records the written notice the provider owes the authority.
 
--- A licensed maintenance provider's signature on one authority report version
--- (285.7(b)(3)). The signed PDF is the report with the signature block added; the report
+-- A licensed maintenance provider's signature on one report version (285.7(b)(3)): the
+-- authority copy and the customer copy are each signed. The signed PDF is the report with the signature block added; the report
 -- row itself is never changed. Append-only, one signature per report version.
 create table report_signatures (
   id uuid primary key default gen_random_uuid(),
@@ -20,6 +20,12 @@ create table report_signatures (
   storage_key text not null,
   sha256 text not null,
   byte_size integer not null,
+  -- Set when the signer is not the maintenance provider named for the site's contract: the
+  -- MP they sign for and the documented delegation and supervision that allows it.
+  on_behalf_of_credential_id uuid,
+  delegation_note text,
+  check ((on_behalf_of_credential_id is null) = (delegation_note is null)),
+  foreign key (organization_id, on_behalf_of_credential_id) references provider_credentials (organization_id, id),
   unique (organization_id, id),
   unique (organization_id, report_id),
   foreign key (organization_id, report_id) references reports (organization_id, id),
@@ -55,3 +61,18 @@ alter table contracts
   add column notice_note text,
   add column notice_recorded_by uuid references users (id),
   add check ((notice_sent_on is null) = (notice_recorded_by is null));
+
+-- An ending contract covers its site only through its last day of service, so the next
+-- contract can start the day after even before the daily sweep closes the old one.
+alter table contracts drop constraint contracts_organization_id_site_id_daterange_excl;
+alter table contracts add constraint contracts_live_term_excl exclude using gist (
+  organization_id with =,
+  site_id with =,
+  daterange(start_on, greatest(start_on, least(end_on, coalesce(service_ends_on, end_on))), '[]') with &&
+) where (status = 'active');
+
+-- The maintenance provider named on the contract, who signs the site's reports by default.
+-- Unset, it is the organization's responsible maintenance provider.
+alter table contracts
+  add column provider_credential_id uuid,
+  add foreign key (organization_id, provider_credential_id) references provider_credentials (organization_id, id);

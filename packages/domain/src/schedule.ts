@@ -74,9 +74,11 @@ export function buildTermSchedule(startOn: string, termMonths: number, visitsPer
 export type ContractState = "upcoming" | "active" | "expired" | "cancelled";
 
 /** A contract's state is derived from its dates, so nothing has to flip it at midnight. */
-export function contractState(c: { status: "active" | "cancelled"; startOn: string; endOn: string }, today: string): ContractState {
+export function contractState(c: { status: "active" | "cancelled"; startOn: string; endOn: string; serviceEndsOn?: string | null }, today: string): ContractState {
   if (c.status === "cancelled") return "cancelled";
   if (today < c.startOn) return "upcoming";
   if (today > c.endOn) return "expired";
+  // Past its last day of service but not yet closed by the daily sweep.
+  if (c.serviceEndsOn && today > c.serviceEndsOn) return "cancelled";
   return "active";
 }
