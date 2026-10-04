@@ -86,7 +86,8 @@ describe("connecting", () => {
     const other = await createUser(ctx.db, t.org.id, "owner");
     const otherApi = client(ctx.app, await login(ctx.app, other.email));
     expect((await otherApi.get(`/quickbooks/callback${url.search}`)).headers.location).toBe("http://localhost:3000/quickbooks?error=state");
-    url.searchParams.set("state", url.searchParams.get("state")!.replace(/.$/, "x"));
+    const [payload, mac] = url.searchParams.get("state")!.split(".");
+    url.searchParams.set("state", `${payload}.${mac!.startsWith("A") ? "B" : "A"}${mac!.slice(1)}`);
     expect((await t.api.get(`/quickbooks/callback${url.search}`)).headers.location).toBe("http://localhost:3000/quickbooks?error=state");
     expect((await t.api.get("/quickbooks")).json().connection).toBeNull();
   });
