@@ -34,7 +34,7 @@ export default function AcceptInvitationPage() {
         method: "POST",
         body: { name: v.name, password: v.password ?? "" },
       });
-      window.location.href = me.role === "technician" ? "/tech" : "/";
+      window.location.href = me.role === "technician" ? "/tech" : "/inbox";
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not accept the invitation");
       setBusy(false);

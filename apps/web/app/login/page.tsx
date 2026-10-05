@@ -16,7 +16,7 @@ export default function LoginPage() {
       const me = await api<{ role: string }>("/auth/login", { method: "POST", body: { email, password: password ?? "" } });
       const next = new URLSearchParams(window.location.search).get("next");
       // Technicians land on their phone app; everyone else on the office screens.
-      const home = me.role === "technician" ? "/tech" : "/";
+      const home = me.role === "technician" ? "/tech" : "/inbox";
       window.location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : home;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not sign in");
