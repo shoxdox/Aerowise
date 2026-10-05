@@ -27,6 +27,15 @@ Each API deploy runs `pnpm db:migrate` as its pre-deploy command: after the imag
 - **API:** `GET /health` checks the database. With `HEALTH_INCLUDES_WORKER=true` (set in `render.yaml`) it also answers 503 when the worker's heartbeat is missing or more than `WORKER_HEARTBEAT_MAX_AGE_MS` old (5 minutes by default), so a stuck or dead worker makes Render restart the service.
 - **Worker:** after every clean pass of its loop, the worker touches `WORKER_HEARTBEAT_FILE` (a file in the temp directory by default). `pnpm --filter @aerowise/worker health` exits 0 when that file is recent and 1 otherwise; Docker Compose uses it as the worker's health check. A pass that throws (for example, the database is unreachable) does not count.
 - **Web:** `GET /api/health` goes through the web app's proxy to the API, so it fails when either is down.
+- **Queue:** `GET /health/queue` (and `/api/health/queue` through the web app) answers 503 when due work has waited more than 15 minutes with no worker on it, or a filing task (reports, contract filings, sending to an authority) has failed 3 times or more. The body says how many tasks wait, for how long, and how many filing tasks are failing. Render does not use it: restarting would not fix a failing filing.
+
+## Monitoring
+
+- **Uptime checks** (an external monitor such as UptimeRobot or Better Stack, every 5 minutes, alert on two failures in a row):
+  - `<PUBLIC_APP_URL>/api/health`: the web app, the API and the database are up.
+  - `<PUBLIC_APP_URL>/api/health/queue`: the worker keeps up and filings are going out.
+- **Logs** are JSON lines on stdout from the API and the worker (`LOG_LEVEL`, `info` by default). API lines carry `reqId` and, once signed in, `organizationId` and `userId`; a 500's response body carries the same `requestId`, so a customer's report can be matched to its log lines. Worker lines name each task with its `organizationId`.
+- **Error tracking:** with `SENTRY_DSN` set, unexpected API errors (500s), failed background tasks and queue alerts go to Sentry, tagged with `organization_id`, `request_id`, the route or task kind, `DEPLOY_ENV` as the environment and the deployed commit as the release. Without it, they are only in the logs. The worker checks the queue every `QUEUE_CHECK_INTERVAL_MS` (5 minutes) and sends each alert once, then every 6 hours while it lasts.
 
 ## First-time setup (Justin, once)
 

@@ -38,7 +38,8 @@ import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
-import { checkHeartbeat, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
+import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
+import { NoopReporter, type ErrorReporter } from "@aerowise/observability";
 import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
@@ -57,6 +58,8 @@ export interface AppOptions {
    * address, so leave it off unless every request really passes through those proxies.
    */
   trustProxy?: boolean | string;
+  /** Where unexpected errors go (Sentry when configured). Defaults to nowhere; they are logged either way. */
+  reporter?: ErrorReporter;
   /** Clock used for "today" in due dates and contract states. Tests pin it. */
   now?: () => Date;
   /** Where uploaded photos, reports and outbox mail are kept. Defaults to ./.data/files on local disk. */
@@ -104,6 +107,7 @@ export async function buildApp({
   logger = false,
   loginRateLimit = 10,
   trustProxy = false,
+  reporter = new NoopReporter(),
   now = () => new Date(),
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
@@ -152,6 +156,11 @@ export async function buildApp({
       return reply.status(status).send({ error: "bad_request", message: (err as Error).message });
     }
     req.log.error({ err }, "unhandled error");
+    reporter.captureException(err, {
+      organizationId: req.auth?.organizationId ?? null,
+      requestId: req.id,
+      tags: { route: `${req.method} ${req.routeOptions.url ?? "unknown"}` },
+    });
     return reply.status(500).send({ error: "internal", message: "Something went wrong", requestId: req.id });
   });
 
@@ -195,6 +204,14 @@ export async function buildApp({
     const worker = await checkHeartbeat(workerHeartbeat, now());
     if (!worker.ok) return reply.code(503).send({ ok: false, worker: worker.reason });
     return { ok: true, worker: "ok" };
+  });
+
+  // A second uptime check target: fails while work is due and nobody runs it, or a filing
+  // task keeps failing. Counts only; the worker's alerts carry the details.
+  app.get("/health/queue", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
+    const q = await checkQueue(db, now());
+    const body = { ok: q.ok, waiting: q.waiting, oldestWaitSeconds: q.oldestWaitSeconds, failingFilingTasks: q.failingFilingTasks };
+    return q.ok ? body : reply.code(503).send(body);
   });
 
   const transport = mail ?? new OutboxTransport(store, now);
