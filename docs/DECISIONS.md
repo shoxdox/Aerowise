@@ -236,6 +236,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Usage on the organization list.** Active contracts are contracts not cancelled whose dates cover today in the organization's own time zone. Users are active users with an active membership. Last activity is the newer of the latest audit event and the latest sign-in; the seed writes neither, so the demo company shows "Never" until someone signs in.
 - **Not in W2.1:** the plan state and price override (W4.1), inviting the first owner (W2.2), and read-only impersonation (W2.6).
 
+## 2026-10-05 · W5.1 Import: several sheets and saved column mappings
+
+- **Every sheet is kept at upload.** All sheets with a header row and data are stored on the import (`import_rows.sheet_index`), so switching sheets in the preview needs no second upload. One import saves one sheet; a workbook with two customer sheets is imported twice. Sheets with only a title or only a header are left out; a sheet over 5,000 rows still refuses the whole file, so the row limit cannot be dodged.
+- **The preview opens on the likeliest sheet**: the one whose detected columns cover the most of customer name, service address and city, the first on a tie. A leading "Read me" or notes sheet is skipped this way.
+- **Column choices are saved when an import is saved, not when they are edited**, so abandoned previews never change what the next file gets. They are kept per organization and per file layout (the normalized headers in order), by header name rather than column position. A file with the same layout gets exactly the saved choices, including fields left out on purpose. A file with another layout gets detection, with the most recent saved choices laid over it wherever their header appears. The preview says when saved choices were used (`mapping_source`).
+
 ## 2026-10-05 · W3.1 Real email transport
 
 - **Resend, not Postmark.** Resend takes an `Idempotency-Key` header on every send (kept 24 hours; resend.com/docs/dashboard/emails/idempotency-keys, read 2026-10-05). Postmark has no idempotency key, so a lost answer could only be resolved by searching. Resend was already the candidate in PILOT-FILING-READINESS.md item 5.

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 const CSV = [
@@ -31,4 +32,35 @@ test("the office previews a CSV, sees its problems, and imports it", async ({ pa
   await page.goto("/customers");
   await page.getByPlaceholder(/search/i).fill("Ivy Import");
   await expect(page.getByRole("link", { name: "Ivy Import" })).toBeVisible();
+});
+
+test("the office picks a workbook sheet, fixes a column, and the choice is remembered", async ({ page }) => {
+  const workbook = path.join(import.meta.dirname, "fixtures", "two-sheets.xlsx");
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("office@example.com");
+  await page.getByLabel("Password").fill("aerowise-dev");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("**/inbox");
+
+  await page.goto("/import");
+  await page.getByLabel("Spreadsheet").setInputFiles(workbook);
+  await page.waitForURL(/\/import\/[0-9a-f-]{36}$/);
+  const sheet = page.getByLabel("Sheet", { exact: true });
+  // The preview opens on the sheet that looks like a customer list, not the notes.
+  await expect(sheet).toHaveValue("1");
+  await sheet.selectOption({ label: "Read me (1 row)" });
+  await expect(page.locator(".tile", { hasText: "Rows" })).toContainText("1");
+  await sheet.selectOption({ label: "Customers (2 rows)" });
+  await expect(page.locator(".tile", { hasText: "Can't import" })).toContainText("2");
+
+  await page.getByLabel("Service address").selectOption({ label: "Where" });
+  await expect(page.locator(".tile", { hasText: "Ready" })).toContainText("2");
+  await page.getByRole("button", { name: "Import 2 rows" }).click();
+  await expect(page.getByText("Imported 2 new customers, 2 sites and 0 contracts")).toBeVisible();
+
+  await page.goto("/import");
+  await page.getByLabel("Spreadsheet").setInputFiles(workbook);
+  await page.waitForURL(/\/import\/[0-9a-f-]{36}$/);
+  await expect(page.getByText("Columns were matched using the choices saved with your last import")).toBeVisible();
+  await expect(page.locator(".tile", { hasText: "Duplicates" })).toContainText("2");
 });
