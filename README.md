@@ -23,7 +23,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation | Done |
 | Filing readiness: draft LCRA and Harris County profiles (never auto-send), reviewed site-to-authority assignment with evidence, licenses and registrations checked before release, immutable submission packages with the LCRA cover sheet, contract filings, complaint and monitoring-notice review, corrected report versions, customer delivery records, licensed provider signature on each authority report (30 TAC 285.7(b)(3)), contract deadlines by kind and the notice owed when a contract ends | Built and tested locally; **not used for a real filing yet** |
 | Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
-| CSV/XLSX customer import with column detection, preview, duplicate flags and all-or-nothing commit | Done |
+| CSV/XLSX customer import with column detection, sheet choice, saved column choices, preview, duplicate flags and all-or-nothing commit | Done |
 | Invoices (drafts, contract installments, tax, discounts, PDF, email), manual payments, refunds | Done |
 | Online card and bank (ACH) payments through Stripe Connect, with signed, idempotent webhooks | Done |
 | QuickBooks Online sync (customers, invoices, payments) with a first-sync match review, item mapping, retries and a conflict center | Done |
@@ -107,7 +107,7 @@ packages/
 - **Filing emails are not really sent.** They are written as `.eml` files to `<org>/outbox/` in file storage. Production needs a mail provider that honours an idempotency key (for example Resend's `Idempotency-Key`) behind the `EmailTransport` interface.
 - Acknowledgments are recorded by hand (reference, kind of evidence, date, from whom); nothing reads the authority's replies, and receipt files cannot be uploaded yet. Neither LCRA nor Harris County publishes an acknowledgment process.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.
-- **Imports** read the first sheet of an `.xlsx` or a CSV, up to 10 MB and 5,000 rows; old `.xls` files are refused. A committed import cannot be undone from the screen yet, though every customer and site it created carries its `import_id`.
+- **Imports** read every sheet of an `.xlsx` (the office picks one) or a CSV, up to 10 MB and 5,000 rows; old `.xls` files are refused. A committed import cannot be undone from the screen yet, though every customer and site it created carries its `import_id`.
 - **Stripe runs in test mode by default.** Without `STRIPE_SECRET_KEY`, a built-in test provider stands in outside production: "Connect Stripe" is ready at once and checkout opens Aerowise's own test page, which plays signed webhooks through the real handler. With keys, set the Connect webhook endpoint to `/api/webhooks/stripe` (events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `account.updated`) and enable card and US bank account payment methods for connected accounts.
 - **Invoice emails are not really sent** either; they go to the same outbox as filings.
 - No autopay or saved payment methods yet, no processing-fee pass-through, no recurring automatic invoicing (the office bills each contract installment); credit notes are done by voiding and reissuing.
