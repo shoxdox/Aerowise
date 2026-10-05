@@ -61,6 +61,12 @@ projects:
                 sync: false
               - key: ACCOUNT_EMAIL_FROM
                 sync: false
+              - key: RESEND_API_KEY
+                sync: false
+              - key: RESEND_WEBHOOK_SECRET
+                sync: false
+              - key: EMAIL_REDIRECT_TO
+                sync: false
           - type: web
             name: aerowise-web-staging
             runtime: docker
@@ -131,6 +137,10 @@ projects:
               - key: INVOICE_EMAIL_FROM
                 sync: false
               - key: ACCOUNT_EMAIL_FROM
+                sync: false
+              - key: RESEND_API_KEY
+                sync: false
+              - key: RESEND_WEBHOOK_SECRET
                 sync: false
               # Real providers. Left empty, each one is off in production (see .env.example).
               - key: STRIPE_SECRET_KEY
