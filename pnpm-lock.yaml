@@ -151,9 +151,6 @@ importers:
 
   apps/worker:
     dependencies:
-      '@aerowise/billing':
-        specifier: workspace:*
-        version: link:../../packages/billing
       '@aerowise/compliance':
         specifier: workspace:*
         version: link:../../packages/compliance

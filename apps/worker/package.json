@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@aerowise/billing": "workspace:*",
     "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
     "@aerowise/domain": "workspace:*",

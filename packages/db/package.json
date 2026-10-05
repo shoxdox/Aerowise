@@ -9,6 +9,7 @@
   "scripts": {
     "migrate": "tsx src/cli.ts migrate",
     "seed": "tsx src/cli.ts seed",
+    "reseed-demo": "tsx src/cli.ts reseed-demo",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
