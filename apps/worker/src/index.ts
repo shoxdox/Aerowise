@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
-import { LocalDiskStore } from "@aerowise/storage";
+import { storeFromEnv } from "@aerowise/storage";
 import { heartbeatFromEnv, providersFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
@@ -9,7 +9,8 @@ const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
 const production = process.env.NODE_ENV === "production";
-const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
+const store = storeFromEnv(process.env);
 // The same outside services as the API; DEMO_MODE=true makes every one a test stand-in.
 // Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
 const providers = providersFromEnv({ db, store, env: process.env, production });

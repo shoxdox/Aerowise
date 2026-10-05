@@ -1,6 +1,6 @@
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
-import { LocalDiskStore } from "@aerowise/storage";
+import { storeFromEnv } from "@aerowise/storage";
 import { heartbeatFromEnv, providersFromEnv } from "@aerowise/tasks";
 
 const url = requireDatabaseUrl();
@@ -8,7 +8,8 @@ await migrate(url, (msg) => console.log(msg));
 
 const db = createDb(url);
 const production = process.env.NODE_ENV === "production";
-const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
+const store = storeFromEnv(process.env);
 // Email, Stripe, QuickBooks, Twilio and the geocoder: real with keys; without them, test stand-ins outside
 // production (email: the outbox) and off in production. DEMO_MODE=true forces every one to its stand-in.
 const providers = providersFromEnv({ db, store, env: process.env, production });
