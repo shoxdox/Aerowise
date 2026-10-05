@@ -2,6 +2,7 @@ import { sql } from "kysely";
 import { createDb, requireDatabaseUrl } from "./client.ts";
 import { migrate } from "./migrate.ts";
 import { createPlatformAdmin } from "./platform-admin.ts";
+import { reseedDemo } from "./reseed.ts";
 import { seed } from "./seed.ts";
 
 const command = process.argv[2];
@@ -10,11 +11,18 @@ const url = requireDatabaseUrl();
 if (command === "migrate") {
   await migrate(url, console.log);
   console.log("migrations up to date");
-} else if (command === "seed") {
+} else if (command === "seed" || command === "reseed-demo") {
+  // Demo data never goes into a real production database: in production only the hosted
+  // demo (DEMO_MODE=true) may be seeded or reset.
+  if (process.env.NODE_ENV === "production" && process.env.DEMO_MODE !== "true") {
+    console.error(`refusing to ${command}: NODE_ENV is production and DEMO_MODE is not true`);
+    process.exit(1);
+  }
   await migrate(url, console.log);
   const db = createDb(url);
   try {
-    await seed(db, console.log);
+    if (command === "seed") await seed(db, console.log);
+    else await reseedDemo(db, { filesDir: process.env.FILE_STORAGE_DIR, log: console.log });
   } finally {
     await db.destroy();
   }
@@ -56,7 +64,7 @@ if (command === "migrate") {
     await db.destroy();
   }
 } else {
-  console.error("usage: cli.ts migrate|seed|reset|create-platform-admin");
+  console.error("usage: cli.ts migrate|seed|reseed-demo|reset|create-platform-admin");
   process.exit(1);
 }
 
