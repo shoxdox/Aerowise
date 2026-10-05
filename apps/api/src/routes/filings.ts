@@ -275,6 +275,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         "f.reviewReason",
         "f.lastError",
         "f.rulesetVersion",
+        "f.filingFeeCents",
+        "f.lateFeeRuleCents",
+        "f.lateFeeCents",
+        "f.feeBasis",
         "i.id as inspectionId",
         "i.completedAt",
         "s.id as siteId",
@@ -310,6 +314,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     site: { id: r.siteId, addressLine1: r.addressLine1, city: r.city, permitNumber: r.permitNumber },
     customer: { id: r.customerId, displayName: r.displayName },
     jurisdiction: r.jurisdictionKey && r.authorityName && r.rulesetVersion ? { key: r.jurisdictionKey, authorityName: r.authorityName, rulesetVersion: r.rulesetVersion } : null,
+    fees:
+      r.filingFeeCents === null
+        ? null
+        : { filingFeeCents: r.filingFeeCents, lateFeeIfLateCents: r.lateFeeRuleCents ?? 0, lateFeeCents: r.lateFeeCents, totalCents: r.filingFeeCents + (r.lateFeeCents ?? 0), basis: r.feeBasis ?? "" },
   });
 
   app.get(

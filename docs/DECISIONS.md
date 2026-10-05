@@ -301,3 +301,10 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Same rule as W6.1: the schedule is set when the contract starts.** Monitoring that starts or ends mid-contract does not reschedule visits. The next due date on each filing does follow it, so a site that loses monitoring shows "next visit starts later than the authority allows" in the inbox.
 - **Refusing means four months.** A two-visit plan at a site that may not have six months gets a third visit, the same as any plan whose windows are too long (W6.1). Nothing errors.
 
+## 2026-10-05 · W6.4 Per-authority report templates and fees
+
+- **A layout lists answers; it does not draw a form.** The ruleset says the title, the sections, the order and the authority's labels for the authority copy. Header blocks (site, visit, provider, complaints, signature) stay as they are, because 30 TAC 285.7 asks for them on every report. Where an authority has its own fillable PDF, the cover sheet's `officialForm` (#17) is still the way to fill it.
+- **Fields the layout does not list are left off the authority copy.** An authority that publishes a form wants that form, not extra answers. A bundled ruleset cannot leave off a field it requires.
+- **Fees are recorded, not charged.** A filing keeps the filing fee, the late fee that would apply and the schedule they came from, copied when it opens. Paying the authority and passing fees on to customers are left to the office. Open question for Justin: should fees go on the customer's invoice?
+- **"Late" means it first reached the authority after the deadline day,** in the organization's time zone. The deadline day itself is on time. A rejected filing sent again keeps the late fee its first send decided. Open question per county: does a rejected-then-corrected report count from the first or the accepted submission?
+- **No real ruleset sets a layout or fees yet.** LCRA's fee schedule is cited as a source, but its v1 is published and immutable; amounts go into each county's next version once they are read from the authority's own schedule.
