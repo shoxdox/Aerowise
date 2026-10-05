@@ -13,7 +13,8 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
 | Append-only audit log | Done |
-| Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, platform audit log | Done |
+| Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, invite an organization's first owner, platform audit log | Done |
+| User invitations: owner and office invite by email with a role (office cannot invite an owner); single-use links that expire after 7 days; accepting sets a password and signs in | Done |
 | Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
 | Due-inspections list for the office | Done |
 | Jobs, office scheduling screen, technician daily route | Done |

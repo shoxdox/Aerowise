@@ -27,6 +27,7 @@ const app = await buildApp({
   // Intuit keys connect real QuickBooks companies; without them, a test company outside production.
   quickbooks: quickBooksFromEnv(db, process.env, production),
   appUrl: process.env.PUBLIC_APP_URL,
+  accountMailFrom: process.env.ACCOUNT_EMAIL_FROM || undefined,
   // Twilio keys send real texts; without them, a test provider outside production.
   sms: smsFromEnv(process.env, production),
   geocoder: geocoderFromEnv(process.env, production),

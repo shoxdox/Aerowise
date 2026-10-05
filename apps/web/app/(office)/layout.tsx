@@ -21,6 +21,7 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },
     ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
+    ...(canEdit(me) ? [{ href: "/settings/users", label: "Users" }] : []),
     ...(me.role === "owner" ? [{ href: "/settings/billing", label: "Billing" }] : []),
   ];
   async function signOut() {

@@ -235,3 +235,11 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **A platform audit log.** Admin actions go to `platform_audit_events` (append-only, like `audit_events`), with the organization acted on when there is one. Tenant `audit_events` needs a tenant user as the actor, which an admin is not. Admin sign-in and sign-out are recorded too.
 - **Usage on the organization list.** Active contracts are contracts not cancelled whose dates cover today in the organization's own time zone. Users are active users with an active membership. Last activity is the newer of the latest audit event and the latest sign-in; the seed writes neither, so the demo company shows "Never" until someone signs in.
 - **Not in W2.1:** the plan state and price override (W4.1), inviting the first owner (W2.2), and read-only impersonation (W2.6).
+
+## 2026-10-05 · W2.2 User invitations
+
+- **The link is made in the request and also shown to the inviter once.** The email goes out right after the invitation is saved, through `EmailTransport` (the outbox until W3.1). The inviter sees the same link once, to text it to a technician if the email is slow or bounces. If the email fails, the invitation still stands, and the page says the email was not sent. The token is never stored or queued; only its SHA-256 hash is kept.
+- **One live link per person.** Sending again makes a new link, restarts the 7-day expiry and stops the old link working. Inviting the same email again replaces the open invitation. Cancelled, used and expired links answer 410 with a plain reason; an unknown or altered token answers 404.
+- **Who may invite whom:** owners anyone, office staff anyone but an owner (`canInviteRole` in packages/domain). Office staff also cannot resend or cancel an owner invitation. Platform admins invite owners from `/admin`; that is audited in the platform log, and the accepted invitation in the organization's own log.
+- **Someone who already has an Aerowise login** (the email is global) accepts by entering that login's password, not by choosing a new one. Otherwise anyone holding the link could take over another organization's account. Their existing memberships and password stay as they were.
+- **Passwords for new users are at least 10 characters**; platform admins need 12.
