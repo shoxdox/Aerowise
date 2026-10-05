@@ -1,6 +1,7 @@
 import { emailFromEnv } from "@aerowise/compliance";
 import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
+import { reporterFromEnv } from "@aerowise/observability";
 import { storeFromEnv } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
@@ -25,10 +26,14 @@ const production = process.env.NODE_ENV === "production";
 const store = storeFromEnv(process.env);
 // With a Resend key, email is really sent; without one it goes to the outbox in file storage.
 const email = emailFromEnv(db, store, process.env);
+// Unexpected errors go to Sentry when SENTRY_DSN is set (tagged with the organization).
+const reporter = reporterFromEnv(process.env);
 const app = await buildApp({
   db,
   production,
-  logger: true,
+  // JSON lines: each request's lines carry its reqId, and organizationId and userId once signed in.
+  logger: { level: process.env.LOG_LEVEL ?? "info" },
+  reporter,
   trustProxy: trustProxyFrom(process.env.TRUST_PROXY),
   store,
   mail: email.transport,
@@ -54,6 +59,7 @@ function trustProxyFrom(v: string | undefined): boolean | string {
 
 const shutdown = async () => {
   await app.close();
+  await reporter.flush();
   await db.destroy();
   process.exit(0);
 };
