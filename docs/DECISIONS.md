@@ -265,6 +265,15 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Someone who already has an Aerowise login** (the email is global) accepts by entering that login's password, not by choosing a new one. Otherwise anyone holding the link could take over another organization's account. Their existing memberships and password stay as they were.
 - **Passwords for new users are at least 10 characters**; platform admins need 12.
 
+## 2026-10-05 · W6.2 Annual lab tests
+
+- **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
+- **When the first test is due.** With no result on record, the clock starts at the later of the site's first contract with this provider and the date the ruleset took effect. A renewal does not restart it. A site taken over from another provider will usually show as late until the office records the previous provider's last result, which is the safe direction.
+- **Only while under contract.** Sites with no contract in force have no requirement, because the lab test is the maintenance provider's job while it services the system.
+- **Records are append-only.** A correction replaces a record (one correction each). The original stays visible, marked "Replaced". Both go on the compliance timeline.
+- **No limits or pass/fail.** Aerowise records the values but does not judge them, because no authority's limits have been read yet. A county ruleset that publishes limits can add them later.
+- **Who records them:** the office (`filings:write`). Anyone who can read filings can see them.
+
 ## 2026-10-05 · W2.3 Password reset and user deactivation
 
 - **Reset links belong to the login, not an organization.** A person's login is shared by every organization they belong to, so `password_reset_tokens` references `users` only (like `sessions` it is not a tenant table). The email is sent under their oldest active membership's organization; a login with no active membership gets no email.

@@ -1,0 +1,64 @@
+{
+  "jurisdiction": {
+    "key": "tx-fixture-annual-lab",
+    "state": "TX",
+    "authorityName": "Annual Lab Fixture County (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL test fixture: an authority with the 4-month default that requires annual BOD and TSS lab tests. Not any real county's rules.",
+  "applicability": {
+    "counties": [
+      "Annual Lab Fixture County"
+    ]
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "labTests": {
+    "analytes": [
+      "bod",
+      "tss"
+    ],
+    "everyMonths": 12,
+    "appliesTo": [
+      "residential",
+      "commercial"
+    ],
+    "note": "Fixture: effluent BOD and TSS by an accredited lab once a year."
+  },
+  "inspection": {
+    "requiredFields": [
+      "air_pressure"
+    ],
+    "requiredPhotos": [
+      {
+        "key": "overview",
+        "minCount": 1
+      }
+    ],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-fixture-annual-lab.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}
