@@ -1,4 +1,4 @@
-import { loadCatalog, resolveSite, type CatalogEntry } from "@aerowise/compliance";
+import { loadCatalog, resolveSite, siteMonitoredOn, type CatalogEntry } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import { buildTermSchedule, serviceIntervalMonths, visitsWithin } from "@aerowise/domain";
 import type { Transaction } from "kysely";
@@ -20,7 +20,8 @@ type VisitTerms = Pick<Terms, "customerType" | "termMonths" | "visitsPerTerm">;
 
 /**
  * The terms with enough visits that no visit window is longer than the site's authority
- * allows under the rules in force on `startOn`. A site with no authority keeps its plan's
+ * allows under the rules in force on `startOn` (longer where it allows that for a system
+ * with electronic monitoring on record that day). A site with no authority keeps its plan's
  * visits; visits are added, never removed. Pass `catalog` when doing many sites at once.
  */
 export async function termsForSite<T extends VisitTerms>(db: Executor, organizationId: string, siteId: string, startOn: string, terms: T, catalog?: CatalogEntry[]): Promise<T> {
@@ -32,7 +33,9 @@ export async function termsForSite<T extends VisitTerms>(db: Executor, organizat
     .executeTakeFirstOrThrow();
   const resolved = resolveSite(catalog ?? (await loadCatalog(db)), site, startOn);
   if (!resolved) return terms;
-  const visitsPerTerm = visitsWithin(terms.termMonths, terms.visitsPerTerm, serviceIntervalMonths(resolved.rules, terms.customerType));
+  // Monitoring only matters where the authority allows a longer interval for it.
+  const monitored = resolved.rules.service.monitored ? await siteMonitoredOn(db, organizationId, siteId, startOn) : false;
+  const visitsPerTerm = visitsWithin(terms.termMonths, terms.visitsPerTerm, serviceIntervalMonths(resolved.rules, terms.customerType, monitored));
   return visitsPerTerm === terms.visitsPerTerm ? terms : { ...terms, visitsPerTerm };
 }
 

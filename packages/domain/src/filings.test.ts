@@ -56,7 +56,7 @@ describe("deadlineState", () => {
 });
 
 describe("serviceIntervalMonths", () => {
-  const rules = (service: Record<string, number>) =>
+  const rules = (service: Record<string, unknown>) =>
     rulesetRules.parse({
       jurisdiction: { key: "tx-fixture", state: "TX", authorityName: "Fixture (fictional)", type: "county" },
       version: 1,
@@ -78,6 +78,14 @@ describe("serviceIntervalMonths", () => {
     expect(serviceIntervalMonths(rules({ intervalMonths: 3 }), "residential")).toBe(3);
     expect(serviceIntervalMonths(rules({ intervalMonths: 4, commercialIntervalMonths: 1 }), "residential")).toBe(4);
     expect(serviceIntervalMonths(rules({ intervalMonths: 4, commercialIntervalMonths: 1 }), "commercial")).toBe(1);
+  });
+
+  it("allows the longer monitored interval only where the ruleset names the system type", () => {
+    const monitored = { intervalMonths: 4, monitored: { intervalMonths: 6, appliesTo: ["residential"] } };
+    expect(serviceIntervalMonths(rules(monitored), "residential", true)).toBe(6);
+    expect(serviceIntervalMonths(rules(monitored), "residential", false)).toBe(4);
+    expect(serviceIntervalMonths(rules(monitored), "commercial", true)).toBe(4);
+    expect(serviceIntervalMonths(rules({ intervalMonths: 4 }), "residential", true)).toBe(4);
   });
 
   it("rejects intervals outside 1 to 24 months", () => {

@@ -21,6 +21,7 @@ import type { EmailTransport } from "./email.ts";
 import { providerSignatureRequired, reportSignature } from "./signatures.ts";
 import { contractBasisOf, contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
 import { amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
+import { siteMonitoredOn } from "./monitoring.ts";
 import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
 
 type Executor = Database | Transaction<DB>;
@@ -222,9 +223,15 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
 }
 
 /**
- * Whether the site's contract in force on a date is residential or commercial. A site
- * with no contract then is treated as residential, the authority's default interval.
+ * What decides the site's interval on a date: whether its contract then is residential or
+ * commercial (residential when there is none, the authority's default), and whether it had
+ * qualifying electronic monitoring.
  */
+async function siteServiceBasis(db: Executor, organizationId: string, siteId: string, onDate: string) {
+  const [customerType, monitored] = await Promise.all([siteCustomerType(db, organizationId, siteId, onDate), siteMonitoredOn(db, organizationId, siteId, onDate)]);
+  return { customerType, monitored };
+}
+
 async function siteCustomerType(db: Executor, organizationId: string, siteId: string, onDate: string) {
   const c = await db
     .selectFrom("contracts")
@@ -239,7 +246,7 @@ async function siteCustomerType(db: Executor, organizationId: string, siteId: st
 }
 
 /** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
-function termsFor(resolved: ResolvedJurisdiction, completedOn: string, customerType: "residential" | "commercial") {
+function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { customerType: "residential" | "commercial"; monitored: boolean }) {
   const r = resolved.rules;
   return {
     jurisdictionId: resolved.jurisdictionId,
@@ -250,7 +257,7 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string, customerT
     deadlineOn: addDays(completedOn, r.filing.deadlineDays),
     deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
-    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, customerType)),
+    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored)),
   };
 }
 
@@ -278,7 +285,7 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
   const completedOn = dateInZone(insp.completedAt ?? args.at, insp.timezone);
   const resolution = explainSite(await loadCatalog(trx), insp, completedOn);
   const resolved = resolution.resolved;
-  const terms = resolved ? termsFor(resolved, completedOn, await siteCustomerType(trx, args.organizationId, insp.siteId, completedOn)) : null;
+  const terms = resolved ? termsFor(resolved, completedOn, await siteServiceBasis(trx, args.organizationId, insp.siteId, completedOn)) : null;
   const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : reportsUnknown(resolved);
   const inserted = await trx
     .insertInto("filings")
@@ -982,7 +989,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
     await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
     return;
   }
-  const terms = termsFor(resolved, completedOn, await siteCustomerType(trx, f.organizationId, insp.siteId, completedOn));
+  const terms = termsFor(resolved, completedOn, await siteServiceBasis(trx, f.organizationId, insp.siteId, completedOn));
   await move(trx, f, "pending", a.at, { ...terms, reviewReason: null }, { type: "filing_rechecked", summary: `Filing checked again for ${resolved.authorityName}` }, a.actorUserId);
   f.rulesetId = terms.rulesetId;
   f.jurisdictionId = terms.jurisdictionId;
