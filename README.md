@@ -9,6 +9,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Area | Status |
 | --- | --- |
 | Monorepo, Postgres migrations, Docker Compose, CI | Done |
+| Hosting config (Render staging and production, migrations on deploy, API and worker health checks) | Config done; **no hosting account yet** |
 | Sign-in, sessions, roles (owner / office / technician / read-only) | Done |
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
@@ -54,6 +55,8 @@ pnpm dev                # API on :4000, web on :3000, plus the background worker
 Open http://localhost:3000 and sign in as `owner@example.com`, `office@example.com` or `tech@example.com` with password `aerowise-dev`. The seed creates one fictional provider with 50 customers, 55 sites and their systems, two plans, and contracts on 52 sites, timed so a week of inspections is always coming due and five are overdue. Nine of them are already on the technician's route for today and tomorrow. Signing in as the technician opens the phone app at `/tech` (use your browser's phone view, or open it on a phone on the same network); it keeps working with no signal and sends everything when the connection returns. The office starts at the inbox, which lists only what needs a person. To try invoicing, sign in as the owner, choose Billing and connect the (test) Stripe account, then use "Bill next installment" on any site's contract; the invoice's pay link opens the page a homeowner would see. To try renewals, choose Renewals and "Run campaign now", open a renewal and copy its link: that is the page a homeowner signs and pays on. To try the customer portal, open any customer and choose "Copy portal link": the link opens what that homeowner sees, and a service request sent from it shows in the inbox. To try QuickBooks, choose QuickBooks and connect: a built-in test company stands in, pre-filled with near-copies of a few of your customers so the first-sync review has matches to decide. All demo names, addresses and permit numbers are made up.
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
+
+Hosted staging and production run on Render from [`render.yaml`](render.yaml); [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers setup, the one-command deploy (`scripts/deploy.sh`), migrations and health checks.
 
 ## Checks
 

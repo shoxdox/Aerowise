@@ -15,6 +15,7 @@ import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement,
 import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 
 export * from "./queue.ts";
+export * from "./heartbeat.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 export { queueQuickBooksSync, scheduleQuickBooksSyncs, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 export {
