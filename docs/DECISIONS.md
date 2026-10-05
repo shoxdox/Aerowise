@@ -344,6 +344,13 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Restarting unhealthy containers is a cron line.** Docker restarts containers that exit, not ones that are running but unhealthy (a stuck worker). A one-minute cron job restarts any Aerowise container Docker reports unhealthy, instead of adding an autoheal container with access to the Docker socket.
 - **A deploy to staging loads the demo data when it is missing**, and cron resets it nightly (W1.3's reseed, on the server's clock, so it runs even when CI is down).
 
+## 2026-10-05 · Deploys from CI (W1.3)
+
+- **Staging follows `main`.** A push to `main` deploys to staging once the check, docker and e2e jobs pass, as a job in the same CI workflow, so it cannot run ahead of them. Deploys queue rather than cancel each other, so a migration is never interrupted.
+- **Production is a separate, hand-started workflow** that takes a commit on `main` whose check, docker and e2e jobs passed. GitHub's environment reviewers are an extra gate where the plan has them; the gate that always applies is that only people with write access can start it, and the server itself refuses production commits that are not on `main`.
+- **No secrets, no deploy, still green.** Without `VPS_SSH_KEY` the deploy step prints a notice and succeeds, so CI works on forks and before the server exists.
+- **The nightly reseed runs on the server** (cron, 09:00 UTC), not in CI, so it does not depend on GitHub Actions being up or on CI's key being allowed to run anything besides a deploy.
+
 ## 2026-10-05 · Demo mode (W1.2)
 
 - **One switch, read in one place.** `DEMO_MODE=true` is read by `providersFromEnv` in `packages/tasks`, which the API and the worker both use to pick every outside service: email, Stripe, QuickBooks, Twilio and the geocoder. In demo mode each one is its test stand-in even when real keys are set; there is no per-service override. W3.1's Resend transport is picked there too (the outbox is its stand-in, so `RESEND_API_KEY` and `EMAIL_REDIRECT_TO` do nothing in demo mode); new outside services (W4's Stripe Billing) are added there, with their stand-in. Filings go out by email, so they are covered by the email stand-in (the outbox).
