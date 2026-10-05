@@ -8,6 +8,7 @@ import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
 import { ComplianceTimeline } from "@/components/ComplianceTimeline";
 import { SiteAuthority } from "@/components/SiteAuthority";
 import { SiteContracts } from "@/components/SiteContracts";
+import { SiteLabTests } from "@/components/SiteLabTests";
 import { SiteServiceRequests } from "@/components/SiteServiceRequests";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -177,6 +178,7 @@ export default function SitePage() {
 
       <SiteAuthority siteId={site.id} county={site.county} editable={editable} />
       <SiteContracts siteId={site.id} editable={editable} />
+      <SiteLabTests siteId={site.id} editable={editable} />
       <SiteServiceRequests siteId={site.id} editable={editable} />
       <ComplianceTimeline siteId={site.id} editable={editable} />
 

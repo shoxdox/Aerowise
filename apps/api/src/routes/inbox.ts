@@ -1,10 +1,11 @@
 import type { Database } from "@aerowise/db";
-import { AWAITING_SIGNATURE } from "@aerowise/compliance";
+import { AWAITING_SIGNATURE, labTestStatuses } from "@aerowise/compliance";
 import {
   addDays,
   CONTRACT_EXPIRED_WINDOW_DAYS,
   CONTRACT_EXPIRING_DAYS,
   FILING_OPEN_STATUSES,
+  LAB_ANALYTE_LABELS,
   id,
   inbox,
   INVOICE_LATE_DAYS,
@@ -225,6 +226,30 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         site: site(r),
         customer: customer(r),
         target: r.visitId ? { type: "obligation" as const, id: r.visitId } : { type: "site" as const, id: r.siteId },
+      };
+    });
+  }
+
+  /** Lab tests (BOD, TSS) the site's authority requires that are past their due date. */
+  async function lateLabTests(organizationId: string, today: string): Promise<InboxException[]> {
+    const late = (await labTestStatuses(db, organizationId, today)).filter((t) => t.state === "late").slice(0, PER_KIND);
+    if (late.length === 0) return [];
+    const rows = await sites(organizationId)
+      .select(["s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("s.id", "in", late.map((t) => t.siteId))
+      .execute();
+    return late.map((t) => {
+      const r = rows.find((x) => x.siteId === t.siteId)!;
+      return {
+        key: `lab_test_late:${t.siteId}`,
+        kind: "lab_test_late" as const,
+        severity: "high" as const,
+        title: `${t.analytes.map((a) => LAB_ANALYTE_LABELS[a]).join(" and ")} lab test overdue`,
+        detail: `${t.authorityName} requires one every ${t.everyMonths} months; due ${t.dueOn} (${t.dueBasis})`,
+        dueOn: t.dueOn,
+        site: site(r),
+        customer: customer(r),
+        target: { type: "site" as const, id: t.siteId },
       };
     });
   }
@@ -575,6 +600,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           incompleteInspections(organizationId),
           filingExceptions(organizationId, today),
           lateNextVisits(organizationId, today),
+          lateLabTests(organizationId, today),
           openIssues(organizationId),
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),

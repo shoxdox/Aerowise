@@ -27,6 +27,7 @@ import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
 import { readinessRoutes } from "./routes/readiness.ts";
+import { labTestRoutes } from "./routes/lab-tests.ts";
 import { reportRoutes } from "./routes/reports.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
@@ -199,6 +200,7 @@ export async function buildApp({
   const compliance = { store, mail: transport, enqueue };
   await app.register(filingRoutes, { db, now, signer, compliance });
   await app.register(readinessRoutes, { db, now, signer, compliance });
+  await app.register(labTestRoutes, { db, now });
 
   return app;
 }

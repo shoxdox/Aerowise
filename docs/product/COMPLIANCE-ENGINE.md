@@ -47,6 +47,16 @@ Published versions never change, so an authority that changes its interval gets 
 
 Fixture tests: `apps/api/test/intervals.test.ts`, with fictional quarterly and commercial-monthly rulesets in `apps/api/test/fixtures/rulesets/`.
 
+### Lab tests
+
+A ruleset can require lab tests on a schedule with `labTests`: the analytes (`bod`, `tss`), `everyMonths` (12 for annual) and `appliesTo` (residential, commercial or both). A ruleset without it requires none.
+
+The office records each result from the lab's report on the site page: sample date, lab, the lab's report or sample number, and a value in mg/L for each analyte. Every analyte the authority requires must have a result. A record is never changed. A mistake is fixed by recording a correction that replaces the record, and only the correction counts.
+
+A site has a lab test requirement while it has a contract in force and its authority's rules apply to that contract's type. The next test is due `everyMonths` after the latest sample. With none on record, it counts from the later of the site's first contract and the date the authority's rules took effect, so renewing a contract does not restart the clock. The site page shows "due soon" 30 days ahead. A late test is a high-severity inbox item until a result is recorded.
+
+Fixture tests: `apps/api/test/lab-tests.test.ts`, with a fictional annual BOD/TSS ruleset in `apps/api/test/fixtures/rulesets/`.
+
 ### Validation
 
 Inspection cannot reach `COMPLETE_VALID` until required inputs are present.
