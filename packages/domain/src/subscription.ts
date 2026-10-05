@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { addDays, daysBetween } from "./schedule.ts";
+import { addDays, addMonths, daysBetween } from "./schedule.ts";
 
 // What a maintenance company pays Aerowise (the brief's "Aerowise billing"). This is
 // separate from `plans`, which are the service plans a company sells to homeowners, and
@@ -57,6 +57,25 @@ export const DEFAULT_SUBSCRIPTION_CONFIG: SubscriptionConfig = {
   monthlyMinimumCents: 9900,
 };
 
+const CONFIG_ENV: Record<keyof SubscriptionConfig, string> = {
+  trialDays: "AEROWISE_TRIAL_DAYS",
+  designPartnerDays: "AEROWISE_DESIGN_PARTNER_DAYS",
+  pricePerContractCents: "AEROWISE_PRICE_PER_CONTRACT_CENTS",
+  monthlyMinimumCents: "AEROWISE_MONTHLY_MINIMUM_CENTS",
+};
+
+/** Aerowise's own prices and free-period lengths from the environment; unset values use the defaults. */
+export function subscriptionConfigFromEnv(env: Record<string, string | undefined>): SubscriptionConfig {
+  const config = { ...DEFAULT_SUBSCRIPTION_CONFIG };
+  for (const [field, key] of Object.entries(CONFIG_ENV) as [keyof SubscriptionConfig, string][]) {
+    const raw = env[key]?.trim();
+    if (!raw) continue;
+    if (!/^\d+$/.test(raw)) throw new Error(`${key} must be a whole number, got "${raw}"`);
+    config[field] = Number(raw);
+  }
+  return config;
+}
+
 const cents = z.number().int().min(0).max(10_000_000);
 
 export const subscriptionPlan = z.object({
@@ -99,6 +118,25 @@ export function effectivePrice(plan: Pick<SubscriptionPlan, "pricePerContractCen
     pricePerContractCents: plan.pricePerContractCentsOverride ?? config.pricePerContractCents,
     monthlyMinimumCents: plan.monthlyMinimumCentsOverride ?? config.monthlyMinimumCents,
   };
+}
+
+/** States that pay for the month. Free periods pay nothing; a read-only account is not charged. */
+export const BILLABLE_STATES: readonly SubscriptionState[] = ["active", "past_due"];
+
+/**
+ * One month's charge: every active contract at the organization's price, topped up to the
+ * monthly minimum when that comes to less.
+ */
+export function monthlyCharge(activeContracts: number, price: { pricePerContractCents: number; monthlyMinimumCents: number }) {
+  const usageCents = activeContracts * price.pricePerContractCents;
+  const totalCents = Math.max(usageCents, price.monthlyMinimumCents);
+  return { usageCents, minimumTopUpCents: totalCents - usageCents, totalCents };
+}
+
+/** The calendar month a date falls in: Aerowise bills each month on its first day. */
+export function billingMonth(date: string): { startsOn: string; endsOn: string } {
+  const startsOn = `${date.slice(0, 7)}-01`;
+  return { startsOn, endsOn: addDays(addMonths(startsOn, 1), -1) };
 }
 
 /** Days until a free period ends (0 on its last day, negative after), or null when it has no end. */

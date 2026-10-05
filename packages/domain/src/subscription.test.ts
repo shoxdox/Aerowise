@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  BILLABLE_STATES,
+  billingMonth,
   canChangePlan,
   DEFAULT_SUBSCRIPTION_CONFIG,
   daysLeft,
   effectivePrice,
   initialPlan,
   isReadOnly,
+  monthlyCharge,
   SUBSCRIPTION_STATES,
   subscriptionPlanInput,
   type SubscriptionState,
@@ -83,5 +86,29 @@ describe("plan configuration", () => {
     expect(daysLeft({ endsOn: "2026-03-01" }, "2026-03-01")).toBe(0);
     expect(daysLeft({ endsOn: "2026-02-27" }, "2026-03-01")).toBe(-2);
     expect(daysLeft({ endsOn: null }, "2026-03-01")).toBeNull();
+  });
+});
+
+describe("monthly charge", () => {
+  const price = { pricePerContractCents: 150, monthlyMinimumCents: 9900 };
+
+  it("charges per active contract above the minimum", () => {
+    expect(monthlyCharge(100, price)).toEqual({ usageCents: 15000, minimumTopUpCents: 0, totalCents: 15000 });
+    expect(monthlyCharge(66, price)).toEqual({ usageCents: 9900, minimumTopUpCents: 0, totalCents: 9900 });
+  });
+
+  it("tops a small month up to the minimum, even with no contracts", () => {
+    expect(monthlyCharge(10, price)).toEqual({ usageCents: 1500, minimumTopUpCents: 8400, totalCents: 9900 });
+    expect(monthlyCharge(0, price)).toEqual({ usageCents: 0, minimumTopUpCents: 9900, totalCents: 9900 });
+    expect(monthlyCharge(0, { pricePerContractCents: 100, monthlyMinimumCents: 0 }).totalCents).toBe(0);
+  });
+
+  it("bills calendar months", () => {
+    expect(billingMonth("2026-03-17")).toEqual({ startsOn: "2026-03-01", endsOn: "2026-03-31" });
+    expect(billingMonth("2028-02-01")).toEqual({ startsOn: "2028-02-01", endsOn: "2028-02-29" });
+  });
+
+  it("charges only paying states", () => {
+    expect(SUBSCRIPTION_STATES.filter((s) => BILLABLE_STATES.includes(s))).toEqual(["active", "past_due"]);
   });
 });

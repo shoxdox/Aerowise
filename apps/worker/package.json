@@ -12,6 +12,7 @@
   "dependencies": {
     "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
+    "@aerowise/domain": "workspace:*",
     "@aerowise/observability": "workspace:*",
     "@aerowise/quickbooks": "workspace:*",
     "@aerowise/routing": "workspace:*",

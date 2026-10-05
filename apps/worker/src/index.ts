@@ -3,9 +3,10 @@ import { syncRulesets } from "@aerowise/compliance";
 import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { storeFromEnv } from "@aerowise/storage";
 import { createLogger, reporterFromEnv } from "@aerowise/observability";
-import { AlertThrottle, checkQueue, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
+import { subscriptionConfigFromEnv } from "@aerowise/domain";
+import { AlertThrottle, checkQueue, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleBillingRuns, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
-// Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
+// Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations, Aerowise billing) from the Postgres queue.
 // In production, refuse to start without the secrets and providers it needs (names them all).
 checkConfig();
 // JSON log lines; errors and alerts also go to error tracking (Sentry when SENTRY_DSN is set).
@@ -34,6 +35,9 @@ const ctx = {
   quickbooks: providers.quickbooks,
   sms: providers.sms,
   geocoder: providers.geocoder,
+  // Stripe Billing charges companies for Aerowise; without its key, the test stand-in outside
+  // production, and in production months are counted but not invoiced.
+  billing: { provider: providers.billing, config: subscriptionConfigFromEnv(process.env) },
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
 const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);
@@ -50,6 +54,9 @@ let nextLocateSweep = 0;
 // Contracts needing a filing with their authority are looked for this often.
 const contractFilingsEveryMs = Number(process.env.CONTRACT_FILING_SWEEP_INTERVAL_MS ?? 15 * 60_000);
 let nextContractFilingSweep = 0;
+// Each organization's monthly count and invoice is looked at this often (it counts once a month).
+const billingEveryMs = Number(process.env.BILLING_RUN_INTERVAL_MS ?? 60 * 60_000);
+let nextBillingRun = 0;
 // The queue is checked this often for stalled work and filing tasks that keep failing.
 const queueCheckEveryMs = Number(process.env.QUEUE_CHECK_INTERVAL_MS ?? 5 * 60_000);
 let nextQueueCheck = 0;
@@ -98,6 +105,10 @@ while (!stopping) {
     if (Date.now() >= nextContractFilingSweep) {
       nextContractFilingSweep = Date.now() + contractFilingsEveryMs;
       await scheduleContractFilingSweeps(db, new Date(), contractFilingsEveryMs);
+    }
+    if (Date.now() >= nextBillingRun) {
+      nextBillingRun = Date.now() + billingEveryMs;
+      await scheduleBillingRuns(db, new Date(), billingEveryMs);
     }
     if (Date.now() >= nextQueueCheck) {
       nextQueueCheck = Date.now() + queueCheckEveryMs;
