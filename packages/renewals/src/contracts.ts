@@ -19,18 +19,20 @@ export interface Terms {
 type VisitTerms = Pick<Terms, "customerType" | "termMonths" | "visitsPerTerm">;
 
 /**
- * The terms with enough visits that no visit window is longer than the site's authority
- * allows under the rules in force on `startOn` (longer where it allows that for a system
- * with electronic monitoring on record that day). A site with no authority keeps its plan's
- * visits; visits are added, never removed. Pass `catalog` when doing many sites at once.
+ * The terms for a contract at this site: the site's own residential or commercial type
+ * (not the plan's), and enough visits that no visit window is longer than the site's
+ * authority allows under the rules in force on `startOn` (longer where it allows that for a
+ * system with electronic monitoring on record that day). A site with no authority keeps its
+ * plan's visits; visits are added, never removed. Pass `catalog` when doing many sites at once.
  */
 export async function termsForSite<T extends VisitTerms>(db: Executor, organizationId: string, siteId: string, startOn: string, terms: T, catalog?: CatalogEntry[]): Promise<T> {
   const site = await db
     .selectFrom("sites")
-    .select(["county", "state", "jurisdictionId"])
+    .select(["county", "state", "jurisdictionId", "customerType"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", siteId)
     .executeTakeFirstOrThrow();
+  terms = { ...terms, customerType: site.customerType };
   const resolved = resolveSite(catalog ?? (await loadCatalog(db)), site, startOn);
   if (!resolved) return terms;
   // Monitoring only matters where the authority allows a longer interval for it.

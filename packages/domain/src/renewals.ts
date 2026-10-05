@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { BILLING_FREQUENCIES, CUSTOMER_TYPES, SERVICE_TYPES } from "./contracts.ts";
+import { BILLING_FREQUENCIES, SERVICE_TYPES } from "./contracts.ts";
+import { CUSTOMER_TYPES } from "./crm.ts";
 import { id } from "./crm.ts";
 import { contractInstallments, invoiceTotals, MAX_CENTS, type InvoiceTotals } from "./invoices.ts";
 

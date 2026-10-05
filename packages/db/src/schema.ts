@@ -132,6 +132,7 @@ export interface SitesTable {
   gateCode: string | null;
   safetyFlags: Generated<string[]>;
   schedulingNotes: string | null;
+  customerType: Generated<"residential" | "commercial">;
   jurisdictionId: ColumnType<string | null, string | null | undefined, string | null>;
   authorityAssignmentId: ColumnType<string | null, string | null | undefined, string | null>;
   importId: ColumnType<string | null, string | null | undefined, never>;

@@ -407,3 +407,13 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Counts come from the resolver, not a SQL count by county.** County names are free text and some authorities are assigned by hand, so the page resolves each active site with `explainSite`, as a filing would. That is fine at pilot scale (thousands of sites); if it ever gets slow, the answer is a cached count, not a different rule.
 - **"Today" is the UTC date** for the platform view. Organizations' own time zones only matter within a day of a version change.
 - **The coverage table scrolls inside its box on a phone,** using the `.table-scroll` wrapper W8.2 added for the organizations table, so the page stays screen-wide.
+
+## 2026-10-05 · Justin's answers on the county rules questions
+
+Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
+
+1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
+4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
+5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).

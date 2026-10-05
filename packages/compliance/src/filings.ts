@@ -249,26 +249,18 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
 }
 
 /**
- * What decides the site's interval on a date: whether its contract then is residential or
- * commercial (residential when there is none, the authority's default), and whether it had
- * qualifying electronic monitoring.
+ * What decides the site's interval on a date: whether the site is residential or commercial,
+ * and whether it had qualifying electronic monitoring.
  */
 async function siteServiceBasis(db: Executor, organizationId: string, siteId: string, onDate: string) {
-  const [customerType, monitored] = await Promise.all([siteCustomerType(db, organizationId, siteId, onDate), siteMonitoredOn(db, organizationId, siteId, onDate)]);
+  const [customerType, monitored] = await Promise.all([siteCustomerType(db, organizationId, siteId), siteMonitoredOn(db, organizationId, siteId, onDate)]);
   return { customerType, monitored };
 }
 
-async function siteCustomerType(db: Executor, organizationId: string, siteId: string, onDate: string) {
-  const c = await db
-    .selectFrom("contracts")
-    .select("customerType")
-    .where("organizationId", "=", organizationId)
-    .where("siteId", "=", siteId)
-    .where("status", "=", "active")
-    .where("startOn", "<=", onDate)
-    .where("endOn", ">=", onDate)
-    .executeTakeFirst();
-  return c?.customerType ?? "residential";
+/** The site's own type ("commercial" belongs to the property, not the plan). */
+async function siteCustomerType(db: Executor, organizationId: string, siteId: string) {
+  const s = await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", siteId).executeTakeFirst();
+  return s?.customerType ?? "residential";
 }
 
 /** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
