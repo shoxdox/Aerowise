@@ -87,7 +87,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
       interval: 15s
       timeout: 5s
       start_period: 60s
@@ -115,7 +115,7 @@ services:
       api: { condition: service_healthy }
     # Through the web app's /api proxy, so it fails when either is down.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 15s
       timeout: 5s
       start_period: 60s
