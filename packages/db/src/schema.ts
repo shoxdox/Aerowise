@@ -605,9 +605,25 @@ export type EmailSendStatus = "sending" | "accepted" | "failed" | "needs_review"
 export type EmailDeliveryStatus = "delayed" | "delivered" | "bounced" | "complained" | "failed" | "suppressed";
 export type EmailEventType = "sent" | EmailDeliveryStatus;
 
+/** W8.2: platform-wide, no organization_id (a prospect is not an organization yet). */
+export interface DemoRequestsTable {
+  id: Generated<string>;
+  name: string;
+  email: string;
+  company: string;
+  phone: string | null;
+  counties: string | null;
+  message: string | null;
+  status: Generated<"new" | "handled">;
+  notifiedAt: Date | null;
+  notifyError: string | null;
+  createdAt: Generated<Date>;
+}
+
 export interface EmailSendsTable {
   id: Generated<string>;
-  organizationId: string;
+  /** Null for email to Aerowise itself (demo request alerts). */
+  organizationId: string | null;
   idempotencyKey: string;
   provider: string;
   recipient: string;
@@ -628,7 +644,7 @@ export interface EmailSendsTable {
 
 export interface EmailEventsTable {
   id: Generated<string>;
-  organizationId: string;
+  organizationId: string | null;
   emailSendId: string;
   provider: string;
   providerEventId: string;
@@ -1176,6 +1192,7 @@ export interface DB {
   emailSends: EmailSendsTable;
   emailEvents: EmailEventsTable;
   platformAdmins: PlatformAdminsTable;
+  demoRequests: DemoRequestsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
   billingPeriods: BillingPeriodsTable;

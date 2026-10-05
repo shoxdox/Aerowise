@@ -153,4 +153,37 @@ export const organizationSubscription = z.object({
 export type OrganizationSubscription = z.infer<typeof organizationSubscription>;
 
 export const READ_ONLY_MESSAGE =
-  "This account is read-only because its Aerowise plan has lapsed. You can still view and export everything. Contact Aerowise to reactivate it.";
+  "This account is read-only because its Aerowise plan has lapsed. You can still view and export everything. The owner can reactivate it under Subscription.";
+
+/** The owner's subscription page: what the company pays Aerowise. */
+export const subscriptionOverview = z.object({
+  plan: z.object({
+    state: z.enum(SUBSCRIPTION_STATES),
+    startsOn: z.iso.date(),
+    endsOn: z.iso.date().nullable(),
+    /** Days until a free period ends; null when it has no end. */
+    daysLeft: z.number().int().nullable(),
+    readOnly: z.boolean(),
+  }),
+  price: z.object({ pricePerContractCents: z.number().int(), monthlyMinimumCents: z.number().int(), founder: z.boolean() }),
+  /** At today's count of active contracts. `charged` is false during a free period or while read-only. */
+  estimate: z.object({ countedOn: z.iso.date(), activeContracts: z.number().int(), amountCents: z.number().int(), charged: z.boolean() }),
+  /** Where invoices are charged; null when nothing is saved yet. */
+  paymentMethod: z.object({ label: z.string(), last4: z.string(), expires: z.string().nullable() }).nullable(),
+  /** `none`: this server cannot take payment for Aerowise yet. `test`: the built-in stand-in. */
+  provider: z.enum(["stripe", "test", "none"]),
+  invoices: z.array(
+    z.object({
+      id: z.uuid(),
+      startsOn: z.iso.date(),
+      endsOn: z.iso.date(),
+      activeContracts: z.number().int(),
+      pricePerContractCents: z.number().int(),
+      monthlyMinimumCents: z.number().int(),
+      amountCents: z.number().int(),
+      status: z.enum(["free", "pending", "open", "paid", "failed", "void"]),
+      hostedInvoiceUrl: z.string().nullable(),
+    }),
+  ),
+});
+export type SubscriptionOverview = z.infer<typeof subscriptionOverview>;

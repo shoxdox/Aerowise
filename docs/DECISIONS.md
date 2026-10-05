@@ -373,7 +373,8 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Coverage comes from the rulesets, through `GET /public/overview`** (no sign-in, 60 requests a minute per address). It lists every active authority with a real ruleset (draft or verified) and never the fictional example. Verified authorities show the W6.5 "Verified with <authority> on <date>" badge and are listed first; drafts show "In progress". A new county ruleset appears on the page when it merges, with no copy change.
 - **Pricing comes from the W4.1 subscription config** (`AEROWISE_DESIGN_PARTNER_DAYS`, `AEROWISE_PRICE_PER_CONTRACT_CENTS`, `AEROWISE_MONTHLY_MINIMUM_CENTS`), so the page and billing cannot disagree. The page says "Free for 90 days" (the brief's design-partner offer), then the per-contract price and monthly minimum.
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
-- **Open:** whether to show the post-free-period price publicly at all, or only "free for 90 days" (Justin); the demo request button arrives with W8.2.
+- **The price after the free period is shown publicly** (Justin, 2026-10-05): it builds trust and filters out poor fits. It is read from the billing config, never typed into the copy.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -383,6 +384,22 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Kept apart from Stripe Connect.** Billing has its own package (`packages/billing`), keys (`STRIPE_BILLING_*`), webhook (`/webhooks/stripe-billing`), event log (`billing_events`) and Stripe customer per organization (`organizations.billing_customer_id`). A Connect-signed event is refused at the billing webhook.
 - **Retries.** The worker queues a run for each organization every `BILLING_RUN_INTERVAL_MS` (an hour). A run counts once and invoices once, and Stripe calls carry idempotency keys tied to the month. A failed call leaves the month `pending`, and a later run issues it. Without Stripe Billing keys in production, months are counted and stay `pending` until keys are added. The test stand-in runs outside production and in demo mode (`DEMO_MODE`), like every other outside service.
 - **Webhook statuses.** `invoice.finalized` sets a month to open, `invoice.paid` to paid, `invoice.payment_failed` and `invoice.marked_uncollectible` to failed, and `invoice.voided` to void. A paid month stays paid. Moving the plan state on payment or failure (to `past_due`, `read_only` or back to `active`) is W4.4.
+
+## 2026-10-05 · W8.2 Demo request form
+
+- **Requests are platform data, not tenant data.** A prospect is not an organization yet, so `demo_requests` (migration 0026) has no `organization_id`, like the platform admin tables. Only platform admins read it (`GET /admin/demo-requests`), and marking one handled writes a platform audit event.
+- **Email to Aerowise belongs to no organization.** The alert goes through `EmailTransport` like every other email (the outbox until Resend is configured), with `organizationId: null`. `email_sends` and `email_events` now allow a null organization; such sends are unique by idempotency key among platform sends, and their delivery events are recorded but never touch a filing. Resend tags them `aw_org=platform`.
+- **Who is emailed:** `DEMO_REQUEST_NOTIFY_TO` (comma-separated). Left empty, every active platform admin is emailed, so Justin hears about requests from the first day without setting anything.
+- **The email is sent while the request is answered, not from the worker.** It is one short email, and the worker queue is per organization. If it fails, the request is still saved and `/admin/demo-requests` shows "Email failed" with the reason; the visitor sees the same thank-you either way.
+- **Spam protection:** 5 requests an hour per client address (keyed by address only, so it runs at `onRequest`; see W3.3), length limits on every field, and a hidden "website" field. A request that fills it gets the normal answer and is dropped, so a bot cannot tell. No CAPTCHA: it needs an outside account and hurts real visitors; add Cloudflare Turnstile if spam gets through.
+- **Open:** the address to notify (Justin).
+## 2026-10-05 · W4.3 Owner subscription page
+
+- **Owner only, under its own permission.** `subscription:manage` is held by owners alone. `billing:manage` stays the permission for the company's Stripe Connect account (homeowner payments), so the two Stripe relationships never share a permission or a page: `/settings/billing` versus `/settings/subscription`.
+- **The estimate is at today's count.** The page counts contracts in force today with the same rule as the monthly run, and applies the company's price and minimum. During a free period it says what the company would pay afterwards. Months already counted show their stored count, amount and status, linked to Stripe's hosted invoice.
+- **Saving a card uses Stripe's customer portal**, opened straight on updating the payment method. It saves the card or bank account as the default for invoices, so Aerowise never handles card details. The test provider saves a test Visa at once and returns.
+- **A read-only company can still save a payment method.** Routes opt in with `config.allowedWhenReadOnly`. Saving a payment method is the only one, because paying is how a lapsed company gets back. Moving back to `active` when the payment clears comes in W4.4.
+- **A lapsed company's automatic sends keep going (Justin, 2026-10-05).** Queued county filings and homeowner reminder emails keep going out while a company is read-only, so a lapse never causes a missed county deadline. W4.4 keeps it this way.
 
 ## 2026-10-05 · W2.3 Password reset and user deactivation
 
