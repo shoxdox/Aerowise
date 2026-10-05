@@ -991,6 +991,36 @@ export interface SmsOptOutsTable {
   optedOutAt: Generated<Date>;
 }
 
+export interface PlatformAdminsTable {
+  id: Generated<string>;
+  name: string;
+  email: string;
+  passwordHash: string;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+}
+
+export interface PlatformAdminSessionsTable {
+  id: Generated<string>;
+  tokenHash: Buffer;
+  adminId: string;
+  createdAt: CreatedAt;
+  expiresAt: Timestamp;
+  revokedAt: Timestamp | null;
+}
+
+export interface PlatformAuditEventsTable {
+  id: Generated<string>;
+  adminId: string | null;
+  organizationId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  changes: ColumnType<unknown, string | undefined, never>;
+  requestId: string | null;
+  occurredAt: CreatedAt;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -1045,4 +1075,7 @@ export interface DB {
   customerDeliveries: CustomerDeliveriesTable;
   emailSends: EmailSendsTable;
   emailEvents: EmailEventsTable;
+  platformAdmins: PlatformAdminsTable;
+  platformAdminSessions: PlatformAdminSessionsTable;
+  platformAuditEvents: PlatformAuditEventsTable;
 }

@@ -228,6 +228,14 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Ending a contract (285.7(d)(3)(A), (B)).** Cancelling now records who ended the contract and the last day of service. The provider's written notice to the authority and the manufacturer, and to the owner when the provider ended it, is due 30 days before service ends. The inbox shows it, and the office records when it was sent and to whom. Aerowise does not send it, because manufacturer addresses are not in Aerowise.
 - **Rule text** for (b), (c) and (d) was read from Cornell LII's republished §285.7 through a fetch tool asked for verbatim quotes. The notes in the v1 rulesets keep their earlier wording about a summarizer, because published versions do not change.
 
+## 2026-10-05 · W2.1 Platform admin and /admin
+
+- **Platform admins are their own identity, not a fifth tenant role.** They live in `platform_admins` with their own password, their own sessions (`platform_admin_sessions`, cookie `aw_admin_session`, 12 hours) and their own sign-in at `/admin/login`. A route opts in with `config.platformAdmin`, which only an admin session satisfies; a tenant session, or a tenant token placed in the admin cookie, gets 401. An admin session never satisfies a tenant route either. The same email can be both a company user and an admin, with two separate passwords and sign-ins. Keeping them apart means no tenant role change, membership bug or seed mistake can ever grant access across organizations.
+- **Admins come from the CLI.** `pnpm db:create-platform-admin <email> <name>` with the password on stdin (or `PLATFORM_ADMIN_PASSWORD`), minimum 12 characters. The seed adds `admin@example.com` only when `NODE_ENV` is not `production`.
+- **A platform audit log.** Admin actions go to `platform_audit_events` (append-only, like `audit_events`), with the organization acted on when there is one. Tenant `audit_events` needs a tenant user as the actor, which an admin is not. Admin sign-in and sign-out are recorded too.
+- **Usage on the organization list.** Active contracts are contracts not cancelled whose dates cover today in the organization's own time zone. Users are active users with an active membership. Last activity is the newer of the latest audit event and the latest sign-in; the seed writes neither, so the demo company shows "Never" until someone signs in.
+- **Not in W2.1:** the plan state and price override (W4.1), inviting the first owner (W2.2), and read-only impersonation (W2.6).
+
 ## 2026-10-05 · W3.1 Real email transport
 
 - **Resend, not Postmark.** Resend takes an `Idempotency-Key` header on every send (kept 24 hours; resend.com/docs/dashboard/emails/idempotency-keys, read 2026-10-05). Postmark has no idempotency key, so a lost answer could only be resolved by searching. Resend was already the candidate in PILOT-FILING-READINESS.md item 5.
@@ -238,4 +246,3 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **A bounced filing email stays Sent** (the provider did accept it), but the site's ledger gets `filing_email_bounced` (or `_complained`, `_failed`, `_suppressed`) and the inbox shows "Filing email to … did not arrive" (high) until the office files it another way. Bounces of customer emails are recorded on the send only. Showing them on the customer screen is an open question.
 - **The outbox stays the default** when `RESEND_API_KEY` is not set, in every environment. Refusing to boot in production without a mail key is W3.3's check.
 - **`EMAIL_REDIRECT_TO`** sends every message to one test inbox, with the real recipient in the subject. Staging uses it so synthetic filings never reach a real authority.
-
