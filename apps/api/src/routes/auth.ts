@@ -1,5 +1,5 @@
 import { verifyPassword, type Database } from "@aerowise/db";
-import { ROLES } from "@aerowise/domain";
+import { isReadOnly, organizationSubscription, ROLES } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { createSession, revokeSession, SESSION_COOKIE, type AuthContext } from "../auth/sessions.ts";
@@ -11,7 +11,7 @@ const DUMMY_HASH =
 
 const me = z.object({
   user: z.object({ id: z.uuid(), name: z.string(), email: z.string() }),
-  organization: z.object({ id: z.uuid(), name: z.string(), timezone: z.string() }),
+  organization: z.object({ id: z.uuid(), name: z.string(), timezone: z.string(), subscription: organizationSubscription }),
   role: z.enum(ROLES),
   organizations: z.array(z.object({ id: z.uuid(), name: z.string(), role: z.enum(ROLES) })),
 });
@@ -21,7 +21,7 @@ async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organiza
   const organizations = await db
     .selectFrom("memberships as m")
     .innerJoin("organizations as o", "o.id", "m.organizationId")
-    .select(["o.id", "o.name", "o.timezone", "m.role"])
+    .select(["o.id", "o.name", "o.timezone", "o.subscriptionState", "o.subscriptionEndsOn", "m.role"])
     .where("m.userId", "=", auth.userId)
     .where("m.active", "=", true)
     .orderBy("o.name")
@@ -30,7 +30,12 @@ async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organiza
   if (!current) throw new Error("session organization missing from memberships");
   return {
     user,
-    organization: { id: current.id, name: current.name, timezone: current.timezone },
+    organization: {
+      id: current.id,
+      name: current.name,
+      timezone: current.timezone,
+      subscription: { state: current.subscriptionState, endsOn: current.subscriptionEndsOn, readOnly: isReadOnly(current.subscriptionState) },
+    },
     role: auth.role,
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
   };

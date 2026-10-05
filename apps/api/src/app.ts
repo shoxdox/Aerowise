@@ -40,6 +40,7 @@ import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
 import { TestSmsProvider, type SmsConfig } from "@aerowise/sms";
 import { CensusGeocoder, TestGeocoder, type Geocoder } from "@aerowise/routing";
+import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/domain";
 
 export interface AppOptions {
   db: Database;
@@ -77,6 +78,8 @@ export interface AppOptions {
    * and the US Census geocoder in production.
    */
   geocoder?: Geocoder | null;
+  /** Aerowise's own prices and free-period lengths (what companies pay Aerowise). */
+  subscription?: SubscriptionConfig;
 }
 
 export async function buildApp({
@@ -93,6 +96,7 @@ export async function buildApp({
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
+  subscription = DEFAULT_SUBSCRIPTION_CONFIG,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -164,7 +168,7 @@ export async function buildApp({
   });
 
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(adminRoutes, { db, production, loginRateLimit, now });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now, subscription });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });

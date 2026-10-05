@@ -40,7 +40,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W3.3 | Production secrets check and hardening | — | not started |
 | W3.4 | Observability: logs, error tracking, alerts | — | not started |
 | W3.5 | Backups and restore runbook | W1.1 | not started |
-| W4.1 | Plan states and read-only mode | W2.1 | not started |
+| W4.1 | Plan states and read-only mode | W2.1 | in progress (PR open) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | not started |
 | W4.3 | Owner subscription page | W4.2 | not started |
 | W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | not started |

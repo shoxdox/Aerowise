@@ -5,7 +5,13 @@ import { api } from "./api";
 
 export interface Me {
   user: { id: string; name: string; email: string };
-  organization: { id: string; name: string; timezone: string };
+  organization: {
+    id: string;
+    name: string;
+    timezone: string;
+    /** Missing from a copy cached on a phone before plans existed. */
+    subscription?: { state: "design_partner" | "trial" | "active" | "past_due" | "read_only"; endsOn: string | null; readOnly: boolean };
+  };
   role: "owner" | "office" | "technician" | "read_only";
 }
 
@@ -26,5 +32,8 @@ export function useSession(): Me {
   return me;
 }
 
+/** Whether the company's Aerowise plan has lapsed: everything stays readable, nothing changes. */
+export const isReadOnlyAccount = (me: Me) => me.organization.subscription?.readOnly === true;
+
 /** Whether the signed-in role may edit records. The API enforces this regardless. */
-export const canEdit = (me: Me) => me.role === "owner" || me.role === "office";
+export const canEdit = (me: Me) => (me.role === "owner" || me.role === "office") && !isReadOnlyAccount(me);

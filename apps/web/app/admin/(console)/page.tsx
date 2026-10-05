@@ -1,18 +1,112 @@
 "use client";
 
-import type { AdminOrganization } from "@aerowise/domain";
+import {
+  SUBSCRIPTION_STATE_LABELS,
+  SUBSCRIPTION_TRANSITIONS,
+  type AdminOrganization,
+  type SubscriptionConfig,
+  type SubscriptionState,
+} from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
+import { day, money } from "@/lib/format";
 
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }) : "Never";
 
-export default function AdminOrganizationsPage() {
-  const { data, reload } = useLoad<{ items: AdminOrganization[] }>("/admin/organizations");
-  const [creating, setCreating] = useState(false);
+/** Dollars typed in a form to cents, or null when left blank (use the configured price). */
+const toCents = (dollars: string | undefined) => (dollars === undefined ? null : Math.round(Number(dollars) * 100));
+const toDollars = (cents: number | null) => (cents === null ? "" : (cents / 100).toFixed(2));
+
+function planSummary(o: AdminOrganization) {
+  const label = SUBSCRIPTION_STATE_LABELS[o.plan.state];
+  if (!o.plan.endsOn) return label;
+  const left = o.daysLeft ?? 0;
+  const remaining = left > 0 ? `${left} days left` : left === 0 ? "ends today" : `ended ${-left} days ago`;
+  return `${label} until ${day(o.plan.endsOn)} (${remaining})`;
+}
+
+function priceSummary(o: AdminOrganization, defaults: SubscriptionConfig) {
+  const price = o.plan.pricePerContractCentsOverride ?? defaults.pricePerContractCents;
+  const minimum = o.plan.monthlyMinimumCentsOverride ?? defaults.monthlyMinimumCents;
+  const founder = o.plan.pricePerContractCentsOverride !== null || o.plan.monthlyMinimumCentsOverride !== null;
+  return `${money(price)}/contract, ${money(minimum)} min${founder ? " (founder)" : ""}`;
+}
+
+function PlanEditor({ org, defaults, onSaved, onCancel }: { org: AdminOrganization; defaults: SubscriptionConfig; onSaved: () => void; onCancel: () => void }) {
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<string | null>(null);
+  const states: SubscriptionState[] = [org.plan.state, ...SUBSCRIPTION_TRANSITIONS[org.plan.state]];
+
+  async function onSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const v = formValues(event.currentTarget);
+    try {
+      await api(`/admin/organizations/${org.id}/plan`, {
+        method: "PUT",
+        body: {
+          state: v.state,
+          startsOn: v.startsOn,
+          endsOn: v.endsOn ?? null,
+          pricePerContractCentsOverride: toCents(v.price),
+          monthlyMinimumCentsOverride: toCents(v.minimum),
+        },
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save the plan");
+    }
+  }
+
+  return (
+    <form className="card grid" onSubmit={onSave} aria-label={`Plan for ${org.name}`}>
+      <h2 className="wide">Plan for {org.name}</h2>
+      <label>
+        State
+        <select name="state" defaultValue={org.plan.state}>
+          {states.map((s) => (
+            <option key={s} value={s}>
+              {SUBSCRIPTION_STATE_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Starts on
+        <input name="startsOn" type="date" required defaultValue={org.plan.startsOn} />
+      </label>
+      <label>
+        Ends on
+        <input name="endsOn" type="date" defaultValue={org.plan.endsOn ?? ""} />
+        <span className="muted small">Required for a trial or design-partner period.</span>
+      </label>
+      <label>
+        Founder price per active contract ($/month)
+        <input name="price" type="number" min="0" step="0.01" defaultValue={toDollars(org.plan.pricePerContractCentsOverride)} placeholder={toDollars(defaults.pricePerContractCents)} />
+      </label>
+      <label>
+        Founder monthly minimum ($)
+        <input name="minimum" type="number" min="0" step="0.01" defaultValue={toDollars(org.plan.monthlyMinimumCentsOverride)} placeholder={toDollars(defaults.monthlyMinimumCents)} />
+      </label>
+      <p className="muted small wide">Leave a price blank to use the standard price ({priceSummary({ ...org, plan: { ...org.plan, pricePerContractCentsOverride: null, monthlyMinimumCentsOverride: null } }, defaults)}).</p>
+      {error && <p className="error wide">{error}</p>}
+      <div className="wide row">
+        <button type="submit">Save plan</button>
+        <button type="button" className="link" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function AdminOrganizationsPage() {
+  const { data, reload } = useLoad<{ items: AdminOrganization[]; defaults: SubscriptionConfig }>("/admin/organizations");
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -21,15 +115,17 @@ export default function AdminOrganizationsPage() {
     try {
       const org = await api<AdminOrganization>("/admin/organizations", {
         method: "POST",
-        body: { name: v.name, email: v.email, phone: v.phone, timezone: v.timezone },
+        body: { name: v.name, email: v.email, phone: v.phone, timezone: v.timezone, plan: v.plan },
       });
       setCreating(false);
-      setCreated(org.name);
+      setNotice(`Created ${org.name}.`);
       await reload();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create the organization");
     }
   }
+
+  const editingOrg = data?.items.find((o) => o.id === editing);
 
   return (
     <div className="stack">
@@ -38,9 +134,9 @@ export default function AdminOrganizationsPage() {
         <span className="spacer" />
         <button onClick={() => setCreating((c) => !c)}>{creating ? "Cancel" : "New organization"}</button>
       </div>
-      {created && <p role="status">Created {created}.</p>}
+      {notice && <p role="status">{notice}</p>}
 
-      {creating && (
+      {creating && data && (
         <form className="card grid" onSubmit={onCreate}>
           <label className="wide">
             Company name
@@ -61,11 +157,32 @@ export default function AdminOrganizationsPage() {
               <option value="America/Denver">Mountain (El Paso)</option>
             </select>
           </label>
+          <label>
+            Starts on
+            <select name="plan" defaultValue="trial">
+              <option value="trial">Free trial ({data.defaults.trialDays} days)</option>
+              <option value="design_partner">Design partner ({data.defaults.designPartnerDays} days)</option>
+            </select>
+          </label>
           {error && <p className="error wide">{error}</p>}
           <div className="wide">
             <button type="submit">Create organization</button>
           </div>
         </form>
+      )}
+
+      {editingOrg && data && (
+        <PlanEditor
+          key={editingOrg.id}
+          org={editingOrg}
+          defaults={data.defaults}
+          onCancel={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            setNotice(`Saved the plan for ${editingOrg.name}.`);
+            await reload();
+          }}
+        />
       )}
 
       <table>
@@ -76,16 +193,25 @@ export default function AdminOrganizationsPage() {
             <th>Users</th>
             <th>Last activity</th>
             <th>Created</th>
+            <th>Plan</th>
+            <th>Price</th>
           </tr>
         </thead>
         <tbody>
           {data?.items.map((o) => (
             <tr key={o.id}>
-              <td>{o.name}</td>
+              <td>
+                {o.name}{" "}
+                <button className="link small" onClick={() => setEditing(o.id)} aria-label={`Edit plan for ${o.name}`}>
+                  Edit plan
+                </button>
+              </td>
               <td>{o.activeContracts}</td>
               <td>{o.users}</td>
               <td>{when(o.lastActivityAt)}</td>
               <td>{when(o.createdAt)}</td>
+              <td>{planSummary(o)}</td>
+              <td>{priceSummary(o, data.defaults)}</td>
             </tr>
           ))}
         </tbody>

@@ -1,5 +1,6 @@
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
+import { subscriptionConfigFromEnv } from "./lib/subscription.ts";
 import { LocalDiskStore } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
@@ -30,6 +31,7 @@ const app = await buildApp({
   // Twilio keys send real texts; without them, a test provider outside production.
   sms: smsFromEnv(process.env, production),
   geocoder: geocoderFromEnv(process.env, production),
+  subscription: subscriptionConfigFromEnv(process.env),
 });
 
 const shutdown = async () => {

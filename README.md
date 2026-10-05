@@ -14,6 +14,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
 | Append-only audit log | Done |
 | Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, platform audit log | Done |
+| Aerowise plans: plan state (design partner, trial, active, past due, read-only), dates and founder price per organization, set in `/admin`; read-only companies can view and export everything but change nothing | Done |
 | Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
 | Due-inspections list for the office | Done |
 | Jobs, office scheduling screen, technician daily route | Done |
