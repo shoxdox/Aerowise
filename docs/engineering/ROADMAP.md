@@ -26,10 +26,10 @@ Where two streams touch the same file, the dependency column says who goes first
 
 | ID | Task | Depends on | Status |
 | --- | --- | --- | --- |
-| W1.1 | Hosting choice and deploy config | — | not started |
+| W1.1 | Hosting choice and deploy config | — | done (Render chosen; config in `render.yaml`, waiting on a Render account) |
 | W1.2 | Demo mode: banner, nothing leaves, demo seed | — | not started |
 | W1.3 | Deploy from main through CI | W1.1 | not started |
-| W2.1 | Platform admin and `/admin`: create and list organizations | — | not started |
+| W2.1 | Platform admin and `/admin`: create and list organizations | — | in progress (PR open) |
 | W2.2 | User invites | W2.1 | not started |
 | W2.3 | Password reset and user deactivation | W2.2 | not started |
 | W2.4 | Organization settings | — | not started |
@@ -51,7 +51,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W5.4 | Onboarding summary | W5.2 | not started |
 | W5.5 | Full data export | W2.1 | not started |
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
-| W6.1 | Per-ruleset service intervals | — | in progress (#21) |
+| W6.1 | Per-ruleset service intervals | — | done (#21) |
 | W6.2 | Annual lab tests as required tests | W6.1 | not started |
 | W6.3 | Six-month schedule with electronic monitoring | W6.1 | not started |
 | W6.4 | Per-authority report templates and fees | W6.1 | not started |

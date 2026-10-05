@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.API_URL ?? "http://localhost:4000";
+// A bare host:port (what a host's private network hands out) means plain HTTP inside that network.
+const rawApiUrl = process.env.API_URL ?? "http://localhost:4000";
+const apiUrl = /^https?:\/\//.test(rawApiUrl) ? rawApiUrl : `http://${rawApiUrl}`;
 
 const config: NextConfig = {
   transpilePackages: ["@aerowise/domain"],

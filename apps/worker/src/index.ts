@@ -5,7 +5,7 @@ import { LocalDiskStore } from "@aerowise/storage";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
 import { geocoderFromEnv } from "@aerowise/routing";
 import { smsFromEnv } from "@aerowise/sms";
-import { runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps } from "@aerowise/tasks";
+import { heartbeatFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
 const url = requireDatabaseUrl();
@@ -42,6 +42,8 @@ const contractFilingsEveryMs = Number(process.env.CONTRACT_FILING_SWEEP_INTERVAL
 let nextContractFilingSweep = 0;
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
+// Touched after every pass of the loop; `pnpm --filter @aerowise/worker health` reads it.
+const heartbeat = heartbeatFromEnv(process.env);
 
 let stopping = false;
 const stop = () => {
@@ -75,6 +77,8 @@ while (!stopping) {
       await scheduleContractFilingSweeps(db, new Date(), contractFilingsEveryMs);
     }
     worked = await runNextTask(ctx, workerId, console.log);
+    // Only a clean pass counts: a worker that keeps failing (say, the database is gone) goes unhealthy.
+    await writeHeartbeat(heartbeat.file);
   } catch (err) {
     console.error("worker loop error", err);
   }
