@@ -18,9 +18,9 @@ const publicLimit = { max: 30, timeWindow: "1 minute" };
  * Billing settings and Stripe Connect for the office, plus the routes customers and
  * Stripe reach without signing in: the pay page, checkout, and the webhook.
  */
-export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; production: boolean }> = async (
+export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; testCheckout: boolean }> = async (
   app,
-  { db, now, store, payments, production },
+  { db, now, store, payments, testCheckout },
 ) => {
   const { provider, appUrl } = payments;
   const providerKind = (): BillingSettings["provider"] => (provider ? (provider.kind === "test" ? "test" : "stripe") : "none");
@@ -208,9 +208,9 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     );
   });
 
-  // ---- Test checkout (development only) ----
+  // ---- Test checkout (development and the demo only) ----
 
-  if (provider instanceof TestPaymentProvider && !production) {
+  if (provider instanceof TestPaymentProvider && testCheckout) {
     const test = provider;
     app.post(
       "/pay/:token/test-checkout",

@@ -12,11 +12,15 @@ import { runSmsSweep, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 import type { Geocoder } from "@aerowise/routing";
 import { LOCATE_SITES, locateSites } from "./routing-task.ts";
 import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
+import { runMonthlyBilling, type BillingProvider } from "@aerowise/billing";
+import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/domain";
+import { BILLING_RUN } from "./billing-task.ts";
 import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 
 export * from "./queue.ts";
 export * from "./heartbeat.ts";
 export * from "./monitor.ts";
+export * from "./providers.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 export { queueQuickBooksSync, scheduleQuickBooksSyncs, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 export {
@@ -36,6 +40,7 @@ export { queueSms, runSmsSweep, scheduleSmsSweeps, SEND_SMS, sendSms, SMS_SWEEP 
 export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } from "./routing-task.ts";
 export { cancelOpenVisits, serviceEndForVisit } from "./contract-end.ts";
 export { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
+export { BILLING_RUN, scheduleBillingRuns } from "./billing-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -56,6 +61,8 @@ export interface TaskContext {
   sms?: SmsConfig | null;
   /** Finds sites on the map; without it, sites wait unlocated. */
   geocoder?: Geocoder | null;
+  /** What companies pay Aerowise: Stripe Billing (or its stand-in) and the prices. Without a provider, months are counted but not invoiced. */
+  billing?: { provider: BillingProvider | null; config: SubscriptionConfig } | null;
 }
 
 export const DEFAULT_APP_URL = "http://localhost:3000";
@@ -139,6 +146,13 @@ async function run(ctx: TaskContext, task: Task) {
       return;
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
+      return;
+    case BILLING_RUN:
+      await runMonthlyBilling(
+        ctx.db,
+        { provider: ctx.billing?.provider ?? null, config: ctx.billing?.config ?? DEFAULT_SUBSCRIPTION_CONFIG, now: ctx.now() },
+        payload.organizationId!,
+      );
       return;
     default:
       throw new Error(`unknown task kind ${task.kind}`);

@@ -1,6 +1,6 @@
 import { createPlatformAdmin } from "@aerowise/db";
 import { describe, expect, it } from "vitest";
-import { subscriptionConfigFromEnv } from "../src/lib/subscription.ts";
+import { subscriptionConfigFromEnv } from "@aerowise/domain";
 import { client, createTenant, PASSWORD, setupTestApp, type TestContext } from "./helpers.ts";
 import { payload, setup } from "./inspection-helpers.ts";
 

@@ -44,6 +44,7 @@ export function configProblems(env: Env): string[] {
     if (set("QUICKBOOKS_TOKEN_KEY") && DEV_SECRETS.has(env.QUICKBOOKS_TOKEN_KEY!.trim())) problems.push("QUICKBOOKS_TOKEN_KEY must not be the development key");
   }
   if (set("STRIPE_SECRET_KEY")) missing(["STRIPE_WEBHOOK_SECRET"], "when Stripe is configured");
+  if (set("STRIPE_BILLING_SECRET_KEY")) missing(["STRIPE_BILLING_WEBHOOK_SECRET"], "when Stripe Billing is configured");
   if (set("TWILIO_ACCOUNT_SID") !== set("TWILIO_AUTH_TOKEN")) missing(["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"], "together");
   if (R2_KEYS.some(set)) missing(R2_KEYS, "together for Cloudflare R2");
   if (set("RESEND_API_KEY")) missing(["RESEND_WEBHOOK_SECRET", ...MAIL_FROM_KEYS], "when Resend is configured");
