@@ -51,7 +51,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W5.4 | Onboarding summary | W5.2 | not started |
 | W5.5 | Full data export | W2.1 | not started |
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
-| W6.1 | Per-ruleset service intervals | — | in progress (PR open) |
+| W6.1 | Per-ruleset service intervals | — | in progress (#21) |
 | W6.2 | Annual lab tests as required tests | W6.1 | not started |
 | W6.3 | Six-month schedule with electronic monitoring | W6.1 | not started |
 | W6.4 | Per-authority report templates and fees | W6.1 | not started |
