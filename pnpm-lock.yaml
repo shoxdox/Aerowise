@@ -29,6 +29,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aerowise/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@aerowise/compliance':
         specifier: workspace:*
         version: link:../../packages/compliance
@@ -148,12 +151,18 @@ importers:
 
   apps/worker:
     dependencies:
+      '@aerowise/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@aerowise/compliance':
         specifier: workspace:*
         version: link:../../packages/compliance
       '@aerowise/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@aerowise/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@aerowise/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -179,6 +188,25 @@ importers:
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+
+  packages/billing:
+    dependencies:
+      '@aerowise/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aerowise/domain':
+        specifier: workspace:*
+        version: link:../domain
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+      stripe:
+        specifier: ^23.0.0
+        version: 23.0.0(@types/node@22.20.5)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
 
   packages/compliance:
     dependencies:
@@ -376,6 +404,9 @@ importers:
 
   packages/tasks:
     dependencies:
+      '@aerowise/billing':
+        specifier: workspace:*
+        version: link:../billing
       '@aerowise/compliance':
         specifier: workspace:*
         version: link:../compliance

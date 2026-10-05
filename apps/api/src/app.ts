@@ -20,6 +20,8 @@ import { importRoutes } from "./routes/imports.ts";
 import { inboxRoutes } from "./routes/inbox.ts";
 import { invoiceRoutes } from "./routes/invoices.ts";
 import { paymentRoutes } from "./routes/payments.ts";
+import { billingRoutes } from "./routes/billing.ts";
+import { TestBillingProvider, type BillingProvider } from "@aerowise/billing";
 import { portalRoutes } from "./routes/portal.ts";
 import { quickbooksRoutes } from "./routes/quickbooks.ts";
 import { renewalRoutes } from "./routes/renewals.ts";
@@ -98,6 +100,11 @@ export interface AppOptions {
   /** Aerowise's own prices and free-period lengths (what companies pay Aerowise). */
   subscription?: SubscriptionConfig;
   /**
+   * Stripe Billing, for what companies pay Aerowise (not homeowner payments). Defaults to the
+   * built-in test provider outside production; in production it is off unless configured.
+   */
+  billing?: BillingProvider | null;
+  /**
    * When the worker runs on the same machine as the API (one hosted service sharing a disk),
    * /health also fails if the worker's heartbeat is missing or old, so the host restarts both.
    */
@@ -123,6 +130,7 @@ export async function buildApp({
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
   subscription = DEFAULT_SUBSCRIPTION_CONFIG,
+  billing = production ? null : new TestBillingProvider(),
   workerHeartbeat,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
@@ -232,6 +240,7 @@ export async function buildApp({
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
+  await app.register(billingRoutes, { db, now, provider: billing });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, production });
   await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(portalRoutes, { db, now, store, appUrl });

@@ -1,7 +1,8 @@
 import { emailFromEnv } from "@aerowise/compliance";
 import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
-import { subscriptionConfigFromEnv } from "./lib/subscription.ts";
+import { subscriptionConfigFromEnv } from "@aerowise/domain";
+import { billingFromEnv } from "@aerowise/billing";
 import { reporterFromEnv } from "@aerowise/observability";
 import { storeFromEnv } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
@@ -49,6 +50,8 @@ const app = await buildApp({
   sms: smsFromEnv(process.env, production),
   geocoder: geocoderFromEnv(process.env, production),
   subscription: subscriptionConfigFromEnv(process.env),
+  // Stripe Billing keys charge companies for Aerowise; without them, a test provider outside production.
+  billing: billingFromEnv(process.env) ?? undefined,
   // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).
   workerHeartbeat: process.env.HEALTH_INCLUDES_WORKER === "true" ? heartbeatFromEnv(process.env) : undefined,
 });
