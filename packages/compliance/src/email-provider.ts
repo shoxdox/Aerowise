@@ -101,12 +101,16 @@ export class ProviderTransport implements EmailTransport {
         firstAttemptAt: at,
         lastAttemptAt: at,
       })
-      .onConflict((oc) => oc.columns(["organizationId", "idempotencyKey"]).doNothing())
+      .onConflict((oc) =>
+        m.organizationId === null
+          ? oc.column("idempotencyKey").where("organizationId", "is", null).doNothing()
+          : oc.columns(["organizationId", "idempotencyKey"]).doNothing(),
+      )
       .execute();
     const row = await this.db
       .selectFrom("emailSends")
       .selectAll()
-      .where("organizationId", "=", m.organizationId)
+      .where("organizationId", m.organizationId === null ? "is" : "=", m.organizationId)
       .where("idempotencyKey", "=", m.idempotencyKey)
       .executeTakeFirstOrThrow();
     if (row.status === "accepted") return resultOf(row);
@@ -215,7 +219,8 @@ export async function applyEmailEvent(db: Database, provider: string, e: EmailWe
     const status = type;
     if (send.deliveryStatus && RANK[send.deliveryStatus] > RANK[status]) return "applied";
     await trx.updateTable("emailSends").set({ deliveryStatus: status, deliveryDetail: e.detail, deliveryUpdatedAt: e.occurredAt }).where("id", "=", send.id).execute();
-    if (isProblem(status) && send.deliveryStatus !== status) {
+    // Platform email (no organization) has no filing behind it to flag.
+    if (isProblem(status) && send.deliveryStatus !== status && send.organizationId) {
       await recordFilingDeliveryProblem(trx, { organizationId: send.organizationId, idempotencyKey: send.idempotencyKey, recipient: send.recipient, status, detail: e.detail, at: e.occurredAt });
     }
     return "applied";

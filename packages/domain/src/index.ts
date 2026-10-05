@@ -21,3 +21,4 @@ export * from "./admin.ts";
 export * from "./subscription.ts";
 export * from "./users.ts";
 export * from "./marketing.ts";
+export * from "./demo-requests.ts";

@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { ObjectStore } from "@aerowise/storage";
 
 export interface EmailMessage {
-  organizationId: string;
+  /** Null for email to Aerowise itself, which belongs to no organization (demo request alerts). */
+  organizationId: string | null;
   /**
    * The same key always means the same message. A transport must deliver a key at most
    * once and answer a repeat with the first result; this is what makes a retried filing
@@ -62,6 +63,12 @@ export function toEml(m: EmailMessage, messageId: string, date: Date): string {
 }
 
 /**
+ * Where the outbox keeps email that belongs to no organization. Storage keys start with an
+ * organization id; the nil UUID is never one (ids are random v4 UUIDs).
+ */
+const PLATFORM_OUTBOX = "00000000-0000-0000-0000-000000000000";
+
+/**
  * Development transport: writes each message as an .eml file to the organization's
  * outbox in file storage instead of sending it. Idempotent by key like a real provider
  * must be. Production needs a real provider behind the same interface (see README).
@@ -74,7 +81,7 @@ export class OutboxTransport implements EmailTransport {
   ) {}
 
   private key(m: EmailMessage) {
-    return `${m.organizationId}/outbox/${createHash("sha256").update(m.idempotencyKey).digest("hex")}`;
+    return `${m.organizationId ?? PLATFORM_OUTBOX}/outbox/${createHash("sha256").update(m.idempotencyKey).digest("hex")}`;
   }
 
   async send(m: EmailMessage): Promise<EmailResult> {

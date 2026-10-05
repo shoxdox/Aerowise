@@ -3,7 +3,8 @@
 import type { PublicOverview } from "@aerowise/domain";
 import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
-import { COVERAGE, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS } from "@/components/marketing/copy";
+import { DemoRequestForm } from "@/components/marketing/DemoRequestForm";
+import { COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS } from "@/components/marketing/copy";
 import { useLoad } from "@/components/useLoad";
 import { money } from "@/lib/format";
 
@@ -16,12 +17,16 @@ export default function MarketingPage() {
       <header className="topbar">
         <strong>Aerowise</strong>
         <span className="spacer" />
+        <a href="#demo">{DEMO.button}</a>
         <Link href="/login">Sign in</Link>
       </header>
       <main className="page stack">
         <section className="hero stack">
           <h1>{HERO.title}</h1>
           <p className="lead">{HERO.body}</p>
+          <a className="button cta" href="#demo">
+            {DEMO.button}
+          </a>
         </section>
 
         <section className="stack" aria-labelledby="problem">
@@ -82,6 +87,12 @@ export default function MarketingPage() {
               </p>
             </div>
           )}
+        </section>
+
+        <section className="stack" id="demo" aria-labelledby="demo-title">
+          <h2 id="demo-title">{DEMO.title}</h2>
+          <p className="muted">{DEMO.intro}</p>
+          <DemoRequestForm />
         </section>
 
         <footer className="muted small">{RESPONSIBILITY}</footer>

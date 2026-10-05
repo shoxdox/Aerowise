@@ -28,3 +28,27 @@ test("the marketing page shows signed out, with coverage from the rulesets and c
   await page.getByRole("link", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test("a visitor asks for a demo and it shows up in the admin console", async ({ page }) => {
+  await page.goto("/");
+  const form = page.getByRole("form", { name: "Ask for a demo" });
+  await form.getByLabel("Your name").fill("Pat Rivera");
+  await form.getByLabel("Email").fill("pat@example.com");
+  await form.getByLabel("Company").fill("Rivera Aerobic Service");
+  await form.getByLabel("Counties you work in (optional)").fill("Travis, Williamson");
+  await form.getByRole("button", { name: "Ask for a demo" }).click();
+  await expect(page.getByRole("status")).toHaveText(/We got your request/);
+
+  await page.goto("/admin/demo-requests");
+  await page.waitForURL("**/admin/login?next=*");
+  await page.getByLabel("Email").fill("admin@example.com");
+  await page.getByLabel("Password").fill("aerowise-dev");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(/\/admin\/demo-requests$/);
+  const request = page.getByRole("article", { name: "Demo request from Rivera Aerobic Service" });
+  await expect(request).toBeVisible();
+  // The e2e API has no mail provider, so the alert went to the outbox.
+  await expect(request.getByText("Emailed")).toBeVisible();
+  await request.getByRole("button", { name: "Mark handled" }).click();
+  await expect(request.getByText("Handled")).toBeVisible();
+});
