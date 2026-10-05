@@ -591,6 +591,44 @@ export interface CustomerDeliveriesTable {
   requestedBy: string | null;
 }
 
+export type EmailSendStatus = "sending" | "accepted" | "failed" | "needs_review";
+export type EmailDeliveryStatus = "delayed" | "delivered" | "bounced" | "complained" | "failed" | "suppressed";
+export type EmailEventType = "sent" | EmailDeliveryStatus;
+
+export interface EmailSendsTable {
+  id: Generated<string>;
+  organizationId: string;
+  idempotencyKey: string;
+  provider: string;
+  recipient: string;
+  subject: string;
+  status: EmailSendStatus;
+  attempts: Generated<number>;
+  firstAttemptAt: Timestamp;
+  lastAttemptAt: Timestamp;
+  uncertainSince: Timestamp | null;
+  providerMessageId: string | null;
+  acceptedAt: Timestamp | null;
+  response: ColumnType<unknown, string | undefined, string>;
+  error: string | null;
+  deliveryStatus: EmailDeliveryStatus | null;
+  deliveryDetail: string | null;
+  deliveryUpdatedAt: Timestamp | null;
+}
+
+export interface EmailEventsTable {
+  id: Generated<string>;
+  organizationId: string;
+  emailSendId: string;
+  provider: string;
+  providerEventId: string;
+  type: EmailEventType;
+  occurredAt: Timestamp;
+  receivedAt: Timestamp;
+  detail: string | null;
+  payload: ColumnType<unknown, string | undefined, never>;
+}
+
 export interface ImportsTable {
   id: Generated<string>;
   organizationId: string;
@@ -1080,6 +1118,8 @@ export interface DB {
   contractDocuments: ContractDocumentsTable;
   reportSignatures: ReportSignaturesTable;
   customerDeliveries: CustomerDeliveriesTable;
+  emailSends: EmailSendsTable;
+  emailEvents: EmailEventsTable;
   platformAdmins: PlatformAdminsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;

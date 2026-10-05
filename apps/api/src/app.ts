@@ -1,4 +1,4 @@
-import { OutboxTransport, syncRulesets, type EmailTransport } from "@aerowise/compliance";
+import { OutboxTransport, syncRulesets, type EmailProvider, type EmailTransport } from "@aerowise/compliance";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
@@ -33,6 +33,7 @@ import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
+import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
 import { passwordResetRoutes } from "./routes/password-reset.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
@@ -60,6 +61,8 @@ export interface AppOptions {
   fileSigningSecret?: string;
   /** How filings and invitations are emailed. Defaults to the development outbox in file storage. */
   mail?: EmailTransport;
+  /** The mail provider behind `mail`, whose delivery webhooks the API receives. None for the outbox. */
+  mailProvider?: EmailProvider | null;
   /** From address on account emails (invitations). */
   accountMailFrom?: string;
   /**
@@ -101,6 +104,7 @@ export async function buildApp({
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
   mail,
+  mailProvider = null,
   accountMailFrom = "accounts@aerowise.invalid",
   payments = production ? null : new TestPaymentProvider(),
   appUrl = DEFAULT_APP_URL,
@@ -202,6 +206,7 @@ export async function buildApp({
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
   await app.register(routingRoutes, { db, now, geocoder });
+  await app.register(emailRoutes, { db, now, provider: mailProvider });
   const compliance = { store, mail: transport, enqueue };
   await app.register(filingRoutes, { db, now, signer, compliance });
   await app.register(readinessRoutes, { db, now, signer, compliance });

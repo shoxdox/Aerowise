@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { syncRulesets } from "@aerowise/compliance";
+import { emailFromEnv, syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
@@ -13,10 +13,14 @@ await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
 // Fictional rules (the example county) are for development and tests only.
 await syncRulesets(db, undefined, { includeFictional: process.env.NODE_ENV !== "production" });
-// Filing and invoice emails go to the development outbox in file storage; see README for production.
+const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
+const email = emailFromEnv(db, store, process.env);
+console.log(`email: ${email.transport.name}${process.env.EMAIL_REDIRECT_TO && email.provider ? " (redirected to a test inbox)" : ""}`);
 const ctx = {
   db,
-  store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
+  store,
+  mail: email.transport,
   now: () => new Date(),
   mailFrom: process.env.FILING_EMAIL_FROM,
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,

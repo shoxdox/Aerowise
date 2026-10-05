@@ -44,6 +44,7 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   filing_needs_review: "Open filing",
   filing_deadline: "Open filing",
   filing_unconfirmed: "Record confirmation",
+  filing_bounced: "Open filing",
   contract_expiring: "Renew",
   contract_expired: "Renew",
   renewal_needs_review: "Review",

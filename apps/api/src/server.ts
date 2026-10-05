@@ -1,3 +1,4 @@
+import { emailFromEnv } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
 import { LocalDiskStore } from "@aerowise/storage";
@@ -18,11 +19,16 @@ const payments = stripeKey
   ? new StripeProvider({ secretKey: stripeKey, webhookSecrets: (process.env.STRIPE_WEBHOOK_SECRET ?? "").split(",").map((s) => s.trim()).filter(Boolean) })
   : undefined;
 const production = process.env.NODE_ENV === "production";
+const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// With a Resend key, email is really sent; without one it goes to the outbox in file storage.
+const email = emailFromEnv(db, store, process.env);
 const app = await buildApp({
   db,
   production,
   logger: true,
-  store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
+  store,
+  mail: email.transport,
+  mailProvider: email.provider,
   fileSigningSecret: process.env.FILE_SIGNING_SECRET,
   payments,
   // Intuit keys connect real QuickBooks companies; without them, a test company outside production.
