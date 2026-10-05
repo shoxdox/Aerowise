@@ -37,7 +37,8 @@ Each API deploy runs `pnpm db:migrate` as its pre-deploy command: after the imag
    - `FILING_EMAIL_FROM`, `INVOICE_EMAIL_FROM`: leave empty for now; email is written to the outbox until W3.1.
    - Production only: Stripe, QuickBooks and Twilio keys. Leave them empty and each one stays off.
 4. Apply. Render creates the databases, generates `FILE_SIGNING_SECRET` and `QUICKBOOKS_TOKEN_KEY`, and builds and starts everything.
-5. Create an API key under **Account settings > API keys** for the deploy command below.
+5. Create your platform admin for `/admin`: open the API service's **Shell** in the dashboard and run `pnpm db:create-platform-admin you@example.com "Your Name"` (it asks for the password).
+6. Create an API key under **Account settings > API keys** for the deploy command below.
 
 Changing `render.yaml` later and syncing the Blueprint updates the services to match; values entered by hand are kept.
 

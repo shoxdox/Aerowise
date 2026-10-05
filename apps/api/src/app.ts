@@ -13,6 +13,7 @@ import {
 } from "fastify-type-provider-zod";
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
+import { adminRoutes } from "./routes/admin.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
@@ -148,7 +149,12 @@ export async function buildApp({
     await app.register(swagger, {
       openapi: {
         info: { title: "Aerowise API", version: "0.1.0" },
-        components: { securitySchemes: { session: { type: "apiKey", in: "cookie", name: "aw_session" } } },
+        components: {
+          securitySchemes: {
+            session: { type: "apiKey", in: "cookie", name: "aw_session" },
+            adminSession: { type: "apiKey", in: "cookie", name: "aw_admin_session" },
+          },
+        },
         security: [{ session: [] }],
       },
       transform: jsonSchemaTransform,
@@ -167,6 +173,7 @@ export async function buildApp({
   });
 
   await app.register(authRoutes, { db, production, loginRateLimit });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });
