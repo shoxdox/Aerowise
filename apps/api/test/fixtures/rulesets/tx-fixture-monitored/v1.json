@@ -1,0 +1,59 @@
+{
+  "jurisdiction": {
+    "key": "tx-fixture-monitored",
+    "state": "TX",
+    "authorityName": "Monitored Fixture County (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL test fixture: an authority with the 4-month default that allows 6 months for residential systems with electronic monitoring. Not any real county's rules.",
+  "applicability": {
+    "counties": [
+      "Monitored Fixture County"
+    ]
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential"
+      ],
+      "note": "Fixture: electronic monitoring with automatic notification to the maintenance provider."
+    }
+  },
+  "inspection": {
+    "requiredFields": [
+      "air_pressure"
+    ],
+    "requiredPhotos": [
+      {
+        "key": "overview",
+        "minCount": 1
+      }
+    ],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-fixture-monitored.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}

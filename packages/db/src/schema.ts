@@ -986,6 +986,22 @@ export interface SmsMessagesTable {
   updatedAt: Timestamp;
 }
 
+export interface SystemMonitoringTable {
+  id: Generated<string>;
+  organizationId: string;
+  systemId: string;
+  method: "autodialer" | "remote_telemetry" | "other";
+  description: string;
+  notifies: string;
+  startedOn: string;
+  checkedOn: string;
+  endedOn: string | null;
+  endReason: string | null;
+  endedBy: string | null;
+  recordedBy: string;
+  recordedAt: ColumnType<Date, Date | string, never>;
+}
+
 export interface LabTestsTable {
   id: Generated<string>;
   organizationId: string;
@@ -1064,6 +1080,7 @@ export interface DB {
   contacts: ContactsTable;
   wastewaterSystems: WastewaterSystemsTable;
   labTests: LabTestsTable;
+  systemMonitoring: SystemMonitoringTable;
   auditEvents: AuditEventsTable;
   plans: PlansTable;
   contracts: ContractsTable;
