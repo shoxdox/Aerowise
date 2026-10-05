@@ -9,6 +9,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Area | Status |
 | --- | --- |
 | Monorepo, Postgres migrations, Docker Compose, CI | Done |
+| Hosting config (Render staging and production, migrations on deploy, API and worker health checks) | Config done; **no hosting account yet** |
 | Sign-in, sessions, roles (owner / office / technician / read-only) | Done |
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
@@ -62,6 +63,8 @@ pnpm db:create-platform-admin you@example.com "Your Name"
 ```
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
+
+Hosted staging and production run on Render from [`render.yaml`](render.yaml); [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers setup, the one-command deploy (`scripts/deploy.sh`), migrations and health checks.
 
 ## Checks
 

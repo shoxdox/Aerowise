@@ -36,6 +36,13 @@ services:
     volumes: [file-data:/data/files]
     depends_on:
       db: { condition: service_healthy }
+    # Healthy while the worker keeps finishing passes of its loop (see docs/engineering/DEPLOY.md).
+    healthcheck:
+      test: ["CMD", "pnpm", "--filter", "@aerowise/worker", "health"]
+      interval: 30s
+      timeout: 20s
+      start_period: 60s
+      retries: 3
 
   web:
     build: .
