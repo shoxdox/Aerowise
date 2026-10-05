@@ -35,7 +35,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W2.4 | Organization settings | — | not started |
 | W2.5 | First-run checklist | W2.2, W2.4 | not started |
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |
-| W3.1 | Real email transport with idempotency and bounces | — | in review: Resend behind EmailTransport; needs Justin's Resend account, key and DNS |
+| W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
 | W3.2 | Cloudflare R2 object store | — | not started |
 | W3.3 | Production secrets check and hardening | — | not started |
 | W3.4 | Observability: logs, error tracking, alerts | — | not started |
