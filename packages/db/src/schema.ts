@@ -50,6 +50,8 @@ export interface OrganizationsTable {
   subscriptionEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
   pricePerContractCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
   monthlyMinimumCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
+  dataDeletedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  dataDeletedBy: ColumnType<string | null, string | null | undefined, string | null>;
   billingCustomerId: ColumnType<string | null, string | null | undefined, string | null>;
   renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
   smsEnabled: Generated<boolean>;

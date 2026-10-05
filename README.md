@@ -36,6 +36,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
 | CSV/XLSX customer import with column detection, sheet choice, saved column choices, contract dates and last inspection, preview, duplicate flags and all-or-nothing commit | Done |
 | Full data export for the owner (CSV zip with every PDF), also while read-only | Done |
+| Deleting an organization's data on request, from `/admin`, with a typed confirmation and a platform audit record; public data-handling page (placeholder text) | Done |
 | Invoices (drafts, contract installments, tax, discounts, PDF, email), manual payments, refunds | Done |
 | Online card and bank (ACH) payments through Stripe Connect, with signed, idempotent webhooks | Done |
 | QuickBooks Online sync (customers, invoices, payments) with a first-sync match review, item mapping, retries and a conflict center | Done |

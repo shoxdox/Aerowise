@@ -25,6 +25,10 @@ test("the marketing page shows signed out, with coverage from the rulesets and c
   await expect(page.getByText("Free for 90 days")).toBeVisible();
   await expect(page.getByText("$1.50 per active contract per month, with a $99.00 monthly minimum.")).toBeVisible();
 
+  await page.getByRole("link", { name: "How we handle your data" }).click();
+  await expect(page).toHaveURL(/\/data-handling$/);
+  await expect(page.getByRole("heading", { name: "Deleting your data" })).toBeVisible();
+
   await page.getByRole("link", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/login$/);
 });

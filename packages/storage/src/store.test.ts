@@ -26,6 +26,17 @@ describe.each(stores)("%s", (_name, make) => {
     expect(await store.get(`${ORG}/inspections/i1/nope.jpg`)).toBeNull();
   });
 
+  it("deletes every file of one organization and nothing of another", async () => {
+    const store = make();
+    for (const key of [`${ORG}/a.pdf`, `${ORG}/reports/r1.pdf`, `${ORG}/reports/r2.pdf`, `${ORG}/exports/e.zip`, `${OTHER}/a.pdf`]) await store.put(key, Buffer.from(key), "application/pdf");
+    expect(await store.deleteOrganization!(ORG)).toBe(4);
+    expect(await store.get(`${ORG}/reports/r1.pdf`)).toBeNull();
+    expect(await store.get(`${ORG}/exports/e.zip`)).toBeNull();
+    expect((await store.get(`${OTHER}/a.pdf`))!.toString()).toBe(`${OTHER}/a.pdf`);
+    expect(await store.deleteOrganization!(ORG)).toBe(0);
+    await expect(store.deleteOrganization!("../etc")).rejects.toThrow("Invalid organization id");
+  });
+
   it("replaces an object written again under the same key", async () => {
     const store = make();
     await store.put(`${ORG}/a.pdf`, Buffer.from("one"), "application/pdf");
