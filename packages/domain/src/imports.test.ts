@@ -3,7 +3,7 @@ import { addressKey, analyzeImport, applySavedColumns, detectColumns, headerKey,
 
 describe("detectColumns", () => {
   it("matches common headers whatever their spelling", () => {
-    const headers = ["Client Name", "Service Address", "City", "Zip", "Permit #", "Cell Phone", "E-mail", "Make", "S/N", "Start Date"];
+    const headers = ["Client Name", "Service Address", "City", "Zip", "Permit #", "Cell Phone", "E-mail", "Make", "S/N", "Start Date", "Expiration Date", "Last Service"];
     expect(detectColumns(headers, [])).toEqual({
       customerName: 0,
       addressLine1: 1,
@@ -15,6 +15,8 @@ describe("detectColumns", () => {
       manufacturer: 7,
       serial: 8,
       contractStart: 9,
+      contractEnd: 10,
+      lastInspection: 11,
     });
   });
 
@@ -56,7 +58,8 @@ describe("analyzeImport", () => {
   const existing = {
     customers: [{ id: "c1", displayName: "Ann Lee", phones: ["(512) 555-0100"], emails: [] }],
     sites: [{ id: "s1", addressLine1: "1 Main St", city: "Austin", permitNumber: "P-9" }],
-    plans: ["Annual Aerobic"],
+    plans: [{ name: "Annual Aerobic", termMonths: 12, visitsPerTerm: 3 }],
+    today: "2026-03-01",
   };
   const rows = (raws: string[][]) => raws.map((raw, i) => ({ rowNo: i + 2, raw, include: null }));
 
@@ -83,6 +86,40 @@ describe("analyzeImport", () => {
     expect(out[5]!.customerKey).toBe(out[3]!.customerKey);
     expect(out[6]!.messages).toEqual(['Phone "12345" is not a 10-digit US number and was left out', 'No active plan named "Gold"; no contract will be created']);
     expect(summarize(out)).toEqual({ rows: 7, ready: 2, warning: 1, duplicate: 3, error: 1, included: 3 });
+  });
+
+  it("settles contract dates from the plan and reads the last inspection", () => {
+    const m = { customerName: 0, addressLine1: 1, city: 2, planName: 3, contractStart: 4, contractEnd: 5, lastInspection: 6 };
+    const out = analyzeImport(
+      rows([
+        // Only an end date: the start is worked out from the 12-month term.
+        ["A", "1 A St", "Austin", "Annual Aerobic", "", "3/20/2026", "2025-12-01"],
+        // Both dates disagree with the term: the end wins.
+        ["B", "2 B St", "Austin", "Annual Aerobic", "2025-06-01", "2026-09-30", "2026-01-15"],
+        // Started long ago with no last inspection.
+        ["C", "3 C St", "Austin", "Annual Aerobic", "2025-06-01", "", ""],
+        // Already ended.
+        ["D", "4 D St", "Austin", "Annual Aerobic", "", "2026-01-31", ""],
+        // A last inspection with no contract, and one in the future.
+        ["E", "5 E St", "Austin", "", "", "", "2026-01-01"],
+        ["F", "6 F St", "Austin", "Annual Aerobic", "2026-02-01", "", "2026-04-01"],
+        ["G", "7 G St", "Austin", "Annual Aerobic", "", "soon", ""],
+      ]),
+      m,
+      existing,
+    );
+    expect(out[0]).toMatchObject({ status: "ready", record: { contractStart: "2025-03-21", contractEnd: "2026-03-20", lastInspection: "2025-12-01" } });
+    expect(out[1]!.record).toMatchObject({ contractStart: "2025-10-01", contractEnd: "2026-09-30" });
+    expect(out[1]!.messages).toEqual(["Contract start 2025-06-01 does not fit a 12-month plan ending 2026-09-30; the contract starts 2025-10-01"]);
+    expect(out[2]!.record).toMatchObject({ contractStart: "2025-06-01", contractEnd: "2026-05-31" });
+    // Notes about today's date leave the row ready.
+    expect(out[2]).toMatchObject({ status: "ready", messages: [], notes: ["No last inspection date; visits due since the contract started will show as overdue"] });
+    expect(out[3]).toMatchObject({ status: "ready" });
+    expect(out[3]!.notes).toEqual(["Contract ended on 2026-01-31; it is imported for renewal and its visits are not scheduled"]);
+    expect(out[4]!.messages).toEqual(["Last inspection is only used with a contract; no visits are scheduled from it"]);
+    expect(out[5]!.record.lastInspection).toBeNull();
+    expect(out[5]!.messages).toEqual(["Last inspection 2026-04-01 is in the future and was left out"]);
+    expect(out[6]!.messages).toEqual(['Contract end "soon" is not a date', "No contract start or end date; no contract will be created"]);
   });
 
   it("lets the user include a duplicate but never an error", () => {

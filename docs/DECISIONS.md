@@ -409,6 +409,15 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
 - **The price after the free period is shown publicly** (Justin, 2026-10-05): it builds trust and filters out poor fits. It is read from the billing config, never typed into the copy.
 
+## 2026-10-05 · W5.2 Import: contracts, last inspection, permits, make and model
+
+- **New columns:** contract end and last inspection. Permit number, unit make and model were already read. A contract needs an active plan and either date. The missing date comes from the plan's term.
+- **The end date wins.** When both dates are given and don't fit the plan's term, the contract keeps the spreadsheet's end date and its start is moved to fit. Renewals run on the end date, and that is the date a provider's records are most likely to have right. The preview says so on the row.
+- **Visits before Aerowise.** The last inspection counts for the visit window it falls in and for every earlier window of the contract. Those visits are marked completed by the import (`service_obligations.completed_by_import`), dated the last inspection, with no inspection record. Later windows stay open, so a missed visit shows as overdue at once. Without a last inspection date, every window that has already closed shows as overdue. Aerowise does not assume a visit happened, and the preview notes this.
+- **A contract that already ended** is imported so it shows in the customer's history and can be renewed by hand, but its visits are cancelled by the import. Nobody can make those visits, and they would only fill the overdue list. The renewal pipeline only counts contracts that have not ended yet, as before.
+- **Today-dependent remarks are notes, not warnings** (`notes` on a preview row). A row stays "ready" when the only remark is that its contract has ended or has no last inspection. Otherwise a typical file with no last-inspection column would mark every contract row as a warning.
+- **A last inspection without a contract** is not stored. With no contract there are no visits to schedule from it. W5.4's summary counts those sites as having no contract.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
