@@ -6,6 +6,7 @@ import {
   contractFilingRequired,
   FILING_STATE_MACHINE,
   mayAutoSubmit,
+  serviceIntervalMonths,
   type FilingKind,
   type FilingProof,
   type FilingStatus,
@@ -220,8 +221,25 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
   };
 }
 
+/**
+ * Whether the site's contract in force on a date is residential or commercial. A site
+ * with no contract then is treated as residential, the authority's default interval.
+ */
+async function siteCustomerType(db: Executor, organizationId: string, siteId: string, onDate: string) {
+  const c = await db
+    .selectFrom("contracts")
+    .select("customerType")
+    .where("organizationId", "=", organizationId)
+    .where("siteId", "=", siteId)
+    .where("status", "=", "active")
+    .where("startOn", "<=", onDate)
+    .where("endOn", ">=", onDate)
+    .executeTakeFirst();
+  return c?.customerType ?? "residential";
+}
+
 /** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
-function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
+function termsFor(resolved: ResolvedJurisdiction, completedOn: string, customerType: "residential" | "commercial") {
   const r = resolved.rules;
   return {
     jurisdictionId: resolved.jurisdictionId,
@@ -232,7 +250,7 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
     deadlineOn: addDays(completedOn, r.filing.deadlineDays),
     deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
-    nextDueOn: addMonths(completedOn, r.service.intervalMonths),
+    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, customerType)),
   };
 }
 
@@ -260,7 +278,7 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
   const completedOn = dateInZone(insp.completedAt ?? args.at, insp.timezone);
   const resolution = explainSite(await loadCatalog(trx), insp, completedOn);
   const resolved = resolution.resolved;
-  const terms = resolved ? termsFor(resolved, completedOn) : null;
+  const terms = resolved ? termsFor(resolved, completedOn, await siteCustomerType(trx, args.organizationId, insp.siteId, completedOn)) : null;
   const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : reportsUnknown(resolved);
   const inserted = await trx
     .insertInto("filings")
@@ -952,7 +970,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
     .selectFrom("inspections as i")
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
     .innerJoin("organizations as o", "o.id", "i.organizationId")
-    .select(["i.completedAt", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+    .select(["i.completedAt", "i.siteId", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
     .where("i.organizationId", "=", f.organizationId)
     .where("i.id", "=", f.inspectionId!)
     .executeTakeFirstOrThrow();
@@ -964,7 +982,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
     await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
     return;
   }
-  const terms = termsFor(resolved, completedOn);
+  const terms = termsFor(resolved, completedOn, await siteCustomerType(trx, f.organizationId, insp.siteId, completedOn));
   await move(trx, f, "pending", a.at, { ...terms, reviewReason: null }, { type: "filing_rechecked", summary: `Filing checked again for ${resolved.authorityName}` }, a.actorUserId);
   f.rulesetId = terms.rulesetId;
   f.jurisdictionId = terms.jurisdictionId;

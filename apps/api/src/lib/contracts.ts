@@ -16,7 +16,7 @@ export function contractConflict(err: unknown): never {
   throw err;
 }
 
-/** Inserts a contract and one open obligation per visit window, in the caller's transaction. */
-export async function insertContract(trx: Transaction<DB>, organizationId: string, input: Parameters<typeof insertContractRows>[2]) {
-  return insertContractRows(trx, organizationId, input).catch(contractConflict);
+/** Inserts a contract and one open obligation per visit window, in the caller's transaction. Visits follow the site's authority. */
+export async function insertContract(trx: Transaction<DB>, organizationId: string, input: Parameters<typeof insertContractRows>[2], opts?: Parameters<typeof insertContractRows>[3]) {
+  return insertContractRows(trx, organizationId, input, opts).catch(contractConflict);
 }

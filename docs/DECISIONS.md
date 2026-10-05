@@ -260,3 +260,10 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Staging runs with `NODE_ENV=production`** so it behaves like production (secure cookies, no OpenAPI, required secrets). W1.2's demo mode switches staging's outside services to their test stand-ins.
 - **The API's `onrender.com` address is public**, because Render runs health checks only on web services. It serves the same signed-in API the web app proxies; nothing links to it. Region is Ohio, the closest Render region to Texas with Virginia.
 - **`render.yaml` is checked against Render's published JSON schema in CI**, when the schema can be downloaded; the Render CLI's validator needs an account.
+
+## 2026-10-05 · W6.1 Per-ruleset service intervals
+
+- **Commercial comes from the plan.** Plans already say residential or commercial. A contract now copies that (`contracts.customer_type`, and `renewals.customer_type` for the offer), and existing contracts were backfilled from their plans. Commercial is not recorded on a site or system yet. Open question: should it be a property of the site or system instead, so a residential plan sold to a commercial property still gets the commercial interval?
+- **The authority's interval wins over the plan's visit count.** A plan whose windows are longer than the site's authority allows gets extra visits on the contract (the fewest that keep equal whole-month windows). The price is not changed: the office sets prices, and the contract shows the visit count it actually has. Open question: should Aerowise instead refuse the contract, or warn the office before it is made?
+- **The interval is the one in force on the start date.** A later ruleset version, or a site assigned to a different authority, does not reschedule a contract already made. The inbox's "next visit starts later than the authority allows" item still catches a gap.
+- **Draft rulesets count.** A draft profile only holds automatic sending. Scheduling more often than a plan says is the cautious direction, so drafts set intervals too.

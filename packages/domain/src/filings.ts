@@ -209,8 +209,13 @@ export const rulesetRules = z.object({
     })
     .optional(),
   service: z.object({
-    /** The authority's maximum time between inspections. */
+    /**
+     * The authority's maximum time between inspections: 4 for the TCEQ default, 3 for
+     * quarterly. Contract visit windows are never longer than this.
+     */
     intervalMonths: z.number().int().min(1).max(24),
+    /** A shorter maximum for commercial systems (1 for monthly), where the authority sets one. */
+    commercialIntervalMonths: z.number().int().min(1).max(24).optional(),
   }),
   inspection: z.object({
     /** Template fields the authority requires an answer for, on top of the template's own rules. */
@@ -260,6 +265,10 @@ export const profileStatus = (rules: RulesetRules): ProfileStatus => rules.profi
  * filings wait for a person to release them, whatever `autoSubmit` says.
  */
 export const mayAutoSubmit = (rules: RulesetRules) => rules.filing.autoSubmit && profileStatus(rules) !== "draft";
+
+/** The longest the authority allows between inspections of a residential or commercial system. */
+export const serviceIntervalMonths = (rules: RulesetRules, customerType: "residential" | "commercial") =>
+  (customerType === "commercial" ? rules.service.commercialIntervalMonths : undefined) ?? rules.service.intervalMonths;
 
 export const contractFilingRequired = (rules: RulesetRules) => rules.contracts?.filingRequired === true;
 
