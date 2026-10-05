@@ -13,6 +13,7 @@ Staging and production both run on Justin's own server (Chicago, 4 GB RAM, 2 vCP
 | `DEMO_MODE` | `true` | `false` |
 
 - **One front door.** Caddy ([`edge.compose.yaml`](../../deploy/vps/edge.compose.yaml), [`Caddyfile`](../../deploy/vps/Caddyfile)) is the only thing listening on ports 80 and 443. It gets a Let's Encrypt certificate for each address, redirects HTTP to HTTPS and passes requests to that environment's web app over the shared `aerowise-edge` Docker network. Changing an address means changing `AW_DOMAIN` in the environment's settings file and the matching line in `/etc/aerowise/edge.env`, then restarting Caddy and redeploying.
+- **Or nginx in front.** When the server's own nginx already has ports 80 and 443 (Justin's does), `setup.sh` leaves Caddy out. It adds two sites to nginx ([`nginx/aerowise.conf`](../../deploy/vps/nginx/aerowise.conf)) that forward each address to its environment's web app on `127.0.0.1:3101` (staging) or `127.0.0.1:3102` (production), and runs certbot for the certificates and the HTTPS redirect; certbot's timer renews them. The rest of nginx's configuration is not touched. The shared proxy settings ([`nginx/aerowise-proxy.conf`](../../deploy/vps/nginx/aerowise-proxy.conf)) replace any `X-Forwarded-For` a client sends and allow uploads up to 20 MB (photos are up to 15 MB).
 - **Each environment** ([`app.compose.yaml`](../../deploy/vps/app.compose.yaml)) has its own Postgres 16, API, worker and web app, built from the repo's `Dockerfile`, and its own volumes for the database and stored files. Only the web app is on the shared network; the database and API are reachable only inside their own environment. The web app proxies `/api/*` to the API, as in development.
 - **Settings.** Each environment's settings file feeds the `environment:` list in `app.compose.yaml`, which names every setting the API and worker read. A change that adds a setting to `.env.example` adds it there and to `deploy/vps/env.example` too; `apps/api/test/deploy.test.ts` fails until it does.
 - **The client's address.** Caddy replaces any `X-Forwarded-For` a client sends with the address it saw, so `TRUST_PROXY=uniquelocal` (the private Docker addresses of Caddy and the web app) lets the rate limits key on the real client and nothing a client can fake.
@@ -20,7 +21,7 @@ Staging and production both run on Justin's own server (Chicago, 4 GB RAM, 2 vCP
 
 ## Setting the server up (once)
 
-First, DNS: two records pointing at the server, `staging.<domain>` and `app.<domain>` (A records to its IP). In Cloudflare, set them to **DNS only** (grey cloud), so Caddy can get its certificates and the address Aerowise sees is the visitor's. Proxied (orange cloud) also works with SSL/TLS mode **Full (strict)**, but then every visitor arrives from a Cloudflare address, so the sign-in rate limits need Cloudflare's ranges in `TRUST_PROXY`. With no domain, pass the server's IP to the script instead and it uses `staging.<ip>.sslip.io` and `app.<ip>.sslip.io`, which resolve to the server by themselves.
+First, DNS: two records pointing at the server, `staging.<domain>` and `app.<domain>` (A records to its IP). In Cloudflare, set them to **DNS only** (grey cloud), so the certificates can be issued on the server and the address Aerowise sees is the visitor's. Proxied (orange cloud) also works with SSL/TLS mode **Full (strict)**, but then every visitor arrives from a Cloudflare address, so the sign-in rate limits need Cloudflare's ranges in `TRUST_PROXY`. With no domain, pass the server's IP to the script instead and it uses `staging.<ip>.sslip.io` and `app.<ip>.sslip.io`, which resolve to the server by themselves.
 
 Then `deploy/vps/setup.sh` does the rest and is safe to run again. As root on the server, with Docker and git installed:
 
@@ -35,7 +36,7 @@ The first run creates a `deploy` user and a read-only key for GitHub, prints tha
 2. writes `/etc/aerowise/staging.env`, `production.env` and `edge.env` (readable by root and the `deploy` user only) from [`env.example`](../../deploy/vps/env.example), with new random values for the database password, `FILE_SIGNING_SECRET` and `QUICKBOOKS_TOKEN_KEY`. Files that already exist are left alone;
 3. makes a key that CI can use to deploy and for nothing else (see below);
 4. installs [`/etc/cron.d/aerowise`](../../deploy/vps/cron): nightly backups, the nightly demo reset and the restarter;
-5. starts Caddy and deploys `main` to staging, loading the demo data.
+5. sets up HTTPS (Caddy, or nginx and certbot when nginx already has ports 80 and 443) and deploys `main` to staging, loading the demo data. If a certificate cannot be issued yet (DNS not pointing at the server), it says so and prints the certbot command to run later.
 
 It ends by printing the GitHub secrets CI needs. To pick up later changes to the cron file or `aerowise-deploy`, run it again.
 
