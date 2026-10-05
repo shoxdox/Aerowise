@@ -41,7 +41,7 @@ const app = await buildApp({
   subscription: subscriptionConfigFromEnv(process.env),
   demoRequestNotifyTo: (process.env.DEMO_REQUEST_NOTIFY_TO ?? "").split(",").map((a) => a.trim()).filter(Boolean),
   billing: providers.billing,
-  // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).
+  // Set where the worker shares this container (Render; see docs/engineering/DEPLOY-RENDER.md).
   workerHeartbeat: process.env.HEALTH_INCLUDES_WORKER === "true" ? heartbeatFromEnv(process.env) : undefined,
 });
 

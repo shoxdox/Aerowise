@@ -249,6 +249,8 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 
 ## 2026-10-05 · Hosting: Render (W1.1)
 
+_Superseded the same day by "Hosting on our own server, for now" below; kept as the plan for moving to Render._
+
 - **Render, with everything in one `render.yaml`.** Prices and features were read from each host's pricing and docs pages on 2026-10-05 ([Render pricing](https://render.com/pricing), [Render Blueprint spec](https://render.com/docs/blueprint-spec), [Railway pricing](https://docs.railway.com/reference/pricing/plans), [Railway config as code](https://docs.railway.com/reference/config-as-code), [Fly.io pricing](https://docs.fly.io/about/pricing)).
   - **Render:** one Blueprint file describes both environments, their Postgres 16 databases, disks, health checks, generated secrets and a pre-deploy migration step, so the whole setup is code. Managed Postgres includes point-in-time recovery (3 days on the free Hobby workspace, 7 on Pro). Env vars reach the Docker build, which the web app's baked-in API address needs.
   - **Railway:** config as code covers one service's build and deploy settings only; services, databases and environments are set up by hand in the dashboard. Usage pricing ($20 per vCPU-month, $10 per GB-month of memory, $5 a month on Hobby with $5 of usage included) would cost about the same.
@@ -323,6 +325,18 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
   **Bug fixed:** the email in the login keys was never there. The limiter ran at `onRequest`, before the body was parsed, so every sign-in on one address shared one counter. One person could lock everyone on the same network (or behind the same proxy) out. Body-keyed limits now run at `preHandler`.
 - **The client address behind proxies.** On Render, requests reach the API through Render's edge, and pages' API calls also pass through the Next.js proxy, so the API sees a proxy's address. `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxies' addresses) makes the limits key on the real client. It is off by default, because trusting `X-Forwarded-For` from anywhere lets clients make up addresses. The right value for Render has to be read off staging (open question). Until then, keying login and magic links by email keeps one shared address from locking out everyone.
 - **Dependency audit in CI:** `pnpm audit --prod --audit-level=high`. It passes today. The two moderate advisories, `csv-parse` (only with `columns`, which import does not use) and `uuid` under `exceljs` (buffer arguments not used), are not reachable.
+
+## 2026-10-05 · Hosting on our own server, for now (W1.1)
+
+- **Justin's server, not Render, for staging and production.** Justin decided on 2026-10-05 to run both environments on his own server (Chicago, 4 GB RAM, 2 vCPUs) at no extra cost, and to own backups, restores and uptime there until he moves to a managed host such as Render. Vercel was considered and set aside: the API and the worker are long-running processes, which Vercel's functions do not host. The Render setup above stays in the repo (`render.yaml`, `scripts/deploy.sh`, [DEPLOY-RENDER.md](engineering/DEPLOY-RENDER.md)) for that move.
+- **What that gives up**, compared with Render: managed Postgres with point-in-time recovery, a host that restarts on hardware failure, and someone else patching the machine. One server means one failure takes down both environments. Nightly `pg_dump`s on the same server protect against mistakes only, until W3.5 copies them off the server. Cloudflare R2 (W3.2) is required in production, so photos and signed PDFs never exist only on this one disk.
+- **Docker Compose, one project per environment**, each with its own Postgres, volumes and settings file in `/etc/aerowise/`, from the same `Dockerfile` as development and CI. A small, readable set of files in `deploy/vps/` that Justin can follow, rather than an orchestrator.
+- **Caddy in front, on subdomains of Justin's filler domain.** Staging is `staging.<domain>` and production `app.<domain>`, as DNS-only records in Cloudflare, so Caddy gets and renews Let's Encrypt certificates itself and the rate limits see the visitor's address. Changing to the real domain later is two lines. Without a domain, `setup.sh` falls back to sslip.io names for the server's IP.
+- **nginx in front where it already is.** Justin's server runs nginx on ports 80 and 443, and he chose (2026-10-05) to keep it rather than hand the ports to Caddy. `setup.sh` detects that: nginx gets two sites forwarding to each environment's web app on a port bound to the server itself, and certbot handles certificates. Caddy stays the default for a server with the ports free.
+- **Deploys build on the server.** The server pulls the commit from GitHub with a read-only deploy key and builds there, so there is no image registry to pay for or secure. A deploy runs W3.3's settings check and the migrations before swapping any container, so a missing secret or a failed migration leaves the running version serving. Production takes only commits on `main`, checked on the server.
+- **CI can deploy and nothing else.** Its SSH key is pinned in `authorized_keys` to `aerowise-deploy`, which accepts only an environment name and a full commit hash. A leaked CI key can redeploy a commit on `main` (or any pushed commit to staging), not open a shell.
+- **Restarting unhealthy containers is a cron line.** Docker restarts containers that exit, not ones that are running but unhealthy (a stuck worker). A one-minute cron job restarts any Aerowise container Docker reports unhealthy, instead of adding an autoheal container with access to the Docker socket.
+- **A deploy to staging loads the demo data when it is missing**, and cron resets it nightly (W1.3's reseed, on the server's clock, so it runs even when CI is down).
 
 ## 2026-10-05 · Demo mode (W1.2)
 
@@ -400,6 +414,13 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Saving a card uses Stripe's customer portal**, opened straight on updating the payment method. It saves the card or bank account as the default for invoices, so Aerowise never handles card details. The test provider saves a test Visa at once and returns.
 - **A read-only company can still save a payment method.** Routes opt in with `config.allowedWhenReadOnly`. Saving a payment method is the only one, because paying is how a lapsed company gets back. Moving back to `active` when the payment clears comes in W4.4.
 - **A lapsed company's automatic sends keep going (Justin, 2026-10-05).** Queued county filings and homeowner reminder emails keep going out while a company is read-only, so a lapse never causes a missed county deadline. W4.4 keeps it this way.
+
+
+## 2026-10-05 · W6.6 Ruleset coverage page
+
+- **Counts come from the resolver, not a SQL count by county.** County names are free text and some authorities are assigned by hand, so the page resolves each active site with `explainSite`, as a filing would. That is fine at pilot scale (thousands of sites); if it ever gets slow, the answer is a cached count, not a different rule.
+- **"Today" is the UTC date** for the platform view. Organizations' own time zones only matter within a day of a version change.
+- **The coverage table scrolls inside its box on a phone,** using the `.table-scroll` wrapper W8.2 added for the organizations table, so the page stays screen-wide.
 
 ## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
 

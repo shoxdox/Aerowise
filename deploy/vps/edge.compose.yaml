@@ -1,0 +1,27 @@
+# The one public entry point on the self-hosted server: Caddy on ports 80 and 443, with
+# automatic HTTPS certificates, in front of every Aerowise environment's web app.
+#   docker compose -f deploy/vps/edge.compose.yaml --env-file /etc/aerowise/edge.env up -d
+name: aerowise-edge
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      STAGING_DOMAIN: ${STAGING_DOMAIN:?}
+      PRODUCTION_DOMAIN: ${PRODUCTION_DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+
+networks:
+  edge:
+    name: aerowise-edge
+
+volumes:
+  caddy-data:
+  caddy-config:

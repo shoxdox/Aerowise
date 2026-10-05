@@ -640,3 +640,39 @@ export const filingCorrectInput = z.object({
 });
 export const filingRejectInput = z.object({ reason: z.string().trim().min(1).max(2000) });
 export const filingManualSentInput = z.object({ reference: z.string().trim().max(200).nullish(), note });
+
+/**
+ * One reporting authority on the coverage page: how far its rules are checked, what is
+ * still open, and how many sites (across every organization) report to it today.
+ */
+export const rulesetCoverageItem = z.object({
+  key: z.string(),
+  state: z.string(),
+  authorityName: z.string(),
+  type: z.string(),
+  active: z.boolean(),
+  /** The version in force today, or null when none is. */
+  rulesetVersion: z.number().int().nullable(),
+  versions: z.number().int(),
+  profileStatus: z.enum(PROFILE_STATUSES),
+  verified: verificationBadge.nullable(),
+  sourcesCheckedOn: z.iso.date().nullable(),
+  sourceCount: z.number().int(),
+  unresolved: z.array(z.string()),
+  /** Active sites whose authority this is today. */
+  sites: z.number().int(),
+  /** Organizations with at least one of those sites. */
+  organizations: z.number().int(),
+  /** Active sites that may be this authority's but need a person to decide. */
+  sitesToDecide: z.number().int(),
+});
+export type RulesetCoverageItem = z.infer<typeof rulesetCoverageItem>;
+
+export const rulesetCoverage = z.object({
+  /** The date the counts are for (UTC). */
+  today: z.iso.date(),
+  items: z.array(rulesetCoverageItem),
+  /** Active sites no authority covers and none may: no county, or a county with no ruleset. */
+  sitesWithoutAuthority: z.number().int(),
+});
+export type RulesetCoverage = z.infer<typeof rulesetCoverage>;
