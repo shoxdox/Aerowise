@@ -59,6 +59,8 @@ projects:
                 sync: false
               - key: INVOICE_EMAIL_FROM
                 sync: false
+              - key: ACCOUNT_EMAIL_FROM
+                sync: false
               - key: RESEND_API_KEY
                 sync: false
               - key: RESEND_WEBHOOK_SECRET
@@ -133,6 +135,8 @@ projects:
               - key: FILING_EMAIL_FROM
                 sync: false
               - key: INVOICE_EMAIL_FROM
+                sync: false
+              - key: ACCOUNT_EMAIL_FROM
                 sync: false
               - key: RESEND_API_KEY
                 sync: false
