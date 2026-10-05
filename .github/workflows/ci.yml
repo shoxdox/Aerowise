@@ -33,6 +33,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - name: Render Blueprint matches Render's schema
+        run: |
+          if ! curl -sSf --retry 3 -o "$RUNNER_TEMP/render.schema.json" https://render.com/schema/render.yaml.json; then
+            echo "::warning::Could not download Render's Blueprint schema; render.yaml was not validated"
+            exit 0
+          fi
+          npx --yes -p ajv-cli@5 -p ajv-formats@3 ajv validate --spec=draft2020 --strict=false -c ajv-formats -s "$RUNNER_TEMP/render.schema.json" -d render.yaml
       - run: pnpm typecheck
       - run: pnpm test
       - name: Seed runs cleanly
