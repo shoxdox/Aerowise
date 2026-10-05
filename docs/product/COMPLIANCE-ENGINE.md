@@ -67,6 +67,14 @@ A ruleset can set fees with `fees`: for `inspectionReport` and `contract` filing
 
 Fixture tests: `apps/api/test/report-templates.test.ts`, with a fictional ruleset that has a report layout and fees in `apps/api/test/fixtures/rulesets/`.
 
+### Verification
+
+A ruleset's `profile.status` is `fictional`, `draft` or `verified`. A version is verified only with `profile.verification`: who at the authority confirmed it, who asked, the date, how (email, phone, meeting or letter) and where the evidence is kept. A verified profile has no unresolved items, and a draft or fictional one cannot carry a verification record. The schema refuses anything else, so the record can't be skipped. Because ruleset versions are immutable files, verifying means publishing a new version, reviewed like any other change; only Justin marks a ruleset verified.
+
+Sites, the authority list and filings show "Verified with <authority> on <date>" only for a verified version. A filing shows its own recorded version, so an older filing under a draft keeps saying so. Automatic submission needs `filing.autoSubmit` and either fictional rules (tests and development) or a verified version with its record; a draft never sends without a person pressing Send.
+
+Fixture tests: `apps/api/test/verification.test.ts`, with fictional verified and draft rulesets in `apps/api/test/fixtures/rulesets/`.
+
 ### Validation
 
 Inspection cannot reach `COMPLETE_VALID` until required inputs are present.

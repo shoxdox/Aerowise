@@ -34,6 +34,7 @@ import {
   siteIdentifierInput,
   siteJurisdiction,
   siteJurisdictionInput,
+  verifiedWith,
   type FilingDetail,
   type PackageDocument,
   type SiteJurisdiction,
@@ -78,6 +79,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       assignment: rs?.rules.applicability.assignment ?? "county",
       howToDecide: rs?.rules.applicability.howToDecide ?? null,
       profileStatus: rs ? profileStatus(rs.rules) : "fictional",
+      verified: rs ? verifiedWith(rs.rules) : null,
     };
   };
 
@@ -464,7 +466,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         createdAt: p.createdAt.toISOString(),
       })),
       profile: rules
-        ? { status: profileStatus(rules), ...profileDates(rules), unresolved: rules.profile?.unresolved ?? [], confirmationMode: rules.confirmation.mode, confirmationNote: rules.confirmation.note ?? null }
+        ? { status: profileStatus(rules), ...profileDates(rules), unresolved: rules.profile?.unresolved ?? [], confirmationMode: rules.confirmation.mode, confirmationNote: rules.confirmation.note ?? null, verified: verifiedWith(rules) }
         : null,
       reports: reports.map((r) => ({ ...r, generatedAt: r.generatedAt.toISOString() })),
     };

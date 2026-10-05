@@ -1,0 +1,75 @@
+{
+  "jurisdiction": {
+    "key": "tx-fixture-verified",
+    "state": "TX",
+    "authorityName": "Verified Fixture County (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL test fixture: an authority whose requirements are verified. Not any real county's rules.",
+  "applicability": {
+    "counties": [
+      "Verified Fixture County"
+    ]
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": [
+      "air_pressure"
+    ],
+    "requiredPhotos": [
+      {
+        "key": "overview",
+        "minCount": 1
+      }
+    ],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": true
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-fixture-verified.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  },
+  "profile": {
+    "status": "verified",
+    "sourcesCheckedOn": "2026-01-10",
+    "requirementEffective": {
+      "date": "2020-01-01",
+      "basis": "FICTIONAL"
+    },
+    "sources": [
+      {
+        "title": "FICTIONAL fixture source",
+        "url": "https://tx-fixture-verified.example/rules",
+        "retrievedOn": "2026-01-10"
+      }
+    ],
+    "unresolved": [],
+    "verification": {
+      "confirmedWith": "OSSF program staff, Verified Fixture County (fictional)",
+      "confirmedBy": "Aerowise compliance (fixture)",
+      "confirmedOn": "2026-02-02",
+      "method": "email",
+      "evidence": "FICTIONAL: reply email of 2026-02-02"
+    }
+  }
+}

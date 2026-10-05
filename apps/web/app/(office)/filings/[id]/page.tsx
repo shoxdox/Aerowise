@@ -4,7 +4,7 @@ import { CONFIRMATION_EVIDENCE_KINDS, CONFIRMATION_EVIDENCE_LABELS, type FilingD
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
+import { DeadlineCell, FilingStatusBadge, VerifiedBadge } from "@/components/FilingBadges";
 import { ReportSignature } from "@/components/ReportSignature";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -89,6 +89,14 @@ export default function FilingPage() {
             <dt>Contract</dt>
             <dd>
               {f.contract.planName}, {day(f.contract.startOn)} to {day(f.contract.endOn)}
+            </dd>
+          </>
+        )}
+        {f.profile?.verified && (
+          <>
+            <dt>Requirements</dt>
+            <dd>
+              <VerifiedBadge verified={f.profile.verified} />
             </dd>
           </>
         )}
