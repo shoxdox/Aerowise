@@ -41,6 +41,9 @@ projects:
                   property: connectionString
               - key: NODE_ENV
                 value: production
+              # Which deployment this is. Production refuses to start without Resend and R2 (see .env.example).
+              - key: DEPLOY_ENV
+                value: staging
               - key: PORT
                 value: "4000"
               - key: API_PORT
@@ -130,6 +133,9 @@ projects:
                   name: aerowise-db-production
                   property: connectionString
               - key: NODE_ENV
+                value: production
+              # Which deployment this is. Production refuses to start without Resend and R2 (see .env.example).
+              - key: DEPLOY_ENV
                 value: production
               - key: PORT
                 value: "4000"

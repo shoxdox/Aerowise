@@ -37,7 +37,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |
 | W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
 | W3.2 | Cloudflare R2 object store | — | done (#30); using R2 needs Justin's Cloudflare account, bucket and token |
-| W3.3 | Production secrets check and hardening | — | not started |
+| W3.3 | Production secrets check and hardening | — | done (#32); Render's TRUST_PROXY value to be read off staging |
 | W3.4 | Observability: logs, error tracking, alerts | — | not started |
 | W3.5 | Backups and restore runbook | W1.1 | not started |
 | W4.1 | Plan states and read-only mode | W2.1 | not started |

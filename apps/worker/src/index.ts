@@ -1,10 +1,12 @@
 import { hostname } from "node:os";
 import { syncRulesets } from "@aerowise/compliance";
-import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
+import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { storeFromEnv } from "@aerowise/storage";
 import { heartbeatFromEnv, providersFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
+// In production, refuse to start without the secrets and providers it needs (names them all).
+checkConfig();
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);

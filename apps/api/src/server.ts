@@ -1,8 +1,10 @@
-import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
+import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
 import { storeFromEnv } from "@aerowise/storage";
 import { heartbeatFromEnv, providersFromEnv } from "@aerowise/tasks";
 
+// In production, refuse to start without the secrets and providers it needs (names them all).
+checkConfig();
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 
@@ -19,6 +21,7 @@ const app = await buildApp({
   production,
   demo: providers.demo,
   logger: true,
+  trustProxy: trustProxyFrom(process.env.TRUST_PROXY),
   store,
   fileSigningSecret: process.env.FILE_SIGNING_SECRET,
   mail: providers.mail,
@@ -32,6 +35,12 @@ const app = await buildApp({
   // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).
   workerHeartbeat: process.env.HEALTH_INCLUDES_WORKER === "true" ? heartbeatFromEnv(process.env) : undefined,
 });
+
+/** TRUST_PROXY: "true", or the proxies' comma-separated addresses or ranges; unset means none. */
+function trustProxyFrom(v: string | undefined): boolean | string {
+  if (!v) return false;
+  return v === "true" ? true : v;
+}
 
 const shutdown = async () => {
   await app.close();

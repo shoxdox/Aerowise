@@ -301,6 +301,29 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Same rule as W6.1: the schedule is set when the contract starts.** Monitoring that starts or ends mid-contract does not reschedule visits. The next due date on each filing does follow it, so a site that loses monitoring shows "next visit starts later than the authority allows" in the inbox.
 - **Refusing means four months.** A two-visit plan at a site that may not have six months gets a third visit, the same as any plan whose windows are too long (W6.1). Nothing errors.
 
+## 2026-10-05 · W3.3 Production secrets check and hardening
+
+- **One boot check for the API and the worker** (`checkConfig` in `packages/db/src/config-check.ts`). Outside production it requires nothing. With `NODE_ENV=production` the process refuses to start and names every problem at once:
+  - always required: `DATABASE_URL`, a `FILE_SIGNING_SECRET` of at least 32 characters (not a development default), an `https://` `PUBLIC_APP_URL`, and `DEPLOY_ENV` set to `staging` or `production`;
+  - half-configured providers are refused: QuickBooks without `QUICKBOOKS_TOKEN_KEY` (or with the development key), Stripe without `STRIPE_WEBHOOK_SECRET`, one Twilio key without the other, some but not all of the R2 keys, Resend without its webhook secret and From addresses.
+- **`DEPLOY_ENV` separates staging from production.** Both run `NODE_ENV=production`. Production also requires Resend and R2, and refuses `EMAIL_REDIRECT_TO`. Staging may run on the outbox and local disk, but once Resend is configured it requires `EMAIL_REDIRECT_TO`, so test email never reaches an authority or a customer. Production therefore will not start until Justin's Resend and R2 accounts exist; staging is unaffected.
+- **Security headers.** API responses: `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, and HSTS in production. There is no CSP on the API, because it serves JSON and files, and a sandbox CSP breaks Chrome's PDF viewer. Pages: the same, plus `Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'` and a Permissions-Policy that allows only camera and location. `X-Powered-By` is removed. `no-referrer` site-wide, because customer links carry their token in the path. A script-src CSP needs nonces through Next.js middleware and is left for later.
+- **Session cookies** (tenant and platform admin) were already `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production. They are now tested for both sign-ins.
+- **Rate limits, reviewed together:**
+
+  | Route | Limit | Key |
+  |---|---|---|
+  | `POST /auth/login` | 10 a minute | client and email |
+  | `POST /admin/auth/login` | 10 a minute | client and email |
+  | `POST /portal/request` (magic link) | 5 a minute, plus one email per customer per 10 minutes | client and email (was client only) |
+  | Invite accept and look-up | 20 a minute | client and token |
+  | Portal, pay and renew links | 30 a minute reads, 10 a minute actions | client (and token for actions) |
+  | Password reset (W2.3) | not merged yet; it should use client and email, with `hook: "preHandler"` | |
+
+  **Bug fixed:** the email in the login keys was never there. The limiter ran at `onRequest`, before the body was parsed, so every sign-in on one address shared one counter. One person could lock everyone on the same network (or behind the same proxy) out. Body-keyed limits now run at `preHandler`.
+- **The client address behind proxies.** On Render, requests reach the API through Render's edge, and pages' API calls also pass through the Next.js proxy, so the API sees a proxy's address. `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxies' addresses) makes the limits key on the real client. It is off by default, because trusting `X-Forwarded-For` from anywhere lets clients make up addresses. The right value for Render has to be read off staging (open question). Until then, keying login and magic links by email keeps one shared address from locking out everyone.
+- **Dependency audit in CI:** `pnpm audit --prod --audit-level=high`. It passes today. The two moderate advisories, `csv-parse` (only with `columns`, which import does not use) and `uuid` under `exceljs` (buffer arguments not used), are not reachable.
+
 ## 2026-10-05 · Demo mode (W1.2)
 
 - **One switch, read in one place.** `DEMO_MODE=true` is read by `providersFromEnv` in `packages/tasks`, which the API and the worker both use to pick every outside service: email, Stripe, QuickBooks, Twilio and the geocoder. In demo mode each one is its test stand-in even when real keys are set; there is no per-service override. W3.1's Resend transport is picked there too (the outbox is its stand-in, so `RESEND_API_KEY` and `EMAIL_REDIRECT_TO` do nothing in demo mode); new outside services (W4's Stripe Billing) are added there, with their stand-in. Filings go out by email, so they are covered by the email stand-in (the outbox).
@@ -309,4 +332,4 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **The demo seed is the existing seed.** It already covers every README flow: one fictional provider with owner, office and technician users, 50 customers, contracts, a route for today and tomorrow, and overdue visits. The platform admin is not seeded in production, demo included, because a demo password must not open /admin. Create one with `pnpm db:create-platform-admin`.
 - **Reseeding empties, then seeds.** `pnpm db:reseed-demo` truncates every table except `schema_migrations`, the authority rules (the running API and worker loaded them at start) and the platform admins and their sessions. It empties the local file storage directory and then runs the seed. With R2 (W3.2) configured on staging, old demo files stay in the bucket; nothing links to them after a reseed. Organizations created in /admin on staging and the platform audit log go with it. `seed` and `reseed-demo` refuse to run when `NODE_ENV=production` and demo mode is off.
 - **End-to-end tests run in demo mode**, so every e2e test walks a flow the way a demo visitor would, with the banner up.
-- **The sign-in limit now really counts per address and email.** It ran on `onRequest`, before the body is parsed, so the key had no email in it and every sign-in from one address shared ten attempts a minute. That made the e2e run fail once demo mode added a sign-in. Office and admin sign-ins now count on `preHandler`. W3.3 still reviews every limit.
+- **The sign-in limit now really counts per address and email.** It ran on `onRequest`, before the body is parsed, so the key had no email in it and every sign-in from one address shared ten attempts a minute. That made the e2e run fail once demo mode added a sign-in. Office and admin sign-ins now count on `preHandler` (W3.3 made the same fix in parallel).

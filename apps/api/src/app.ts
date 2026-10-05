@@ -56,6 +56,12 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
+  /**
+   * Which proxies in front of the API to believe about the client's address (Fastify's
+   * `trustProxy`: true, or the proxies' addresses and ranges). Rate limits key on that
+   * address, so leave it off unless every request really passes through those proxies.
+   */
+  trustProxy?: boolean | string;
   /** Clock used for "today" in due dates and contract states. Tests pin it. */
   now?: () => Date;
   /** Where uploaded photos, reports and outbox mail are kept. Defaults to ./.data/files on local disk. */
@@ -103,6 +109,7 @@ export async function buildApp({
   demo = false,
   logger = false,
   loginRateLimit = 10,
+  trustProxy = false,
   now = () => new Date(),
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
@@ -126,6 +133,7 @@ export async function buildApp({
     logger,
     genReqId: () => crypto.randomUUID(),
     requestIdHeader: false,
+    trustProxy,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
@@ -156,6 +164,13 @@ export async function buildApp({
   app.addHook("onSend", async (req, reply) => {
     reply.header("x-request-id", req.id);
     reply.header("cache-control", "no-store");
+    // The API serves JSON and files, never pages: nothing it returns may be framed, sniffed
+    // into another type, or leak its URL (signed links carry tokens) to another site.
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("x-frame-options", "DENY");
+    reply.header("referrer-policy", "no-referrer");
+    reply.header("cross-origin-resource-policy", "same-origin");
+    if (production) reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   });
 
   await app.register(cookie);
