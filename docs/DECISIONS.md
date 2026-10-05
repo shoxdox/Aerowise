@@ -301,10 +301,32 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Same rule as W6.1: the schedule is set when the contract starts.** Monitoring that starts or ends mid-contract does not reschedule visits. The next due date on each filing does follow it, so a site that loses monitoring shows "next visit starts later than the authority allows" in the inbox.
 - **Refusing means four months.** A two-visit plan at a site that may not have six months gets a third visit, the same as any plan whose windows are too long (W6.1). Nothing errors.
 
+## 2026-10-05 · W3.3 Production secrets check and hardening
+
+- **One boot check for the API and the worker** (`checkConfig` in `packages/db/src/config-check.ts`). Outside production it requires nothing. With `NODE_ENV=production` the process refuses to start and names every problem at once:
+  - always required: `DATABASE_URL`, a `FILE_SIGNING_SECRET` of at least 32 characters (not a development default), an `https://` `PUBLIC_APP_URL`, and `DEPLOY_ENV` set to `staging` or `production`;
+  - half-configured providers are refused: QuickBooks without `QUICKBOOKS_TOKEN_KEY` (or with the development key), Stripe without `STRIPE_WEBHOOK_SECRET`, one Twilio key without the other, some but not all of the R2 keys, Resend without its webhook secret and From addresses.
+- **`DEPLOY_ENV` separates staging from production.** Both run `NODE_ENV=production`. Production also requires Resend and R2, and refuses `EMAIL_REDIRECT_TO`. Staging may run on the outbox and local disk, but once Resend is configured it requires `EMAIL_REDIRECT_TO`, so test email never reaches an authority or a customer. Production therefore will not start until Justin's Resend and R2 accounts exist; staging is unaffected.
+- **Security headers.** API responses: `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, and HSTS in production. There is no CSP on the API, because it serves JSON and files, and a sandbox CSP breaks Chrome's PDF viewer. Pages: the same, plus `Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'` and a Permissions-Policy that allows only camera and location. `X-Powered-By` is removed. `no-referrer` site-wide, because customer links carry their token in the path. A script-src CSP needs nonces through Next.js middleware and is left for later.
+- **Session cookies** (tenant and platform admin) were already `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production. They are now tested for both sign-ins.
+- **Rate limits, reviewed together:**
+
+  | Route | Limit | Key |
+  |---|---|---|
+  | `POST /auth/login` | 10 a minute | client and email |
+  | `POST /admin/auth/login` | 10 a minute | client and email |
+  | `POST /portal/request` (magic link) | 5 a minute, plus one email per customer per 10 minutes | client and email (was client only) |
+  | Invite accept and look-up | 20 a minute | client and token |
+  | Portal, pay and renew links | 30 a minute reads, 10 a minute actions | client (and token for actions) |
+  | Password reset (W2.3) | not merged yet; it should use client and email, with `hook: "preHandler"` | |
+
+  **Bug fixed:** the email in the login keys was never there. The limiter ran at `onRequest`, before the body was parsed, so every sign-in on one address shared one counter. One person could lock everyone on the same network (or behind the same proxy) out. Body-keyed limits now run at `preHandler`.
+- **The client address behind proxies.** On Render, requests reach the API through Render's edge, and pages' API calls also pass through the Next.js proxy, so the API sees a proxy's address. `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxies' addresses) makes the limits key on the real client. It is off by default, because trusting `X-Forwarded-For` from anywhere lets clients make up addresses. The right value for Render has to be read off staging (open question). Until then, keying login and magic links by email keeps one shared address from locking out everyone.
+- **Dependency audit in CI:** `pnpm audit --prod --audit-level=high`. It passes today. The two moderate advisories, `csv-parse` (only with `columns`, which import does not use) and `uuid` under `exceljs` (buffer arguments not used), are not reachable.
+
 ## 2026-10-05 · W2.3 Password reset and user deactivation
 
 - **Reset links belong to the login, not an organization.** A person's login is shared by every organization they belong to, so `password_reset_tokens` references `users` only (like `sessions` it is not a tenant table). The email is sent under their oldest active membership's organization; a login with no active membership gets no email.
 - **The request always answers 202**, known email or not. It is rate-limited per IP and email (5 a minute, keyed after the body is parsed), and at most one email goes out per person per 15 minutes however often it is asked for. The token is minted by the worker task, so it never sits in the queue; only its hash is stored. Links work once, for an hour.
 - **A reset spends every open link of that person and ends all their sessions** in every organization. They sign in again with the new password rather than being signed in by the link, so a leaked link cannot become a session silently.
 - **Deactivation is per organization.** An owner deactivates a person's membership; their sessions in that organization are revoked and `findSession` already refuses inactive memberships, so the next request fails. Their other organizations are untouched. Owners cannot deactivate themselves, and a deactivated person comes back by reactivation, not by a new invitation (which office staff could otherwise use to undo an owner's decision).
-- **Found while building this:** the existing sign-in rate limits (`/auth/login`, `/admin/auth/login`) compute their per-email key before the body is parsed, so in practice they limit per IP only. That is stricter, not looser, so it is left for W3.3's review of every limit.
