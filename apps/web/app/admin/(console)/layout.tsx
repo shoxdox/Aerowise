@@ -26,13 +26,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin" className={path === "/admin" ? "active" : undefined}>
             Organizations
           </Link>
-<<<<<<< HEAD
           <Link href="/admin/rulesets" className={path.startsWith("/admin/rulesets") ? "active" : undefined}>
             Rulesets
-=======
+          </Link>
           <Link href="/admin/demo-requests" className={path.startsWith("/admin/demo-requests") ? "active" : undefined}>
             Demo requests
->>>>>>> origin/main
           </Link>
         </nav>
         <span className="spacer" />

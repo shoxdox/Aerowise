@@ -398,4 +398,4 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 
 - **Counts come from the resolver, not a SQL count by county.** County names are free text and some authorities are assigned by hand, so the page resolves each active site with `explainSite`, as a filing would. That is fine at pilot scale (thousands of sites); if it ever gets slow, the answer is a cached count, not a different rule.
 - **"Today" is the UTC date** for the platform view. Organizations' own time zones only matter within a day of a version change.
-- **Wide admin tables scroll inside their box on a phone.** The organizations table made the whole page wider than the phone, which left the plan editor's Save button below the visible area once the header grew by one line. Wrapping both admin tables fixes the layout rather than the test.
+- **The coverage table scrolls inside its box on a phone,** using the `.table-scroll` wrapper W8.2 added for the organizations table, so the page stays screen-wide.

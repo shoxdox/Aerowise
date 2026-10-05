@@ -350,10 +350,7 @@ export default function AdminOrganizationsPage() {
         />
       )}
 
-<<<<<<< HEAD
-=======
       {/* The table scrolls on its own on a phone, so the page (and the plan form) stays screen-wide. */}
->>>>>>> origin/main
       <div className="table-scroll">
         <table>
           <thead>
@@ -373,15 +370,11 @@ export default function AdminOrganizationsPage() {
               <tr key={o.id}>
                 <td>
                   {o.name}{" "}
-<<<<<<< HEAD
-                  <button className="link small" onClick={() => setEditing(o.id)} aria-label={`Edit plan for ${o.name}`}>
-=======
                   <button
                     className="link small"
                     onClick={() => setEditing(o.id)}
                     aria-label={`Edit plan for ${o.name}`}
                   >
->>>>>>> origin/main
                     Edit plan
                   </button>
                 </td>
@@ -390,9 +383,6 @@ export default function AdminOrganizationsPage() {
                 <td>{when(o.lastActivityAt)}</td>
                 <td>{when(o.createdAt)}</td>
                 <td>
-<<<<<<< HEAD
-                  <button className="link" onClick={() => { setInvitingFor(o); setSent(null); }}>
-=======
                   <button
                     className="link"
                     onClick={() => {
@@ -400,7 +390,6 @@ export default function AdminOrganizationsPage() {
                       setSent(null);
                     }}
                   >
->>>>>>> origin/main
                     Invite owner
                   </button>
                 </td>
@@ -411,13 +400,9 @@ export default function AdminOrganizationsPage() {
           </tbody>
         </table>
       </div>
-<<<<<<< HEAD
-      {data && data.items.length === 0 && <p className="muted">No organizations yet.</p>}
-=======
       {data && data.items.length === 0 && (
         <p className="muted">No organizations yet.</p>
       )}
->>>>>>> origin/main
     </div>
   );
 }
