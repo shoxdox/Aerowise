@@ -32,6 +32,7 @@ import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
+import { userRoutes } from "./routes/users.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -53,8 +54,10 @@ export interface AppOptions {
   store?: ObjectStore;
   /** Secret for signed file links. Required in production. */
   fileSigningSecret?: string;
-  /** How filings are emailed. Defaults to the development outbox in file storage. */
+  /** How filings and invitations are emailed. Defaults to the development outbox in file storage. */
   mail?: EmailTransport;
+  /** From address on account emails (invitations). */
+  accountMailFrom?: string;
   /**
    * Takes card and bank payments. Defaults to the built-in test provider outside
    * production; in production, online payments are off unless Stripe is configured.
@@ -93,6 +96,7 @@ export async function buildApp({
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
   mail,
+  accountMailFrom = "accounts@aerowise.invalid",
   payments = production ? null : new TestPaymentProvider(),
   appUrl = DEFAULT_APP_URL,
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
@@ -172,8 +176,11 @@ export async function buildApp({
     return { ok: true, worker: "ok" };
   });
 
+  const transport = mail ?? new OutboxTransport(store, now);
+  const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(adminRoutes, { db, production, loginRateLimit, now });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations });
+  await app.register(userRoutes, { db, now, production, invitations });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });
@@ -189,7 +196,7 @@ export async function buildApp({
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
   await app.register(routingRoutes, { db, now, geocoder });
-  const compliance = { store, mail: mail ?? new OutboxTransport(store, now), enqueue };
+  const compliance = { store, mail: transport, enqueue };
   await app.register(filingRoutes, { db, now, signer, compliance });
   await app.register(readinessRoutes, { db, now, signer, compliance });
 

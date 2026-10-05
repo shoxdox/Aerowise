@@ -985,6 +985,23 @@ export interface PlatformAuditEventsTable {
   occurredAt: CreatedAt;
 }
 
+export interface InvitationsTable {
+  id: Generated<string>;
+  organizationId: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  tokenHash: Buffer;
+  invitedByUserId: string | null;
+  invitedByAdminId: string | null;
+  createdAt: CreatedAt;
+  sentAt: Timestamp;
+  expiresAt: Timestamp;
+  acceptedAt: Timestamp | null;
+  acceptedUserId: string | null;
+  revokedAt: Timestamp | null;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -1040,4 +1057,5 @@ export interface DB {
   platformAdmins: PlatformAdminsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
+  invitations: InvitationsTable;
 }
