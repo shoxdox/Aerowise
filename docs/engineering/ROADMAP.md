@@ -27,7 +27,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | ID | Task | Depends on | Status |
 | --- | --- | --- | --- |
 | W1.1 | Hosting choice and deploy config | — | done (Render chosen; config in `render.yaml`, waiting on a Render account) |
-| W1.2 | Demo mode: banner, nothing leaves, demo seed | — | not started |
+| W1.2 | Demo mode: banner, nothing leaves, demo seed | — | done (`DEMO_MODE`, `pnpm db:reseed-demo`, banner on every screen) |
 | W1.3 | Deploy from main through CI | W1.1 | not started |
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
 | W2.2 | User invites | W2.1 | in progress (PR open) |

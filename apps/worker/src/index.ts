@@ -1,12 +1,9 @@
 import { hostname } from "node:os";
-import { emailFromEnv, syncRulesets } from "@aerowise/compliance";
+import { syncRulesets } from "@aerowise/compliance";
 import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { storeFromEnv } from "@aerowise/storage";
-import { quickBooksFromEnv } from "@aerowise/quickbooks";
-import { geocoderFromEnv } from "@aerowise/routing";
-import { smsFromEnv } from "@aerowise/sms";
 import { createLogger, reporterFromEnv } from "@aerowise/observability";
-import { AlertThrottle, checkQueue, heartbeatFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
+import { AlertThrottle, checkQueue, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
 // In production, refuse to start without the secrets and providers it needs (names them all).
@@ -17,24 +14,26 @@ const reporter = reporterFromEnv(process.env, (err) => log.warn({ err }, "could 
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => log.info(msg));
 const db = createDb(url);
-// Fictional rules (the example county) are for development and tests only.
-await syncRulesets(db, undefined, { includeFictional: process.env.NODE_ENV !== "production" });
+const production = process.env.NODE_ENV === "production";
 // Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
 const store = storeFromEnv(process.env);
+// The same outside services as the API; DEMO_MODE=true makes every one a test stand-in.
 // Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
-const email = emailFromEnv(db, store, process.env);
-log.info({ email: email.transport.name, redirected: !!(process.env.EMAIL_REDIRECT_TO && email.provider), errorTracking: reporter.name }, "providers");
+const providers = providersFromEnv({ db, store, env: process.env, production });
+log.info({ demo: providers.demo, email: providers.mail.name, redirected: !!(process.env.EMAIL_REDIRECT_TO && providers.mailProvider), errorTracking: reporter.name }, "providers");
+// Fictional rules (the example county) are for development, tests and the demo only.
+await syncRulesets(db, undefined, { includeFictional: !production || providers.demo });
 const ctx = {
   db,
   store,
-  mail: email.transport,
   now: () => new Date(),
+  mail: providers.mail,
   mailFrom: process.env.FILING_EMAIL_FROM,
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
   appUrl: process.env.PUBLIC_APP_URL,
-  quickbooks: quickBooksFromEnv(db, process.env, process.env.NODE_ENV === "production"),
-  sms: smsFromEnv(process.env, process.env.NODE_ENV === "production"),
-  geocoder: geocoderFromEnv(process.env, process.env.NODE_ENV === "production"),
+  quickbooks: providers.quickbooks,
+  sms: providers.sms,
+  geocoder: providers.geocoder,
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
 const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);
