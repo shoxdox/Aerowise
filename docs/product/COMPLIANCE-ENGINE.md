@@ -41,11 +41,13 @@ A contract is residential or commercial, copied from its plan (`customerType`) l
 
 When a contract is created (from the office, an import or a renewal), Aerowise resolves the site's authority under the rules in force on the contract's start date and takes the interval for the contract's type. If the plan's visit windows would be longer than that, the contract gets the fewest extra visits that split the term into equal whole-month windows within it. A 12-month plan with 3 visits stays at 3 under a 4-month rule, becomes 4 under a quarterly rule and 12 under a monthly one. Visits are only ever added; the price stays the plan's. A site with no resolved authority keeps its plan's visits. A renewal offer shows the visits the new contract will get.
 
-A filing's next due date uses the same interval, taking the type from the site's contract in force on the inspection date (residential when there is none).
+`service.monitored`, when set, is a longer maximum (6 months) for systems with qualifying electronic monitoring, for the system types it names (`appliesTo`). The office records monitoring on a system: the kind (autodialer, remote telemetry, other), the device or service, who it notifies automatically and how, when it started and when someone checked that it works. Ending it records the date and reason. Monitoring counts on a date when it had been checked by then and had not ended. Without it, or where the ruleset does not allow the longer interval, the usual interval applies: a plan with two visits a year gets three under a 4-month rule.
+
+A filing's next due date uses the same interval, taking the type from the site's contract in force on the inspection date (residential when there is none) and monitoring as it stood that day.
 
 Published versions never change, so an authority that changes its interval gets a new ruleset version with a new `effectiveFrom`; contracts already made keep their visits.
 
-Fixture tests: `apps/api/test/intervals.test.ts`, with fictional quarterly and commercial-monthly rulesets in `apps/api/test/fixtures/rulesets/`.
+Fixture tests: `apps/api/test/intervals.test.ts` and `apps/api/test/monitoring.test.ts`, with fictional quarterly, commercial-monthly and monitored rulesets in `apps/api/test/fixtures/rulesets/`.
 
 ### Lab tests
 

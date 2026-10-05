@@ -53,7 +53,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
 | W6.1 | Per-ruleset service intervals | — | done (#21) |
 | W6.2 | Annual lab tests as required tests | W6.1 | done (#26) |
-| W6.3 | Six-month schedule with electronic monitoring | W6.1 | not started |
+| W6.3 | Six-month schedule with electronic monitoring | W6.1 | in progress (PR open) |
 | W6.4 | Per-authority report templates and fees | W6.1 | not started |
 | W6.5 | Ruleset verification workflow and badge | — | not started |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | not started |
