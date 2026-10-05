@@ -9,11 +9,12 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Area | Status |
 | --- | --- |
 | Monorepo, Postgres migrations, Docker Compose, CI | Done |
-| Hosting config (Render staging and production, migrations on deploy, API and worker health checks) | Config done; **no hosting account yet** |
+| Hosting config (Render staging and production, migrations on deploy, API and worker health checks) and demo mode for staging (test stand-ins, banner, reseed) | Config done; **no hosting account yet** |
 | Sign-in, sessions, roles (owner / office / technician / read-only) | Done |
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
 | Append-only audit log | Done |
+| Public marketing page at `/`: the problem, how it works, county coverage read from the rulesets (verified ones badged), design-partner pricing from configuration; placeholder copy | Done |
 | Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, invite an organization's first owner, platform audit log | Done |
 | User invitations: owner and office invite by email with a role (office cannot invite an owner); single-use links that expire after 7 days; accepting sets a password and signs in | Done |
 | Aerowise plans: plan state (design partner, trial, active, past due, read-only), dates and founder price per organization, set in `/admin`; read-only companies can view and export everything but change nothing | Done |
@@ -66,7 +67,7 @@ pnpm db:create-platform-admin you@example.com "Your Name"
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
-Hosted staging and production run on Render from [`render.yaml`](render.yaml); [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers setup, the one-command deploy (`scripts/deploy.sh`), migrations and health checks.
+Hosted staging and production run on Render from [`render.yaml`](render.yaml); [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers setup, the one-command deploy (`scripts/deploy.sh`), migrations and health checks. Staging is the public demo: with `DEMO_MODE=true` every outside service is a test stand-in whatever keys are set, every screen says "Demo data. Nothing is sent.", and `pnpm db:reseed-demo` resets it to the seed.
 
 ## Checks
 

@@ -36,6 +36,7 @@ import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
 import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
+import { publicRoutes } from "./routes/public.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -50,6 +51,11 @@ import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/
 export interface AppOptions {
   db: Database;
   production?: boolean;
+  /**
+   * The hosted demo (DEMO_MODE): outside services default to their test stand-ins and the
+   * fictional example rules load, even in production. The web app shows a demo banner.
+   */
+  demo?: boolean;
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
@@ -107,6 +113,7 @@ export interface AppOptions {
 export async function buildApp({
   db,
   production = false,
+  demo = false,
   logger = false,
   loginRateLimit = 10,
   trustProxy = false,
@@ -117,18 +124,18 @@ export async function buildApp({
   mail,
   mailProvider = null,
   accountMailFrom = "accounts@aerowise.invalid",
-  payments = production ? null : new TestPaymentProvider(),
+  payments = production && !demo ? null : new TestPaymentProvider(),
   appUrl = DEFAULT_APP_URL,
-  quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
-  sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
-  geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
+  quickbooks = production && !demo ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
+  sms = production && !demo ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
+  geocoder = production && !demo ? new CensusGeocoder() : new TestGeocoder(),
   subscription = DEFAULT_SUBSCRIPTION_CONFIG,
   workerHeartbeat,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
-  // Fictional rules (the example county) are for development and tests only.
-  await syncRulesets(db, undefined, { includeFictional: !production });
+  // Fictional rules (the example county) are for development, tests and the demo only.
+  await syncRulesets(db, undefined, { includeFictional: !production || demo });
   const signer = new UrlSigner(fileSigningSecret ?? "aerowise-development-only-signing-secret");
 
   const app = Fastify({
@@ -202,6 +209,9 @@ export async function buildApp({
 
   await app.register(authPlugin, { db });
 
+  // Lets the web app show the demo banner (and the demo sign-ins) without its own setting.
+  app.get("/app-info", { config: { public: true }, schema: { hide: true } }, async () => ({ demo }));
+
   app.get("/health", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
     await db.selectNoFrom((eb) => eb.lit(1).as("ok")).execute();
     if (!workerHeartbeat) return { ok: true };
@@ -232,7 +242,7 @@ export async function buildApp({
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
-  await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, production });
+  await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, testCheckout: !production || demo });
   await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(portalRoutes, { db, now, store, appUrl });
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
@@ -244,6 +254,7 @@ export async function buildApp({
   await app.register(readinessRoutes, { db, now, signer, compliance });
   await app.register(labTestRoutes, { db, now });
   await app.register(monitoringRoutes, { db, now });
+  await app.register(publicRoutes, { db, now, subscription });
 
   return app;
 }
