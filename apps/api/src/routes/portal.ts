@@ -32,9 +32,17 @@ const params = z.object({ id });
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
 const reportParams = token.extend({ reportId: id });
 const publicLimit = { max: 30, timeWindow: "1 minute" };
-// Asking for a link by email: a few per address a minute, and at most one email per
-// customer every few minutes (below), so the form cannot be used to flood an inbox.
-const requestLimit = { max: 5, timeWindow: "1 minute" };
+// Asking for a link by email: a few a minute per client and address, and at most one
+// email per customer every few minutes (below), so the form cannot be used to flood an
+// inbox. Keyed by address too, so one busy network (or a proxy the API cannot see past)
+// does not lock every customer out.
+const requestLimit = {
+  max: 5,
+  timeWindow: "1 minute",
+  // After the body is parsed, so the key can include the address.
+  hook: "preHandler" as const,
+  keyGenerator: (req: FastifyRequest) => `${req.ip}:${String((req.body as { email?: unknown } | undefined)?.email ?? "").trim().toLowerCase()}`,
+};
 const actionLimit = { max: 10, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => `${req.ip}:${(req.params as { token?: string }).token ?? ""}` };
 const REQUEST_EMAIL_EVERY_MS = 10 * 60_000;
 const notFoundLink = () => new HttpError(404, "not_found", "This link is not valid or has expired. Ask for a new one below.");

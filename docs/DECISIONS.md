@@ -294,3 +294,26 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Moving existing files:** `pnpm files:copy-to-r2` copies everything under `FILE_STORAGE_DIR`, reads each object back and compares SHA-256. Files already there with the same hash are skipped, and stray files outside an organization are listed. It is safe to run again and exits non-zero on any mismatch.
 - **Tests:** the same store tests run against local disk and against R2 through an in-memory S3 double. The double refuses requests with bad credentials or a payload hash that does not match. An API test round-trips a photo through R2.
 
+## 2026-10-05 · W3.3 Production secrets check and hardening
+
+- **One boot check for the API and the worker** (`checkConfig` in `packages/db/src/config-check.ts`). Outside production it requires nothing. With `NODE_ENV=production` the process refuses to start and names every problem at once:
+  - always required: `DATABASE_URL`, a `FILE_SIGNING_SECRET` of at least 32 characters (not a development default), an `https://` `PUBLIC_APP_URL`, and `DEPLOY_ENV` set to `staging` or `production`;
+  - half-configured providers are refused: QuickBooks without `QUICKBOOKS_TOKEN_KEY` (or with the development key), Stripe without `STRIPE_WEBHOOK_SECRET`, one Twilio key without the other, some but not all of the R2 keys, Resend without its webhook secret and From addresses.
+- **`DEPLOY_ENV` separates staging from production.** Both run `NODE_ENV=production`. Production also requires Resend and R2, and refuses `EMAIL_REDIRECT_TO`. Staging may run on the outbox and local disk, but once Resend is configured it requires `EMAIL_REDIRECT_TO`, so test email never reaches an authority or a customer. Production therefore will not start until Justin's Resend and R2 accounts exist; staging is unaffected.
+- **Security headers.** API responses: `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, and HSTS in production. There is no CSP on the API, because it serves JSON and files, and a sandbox CSP breaks Chrome's PDF viewer. Pages: the same, plus `Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'` and a Permissions-Policy that allows only camera and location. `X-Powered-By` is removed. `no-referrer` site-wide, because customer links carry their token in the path. A script-src CSP needs nonces through Next.js middleware and is left for later.
+- **Session cookies** (tenant and platform admin) were already `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production. They are now tested for both sign-ins.
+- **Rate limits, reviewed together:**
+
+  | Route | Limit | Key |
+  |---|---|---|
+  | `POST /auth/login` | 10 a minute | client and email |
+  | `POST /admin/auth/login` | 10 a minute | client and email |
+  | `POST /portal/request` (magic link) | 5 a minute, plus one email per customer per 10 minutes | client and email (was client only) |
+  | Invite accept and look-up | 20 a minute | client and token |
+  | Portal, pay and renew links | 30 a minute reads, 10 a minute actions | client (and token for actions) |
+  | Password reset (W2.3) | not merged yet; it should use client and email, with `hook: "preHandler"` | |
+
+  **Bug fixed:** the email in the login keys was never there. The limiter ran at `onRequest`, before the body was parsed, so every sign-in on one address shared one counter. One person could lock everyone on the same network (or behind the same proxy) out. Body-keyed limits now run at `preHandler`.
+- **The client address behind proxies.** On Render, requests reach the API through Render's edge, and pages' API calls also pass through the Next.js proxy, so the API sees a proxy's address. `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxies' addresses) makes the limits key on the real client. It is off by default, because trusting `X-Forwarded-For` from anywhere lets clients make up addresses. The right value for Render has to be read off staging (open question). Until then, keying login and magic links by email keeps one shared address from locking out everyone.
+- **Dependency audit in CI:** `pnpm audit --prod --audit-level=high`. It passes today. The two moderate advisories, `csv-parse` (only with `columns`, which import does not use) and `uuid` under `exceljs` (buffer arguments not used), are not reachable.
+

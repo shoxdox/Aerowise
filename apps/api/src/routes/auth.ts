@@ -50,6 +50,8 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
         rateLimit: {
           max: loginRateLimit,
           timeWindow: "1 minute",
+          // After the body is parsed: the key includes the email, which onRequest cannot see.
+          hook: "preHandler",
           keyGenerator: (req) => `${req.ip}:${String((req.body as { email?: unknown } | undefined)?.email ?? "").toLowerCase()}`,
         },
       },
