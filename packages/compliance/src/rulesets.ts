@@ -24,6 +24,10 @@ export function bundledRulesets(dir = RULESET_DIR): RulesetRules[] {
       if (!rules.profile && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} has no profile`);
       if (rules.profile?.status === "verified" && rules.profile.unresolved.length > 0) throw new Error(`ruleset ${key}/${file} is marked verified with unresolved requirements`);
       if (rules.profile?.status === "fictional" && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} is fictional but does not say so`);
+      // An authority's own layout must show every answer the authority requires.
+      const laidOut = new Set(rules.report?.sections.flatMap((x) => x.fields.map((f) => f.key)) ?? []);
+      const missing = rules.report ? rules.inspection.requiredFields.filter((k) => !laidOut.has(k)) : [];
+      if (missing.length) throw new Error(`ruleset ${key}/${file} requires ${missing.join(", ")} but its report layout leaves them off`);
       out.push(rules);
     }
   }

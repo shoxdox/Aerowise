@@ -5,7 +5,10 @@ import {
   canTransitionFiling,
   contractFilingRequired,
   FILING_STATE_MACHINE,
+  filingFees,
+  lateFeeOwed,
   mayAutoSubmit,
+  serviceIntervalMonths,
   type FilingKind,
   type FilingProof,
   type FilingStatus,
@@ -20,6 +23,7 @@ import type { EmailTransport } from "./email.ts";
 import { providerSignatureRequired, reportSignature } from "./signatures.ts";
 import { contractBasisOf, contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
 import { amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
+import { siteMonitoredOn } from "./monitoring.ts";
 import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
 
 type Executor = Database | Transaction<DB>;
@@ -113,6 +117,36 @@ async function recordEvent(trx: Executor, f: FilingRow, at: Date, actorUserId: s
     .execute();
 }
 
+const DELIVERY_PROBLEM_WORDS = {
+  bounced: "bounced: the receiving mail server rejected it",
+  complained: "was marked as spam by the recipient",
+  failed: "could not be delivered",
+  suppressed: "was not delivered: the mail provider holds this address on its suppression list",
+} as const;
+
+/**
+ * The mail provider reported that a filing's email did not get through (or was marked as
+ * spam). The filing keeps its status (the provider did accept it), but the site's ledger
+ * says so and the inbox asks the office to file it another way. Not a filing email: no-op.
+ */
+export async function recordFilingDeliveryProblem(
+  trx: Executor,
+  e: { organizationId: string; idempotencyKey: string; recipient: string; status: keyof typeof DELIVERY_PROBLEM_WORDS; detail: string | null; at: Date },
+) {
+  const attempt = await trx
+    .selectFrom("filingAttempts")
+    .select(["filingId", "submissionNo"])
+    .where("organizationId", "=", e.organizationId)
+    .where("idempotencyKey", "=", e.idempotencyKey)
+    .where("status", "=", "succeeded")
+    .executeTakeFirst();
+  if (!attempt) return;
+  const f = await loadFiling(trx, e.organizationId, attempt.filingId);
+  if (!f) return;
+  const summary = `The filing email to ${e.recipient} (submission ${attempt.submissionNo}) ${DELIVERY_PROBLEM_WORDS[e.status]}${e.detail ? ` (${e.detail.slice(0, 300)})` : ""}`;
+  await recordEvent(trx, f, e.at, null, { type: `filing_email_${e.status}`, summary, details: { submissionNo: attempt.submissionNo, recipient: e.recipient, detail: e.detail } });
+}
+
 /**
  * Moves a filing to a new status if the state machine allows it and nobody moved it
  * first, then records the step on the site's compliance ledger. Mutates `f.status`.
@@ -127,6 +161,11 @@ async function move(
   actorUserId: string | null = null,
 ) {
   if (!canTransitionFiling(f.status, to)) throw new FilingStateError(`A ${f.status.replace("_", " ")} filing cannot become ${to.replace("_", " ")}`);
+  const late = to === "sent" ? await lateFeeOnFirstSend(trx, f, at) : null;
+  if (late) {
+    set = { ...set, lateFeeCents: late.cents };
+    if (late.cents > 0 && event) event = { ...event, summary: `${event.summary} Sent after the ${late.deadlineOn} deadline: late fee ${dollars(late.cents)}.`, details: { ...event.details, lateFeeCents: late.cents } };
+  }
   const res = await trx
     .updateTable("filings")
     .set({ ...set, status: to, updatedAt: at })
@@ -137,6 +176,25 @@ async function move(
   if (Number(res.numUpdatedRows) !== 1) throw new FilingStateError("The filing changed while this was happening; reload and try again");
   f.status = to;
   if (event) await recordEvent(trx, f, at, actorUserId, event);
+}
+
+const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * The late fee a filing owes, decided the first time it reaches the authority (by email or
+ * by hand) on the organization's date: its recorded late fee when that is after the
+ * deadline, else 0. A resubmission after a rejection does not decide it again.
+ */
+async function lateFeeOnFirstSend(trx: Executor, f: FilingRow, at: Date) {
+  const row = await trx
+    .selectFrom("filings as f")
+    .innerJoin("organizations as o", "o.id", "f.organizationId")
+    .select(["f.deadlineOn", "f.lateFeeRuleCents", "f.lateFeeCents", "f.filingFeeCents", "o.timezone"])
+    .where("f.organizationId", "=", f.organizationId)
+    .where("f.id", "=", f.id)
+    .executeTakeFirstOrThrow();
+  if (row.lateFeeCents !== null || row.filingFeeCents === null) return null;
+  return { cents: lateFeeOwed(row.lateFeeRuleCents, row.deadlineOn, dateInZone(at, row.timezone)), deadlineOn: row.deadlineOn };
 }
 
 /** The jurisdiction and exact ruleset version a filing recorded. */
@@ -190,8 +248,31 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
   };
 }
 
+/**
+ * What decides the site's interval on a date: whether its contract then is residential or
+ * commercial (residential when there is none, the authority's default), and whether it had
+ * qualifying electronic monitoring.
+ */
+async function siteServiceBasis(db: Executor, organizationId: string, siteId: string, onDate: string) {
+  const [customerType, monitored] = await Promise.all([siteCustomerType(db, organizationId, siteId, onDate), siteMonitoredOn(db, organizationId, siteId, onDate)]);
+  return { customerType, monitored };
+}
+
+async function siteCustomerType(db: Executor, organizationId: string, siteId: string, onDate: string) {
+  const c = await db
+    .selectFrom("contracts")
+    .select("customerType")
+    .where("organizationId", "=", organizationId)
+    .where("siteId", "=", siteId)
+    .where("status", "=", "active")
+    .where("startOn", "<=", onDate)
+    .where("endOn", ">=", onDate)
+    .executeTakeFirst();
+  return c?.customerType ?? "residential";
+}
+
 /** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
-function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
+function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { customerType: "residential" | "commercial"; monitored: boolean }) {
   const r = resolved.rules;
   return {
     jurisdictionId: resolved.jurisdictionId,
@@ -202,8 +283,15 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string) {
     deadlineOn: addDays(completedOn, r.filing.deadlineDays),
     deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
-    nextDueOn: addMonths(completedOn, r.service.intervalMonths),
+    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored)),
+    ...feeColumns(r, "inspection_report"),
   };
+}
+
+/** The fee columns a filing records under a ruleset (all null when it sets no fee). */
+function feeColumns(rules: ResolvedJurisdiction["rules"], kind: FilingKind) {
+  const fees = filingFees(rules, kind);
+  return { filingFeeCents: fees?.filingFeeCents ?? null, lateFeeRuleCents: fees?.lateFeeRuleCents ?? null, feeBasis: fees?.feeBasis ?? null };
 }
 
 const NO_ADAPTER = "There is no way to file with this authority yet.";
@@ -230,7 +318,7 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
   const completedOn = dateInZone(insp.completedAt ?? args.at, insp.timezone);
   const resolution = explainSite(await loadCatalog(trx), insp, completedOn);
   const resolved = resolution.resolved;
-  const terms = resolved ? termsFor(resolved, completedOn) : null;
+  const terms = resolved ? termsFor(resolved, completedOn, await siteServiceBasis(trx, args.organizationId, insp.siteId, completedOn)) : null;
   const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : reportsUnknown(resolved);
   const inserted = await trx
     .insertInto("filings")
@@ -250,6 +338,9 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
       deadlineBasis: terms?.deadlineBasis ?? null,
       warningDays: terms?.warningDays ?? 0,
       nextDueOn: terms?.nextDueOn ?? null,
+      filingFeeCents: terms?.filingFeeCents ?? null,
+      lateFeeRuleCents: terms?.lateFeeRuleCents ?? null,
+      feeBasis: terms?.feeBasis ?? null,
       reportId: null,
       sentAt: null,
       confirmedAt: null,
@@ -367,6 +458,7 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
       deadlineBasis: deadline.basis,
       warningDays: resolved?.rules.filing.warningDays ?? 0,
       nextDueOn: null,
+      ...(resolved ? feeColumns(resolved.rules, "contract") : {}),
       reportId: null,
       sentAt: null,
       confirmedAt: null,
@@ -910,6 +1002,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
       deadlineOn: deadline.deadlineOn,
       deadlineBasis: deadline.basis,
       warningDays: resolved.rules.filing.warningDays,
+      ...feeColumns(resolved.rules, "contract"),
       signedDocumentId: c.signedDocumentId,
       contractDocumentId: document?.id ?? null,
       reviewReason: null,
@@ -922,7 +1015,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
     .selectFrom("inspections as i")
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
     .innerJoin("organizations as o", "o.id", "i.organizationId")
-    .select(["i.completedAt", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+    .select(["i.completedAt", "i.siteId", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
     .where("i.organizationId", "=", f.organizationId)
     .where("i.id", "=", f.inspectionId!)
     .executeTakeFirstOrThrow();
@@ -934,7 +1027,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
     await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
     return;
   }
-  const terms = termsFor(resolved, completedOn);
+  const terms = termsFor(resolved, completedOn, await siteServiceBasis(trx, f.organizationId, insp.siteId, completedOn));
   await move(trx, f, "pending", a.at, { ...terms, reviewReason: null }, { type: "filing_rechecked", summary: `Filing checked again for ${resolved.authorityName}` }, a.actorUserId);
   f.rulesetId = terms.rulesetId;
   f.jurisdictionId = terms.jurisdictionId;

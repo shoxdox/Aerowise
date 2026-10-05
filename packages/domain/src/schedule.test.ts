@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, buildTermSchedule, contractState } from "./schedule.ts";
+import { addMonths, buildTermSchedule, contractState, visitsWithin } from "./schedule.ts";
 
 describe("addMonths", () => {
   it("clamps to the end of shorter months", () => {
@@ -46,5 +46,27 @@ describe("contractState", () => {
     expect(contractState(c, "2027-01-14")).toBe("active");
     expect(contractState(c, "2027-01-15")).toBe("expired");
     expect(contractState({ ...c, status: "cancelled" }, "2026-06-01")).toBe("cancelled");
+  });
+});
+
+describe("visitsWithin", () => {
+  it("keeps the plan's visits when its windows already fit the authority's interval", () => {
+    expect(visitsWithin(12, 3, 4)).toBe(3);
+    expect(visitsWithin(24, 6, 4)).toBe(6);
+    expect(visitsWithin(12, 12, 3)).toBe(12);
+  });
+
+  it("adds the fewest visits that give equal windows within the interval", () => {
+    expect(visitsWithin(12, 3, 3)).toBe(4);
+    expect(visitsWithin(12, 3, 1)).toBe(12);
+    expect(visitsWithin(24, 6, 3)).toBe(8);
+    expect(visitsWithin(12, 1, 5)).toBe(3);
+    expect(visitsWithin(12, 2, 6)).toBe(2);
+    expect(visitsWithin(18, 3, 4)).toBe(6);
+  });
+
+  it("falls back to monthly visits when nothing coarser divides the term", () => {
+    expect(visitsWithin(7, 1, 2)).toBe(7);
+    expect(visitsWithin(1, 1, 1)).toBe(1);
   });
 });

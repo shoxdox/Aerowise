@@ -21,7 +21,9 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401 && !path.endsWith("/auth/login") && typeof window !== "undefined") {
+    // Sign-in forms and invitation links show a wrong password themselves.
+    const showsOwn401 = path.endsWith("/auth/login") || path.startsWith("/invitations/accept/");
+    if (res.status === 401 && !showsOwn401 && typeof window !== "undefined") {
       // The platform-admin console has its own sign-in, separate from the office one.
       const login = path.startsWith("/admin/") ? "/admin/login" : "/login";
       window.location.href = `${login}?next=${encodeURIComponent(window.location.pathname)}`;

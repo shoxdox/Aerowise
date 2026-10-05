@@ -16,6 +16,7 @@ import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_C
 
 export * from "./queue.ts";
 export * from "./heartbeat.ts";
+export * from "./monitor.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 export { queueQuickBooksSync, scheduleQuickBooksSyncs, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 export {
@@ -144,20 +145,27 @@ async function run(ctx: TaskContext, task: Task) {
   }
 }
 
+/** What the worker hears about each task it runs: for logs, error reports and alerts. */
+export interface TaskObserver {
+  done?(task: Task, ms: number): void;
+  failed?(task: Task, err: unknown, gaveUp: boolean): void;
+}
+
 /**
  * Claims and runs one due task. Returns false when nothing was due. Errors are recorded
  * on the task and retried later; they never escape.
  */
-export async function runNextTask(ctx: TaskContext, workerId: string, log: (msg: string) => void = () => {}): Promise<boolean> {
+export async function runNextTask(ctx: TaskContext, workerId: string, observer: TaskObserver = {}): Promise<boolean> {
   const task = await claimNext(ctx.db, workerId, ctx.now());
   if (!task) return false;
+  const started = Date.now();
   try {
     await run(ctx, task);
     await markDone(ctx.db, task.id, ctx.now());
-    log(`${task.kind} ${task.id} done`);
+    observer.done?.(task, Date.now() - started);
   } catch (err) {
     const gaveUp = await markFailed(ctx.db, task, (err as Error).stack ?? String(err), ctx.now());
-    log(`${task.kind} ${task.id} failed (attempt ${task.attempts}${gaveUp ? ", giving up" : ""}): ${(err as Error).message}`);
+    observer.failed?.(task, err, gaveUp);
   }
   return true;
 }

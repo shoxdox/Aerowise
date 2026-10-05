@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BILLING_FREQUENCIES, SERVICE_TYPES } from "./contracts.ts";
+import { BILLING_FREQUENCIES, CUSTOMER_TYPES, SERVICE_TYPES } from "./contracts.ts";
 import { id } from "./crm.ts";
 import { contractInstallments, invoiceTotals, MAX_CENTS, type InvoiceTotals } from "./invoices.ts";
 
@@ -84,6 +84,7 @@ export type ChosenAddon = z.infer<typeof chosenAddon>;
 export const renewalTerms = z.object({
   planId: id.nullable(),
   planName: z.string(),
+  customerType: z.enum(CUSTOMER_TYPES),
   termMonths: z.number().int(),
   visitsPerTerm: z.number().int(),
   priceCents: z.number().int(),

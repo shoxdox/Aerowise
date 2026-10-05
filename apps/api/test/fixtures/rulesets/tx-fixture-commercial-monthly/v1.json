@@ -1,0 +1,53 @@
+{
+  "jurisdiction": {
+    "key": "tx-fixture-commercial-monthly",
+    "state": "TX",
+    "authorityName": "Commercial Monthly Fixture County (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL test fixture: an authority with the 4-month default for residential systems and monthly inspections for commercial ones. Not any real county's rules.",
+  "applicability": {
+    "counties": [
+      "Commercial Monthly Fixture County"
+    ]
+  },
+  "service": {
+    "intervalMonths": 4,
+    "commercialIntervalMonths": 1
+  },
+  "inspection": {
+    "requiredFields": [
+      "air_pressure"
+    ],
+    "requiredPhotos": [
+      {
+        "key": "overview",
+        "minCount": 1
+      }
+    ],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-fixture-commercial-monthly.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}

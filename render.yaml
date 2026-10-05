@@ -41,12 +41,27 @@ projects:
                   property: connectionString
               - key: NODE_ENV
                 value: production
+              # Which deployment this is. Production refuses to start without Resend and R2 (see .env.example).
+              - key: DEPLOY_ENV
+                value: staging
+              # Error tracking; leave empty to keep errors in the logs only.
+              - key: SENTRY_DSN
+                sync: false
               - key: PORT
                 value: "4000"
               - key: API_PORT
                 value: "4000"
               - key: FILE_STORAGE_DIR
                 value: /data/files
+              # Cloudflare R2 for files. Leave all four empty to keep files on the disk.
+              - key: R2_ACCOUNT_ID
+                sync: false
+              - key: R2_BUCKET
+                sync: false
+              - key: R2_ACCESS_KEY_ID
+                sync: false
+              - key: R2_SECRET_ACCESS_KEY
+                sync: false
               - key: FILE_SIGNING_SECRET
                 generateValue: true
               - key: QUICKBOOKS_TOKEN_KEY
@@ -58,6 +73,14 @@ projects:
               - key: FILING_EMAIL_FROM
                 sync: false
               - key: INVOICE_EMAIL_FROM
+                sync: false
+              - key: ACCOUNT_EMAIL_FROM
+                sync: false
+              - key: RESEND_API_KEY
+                sync: false
+              - key: RESEND_WEBHOOK_SECRET
+                sync: false
+              - key: EMAIL_REDIRECT_TO
                 sync: false
           - type: web
             name: aerowise-web-staging
@@ -110,12 +133,27 @@ projects:
                   property: connectionString
               - key: NODE_ENV
                 value: production
+              # Which deployment this is. Production refuses to start without Resend and R2 (see .env.example).
+              - key: DEPLOY_ENV
+                value: production
+              # Error tracking; leave empty to keep errors in the logs only.
+              - key: SENTRY_DSN
+                sync: false
               - key: PORT
                 value: "4000"
               - key: API_PORT
                 value: "4000"
               - key: FILE_STORAGE_DIR
                 value: /data/files
+              # Cloudflare R2 for files. Leave all four empty to keep files on the disk.
+              - key: R2_ACCOUNT_ID
+                sync: false
+              - key: R2_BUCKET
+                sync: false
+              - key: R2_ACCESS_KEY_ID
+                sync: false
+              - key: R2_SECRET_ACCESS_KEY
+                sync: false
               - key: FILE_SIGNING_SECRET
                 generateValue: true
               - key: QUICKBOOKS_TOKEN_KEY
@@ -127,6 +165,12 @@ projects:
               - key: FILING_EMAIL_FROM
                 sync: false
               - key: INVOICE_EMAIL_FROM
+                sync: false
+              - key: ACCOUNT_EMAIL_FROM
+                sync: false
+              - key: RESEND_API_KEY
+                sync: false
+              - key: RESEND_WEBHOOK_SECRET
                 sync: false
               # Real providers. Left empty, each one is off in production (see .env.example).
               - key: STRIPE_SECRET_KEY
