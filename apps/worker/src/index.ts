@@ -31,6 +31,7 @@ const ctx = {
   mail: providers.mail,
   mailFrom: process.env.FILING_EMAIL_FROM,
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
+  accountMailFrom: process.env.ACCOUNT_EMAIL_FROM || undefined,
   appUrl: process.env.PUBLIC_APP_URL,
   quickbooks: providers.quickbooks,
   sms: providers.sms,

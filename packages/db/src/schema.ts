@@ -83,6 +83,8 @@ export interface MembershipsTable {
   technicianLicense: string | null;
   active: Generated<boolean>;
   createdAt: CreatedAt;
+  deactivatedAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  deactivatedBy: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface SessionsTable {
@@ -1139,6 +1141,15 @@ export interface InvitationsTable {
   revokedAt: Timestamp | null;
 }
 
+export interface PasswordResetTokensTable {
+  id: Generated<string>;
+  userId: string;
+  tokenHash: Buffer;
+  createdAt: CreatedAt;
+  expiresAt: Timestamp;
+  usedAt: Timestamp | null;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -1203,4 +1214,5 @@ export interface DB {
   billingPeriods: BillingPeriodsTable;
   billingEvents: BillingEventsTable;
   invitations: InvitationsTable;
+  passwordResetTokens: PasswordResetTokensTable;
 }

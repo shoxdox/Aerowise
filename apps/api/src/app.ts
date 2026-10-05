@@ -39,6 +39,7 @@ import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
 import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
+import { passwordResetRoutes } from "./routes/password-reset.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
@@ -63,6 +64,8 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
+  /** Password reset requests allowed per IP and email per minute. */
+  passwordResetRateLimit?: number;
   /**
    * Which proxies in front of the API to believe about the client's address (Fastify's
    * `trustProxy`: true, or the proxies' addresses and ranges). Rate limits key on that
@@ -127,6 +130,7 @@ export async function buildApp({
   demo = false,
   logger = false,
   loginRateLimit = 10,
+  passwordResetRateLimit = 5,
   trustProxy = false,
   reporter = new NoopReporter(),
   now = () => new Date(),
@@ -246,6 +250,7 @@ export async function buildApp({
   await app.register(authRoutes, { db, production, loginRateLimit });
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
   await app.register(userRoutes, { db, now, production, invitations });
+  await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });

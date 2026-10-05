@@ -284,6 +284,13 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Someone who already has an Aerowise login** (the email is global) accepts by entering that login's password, not by choosing a new one. Otherwise anyone holding the link could take over another organization's account. Their existing memberships and password stay as they were.
 - **Passwords for new users are at least 10 characters**; platform admins need 12.
 
+## 2026-10-05 · W2.3 Password reset and user deactivation
+
+- **Reset links belong to the login, not an organization.** A person's login is shared by every organization they belong to, so `password_reset_tokens` references `users` only (like `sessions` it is not a tenant table). The email is sent under their oldest active membership's organization; a login with no active membership gets no email.
+- **The request always answers 202**, known email or not. It is rate-limited per IP and email (5 a minute, keyed after the body is parsed), and at most one email goes out per person per 15 minutes however often it is asked for. The token is minted by the worker task, so it never sits in the queue; only its hash is stored. Links work once, for an hour.
+- **A reset spends every open link of that person and ends all their sessions** in every organization. They sign in again with the new password rather than being signed in by the link, so a leaked link cannot become a session silently.
+- **Deactivation is per organization.** An owner deactivates a person's membership; their sessions in that organization are revoked and `findSession` already refuses inactive memberships, so the next request fails. Their other organizations are untouched. Owners cannot deactivate themselves, and a deactivated person comes back by reactivation, not by a new invitation (which office staff could otherwise use to undo an owner's decision).
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
@@ -427,7 +434,6 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Saving a card uses Stripe's customer portal**, opened straight on updating the payment method. It saves the card or bank account as the default for invoices, so Aerowise never handles card details. The test provider saves a test Visa at once and returns.
 - **A read-only company can still save a payment method.** Routes opt in with `config.allowedWhenReadOnly`. Saving a payment method is the only one, because paying is how a lapsed company gets back. Moving back to `active` when the payment clears comes in W4.4.
 - **A lapsed company's automatic sends keep going (Justin, 2026-10-05).** Queued county filings and homeowner reminder emails keep going out while a company is read-only, so a lapse never causes a missed county deadline. W4.4 keeps it this way.
-
 
 ## 2026-10-05 · W6.6 Ruleset coverage page
 

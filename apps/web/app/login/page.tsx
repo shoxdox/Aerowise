@@ -42,6 +42,9 @@ export default function LoginPage() {
         <button type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
+        <a href="/forgot-password" className="small">
+          Forgot your password?
+        </a>
         {demo && (
           <p className="muted" data-testid="demo-sign-ins">
             Try it as the owner (owner@example.com), the office (office@example.com) or the technician (tech@example.com). The
