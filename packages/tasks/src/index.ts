@@ -7,6 +7,7 @@ import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./i
 import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
 import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 import { PORTAL_LINK_EMAIL, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
+import { PASSWORD_RESET_EMAIL, sendPasswordReset } from "./account-task.ts";
 import type { SmsConfig, SmsRequest } from "@aerowise/sms";
 import { runSmsSweep, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 import type { Geocoder } from "@aerowise/routing";
@@ -35,6 +36,7 @@ export {
   sendRenewalEmail,
   type SweepResult,
 } from "./renewal-task.ts";
+export { hashResetToken, PASSWORD_RESET_EMAIL, resetUrlFor, sendPasswordReset } from "./account-task.ts";
 export { createPortalLink, hashPortalToken, PORTAL_LINK_EMAIL, portalUrlFor, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
 export { queueSms, runSmsSweep, scheduleSmsSweeps, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } from "./routing-task.ts";
@@ -53,6 +55,8 @@ export interface TaskContext {
   mailFrom?: string;
   /** From address on invoice emails; the provider's name is shown with it. */
   invoiceMailFrom?: string;
+  /** From address on account emails (password resets). */
+  accountMailFrom?: string;
   /** Where customers open pay links: the web app's public address. */
   appUrl?: string;
   /** QuickBooks Online; without it, sync tasks do nothing. */
@@ -130,6 +134,14 @@ async function run(ctx: TaskContext, task: Task) {
         task.organizationId!,
         task.id,
         task.payload as unknown as PortalLinkEmail,
+      );
+      return;
+    case PASSWORD_RESET_EMAIL:
+      await sendPasswordReset(
+        { db: ctx.db, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), appUrl: ctx.appUrl ?? DEFAULT_APP_URL, now: ctx.now, from: ctx.accountMailFrom },
+        task.organizationId!,
+        task.id,
+        task.payload as { userId: string },
       );
       return;
     case SEND_SMS:

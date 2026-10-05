@@ -36,6 +36,11 @@ export default function UsersPage() {
     await reload();
   }
 
+  async function setActive(userId: string, active: boolean) {
+    await api(`/users/${userId}/${active ? "reactivate" : "deactivate"}`, { method: "POST", body: {} });
+    await reload();
+  }
+
   async function revoke(id: string) {
     await api(`/invitations/${id}/revoke`, { method: "POST", body: {} });
     setSent(null);
@@ -94,6 +99,7 @@ export default function UsersPage() {
             <th>Email</th>
             <th>Role</th>
             <th>Status</th>
+            {me.role === "owner" && <th />}
           </tr>
         </thead>
         <tbody>
@@ -105,6 +111,21 @@ export default function UsersPage() {
               <td>
                 <span className={`badge ${m.active ? "active" : "inactive"}`}>{m.active ? "active" : "deactivated"}</span>
               </td>
+              {me.role === "owner" && (
+                <td>
+                  {m.userId !== me.user.id && (
+                    <button
+                      className="link"
+                      onClick={() => {
+                        if (m.active && !window.confirm(`Deactivate ${m.name}? They are signed out at once and cannot sign in to ${me.organization.name}.`)) return;
+                        void setActive(m.userId, !m.active);
+                      }}
+                    >
+                      {m.active ? "Deactivate" : "Reactivate"}
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

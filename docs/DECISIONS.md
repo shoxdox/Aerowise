@@ -284,6 +284,13 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Someone who already has an Aerowise login** (the email is global) accepts by entering that login's password, not by choosing a new one. Otherwise anyone holding the link could take over another organization's account. Their existing memberships and password stay as they were.
 - **Passwords for new users are at least 10 characters**; platform admins need 12.
 
+## 2026-10-05 · W2.3 Password reset and user deactivation
+
+- **Reset links belong to the login, not an organization.** A person's login is shared by every organization they belong to, so `password_reset_tokens` references `users` only (like `sessions` it is not a tenant table). The email is sent under their oldest active membership's organization; a login with no active membership gets no email.
+- **The request always answers 202**, known email or not. It is rate-limited per IP and email (5 a minute, keyed after the body is parsed), and at most one email goes out per person per 15 minutes however often it is asked for. The token is minted by the worker task, so it never sits in the queue; only its hash is stored. Links work once, for an hour.
+- **A reset spends every open link of that person and ends all their sessions** in every organization. They sign in again with the new password rather than being signed in by the link, so a leaked link cannot become a session silently.
+- **Deactivation is per organization.** An owner deactivates a person's membership; their sessions in that organization are revoked and `findSession` already refuses inactive memberships, so the next request fails. Their other organizations are untouched. Owners cannot deactivate themselves, and a deactivated person comes back by reactivation, not by a new invitation (which office staff could otherwise use to undo an owner's decision).
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
@@ -428,7 +435,6 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **A read-only company can still save a payment method.** Routes opt in with `config.allowedWhenReadOnly`. Saving a payment method is the only one, because paying is how a lapsed company gets back. Moving back to `active` when the payment clears comes in W4.4.
 - **A lapsed company's automatic sends keep going (Justin, 2026-10-05).** Queued county filings and homeowner reminder emails keep going out while a company is read-only, so a lapse never causes a missed county deadline. W4.4 keeps it this way.
 
-
 ## 2026-10-05 · W6.6 Ruleset coverage page
 
 - **Counts come from the resolver, not a SQL count by county.** County names are free text and some authorities are assigned by hand, so the page resolves each active site with `explainSite`, as a filing would. That is fine at pilot scale (thousands of sites); if it ever gets slow, the answer is a cached count, not a different rule.
@@ -438,7 +444,7 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 ## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
 
 - **Versions live in code** (`CURRENT_LEGAL_VERSIONS` in `packages/domain/src/legal.ts`), next to the placeholder text in `apps/web/components/legal/text.ts`. Changing the text means bumping the version in the same pull request, so the version on the page and the version owners accept can never disagree.
-- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0028) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
+- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0029) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
 - **When it is asked:** `/auth/me` returns `legalDue`, and the office screens show only the acceptance prompt until the owner accepts. The prompt links to the public `/terms` and `/privacy` pages and sends the versions it showed; if either changed meanwhile, the API answers 409 and records nothing.
 - **The API does not refuse other requests until acceptance.** The prompt is the gate. Blocking every API call would also block the technician app and the worker's own calls, and a forgotten click should never stop a county filing. Revisit if the lawyer requires a hard block.
 - **A read-only (lapsed) company can still accept** (`config.allowedWhenReadOnly`), or its owner could never get past the prompt to export their data.

@@ -34,12 +34,13 @@ export async function createInvitation(
   const member = await trx
     .selectFrom("memberships as m")
     .innerJoin("users as u", "u.id", "m.userId")
-    .select("m.userId")
+    .select(["m.userId", "m.active"])
     .where("m.organizationId", "=", i.organizationId)
     .where(sql`lower(u.email)`, "=", email)
-    .where("m.active", "=", true)
     .executeTakeFirst();
-  if (member) throw new HttpError(409, "already_member", "That person is already a member of this organization");
+  if (member?.active) throw new HttpError(409, "already_member", "That person is already a member of this organization");
+  // Bringing back someone an owner deactivated is the owner's call, not a new invitation.
+  if (member) throw new HttpError(409, "deactivated_member", "That person was deactivated. An owner can reactivate them on the Users page.");
 
   await trx
     .updateTable("invitations")
