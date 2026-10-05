@@ -53,6 +53,10 @@ function messyCsv() {
 type Detail = {
   id: string;
   status: string;
+  sheets: { name: string; headers: string[]; rows: number }[];
+  sheetIndex: number;
+  headers: string[];
+  mappingSource: string;
   error: string | null;
   mapping: Record<string, number>;
   summary: Record<string, number>;
@@ -144,6 +148,76 @@ describe("customer import", () => {
     ]);
     const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
     expect(done.result).toEqual({ customers: 2, sites: 2, contracts: 1 });
+  });
+
+  it("reads every sheet of a workbook and imports the one chosen", async () => {
+    const t = await tenant(ctx);
+    const book = new ExcelJS.Workbook();
+    book.addWorksheet("Read me").addRow(["Exported from OldSoft"]);
+    const old = book.addWorksheet("Cancelled");
+    old.addRow(["Who", "Notes"]);
+    old.addRow(["Zed Old", "moved away"]);
+    const sheet = book.addWorksheet("Active");
+    sheet.addRow(["Name", "Address", "City"]);
+    sheet.addRow(["Ann Lee", "9 Elm Rd", "Austin"]);
+    sheet.addRow(["Bo Diaz", "5 Pine Ln", "Austin"]);
+    book.addWorksheet("Empty");
+    let imp = (await t.upload("book.xlsx", Buffer.from(await book.xlsx.writeBuffer()))).json() as Detail;
+    // Sheets with no data are left out, and the preview opens on the customer list.
+    expect(imp.sheets).toEqual([
+      { name: "Cancelled", headers: ["Who", "Notes"], rows: 1 },
+      { name: "Active", headers: ["Name", "Address", "City"], rows: 2 },
+    ]);
+    expect(imp).toMatchObject({ sheetIndex: 1, headers: ["Name", "Address", "City"], mapping: { customerName: 0, addressLine1: 1, city: 2 } });
+    expect(imp.rows.map((r) => r.record.customerName)).toEqual(["Ann Lee", "Bo Diaz"]);
+
+    imp = (await t.api.put(`/imports/${imp.id}/sheet`, { sheetIndex: 0 })).json();
+    expect(imp).toMatchObject({ sheetIndex: 0, headers: ["Who", "Notes"], summary: { rows: 1, error: 1 } });
+    expect((await t.api.put(`/imports/${imp.id}/sheet`, { sheetIndex: 2 })).statusCode).toBe(422);
+
+    imp = (await t.api.put(`/imports/${imp.id}/sheet`, { sheetIndex: 1 })).json();
+    expect(imp.summary).toMatchObject({ rows: 2, ready: 2 });
+    const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    expect(done.result).toEqual({ customers: 2, sites: 2, contracts: 0 });
+    expect((await t.api.put(`/imports/${imp.id}/sheet`, { sheetIndex: 0 })).statusCode).toBe(409);
+    expect((await t.api.get("/imports")).json().items).toMatchObject([{ id: imp.id, rows: 2 }]);
+    const audit = await ctx.db.selectFrom("auditEvents").select("action").where("entityId", "=", imp.id).orderBy("id").execute();
+    expect(audit.map((a) => a.action)).toEqual(["import.created", "import.sheet_changed", "import.sheet_changed", "import.committed"]);
+  });
+
+  it("offers the column choices saved with the last import", async () => {
+    const t = await tenant(ctx);
+    const csv = "Owner,Where,Town,Other\nAnn Lee,9 Elm Rd,Austin,x\n";
+    const first = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    expect(first).toMatchObject({ mappingSource: "detected", mapping: { customerName: 0, city: 2 } });
+    const fixed = (await t.api.put(`/imports/${first.id}/mapping`, { mapping: { customerName: 0, addressLine1: 1, city: 2, accessNotes: 3 } })).json();
+    expect(fixed.mappingSource).toBe("edited");
+    await t.api.post(`/imports/${first.id}/commit`, {});
+
+    // The same layout, typed differently, gets exactly the saved choices.
+    const same = (await t.upload("c2.csv", Buffer.from("owner, where ,TOWN,other\nBo Diaz,5 Pine Ln,Austin,y\n"))).json() as Detail;
+    expect(same).toMatchObject({ mappingSource: "saved", mapping: { customerName: 0, addressLine1: 1, city: 2, accessNotes: 3 }, summary: { ready: 1 } });
+
+    // Another layout gets the saved choices whose headers it has, and detection for the rest.
+    const other = (await t.upload("c3.csv", Buffer.from("Phone,Where,Owner,City\n512-555-0100,2 Oak Dr,Cy Moss,Austin\n"))).json() as Detail;
+    expect(other).toMatchObject({ mappingSource: "saved", mapping: { phone: 0, addressLine1: 1, customerName: 2, city: 3 } });
+
+    // Saved choices belong to the organization that made them.
+    const b = await tenant(ctx, "Org B");
+    const theirs = (await b.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    expect(theirs).toMatchObject({ mappingSource: "detected", mapping: { customerName: 0, city: 2 } });
+    const saved = await ctx.db.selectFrom("importMappings").select(["organizationId", "columns"]).execute();
+    expect(saved).toEqual([
+      {
+        organizationId: t.org.id,
+        columns: [
+          { field: "customerName", header: "Owner" },
+          { field: "addressLine1", header: "Where" },
+          { field: "city", header: "Town" },
+          { field: "accessNotes", header: "Other" },
+        ],
+      },
+    ]);
   });
 
   it("lets the office fix the mapping and choose rows", async () => {

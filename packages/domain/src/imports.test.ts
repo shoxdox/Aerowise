@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressKey, analyzeImport, detectColumns, normalizeDate, normalizePhone, summarize } from "./imports.ts";
+import { addressKey, analyzeImport, applySavedColumns, detectColumns, headerKey, mappingScore, normalizeDate, normalizePhone, savedColumns, summarize } from "./imports.ts";
 
 describe("detectColumns", () => {
   it("matches common headers whatever their spelling", () => {
@@ -95,5 +95,47 @@ describe("analyzeImport", () => {
       existing,
     );
     expect(out.map((r) => [r.status, r.include])).toEqual([["duplicate", true], ["error", false]]);
+  });
+});
+
+describe("saved column choices", () => {
+  const headers = ["Owner", "Where", "Town", "Other"];
+  const saved = savedColumns(headers, { customerName: 0, addressLine1: 1, city: 2 });
+
+  it("are kept by header name", () => {
+    expect(saved).toEqual([
+      { field: "customerName", header: "Owner" },
+      { field: "addressLine1", header: "Where" },
+      { field: "city", header: "Town" },
+    ]);
+    expect(headerKey(["Owner", " where ", "TOWN", "Other"])).toBe(headerKey(headers));
+    expect(headerKey(["Where", "Owner", "Town", "Other"])).not.toBe(headerKey(headers));
+  });
+
+  it("replace detection for the same layout, fields left out included", () => {
+    expect(applySavedColumns(headers, { customerName: 0, city: 2, accessNotes: 3 }, saved, true)).toEqual({ customerName: 0, addressLine1: 1, city: 2 });
+  });
+
+  it("win over detection for another layout and leave the rest to it", () => {
+    const other = ["Where", "Notes", "Owner", "City"];
+    const detected = { accessNotes: 1, customerName: 2, city: 3 };
+    expect(applySavedColumns(other, detected, saved, false)).toEqual({ addressLine1: 0, accessNotes: 1, customerName: 2, city: 3 });
+    // A saved header that is now a different field's column takes that column over.
+    expect(applySavedColumns(["Town", "Owner"], { city: 0, customerName: 1 }, [{ field: "county", header: "Town" }], false)).toEqual({ county: 0, customerName: 1 });
+  });
+
+  it("do not mix a full name with first and last names", () => {
+    const split = [
+      { field: "firstName", header: "First" },
+      { field: "lastName", header: "Last" },
+    ] as const;
+    expect(applySavedColumns(["Account", "First", "Last"], { customerName: 0 }, [...split], false)).toEqual({ firstName: 1, lastName: 2 });
+    expect(applySavedColumns(["Name", "First"], { firstName: 1 }, [{ field: "customerName", header: "Name" }], false)).toEqual({ customerName: 0 });
+  });
+
+  it("pick the sheet that looks like a customer list", () => {
+    expect(mappingScore({ customerName: 0, addressLine1: 1, city: 2 })).toBe(3);
+    expect(mappingScore({ firstName: 0, city: 2 })).toBe(2);
+    expect(mappingScore({ accessNotes: 0 })).toBe(0);
   });
 });

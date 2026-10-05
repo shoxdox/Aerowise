@@ -1,19 +1,25 @@
 import type { Database, DB } from "@aerowise/db";
 import {
   analyzeImport,
+  applySavedColumns,
   detectColumns,
+  headerKey,
   id,
   IMPORT_FIELDS,
   importDetail,
   importListItem,
   importMappingInput,
   importRowsInput,
+  importSheetInput,
   importUpload,
+  mappingScore,
   MAX_IMPORT_BYTES,
+  savedColumns,
   summarize,
   type AnalyzedRow,
   type ColumnMapping,
   type ExistingRecords,
+  type SavedColumn,
 } from "@aerowise/domain";
 import { loadCatalog } from "@aerowise/compliance";
 import { queueSiteLocating } from "@aerowise/tasks";
@@ -30,6 +36,7 @@ const params = z.object({ id });
 const CHUNK = 500;
 
 type ImportResult = { customers: number; sites: number; contracts: number };
+type Sheet = { name: string; headers: string[]; rows: number };
 
 function chunks<T>(items: T[]): T[][] {
   const out: T[][] = [];
@@ -41,12 +48,39 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   async function findImport(organizationId: string, importId: string) {
     const row = await db
       .selectFrom("imports")
-      .select(["id", "filename", "status", "headers", "mapping", "createdAt", "committedAt", "error", "result"])
+      .select(["id", "filename", "status", "sheets", "sheetIndex", "headers", "mapping", "mappingSource", "createdAt", "committedAt", "error", "result"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", importId)
       .executeTakeFirst();
     if (!row) throw notFound("Import");
-    return { ...row, headers: row.headers as string[], mapping: row.mapping as ColumnMapping, result: row.result as ImportResult | null };
+    return {
+      ...row,
+      sheets: row.sheets as Sheet[],
+      headers: row.headers as string[],
+      mapping: row.mapping as ColumnMapping,
+      result: row.result as ImportResult | null,
+    };
+  }
+
+  /**
+   * The column choices for a sheet: the organization's saved choices for this layout, else
+   * detection with the most recent saved choices laid over it, else detection alone.
+   */
+  async function chooseMapping(q: Database | Transaction<DB>, organizationId: string, headers: string[], sample: string[][]) {
+    const detected = detectColumns(headers, sample);
+    const key = headerKey(headers);
+    const saved = await q
+      .selectFrom("importMappings")
+      .select(["headerKey", "columns"])
+      .where("organizationId", "=", organizationId)
+      .orderBy(sql`header_key = ${key}`, "desc")
+      .orderBy("updatedAt", "desc")
+      .limit(1)
+      .executeTakeFirst();
+    if (!saved) return { mapping: detected, source: "detected" as const };
+    const mapping = applySavedColumns(headers, detected, saved.columns as SavedColumn[], saved.headerKey === key);
+    const changed = JSON.stringify(mapping) !== JSON.stringify(detected);
+    return { mapping, source: saved.headerKey === key || changed ? ("saved" as const) : ("detected" as const) };
   }
 
   async function activePlans(organizationId: string) {
@@ -100,6 +134,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .select(["rowNo", "raw", "include", "customerId", "siteId", "contractId"])
         .where("organizationId", "=", organizationId)
         .where("importId", "=", imp.id)
+        .where("sheetIndex", "=", imp.sheetIndex)
         .orderBy("rowNo")
         .execute(),
       existingRecords(organizationId, imp.id, plans),
@@ -143,7 +178,12 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .selectFrom("imports as i")
         .select(["i.id", "i.filename", "i.status", "i.createdAt", "i.committedAt", "i.result"])
         .select((eb) =>
-          eb.selectFrom("importRows as r").select(sql<number>`count(*)::int`.as("n")).whereRef("r.importId", "=", "i.id").as("rowCount"),
+          eb
+            .selectFrom("importRows as r")
+            .select(sql<number>`count(*)::int`.as("n"))
+            .whereRef("r.importId", "=", "i.id")
+            .whereRef("r.sheetIndex", "=", "i.sheetIndex")
+            .as("rowCount"),
         )
         .where("i.organizationId", "=", organizationId)
         .orderBy("i.createdAt", "desc")
@@ -165,47 +205,55 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const bytes = Buffer.from(req.body.contentBase64, "base64");
       if (bytes.length === 0) throw unprocessable("The file is empty");
       if (bytes.length > MAX_IMPORT_BYTES) throw unprocessable("The file is larger than 10 MB");
-      const sheet = await parseSpreadsheet(req.body.filename, bytes);
-      const mapping = detectColumns(
-        sheet.headers,
-        sheet.rows.slice(0, 50).map((r) => r.raw),
-      );
+      const sheets = await parseSpreadsheet(req.body.filename, bytes);
       const created = await db.transaction().execute(async (trx) => {
+        // Open on the sheet that looks most like a customer list (the first, on a tie).
+        const choices = await Promise.all(
+          sheets.map((sheet) => chooseMapping(trx, auth.organizationId, sheet.headers, sheet.rows.slice(0, 50).map((r) => r.raw))),
+        );
+        const sheetIndex = choices.reduce((best, c, i) => (mappingScore(c.mapping) > mappingScore(choices[best]!.mapping) ? i : best), 0);
+        const { mapping, source } = choices[sheetIndex]!;
         const imp = await trx
           .insertInto("imports")
           .values({
             organizationId: auth.organizationId,
             filename: req.body.filename,
-            headers: JSON.stringify(sheet.headers),
+            sheets: JSON.stringify(sheets.map((sh) => ({ name: sh.name, headers: sh.headers, rows: sh.rows.length }))),
+            sheetIndex,
+            headers: JSON.stringify(sheets[sheetIndex]!.headers),
             mapping: JSON.stringify(mapping),
+            mappingSource: source,
             createdBy: auth.userId,
             committedAt: null,
             error: null,
           })
           .returning("id")
           .executeTakeFirstOrThrow();
-        for (const part of chunks(sheet.rows)) {
-          await trx
-            .insertInto("importRows")
-            .values(
-              part.map((r) => ({
-                organizationId: auth.organizationId,
-                importId: imp.id,
-                rowNo: r.rowNo,
-                raw: JSON.stringify(r.raw),
-                include: null,
-                customerId: null,
-                siteId: null,
-                contractId: null,
-              })),
-            )
-            .execute();
+        for (const [index, sheet] of sheets.entries()) {
+          for (const part of chunks(sheet.rows)) {
+            await trx
+              .insertInto("importRows")
+              .values(
+                part.map((r) => ({
+                  organizationId: auth.organizationId,
+                  importId: imp.id,
+                  sheetIndex: index,
+                  rowNo: r.rowNo,
+                  raw: JSON.stringify(r.raw),
+                  include: null,
+                  customerId: null,
+                  siteId: null,
+                  contractId: null,
+                })),
+              )
+              .execute();
+          }
         }
         await audit(trx, req, {
           action: "import.created",
           entityType: "import",
           entityId: imp.id,
-          changes: { filename: req.body.filename, rows: sheet.rows.length, mapping },
+          changes: { filename: req.body.filename, sheet: sheets[sheetIndex]!.name, rows: sheets[sheetIndex]!.rows.length, mapping, mappingSource: source },
         });
         return imp;
       });
@@ -243,8 +291,42 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         mapping[field] = col;
       }
       await db.transaction().execute(async (trx) => {
-        await trx.updateTable("imports").set({ mapping: JSON.stringify(mapping) }).where("id", "=", imp.id).execute();
+        await trx.updateTable("imports").set({ mapping: JSON.stringify(mapping), mappingSource: "edited" }).where("id", "=", imp.id).execute();
         await audit(trx, req, { action: "import.mapping_changed", entityType: "import", entityId: imp.id, changes: { mapping } });
+      });
+      return detail(organizationId, imp.id);
+    },
+  );
+
+  app.put(
+    "/imports/:id/sheet",
+    {
+      config: { permission: "crm:write" },
+      schema: { tags: ["imports"], summary: "Preview and import another sheet of the workbook", params, body: importSheetInput, response: { 200: importDetail } },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const imp = await findImport(organizationId, req.params.id);
+      requirePreview(imp, true);
+      const sheet = imp.sheets[req.body.sheetIndex];
+      if (!sheet) throw unprocessable(`The workbook has no sheet ${req.body.sheetIndex + 1}`);
+      await db.transaction().execute(async (trx) => {
+        const sample = await trx
+          .selectFrom("importRows")
+          .select("raw")
+          .where("organizationId", "=", organizationId)
+          .where("importId", "=", imp.id)
+          .where("sheetIndex", "=", req.body.sheetIndex)
+          .orderBy("rowNo")
+          .limit(50)
+          .execute();
+        const { mapping, source } = await chooseMapping(trx, organizationId, sheet.headers, sample.map((r) => r.raw as string[]));
+        await trx
+          .updateTable("imports")
+          .set({ sheetIndex: req.body.sheetIndex, headers: JSON.stringify(sheet.headers), mapping: JSON.stringify(mapping), mappingSource: source })
+          .where("id", "=", imp.id)
+          .execute();
+        await audit(trx, req, { action: "import.sheet_changed", entityType: "import", entityId: imp.id, changes: { sheet: sheet.name, mapping, mappingSource: source } });
       });
       return detail(organizationId, imp.id);
     },
@@ -270,6 +352,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             .set({ include: value })
             .where("organizationId", "=", organizationId)
             .where("importId", "=", imp.id)
+            .where("sheetIndex", "=", imp.sheetIndex)
             .where("rowNo", "in", rows)
             .execute();
         }
@@ -300,7 +383,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       if (included.length === 0) throw unprocessable("No rows are included");
       try {
         await db.transaction().execute(async (trx) => {
-          const result = await saveRows(trx, organizationId, imp.id, included, plans);
+          const result = await saveRows(trx, organizationId, imp.id, imp.sheetIndex, included, plans);
           const done = await trx
             .updateTable("imports")
             .set({ status: "committed", committedAt: new Date(), error: null, result: JSON.stringify(result) })
@@ -310,6 +393,25 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             .executeTakeFirst();
           // Two commits at once: the second finds the import already committed.
           if (!done) throw new HttpError(409, "import_closed", "This import was committed by someone else");
+          // Offer these column choices on the next file with this layout.
+          await trx
+            .insertInto("importMappings")
+            .values({
+              organizationId,
+              headerKey: headerKey(imp.headers),
+              columns: JSON.stringify(savedColumns(imp.headers, imp.mapping)),
+              importId: imp.id,
+              updatedBy: req.requireAuth().userId,
+            })
+            .onConflict((oc) =>
+              oc.columns(["organizationId", "headerKey"]).doUpdateSet((eb) => ({
+                columns: eb.ref("excluded.columns"),
+                importId: eb.ref("excluded.importId"),
+                updatedBy: eb.ref("excluded.updatedBy"),
+                updatedAt: sql<Date>`now()`,
+              })),
+            )
+            .execute();
           // Put the new sites on the map.
           await queueSiteLocating(trx, organizationId, `import:${imp.id}`, now());
           await audit(trx, req, { action: "import.committed", entityType: "import", entityId: imp.id, changes: { ...result, rows: included.length } });
@@ -348,7 +450,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 };
 
 /** Inserts everything the included rows describe, in the caller's transaction. */
-async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, rows: AnalyzedRow[], plans: Map<string, Terms>) {
+async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, Terms>) {
   const customerIds = new Map<string, string>();
   const customers: Insertable<DB["customers"]>[] = [];
   const contacts: Insertable<DB["contacts"]>[] = [];
@@ -421,7 +523,7 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
       set customer_id = v.customer_id, site_id = v.site_id, contract_id = v.contract_id
       from unnest(${part.map((p) => p.rowNo)}::int[], ${part.map((p) => p.customerId)}::uuid[], ${part.map((p) => p.siteId)}::uuid[], ${part.map((p) => p.contractId)}::uuid[])
         as v(row_no, customer_id, site_id, contract_id)
-      where r.import_id = ${importId} and r.row_no = v.row_no`.execute(trx);
+      where r.import_id = ${importId} and r.sheet_index = ${sheetIndex} and r.row_no = v.row_no`.execute(trx);
   }
   return { customers: customers.length, sites: sites.length, contracts };
 }
