@@ -2,6 +2,7 @@
 
 import { AUTHORITY_EVIDENCE_KINDS, AUTHORITY_EVIDENCE_LABELS, type Jurisdiction, type SiteJurisdiction } from "@aerowise/domain";
 import { useState } from "react";
+import { VerifiedBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { day, when } from "@/lib/format";
@@ -77,6 +78,12 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
                 <span className="badge warn" title="This authority's requirements are written from public pages and have open questions. Nothing is sent automatically.">
                   Draft requirements
                 </span>
+              </>
+            )}
+            {data.jurisdiction.verified && (
+              <>
+                {" "}
+                <VerifiedBadge verified={data.jurisdiction.verified} />
               </>
             )}
             {data.profile?.status === "fictional" && (

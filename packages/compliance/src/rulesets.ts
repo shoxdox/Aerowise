@@ -22,7 +22,6 @@ export function bundledRulesets(dir = RULESET_DIR): RulesetRules[] {
       // Real authorities need a profile saying what was checked; only the fictional
       // example may go without one.
       if (!rules.profile && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} has no profile`);
-      if (rules.profile?.status === "verified" && rules.profile.unresolved.length > 0) throw new Error(`ruleset ${key}/${file} is marked verified with unresolved requirements`);
       if (rules.profile?.status === "fictional" && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} is fictional but does not say so`);
       // An authority's own layout must show every answer the authority requires.
       const laidOut = new Set(rules.report?.sections.flatMap((x) => x.fields.map((f) => f.key)) ?? []);

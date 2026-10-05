@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, filingFees, labTestRequirement, lateFeeOwed, rulesetRules, serviceIntervalMonths } from "./filings.ts";
+import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, filingFees, labTestRequirement, lateFeeOwed, mayAutoSubmit, rulesetRules, serviceIntervalMonths, verifiedWith } from "./filings.ts";
 import { DEFAULT_TEMPLATE, validateInspection } from "./inspections.ts";
 
 describe("filing state machine", () => {
@@ -159,5 +159,46 @@ describe("filing fees", () => {
     expect(lateFeeOwed(2500, "2026-03-15", "2026-03-16")).toBe(2500);
     expect(lateFeeOwed(null, "2026-03-15", "2026-03-16")).toBe(0);
     expect(lateFeeOwed(2500, null, "2026-03-16")).toBe(0);
+  });
+});
+
+describe("verification", () => {
+  const VERIFICATION = { confirmedWith: "OSSF program, Fixture County", confirmedBy: "Aerowise compliance", confirmedOn: "2026-02-02", method: "phone", evidence: "Call notes, 2026-02-02" };
+  const rules = (profile: Record<string, unknown> | undefined, autoSubmit = true) =>
+    rulesetRules.parse({
+      jurisdiction: { key: "tx-fixture", state: "TX", authorityName: "Fixture County", type: "county" },
+      version: 1,
+      effectiveFrom: "2020-01-01",
+      effectiveTo: null,
+      sourceReference: "FICTIONAL",
+      profile: profile && { sourcesCheckedOn: "2026-01-10", requirementEffective: { date: null, basis: "x" }, sources: [{ title: "x", url: "https://fixture.example", retrievedOn: "2026-01-10" }], unresolved: [], ...profile },
+      applicability: { counties: ["Fixture County"] },
+      service: { intervalMonths: 4 },
+      inspection: {},
+      filing: { deadlineDays: 14, warningDays: 5, autoSubmit },
+      submission: { method: "manual_export" },
+      customerCopy: { required: true },
+      confirmation: { mode: "manual_reference" },
+    });
+
+  it("is required to mark a profile verified, with every confirmation field", () => {
+    expect(() => rules({ status: "verified" })).toThrow(/who confirmed it/);
+    for (const key of Object.keys(VERIFICATION)) {
+      expect(() => rules({ status: "verified", verification: { ...VERIFICATION, [key]: undefined } }), key).toThrow();
+    }
+    expect(() => rules({ status: "verified", verification: { ...VERIFICATION, method: "rumor" } })).toThrow();
+    expect(() => rules({ status: "verified", verification: VERIFICATION, unresolved: ["open"] })).toThrow(/no unresolved/);
+    expect(() => rules({ status: "draft", verification: VERIFICATION })).toThrow(/Only a verified profile/);
+    expect(verifiedWith(rules({ status: "verified", verification: VERIFICATION }))).toEqual({ authorityName: "Fixture County", confirmedOn: "2026-02-02", confirmedWith: "OSSF program, Fixture County", method: "phone" });
+  });
+
+  it("gives the badge only to verified rules, and never lets a draft send itself", () => {
+    expect(verifiedWith(rules({ status: "draft", unresolved: ["open"] }))).toBeNull();
+    expect(verifiedWith(rules({ status: "fictional" }))).toBeNull();
+    expect(verifiedWith(rules(undefined))).toBeNull();
+    expect(mayAutoSubmit(rules({ status: "draft", unresolved: ["open"] }))).toBe(false);
+    expect(mayAutoSubmit(rules({ status: "verified", verification: VERIFICATION }))).toBe(true);
+    expect(mayAutoSubmit(rules({ status: "verified", verification: VERIFICATION }, false))).toBe(false);
+    expect(mayAutoSubmit(rules(undefined))).toBe(true);
   });
 });
