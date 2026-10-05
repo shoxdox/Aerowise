@@ -2,10 +2,12 @@
 
 import { useState, type FormEvent } from "react";
 import { api, ApiError, formValues } from "@/lib/api";
+import { useDemoMode } from "@/lib/demo";
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const demo = useDemoMode();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,6 +42,12 @@ export default function LoginPage() {
         <button type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
+        {demo && (
+          <p className="muted" data-testid="demo-sign-ins">
+            Try it as the owner (owner@example.com), the office (office@example.com) or the technician (tech@example.com). The
+            password for each is aerowise-dev.
+          </p>
+        )}
       </form>
     </main>
   );

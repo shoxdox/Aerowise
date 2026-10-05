@@ -118,4 +118,13 @@ describe("sign-in rate limit", () => {
     expect(blocked.json().error).toBe("rate_limited");
     await app.close();
   });
+
+  it("counts each email separately, so one blocked email does not block everyone at the same address", async () => {
+    const app = await buildApp({ db: ctx.db, loginRateLimit: 3 });
+    const attempt = (email: string) => app.inject({ method: "POST", url: "/auth/login", payload: { email, password: "guess" } });
+    for (let i = 0; i < 4; i++) await attempt("victim@example.com");
+    expect((await attempt("victim@example.com")).statusCode).toBe(429);
+    expect((await attempt("colleague@example.com")).statusCode).toBe(401);
+    await app.close();
+  });
 });

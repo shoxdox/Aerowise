@@ -30,6 +30,8 @@ test("two inspections done with no signal reach the office exactly once", async 
     await context.setOffline(true);
     await page.reload();
     await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
+    // The demo banner (the e2e API runs in demo mode) stays up with no signal.
+    await expect(page.getByRole("note").filter({ hasText: "Demo data. Nothing is sent." })).toBeVisible();
     const before = {
       inspections: await count("select count(*) as n from inspections"),
       attachments: await count("select count(*) as n from attachments"),

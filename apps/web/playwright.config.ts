@@ -22,7 +22,8 @@ export default defineConfig({
       command: `${db} reset && ${db} seed && pnpm --filter @aerowise/api start`,
       cwd: "../..",
       url: "http://localhost:4000/health",
-      env: { DATABASE_URL: databaseUrl, API_PORT: "4000", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files" },
+      // Demo mode, as on the hosted demo: every outside service is a test stand-in and the banner shows.
+      env: { DATABASE_URL: databaseUrl, API_PORT: "4000", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true" },
       timeout: 120_000,
       stdout: "pipe",
     },
