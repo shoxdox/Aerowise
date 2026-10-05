@@ -236,6 +236,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Usage on the organization list.** Active contracts are contracts not cancelled whose dates cover today in the organization's own time zone. Users are active users with an active membership. Last activity is the newer of the latest audit event and the latest sign-in; the seed writes neither, so the demo company shows "Never" until someone signs in.
 - **Not in W2.1:** the plan state and price override (W4.1), inviting the first owner (W2.2), and read-only impersonation (W2.6).
 
+## 2026-10-05 · W5.1 Import: several sheets and saved column mappings
+
+- **Every sheet is kept at upload.** All sheets with a header row and data are stored on the import (`import_rows.sheet_index`), so switching sheets in the preview needs no second upload. One import saves one sheet; a workbook with two customer sheets is imported twice. Sheets with only a title or only a header are left out; a sheet over 5,000 rows still refuses the whole file, so the row limit cannot be dodged.
+- **The preview opens on the likeliest sheet**: the one whose detected columns cover the most of customer name, service address and city, the first on a tie. A leading "Read me" or notes sheet is skipped this way.
+- **Column choices are saved when an import is saved, not when they are edited**, so abandoned previews never change what the next file gets. They are kept per organization and per file layout (the normalized headers in order), by header name rather than column position. A file with the same layout gets exactly the saved choices, including fields left out on purpose. A file with another layout gets detection, with the most recent saved choices laid over it wherever their header appears. The preview says when saved choices were used (`mapping_source`).
+
 ## 2026-10-05 · W3.1 Real email transport
 
 - **Resend, not Postmark.** Resend takes an `Idempotency-Key` header on every send (kept 24 hours; resend.com/docs/dashboard/emails/idempotency-keys, read 2026-10-05). Postmark has no idempotency key, so a lost answer could only be resolved by searching. Resend was already the candidate in PILOT-FILING-READINESS.md item 5.
@@ -248,6 +254,8 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **`EMAIL_REDIRECT_TO`** sends every message to one test inbox, with the real recipient in the subject. Staging uses it so synthetic filings never reach a real authority.
 
 ## 2026-10-05 · Hosting: Render (W1.1)
+
+_Superseded the same day by "Hosting on our own server, for now" below; kept as the plan for moving to Render._
 
 - **Render, with everything in one `render.yaml`.** Prices and features were read from each host's pricing and docs pages on 2026-10-05 ([Render pricing](https://render.com/pricing), [Render Blueprint spec](https://render.com/docs/blueprint-spec), [Railway pricing](https://docs.railway.com/reference/pricing/plans), [Railway config as code](https://docs.railway.com/reference/config-as-code), [Fly.io pricing](https://docs.fly.io/about/pricing)).
   - **Render:** one Blueprint file describes both environments, their Postgres 16 databases, disks, health checks, generated secrets and a pre-deploy migration step, so the whole setup is code. Managed Postgres includes point-in-time recovery (3 days on the free Hobby workspace, 7 on Pro). Env vars reach the Docker build, which the web app's baked-in API address needs.
@@ -323,6 +331,25 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
   **Bug fixed:** the email in the login keys was never there. The limiter ran at `onRequest`, before the body was parsed, so every sign-in on one address shared one counter. One person could lock everyone on the same network (or behind the same proxy) out. Body-keyed limits now run at `preHandler`.
 - **The client address behind proxies.** On Render, requests reach the API through Render's edge, and pages' API calls also pass through the Next.js proxy, so the API sees a proxy's address. `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxies' addresses) makes the limits key on the real client. It is off by default, because trusting `X-Forwarded-For` from anywhere lets clients make up addresses. The right value for Render has to be read off staging (open question). Until then, keying login and magic links by email keeps one shared address from locking out everyone.
 - **Dependency audit in CI:** `pnpm audit --prod --audit-level=high`. It passes today. The two moderate advisories, `csv-parse` (only with `columns`, which import does not use) and `uuid` under `exceljs` (buffer arguments not used), are not reachable.
+
+## 2026-10-05 · Hosting on our own server, for now (W1.1)
+
+- **Justin's server, not Render, for staging and production.** Justin decided on 2026-10-05 to run both environments on his own server (Chicago, 4 GB RAM, 2 vCPUs) at no extra cost, and to own backups, restores and uptime there until he moves to a managed host such as Render. Vercel was considered and set aside: the API and the worker are long-running processes, which Vercel's functions do not host. The Render setup above stays in the repo (`render.yaml`, `scripts/deploy.sh`, [DEPLOY-RENDER.md](engineering/DEPLOY-RENDER.md)) for that move.
+- **What that gives up**, compared with Render: managed Postgres with point-in-time recovery, a host that restarts on hardware failure, and someone else patching the machine. One server means one failure takes down both environments. Nightly `pg_dump`s on the same server protect against mistakes only, until W3.5 copies them off the server. Cloudflare R2 (W3.2) is required in production, so photos and signed PDFs never exist only on this one disk.
+- **Docker Compose, one project per environment**, each with its own Postgres, volumes and settings file in `/etc/aerowise/`, from the same `Dockerfile` as development and CI. A small, readable set of files in `deploy/vps/` that Justin can follow, rather than an orchestrator.
+- **Caddy in front, on subdomains of Justin's filler domain.** Staging is `staging.<domain>` and production `app.<domain>`, as DNS-only records in Cloudflare, so Caddy gets and renews Let's Encrypt certificates itself and the rate limits see the visitor's address. Changing to the real domain later is two lines. Without a domain, `setup.sh` falls back to sslip.io names for the server's IP.
+- **nginx in front where it already is.** Justin's server runs nginx on ports 80 and 443, and he chose (2026-10-05) to keep it rather than hand the ports to Caddy. `setup.sh` detects that: nginx gets two sites forwarding to each environment's web app on a port bound to the server itself, and certbot handles certificates. Caddy stays the default for a server with the ports free.
+- **Deploys build on the server.** The server pulls the commit from GitHub with a read-only deploy key and builds there, so there is no image registry to pay for or secure. A deploy runs W3.3's settings check and the migrations before swapping any container, so a missing secret or a failed migration leaves the running version serving. Production takes only commits on `main`, checked on the server.
+- **CI can deploy and nothing else.** Its SSH key is pinned in `authorized_keys` to `aerowise-deploy`, which accepts only an environment name and a full commit hash. A leaked CI key can redeploy a commit on `main` (or any pushed commit to staging), not open a shell.
+- **Restarting unhealthy containers is a cron line.** Docker restarts containers that exit, not ones that are running but unhealthy (a stuck worker). A one-minute cron job restarts any Aerowise container Docker reports unhealthy, instead of adding an autoheal container with access to the Docker socket.
+- **A deploy to staging loads the demo data when it is missing**, and cron resets it nightly (W1.3's reseed, on the server's clock, so it runs even when CI is down).
+
+## 2026-10-05 · Deploys from CI (W1.3)
+
+- **Staging follows `main`.** A push to `main` deploys to staging once the check, docker and e2e jobs pass, as a job in the same CI workflow, so it cannot run ahead of them. Deploys queue rather than cancel each other, so a migration is never interrupted.
+- **Production is a separate, hand-started workflow** that takes a commit on `main` whose check, docker and e2e jobs passed. GitHub's environment reviewers are an extra gate where the plan has them; the gate that always applies is that only people with write access can start it, and the server itself refuses production commits that are not on `main`.
+- **No secrets, no deploy, still green.** Without `VPS_SSH_KEY` the deploy step prints a notice and succeeds, so CI works on forks and before the server exists.
+- **The nightly reseed runs on the server** (cron, 09:00 UTC), not in CI, so it does not depend on GitHub Actions being up or on CI's key being allowed to run anything besides a deploy.
 
 ## 2026-10-05 · Demo mode (W1.2)
 

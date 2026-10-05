@@ -26,9 +26,9 @@ Where two streams touch the same file, the dependency column says who goes first
 
 | ID | Task | Depends on | Status |
 | --- | --- | --- | --- |
-| W1.1 | Hosting choice and deploy config | — | done (Render chosen; config in `render.yaml`, waiting on a Render account) |
+| W1.1 | Hosting choice and deploy config | — | done (#39): Justin's server with Docker Compose (`deploy/vps/`), waiting on `setup.sh` being run there; Render config kept for later |
 | W1.2 | Demo mode: banner, nothing leaves, demo seed | — | done (`DEMO_MODE`, `pnpm db:reseed-demo`, banner on every screen) |
-| W1.3 | Deploy from main through CI | W1.1 | not started |
+| W1.3 | Deploy from main through CI | W1.1 | done: staging on every green push to main, production by hand, nightly reseed; waiting on the server's GitHub secrets |
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
 | W2.2 | User invites | W2.1 | in progress (PR open) |
 | W2.3 | Password reset and user deactivation | W2.2 | not started |
@@ -45,7 +45,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W4.3 | Owner subscription page | W4.2 | done (#41); needs the Stripe customer portal turned on |
 | W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | in progress (PR open) |
 | W4.5 | Platform fee on homeowner payments | W4.1 | not started |
-| W5.1 | Import: several sheets and saved column mappings | W2.1 | not started |
+| W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
 | W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | not started |
 | W5.3 | Undo a committed import | W5.2 | not started |
 | W5.4 | Onboarding summary | W5.2 | not started |

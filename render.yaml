@@ -1,4 +1,4 @@
-# Render Blueprint: staging and production for Aerowise. See docs/engineering/DEPLOY.md.
+# Render Blueprint: staging and production for Aerowise. Not in use yet; see docs/engineering/DEPLOY-RENDER.md.
 # Each environment has its own Postgres 16 database, an API service (the API and the worker in
 # one container, sharing a disk for files) and the web app. Deploys are started by
 # scripts/deploy.sh (and later by CI), never by a push on its own.

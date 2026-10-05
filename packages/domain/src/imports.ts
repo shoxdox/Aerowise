@@ -132,6 +132,53 @@ export function detectColumns(headers: string[], sample: string[][]): ColumnMapp
   return mapping;
 }
 
+// Saved column choices. When an import is saved, the organization's choice of column for
+// each field is kept by header name, and offered on the next file.
+
+/** One saved choice: this field came from the column with this header. */
+export type SavedColumn = { field: ImportField; header: string };
+
+/** Identifies a file layout: the same headers in the same order, however they are typed. */
+export const headerKey = (headers: string[]) => headers.map(normHeader).join("|");
+
+/** The column choices of a mapping, by header name, for saving. */
+export function savedColumns(headers: string[], mapping: ColumnMapping): SavedColumn[] {
+  return IMPORT_FIELDS.filter((f) => mapping[f] !== undefined && headers[mapping[f]!] !== undefined).map((field) => ({ field, header: headers[mapping[field]!]! }));
+}
+
+/**
+ * Applies saved choices to a new file's headers. For a file with the same layout the saved
+ * choices replace detection entirely, including fields left out on purpose. For another
+ * layout, each saved choice whose header is in the file wins over detection, and detection
+ * fills in the rest.
+ */
+export function applySavedColumns(headers: string[], detected: ColumnMapping, saved: SavedColumn[], sameLayout: boolean): ColumnMapping {
+  const normalized = headers.map(normHeader);
+  const mapping: ColumnMapping = sameLayout ? {} : { ...detected };
+  const applied = new Set<ImportField>();
+  for (const { field, header } of saved) {
+    if (!IMPORT_FIELDS.includes(field)) continue;
+    const col = normalized.indexOf(normHeader(header));
+    if (col < 0) continue;
+    for (const f of IMPORT_FIELDS) if (mapping[f] === col) delete mapping[f];
+    mapping[field] = col;
+    applied.add(field);
+  }
+  // A full name column and separate first/last columns do not mix.
+  const splitName = applied.has("firstName") || applied.has("lastName");
+  if (applied.has("customerName") && !splitName) {
+    delete mapping.firstName;
+    delete mapping.lastName;
+  } else if (splitName && !applied.has("customerName")) delete mapping.customerName;
+  return mapping;
+}
+
+/** How well a mapping covers the fields every row needs, to pick a workbook's likely sheet. */
+export function mappingScore(mapping: ColumnMapping): number {
+  const name = mapping.customerName !== undefined || mapping.firstName !== undefined || mapping.lastName !== undefined;
+  return (name ? 1 : 0) + (mapping.addressLine1 !== undefined ? 1 : 0) + (mapping.city !== undefined ? 1 : 0);
+}
+
 /** Ten US digits formatted as (512) 555-0100, or null when it is not a US number. */
 export function normalizePhone(raw: string): string | null {
   let d = raw.replace(/\D/g, "");
@@ -228,12 +275,22 @@ export const importSummary = z.object({
   included: z.number().int(),
 });
 
+export const IMPORT_MAPPING_SOURCES = ["detected", "saved", "edited"] as const;
+
+export const importSheet = z.object({ name: z.string(), headers: z.array(z.string()), rows: z.number().int() });
+
 export const importDetail = z.object({
   id,
   filename: z.string(),
   status: z.enum(IMPORT_STATUSES),
+  /** Every sheet of the workbook that has data; a CSV file has one. */
+  sheets: z.array(importSheet),
+  /** The sheet being previewed and imported, an index into sheets. */
+  sheetIndex: z.number().int(),
   headers: z.array(z.string()),
   mapping: z.record(z.string(), z.number().int()),
+  /** Where the column choices came from: detection, the organization's saved choices, or a person on this import. */
+  mappingSource: z.enum(IMPORT_MAPPING_SOURCES),
   summary: importSummary,
   createdAt: z.iso.datetime({ offset: true }),
   committedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -260,6 +317,8 @@ export const importUpload = z.object({
 export const importMappingInput = z.object({
   mapping: z.partialRecord(z.enum(IMPORT_FIELDS), z.number().int().min(0).nullable()),
 });
+
+export const importSheetInput = z.object({ sheetIndex: z.number().int().min(0) });
 
 export const importRowsInput = z.object({
   /** Row numbers to include or leave out. */

@@ -54,7 +54,8 @@ export default function ImportPage() {
         </p>
         <p className="muted">
           Useful columns: customer name, phone, email, service address, city, ZIP, county, permit number, gate code, unit make, model and serial, plan
-          and contract start. Up to 5,000 rows.
+          and contract start. Up to 5,000 rows. In a workbook with several sheets you choose the sheet in the preview, and the column choices you
+          make are remembered for your next import.
         </p>
         <label className="row">
           <input type="file" accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFile} disabled={busy} aria-label="Spreadsheet" />

@@ -2,7 +2,7 @@
 # One-command deploy to Render: ./scripts/deploy.sh staging|production [commit]
 # Deploys the API first (its pre-deploy step runs the migrations), waits for it to go live,
 # then deploys the web app. Stops at the first failure. Needs RENDER_API_KEY (Render
-# dashboard > Account settings > API keys) plus curl and jq. See docs/engineering/DEPLOY.md.
+# dashboard > Account settings > API keys) plus curl and jq. See docs/engineering/DEPLOY-RENDER.md.
 set -euo pipefail
 
 env=${1:-}
