@@ -30,8 +30,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W1.2 | Demo mode: banner, nothing leaves, demo seed | — | not started |
 | W1.3 | Deploy from main through CI | W1.1 | not started |
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
-| W2.2 | User invites | W2.1 | in progress (PR open) |
-| W2.3 | Password reset and user deactivation | W2.2 | not started |
+| W2.2 | User invites | W2.1 | done (#25) |
+| W2.3 | Password reset and user deactivation | W2.2 | in progress (PR open) |
 | W2.4 | Organization settings | — | not started |
 | W2.5 | First-run checklist | W2.2, W2.4 | not started |
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |

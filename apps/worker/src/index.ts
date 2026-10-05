@@ -20,6 +20,7 @@ const ctx = {
   now: () => new Date(),
   mailFrom: process.env.FILING_EMAIL_FROM,
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
+  accountMailFrom: process.env.ACCOUNT_EMAIL_FROM || undefined,
   appUrl: process.env.PUBLIC_APP_URL,
   quickbooks: quickBooksFromEnv(db, process.env, process.env.NODE_ENV === "production"),
   sms: smsFromEnv(process.env, process.env.NODE_ENV === "production"),

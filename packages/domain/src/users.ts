@@ -6,6 +6,8 @@ import { ROLES, type Role } from "./roles.ts";
 /** How long an invitation link works. Sending it again makes a fresh link. */
 export const INVITE_DAYS = 7;
 export const USER_MIN_PASSWORD = 10;
+/** How long a password reset link works. */
+export const PASSWORD_RESET_MINUTES = 60;
 
 /**
  * Who may invite whom. An owner may invite anyone; office staff may invite anyone but an
@@ -80,3 +82,6 @@ export const acceptInvitationInput = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   password: z.string().max(200),
 });
+
+export const passwordResetRequest = z.object({ email: z.string().trim().max(320) });
+export const passwordResetInput = z.object({ password: z.string().max(200) });

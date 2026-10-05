@@ -33,6 +33,7 @@ import { siteRoutes } from "./routes/sites.ts";
 import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
 import { userRoutes } from "./routes/users.ts";
+import { passwordResetRoutes } from "./routes/password-reset.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -48,6 +49,8 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
+  /** Password reset requests allowed per IP and email per minute. */
+  passwordResetRateLimit?: number;
   /** Clock used for "today" in due dates and contract states. Tests pin it. */
   now?: () => Date;
   /** Where uploaded photos are kept. Defaults to ./.data/files on local disk. */
@@ -92,6 +95,7 @@ export async function buildApp({
   production = false,
   logger = false,
   loginRateLimit = 10,
+  passwordResetRateLimit = 5,
   now = () => new Date(),
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
@@ -181,6 +185,7 @@ export async function buildApp({
   await app.register(authRoutes, { db, production, loginRateLimit });
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations });
   await app.register(userRoutes, { db, now, production, invitations });
+  await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });

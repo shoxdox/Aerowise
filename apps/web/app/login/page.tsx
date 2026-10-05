@@ -40,6 +40,9 @@ export default function LoginPage() {
         <button type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
+        <a href="/forgot-password" className="small">
+          Forgot your password?
+        </a>
       </form>
     </main>
   );
