@@ -2,6 +2,7 @@ import { z } from "zod";
 import { id } from "./crm.ts";
 import type { TemplateDefinition } from "./inspections.ts";
 import { labTestRule, type LabTestRule } from "./lab-tests.ts";
+import { monitoredServiceRule } from "./monitoring.ts";
 import { addDays } from "./schedule.ts";
 
 // Filing an inspection with the authority that requires it. What each authority wants is
@@ -217,6 +218,11 @@ export const rulesetRules = z.object({
     intervalMonths: z.number().int().min(1).max(24),
     /** A shorter maximum for commercial systems (1 for monthly), where the authority sets one. */
     commercialIntervalMonths: z.number().int().min(1).max(24).optional(),
+    /**
+     * A longer maximum (6 months) the authority allows for systems with qualifying
+     * electronic monitoring on record. Absent: monitoring changes nothing.
+     */
+    monitored: monitoredServiceRule.optional(),
   }),
   /** Lab tests the authority requires on a schedule, such as annual BOD and TSS. */
   labTests: labTestRule.optional(),
@@ -269,9 +275,16 @@ export const profileStatus = (rules: RulesetRules): ProfileStatus => rules.profi
  */
 export const mayAutoSubmit = (rules: RulesetRules) => rules.filing.autoSubmit && profileStatus(rules) !== "draft";
 
-/** The longest the authority allows between inspections of a residential or commercial system. */
-export const serviceIntervalMonths = (rules: RulesetRules, customerType: "residential" | "commercial") =>
-  (customerType === "commercial" ? rules.service.commercialIntervalMonths : undefined) ?? rules.service.intervalMonths;
+/**
+ * The longest the authority allows between inspections of a residential or commercial
+ * system, and of one with qualifying electronic monitoring on record where the authority
+ * allows longer for those.
+ */
+export function serviceIntervalMonths(rules: RulesetRules, customerType: "residential" | "commercial", monitored = false) {
+  const base = (customerType === "commercial" ? rules.service.commercialIntervalMonths : undefined) ?? rules.service.intervalMonths;
+  const m = rules.service.monitored;
+  return monitored && m?.appliesTo.includes(customerType) ? Math.max(base, m.intervalMonths) : base;
+}
 
 /** The lab tests a residential or commercial system needs under these rules, or null. */
 export const labTestRequirement = (rules: RulesetRules, customerType: "residential" | "commercial"): LabTestRule | null =>

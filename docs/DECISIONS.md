@@ -294,3 +294,10 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Moving existing files:** `pnpm files:copy-to-r2` copies everything under `FILE_STORAGE_DIR`, reads each object back and compares SHA-256. Files already there with the same hash are skipped, and stray files outside an organization are listed. It is safe to run again and exits non-zero on any mismatch.
 - **Tests:** the same store tests run against local disk and against R2 through an in-memory S3 double. The double refuses requests with bad credentials or a payload hash that does not match. An API test round-trips a photo through R2.
 
+## 2026-10-05 · W6.3 Six-month schedule with electronic monitoring
+
+- **Monitoring is recorded on a system, by a person, with a check date.** A record says what the monitoring is (autodialer, remote telemetry, other), the device or service, who it notifies automatically and how, when it started and when someone checked that it works. It counts from the check date, not the start date, so a system nobody has checked never stretches a schedule. Ending it records when and why; records are not deleted. Each system has one open record at a time.
+- **The ruleset decides, per system type.** `service.monitored` gives the longer interval and the types it applies to. No bundled ruleset sets it yet: LCRA's sources mention six months with monitoring, but its v1 is published and immutable, and what "qualifying" means has not been confirmed with any authority. Open question for each county: what counts as qualifying monitoring, and does the authority need to be told a system has it?
+- **Same rule as W6.1: the schedule is set when the contract starts.** Monitoring that starts or ends mid-contract does not reschedule visits. The next due date on each filing does follow it, so a site that loses monitoring shows "next visit starts later than the authority allows" in the inbox.
+- **Refusing means four months.** A two-visit plan at a site that may not have six months gets a third visit, the same as any plan whose windows are too long (W6.1). Nothing errors.
+
