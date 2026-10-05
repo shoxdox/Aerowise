@@ -1,0 +1,166 @@
+# Render Blueprint: staging and production for Aerowise. See docs/engineering/DEPLOY.md.
+# Each environment has its own Postgres 16 database, an API service (the API and the worker in
+# one container, sharing a disk for files) and the web app. Deploys are started by
+# scripts/deploy.sh (and later by CI), never by a push on its own.
+#
+# Keys marked `sync: false` are entered once in the Render dashboard; nothing secret is in this file.
+
+projects:
+  - name: aerowise
+    environments:
+      - name: staging
+        databases:
+          - name: aerowise-db-staging
+            databaseName: aerowise
+            user: aerowise
+            plan: basic-256mb
+            postgresMajorVersion: "16"
+            region: ohio
+            diskSizeGB: 1
+        services:
+          - type: web
+            name: aerowise-api-staging
+            runtime: docker
+            region: ohio
+            plan: starter
+            dockerfilePath: ./Dockerfile
+            # Runs on a separate instance after the image builds and before the new API starts.
+            # A failed migration stops the deploy and the old version keeps serving.
+            preDeployCommand: pnpm db:migrate
+            dockerCommand: ./scripts/start-api-and-worker.sh
+            healthCheckPath: /health
+            autoDeployTrigger: "off"
+            disk:
+              name: files
+              mountPath: /data
+              sizeGB: 1
+            envVars:
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: aerowise-db-staging
+                  property: connectionString
+              - key: NODE_ENV
+                value: production
+              - key: PORT
+                value: "4000"
+              - key: API_PORT
+                value: "4000"
+              - key: FILE_STORAGE_DIR
+                value: /data/files
+              - key: FILE_SIGNING_SECRET
+                generateValue: true
+              - key: QUICKBOOKS_TOKEN_KEY
+                generateValue: true
+              - key: HEALTH_INCLUDES_WORKER
+                value: "true"
+              - key: PUBLIC_APP_URL
+                sync: false
+              - key: FILING_EMAIL_FROM
+                sync: false
+              - key: INVOICE_EMAIL_FROM
+                sync: false
+              - key: ACCOUNT_EMAIL_FROM
+                sync: false
+          - type: web
+            name: aerowise-web-staging
+            runtime: docker
+            region: ohio
+            plan: starter
+            dockerfilePath: ./Dockerfile
+            dockerCommand: pnpm --filter @aerowise/web start
+            # Served by Next.js and proxied through to the API, so it fails when either is down.
+            healthCheckPath: /api/health
+            autoDeployTrigger: "off"
+            envVars:
+              - key: PORT
+                value: "3000"
+              # The API's private address. The Dockerfile bakes it into the build (Next.js rewrites).
+              - key: API_URL
+                fromService:
+                  type: web
+                  name: aerowise-api-staging
+                  property: hostport
+
+      - name: production
+        databases:
+          - name: aerowise-db-production
+            databaseName: aerowise
+            user: aerowise
+            plan: basic-1gb
+            postgresMajorVersion: "16"
+            region: ohio
+            diskSizeGB: 5
+        services:
+          - type: web
+            name: aerowise-api-production
+            runtime: docker
+            region: ohio
+            plan: starter
+            dockerfilePath: ./Dockerfile
+            preDeployCommand: pnpm db:migrate
+            dockerCommand: ./scripts/start-api-and-worker.sh
+            healthCheckPath: /health
+            autoDeployTrigger: "off"
+            disk:
+              name: files
+              mountPath: /data
+              sizeGB: 5
+            envVars:
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: aerowise-db-production
+                  property: connectionString
+              - key: NODE_ENV
+                value: production
+              - key: PORT
+                value: "4000"
+              - key: API_PORT
+                value: "4000"
+              - key: FILE_STORAGE_DIR
+                value: /data/files
+              - key: FILE_SIGNING_SECRET
+                generateValue: true
+              - key: QUICKBOOKS_TOKEN_KEY
+                generateValue: true
+              - key: HEALTH_INCLUDES_WORKER
+                value: "true"
+              - key: PUBLIC_APP_URL
+                sync: false
+              - key: FILING_EMAIL_FROM
+                sync: false
+              - key: INVOICE_EMAIL_FROM
+                sync: false
+              - key: ACCOUNT_EMAIL_FROM
+                sync: false
+              # Real providers. Left empty, each one is off in production (see .env.example).
+              - key: STRIPE_SECRET_KEY
+                sync: false
+              - key: STRIPE_WEBHOOK_SECRET
+                sync: false
+              - key: QUICKBOOKS_CLIENT_ID
+                sync: false
+              - key: QUICKBOOKS_CLIENT_SECRET
+                sync: false
+              - key: QUICKBOOKS_ENVIRONMENT
+                value: production
+              - key: TWILIO_ACCOUNT_SID
+                sync: false
+              - key: TWILIO_AUTH_TOKEN
+                sync: false
+          - type: web
+            name: aerowise-web-production
+            runtime: docker
+            region: ohio
+            plan: starter
+            dockerfilePath: ./Dockerfile
+            dockerCommand: pnpm --filter @aerowise/web start
+            healthCheckPath: /api/health
+            autoDeployTrigger: "off"
+            envVars:
+              - key: PORT
+                value: "3000"
+              - key: API_URL
+                fromService:
+                  type: web
+                  name: aerowise-api-production
+                  property: hostport

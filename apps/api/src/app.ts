@@ -35,7 +35,7 @@ import { smsRoutes } from "./routes/sms.ts";
 import { userRoutes } from "./routes/users.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
-import { DEFAULT_APP_URL, enqueue } from "@aerowise/tasks";
+import { checkHeartbeat, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
 import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
@@ -80,6 +80,11 @@ export interface AppOptions {
    * and the US Census geocoder in production.
    */
   geocoder?: Geocoder | null;
+  /**
+   * When the worker runs on the same machine as the API (one hosted service sharing a disk),
+   * /health also fails if the worker's heartbeat is missing or old, so the host restarts both.
+   */
+  workerHeartbeat?: HeartbeatOptions;
 }
 
 export async function buildApp({
@@ -97,6 +102,7 @@ export async function buildApp({
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
+  workerHeartbeat,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -162,9 +168,12 @@ export async function buildApp({
 
   await app.register(authPlugin, { db });
 
-  app.get("/health", { config: { public: true }, schema: { hide: true } }, async () => {
+  app.get("/health", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
     await db.selectNoFrom((eb) => eb.lit(1).as("ok")).execute();
-    return { ok: true };
+    if (!workerHeartbeat) return { ok: true };
+    const worker = await checkHeartbeat(workerHeartbeat, now());
+    if (!worker.ok) return reply.code(503).send({ ok: false, worker: worker.reason });
+    return { ok: true, worker: "ok" };
   });
 
   const transport = mail ?? new OutboxTransport(store, now);
