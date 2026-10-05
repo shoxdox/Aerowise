@@ -35,7 +35,7 @@ export default function MarketingPage() {
 
         <section className="stack" aria-labelledby="how">
           <h2 id="how">{STEPS.title}</h2>
-          <ol className="columns steps">
+          <ol className="how-steps">
             {STEPS.items.map((s) => (
               <li key={s.title} className="card stack">
                 <strong>{s.title}</strong>

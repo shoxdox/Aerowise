@@ -198,7 +198,8 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .marketing .hero h1 { font-size: 2rem; line-height: 1.2; }
 .marketing .lead { font-size: 1.1rem; margin: 0; max-width: 60ch; }
 .marketing .points { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
-.marketing .steps { list-style: none; margin: 0; padding: 0; }
+.marketing .how-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.marketing p { margin: 0; }
 .marketing .coverage { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .marketing .price { font-size: 1.4rem; font-weight: 600; margin: 0; }
 .marketing .card p { margin: 0; }
