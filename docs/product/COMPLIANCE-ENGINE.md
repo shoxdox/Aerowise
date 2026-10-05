@@ -75,6 +75,10 @@ Sites, the authority list and filings show "Verified with <authority> on <date>"
 
 Fixture tests: `apps/api/test/verification.test.ts`, with fictional verified and draft rulesets in `apps/api/test/fixtures/rulesets/`.
 
+### Coverage
+
+`/admin/rulesets` (platform admins only) lists every authority: its status (with the verified badge), the version in force, when its sources were read and how many, its open questions (`profile.unresolved`), and how many active sites in how many organizations report to it today. Sites are resolved the same way filings are, so a hand-picked authority counts, and a site that needs a person to choose between authorities is counted as "to decide" under each candidate rather than as theirs. Active sites with no possible authority are counted at the bottom. API: `GET /admin/rulesets`; test: `apps/api/test/coverage.test.ts`.
+
 ### Validation
 
 Inspection cannot reach `COMPLETE_VALID` until required inputs are present.
