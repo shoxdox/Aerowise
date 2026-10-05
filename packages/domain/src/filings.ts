@@ -88,6 +88,26 @@ export const COVER_SHEET_SOURCES = [
 ] as const;
 export type CoverSheetSource = (typeof COVER_SHEET_SOURCES)[number];
 
+export const VERIFICATION_METHODS = ["email", "phone", "meeting", "letter"] as const;
+
+/**
+ * Who confirmed a ruleset version with the authority, when and how. A version is verified
+ * only with this record, and a draft or fictional one never has it. It lives in the
+ * versioned ruleset file, so it is reviewed like the rules it vouches for and cannot change
+ * after publishing.
+ */
+export const verificationRecord = z.object({
+  /** The person or office at the authority who confirmed it (name and title, or the office). */
+  confirmedWith: z.string().min(1).max(200),
+  /** Who asked the authority and recorded the answer. */
+  confirmedBy: z.string().min(1).max(200),
+  confirmedOn: isoDate,
+  method: z.enum(VERIFICATION_METHODS),
+  /** Where the confirmation is kept (an email's subject and date, a letter's reference, call notes). */
+  evidence: z.string().min(1).max(1000),
+});
+export type VerificationRecord = z.infer<typeof verificationRecord>;
+
 /**
  * The authority's own layout for its copy of the inspection report: its title, and which
  * answers go in which section, in order, under the authority's wording. Answers it does
@@ -162,6 +182,13 @@ export const rulesetRules = z.object({
       sources: z.array(z.object({ title: z.string().min(1), url: z.url(), retrievedOn: isoDate, note: z.string().optional() })).min(1),
       /** Requirements not yet confirmed. A verified profile has none. */
       unresolved: z.array(z.string().min(1)),
+      /** Required for, and only for, a verified profile. */
+      verification: verificationRecord.optional(),
+    })
+    .superRefine((p, ctx) => {
+      if (p.status === "verified" && !p.verification) ctx.addIssue({ code: "custom", path: ["verification"], message: "A verified profile needs who confirmed it with the authority, when and how" });
+      if (p.status !== "verified" && p.verification) ctx.addIssue({ code: "custom", path: ["verification"], message: "Only a verified profile has a verification record" });
+      if (p.status === "verified" && p.unresolved.length > 0) ctx.addIssue({ code: "custom", path: ["unresolved"], message: "A verified profile has no unresolved requirements" });
     })
     .optional(),
   applicability: z.object({
@@ -316,7 +343,16 @@ export const profileStatus = (rules: RulesetRules): ProfileStatus => rules.profi
  * ever exist outside production and send to `.example` addresses). A draft profile's
  * filings wait for a person to release them, whatever `autoSubmit` says.
  */
-export const mayAutoSubmit = (rules: RulesetRules) => rules.filing.autoSubmit && profileStatus(rules) !== "draft";
+export const mayAutoSubmit = (rules: RulesetRules) => rules.filing.autoSubmit && (profileStatus(rules) === "fictional" || verifiedWith(rules) !== null);
+
+/**
+ * "Verified with <authority> on <date>": set only for a verified profile with its
+ * verification record; null for drafts, fictional rules and rules without a profile.
+ */
+export function verifiedWith(rules: RulesetRules) {
+  const v = rules.profile?.status === "verified" ? rules.profile.verification : undefined;
+  return v ? { authorityName: rules.jurisdiction.authorityName, confirmedOn: v.confirmedOn, confirmedWith: v.confirmedWith, method: v.method } : null;
+}
 
 /**
  * The longest the authority allows between inspections of a residential or commercial
@@ -384,6 +420,10 @@ export function deadlineState(status: FilingStatus, deadlineOn: string | null, w
 
 // API shapes.
 
+/** What the "Verified with <authority> on <date>" badge shows. */
+export const verificationBadge = z.object({ authorityName: z.string(), confirmedOn: isoDate, confirmedWith: z.string(), method: z.enum(VERIFICATION_METHODS) });
+export type VerificationBadge = z.infer<typeof verificationBadge>;
+
 export const jurisdiction = z.object({
   id,
   key: z.string(),
@@ -397,6 +437,7 @@ export const jurisdiction = z.object({
   /** For `reviewed` authorities: how to tell whether a site is theirs. */
   howToDecide: z.string().nullable(),
   profileStatus: z.enum(PROFILE_STATUSES),
+  verified: verificationBadge.nullable(),
 });
 export type Jurisdiction = z.infer<typeof jurisdiction>;
 
@@ -578,7 +619,7 @@ export const filingDetail = filingListItem.extend({
   /** Every package made for this filing, newest first. Each is exactly what was (or will be) sent. */
   packages: z.array(submissionPackage),
   confirmationEvidence: confirmationEvidence.nullable(),
-  profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), confirmationMode: z.enum(["manual_reference", "none_published"]), confirmationNote: z.string().nullable() }).nullable(),
+  profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), confirmationMode: z.enum(["manual_reference", "none_published"]), confirmationNote: z.string().nullable(), verified: verificationBadge.nullable() }).nullable(),
   /** Report versions for an inspection filing, newest first; corrections link to what they replace. */
   reports: z.array(z.object({ id, version: z.number().int(), sha256: z.string(), supersedesReportId: id.nullable(), correctionReason: z.string().nullable(), generatedAt: z.iso.datetime({ offset: true }) })),
 });
