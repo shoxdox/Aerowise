@@ -256,3 +256,13 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **The authority's interval wins over the plan's visit count.** A plan whose windows are longer than the site's authority allows gets extra visits on the contract (the fewest that keep equal whole-month windows). The price is not changed: the office sets prices, and the contract shows the visit count it actually has. Open question: should Aerowise instead refuse the contract, or warn the office before it is made?
 - **The interval is the one in force on the start date.** A later ruleset version, or a site assigned to a different authority, does not reschedule a contract already made. The inbox's "next visit starts later than the authority allows" item still catches a gap.
 - **Draft rulesets count.** A draft profile only holds automatic sending. Scheduling more often than a plan says is the cautious direction, so drafts set intervals too.
+
+## 2026-10-05 · W6.2 Annual lab tests
+
+- **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
+- **When the first test is due.** With no result on record, the clock starts at the later of the site's first contract with this provider and the date the ruleset took effect. A renewal does not restart it. A site taken over from another provider will usually show as late until the office records the previous provider's last result, which is the safe direction.
+- **Only while under contract.** Sites with no contract in force have no requirement, because the lab test is the maintenance provider's job while it services the system.
+- **Records are append-only.** A correction replaces a record (one correction each). The original stays visible, marked "Replaced". Both go on the compliance timeline.
+- **No limits or pass/fail.** Aerowise records the values but does not judge them, because no authority's limits have been read yet. A county ruleset that publishes limits can add them later.
+- **Who records them:** the office (`filings:write`). Anyone who can read filings can see them.
+
