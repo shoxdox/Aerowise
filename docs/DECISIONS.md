@@ -236,6 +236,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Usage on the organization list.** Active contracts are contracts not cancelled whose dates cover today in the organization's own time zone. Users are active users with an active membership. Last activity is the newer of the latest audit event and the latest sign-in; the seed writes neither, so the demo company shows "Never" until someone signs in.
 - **Not in W2.1:** the plan state and price override (W4.1), inviting the first owner (W2.2), and read-only impersonation (W2.6).
 
+## 2026-10-05 · W5.1 Import: several sheets and saved column mappings
+
+- **Every sheet is kept at upload.** All sheets with a header row and data are stored on the import (`import_rows.sheet_index`), so switching sheets in the preview needs no second upload. One import saves one sheet; a workbook with two customer sheets is imported twice. Sheets with only a title or only a header are left out; a sheet over 5,000 rows still refuses the whole file, so the row limit cannot be dodged.
+- **The preview opens on the likeliest sheet**: the one whose detected columns cover the most of customer name, service address and city, the first on a tie. A leading "Read me" or notes sheet is skipped this way.
+- **Column choices are saved when an import is saved, not when they are edited**, so abandoned previews never change what the next file gets. They are kept per organization and per file layout (the normalized headers in order), by header name rather than column position. A file with the same layout gets exactly the saved choices, including fields left out on purpose. A file with another layout gets detection, with the most recent saved choices laid over it wherever their header appears. The preview says when saved choices were used (`mapping_source`).
+
 ## 2026-10-05 · W3.1 Real email transport
 
 - **Resend, not Postmark.** Resend takes an `Idempotency-Key` header on every send (kept 24 hours; resend.com/docs/dashboard/emails/idempotency-keys, read 2026-10-05). Postmark has no idempotency key, so a lost answer could only be resolved by searching. Resend was already the candidate in PILOT-FILING-READINESS.md item 5.
@@ -373,13 +379,7 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Coverage comes from the rulesets, through `GET /public/overview`** (no sign-in, 60 requests a minute per address). It lists every active authority with a real ruleset (draft or verified) and never the fictional example. Verified authorities show the W6.5 "Verified with <authority> on <date>" badge and are listed first; drafts show "In progress". A new county ruleset appears on the page when it merges, with no copy change.
 - **Pricing comes from the W4.1 subscription config** (`AEROWISE_DESIGN_PARTNER_DAYS`, `AEROWISE_PRICE_PER_CONTRACT_CENTS`, `AEROWISE_MONTHLY_MINIMUM_CENTS`), so the page and billing cannot disagree. The page says "Free for 90 days" (the brief's design-partner offer), then the per-contract price and monthly minimum.
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
-- **Open:** whether to show the post-free-period price publicly at all, or only "free for 90 days" (Justin); the demo request button arrives with W8.2.
-
-## 2026-10-05 · W5.1 Import: several sheets and saved column mappings
-
-- **Every sheet is kept at upload.** All sheets with a header row and data are stored on the import (`import_rows.sheet_index`), so switching sheets in the preview needs no second upload. One import saves one sheet; a workbook with two customer sheets is imported twice. Sheets with only a title or only a header are left out; a sheet over 5,000 rows still refuses the whole file, so the row limit cannot be dodged.
-- **The preview opens on the likeliest sheet**: the one whose detected columns cover the most of customer name, service address and city, the first on a tie. A leading "Read me" or notes sheet is skipped this way.
-- **Column choices are saved when an import is saved, not when they are edited**, so abandoned previews never change what the next file gets. They are kept per organization and per file layout (the normalized headers in order), by header name rather than column position. A file with the same layout gets exactly the saved choices, including fields left out on purpose. A file with another layout gets detection, with the most recent saved choices laid over it wherever their header appears. The preview says when saved choices were used (`mapping_source`).
+- **The price after the free period is shown publicly** (Justin, 2026-10-05): it builds trust and filters out poor fits. It is read from the billing config, never typed into the copy.
 
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
@@ -390,3 +390,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Kept apart from Stripe Connect.** Billing has its own package (`packages/billing`), keys (`STRIPE_BILLING_*`), webhook (`/webhooks/stripe-billing`), event log (`billing_events`) and Stripe customer per organization (`organizations.billing_customer_id`). A Connect-signed event is refused at the billing webhook.
 - **Retries.** The worker queues a run for each organization every `BILLING_RUN_INTERVAL_MS` (an hour). A run counts once and invoices once, and Stripe calls carry idempotency keys tied to the month. A failed call leaves the month `pending`, and a later run issues it. Without Stripe Billing keys in production, months are counted and stay `pending` until keys are added. The test stand-in runs outside production and in demo mode (`DEMO_MODE`), like every other outside service.
 - **Webhook statuses.** `invoice.finalized` sets a month to open, `invoice.paid` to paid, `invoice.payment_failed` and `invoice.marked_uncollectible` to failed, and `invoice.voided` to void. A paid month stays paid. Moving the plan state on payment or failure (to `past_due`, `read_only` or back to `active`) is W4.4.
+
+## 2026-10-05 · W8.2 Demo request form
+
+- **Requests are platform data, not tenant data.** A prospect is not an organization yet, so `demo_requests` (migration 0026) has no `organization_id`, like the platform admin tables. Only platform admins read it (`GET /admin/demo-requests`), and marking one handled writes a platform audit event.
+- **Email to Aerowise belongs to no organization.** The alert goes through `EmailTransport` like every other email (the outbox until Resend is configured), with `organizationId: null`. `email_sends` and `email_events` now allow a null organization; such sends are unique by idempotency key among platform sends, and their delivery events are recorded but never touch a filing. Resend tags them `aw_org=platform`.
+- **Who is emailed:** `DEMO_REQUEST_NOTIFY_TO` (comma-separated). Left empty, every active platform admin is emailed, so Justin hears about requests from the first day without setting anything.
+- **The email is sent while the request is answered, not from the worker.** It is one short email, and the worker queue is per organization. If it fails, the request is still saved and `/admin/demo-requests` shows "Email failed" with the reason; the visitor sees the same thank-you either way.
+- **Spam protection:** 5 requests an hour per client address (keyed by address only, so it runs at `onRequest`; see W3.3), length limits on every field, and a hidden "website" field. A request that fills it gets the normal answer and is dropped, so a bot cannot tell. No CAPTCHA: it needs an outside account and hurts real visitors; add Cloudflare Turnstile if spam gets through.
+- **Open:** the address to notify (Justin).
