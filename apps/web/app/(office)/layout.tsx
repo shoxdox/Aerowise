@@ -23,7 +23,12 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/plans", label: "Plans" },
     ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
     ...(canEdit(me) ? [{ href: "/settings/users", label: "Users" }] : []),
-    ...(me.role === "owner" ? [{ href: "/settings/billing", label: "Billing" }] : []),
+    ...(me.role === "owner"
+      ? [
+          { href: "/settings/billing", label: "Billing" },
+          { href: "/settings/subscription", label: "Subscription" },
+        ]
+      : []),
   ];
   async function signOut() {
     await api("/auth/logout", { method: "POST", body: {} });
@@ -51,7 +56,8 @@ function Shell({ children }: { children: ReactNode }) {
       {isReadOnlyAccount(me) && (
         <p className="banner warn" role="status" data-testid="read-only-banner">
           This account is read-only because its Aerowise plan has lapsed. You can still see due inspections, filings and
-          deadlines, and view and export everything. Contact Aerowise to reactivate it.
+          deadlines, and view and export everything.{" "}
+          {me.role === "owner" ? <Link href="/settings/subscription">Add a payment method to reactivate it.</Link> : "Ask your company's owner to reactivate it."}
         </p>
       )}
       <main className="page">{me.legalDue?.length ? <LegalGate due={me.legalDue} companyName={me.organization.name} /> : children}</main>

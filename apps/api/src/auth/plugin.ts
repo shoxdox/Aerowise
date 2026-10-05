@@ -17,6 +17,11 @@ declare module "fastify" {
      * or tenant session ever satisfies it.
      */
     platformAdmin?: boolean;
+    /**
+     * A write a read-only organization may still make: only what gets it out of read-only
+     * (saving a payment method to pay Aerowise).
+     */
+    allowedWhenReadOnly?: boolean;
     /** Accepts a raw image body instead of JSON (photo uploads). */
     imageUpload?: boolean;
     /** Accepts a form-encoded body: provider webhooks that sign their requests (Twilio). */

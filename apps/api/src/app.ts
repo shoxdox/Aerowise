@@ -21,6 +21,7 @@ import { inboxRoutes } from "./routes/inbox.ts";
 import { invoiceRoutes } from "./routes/invoices.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { billingRoutes } from "./routes/billing.ts";
+import { subscriptionRoutes } from "./routes/subscription.ts";
 import { TestBillingProvider, type BillingProvider } from "@aerowise/billing";
 import { portalRoutes } from "./routes/portal.ts";
 import { quickbooksRoutes } from "./routes/quickbooks.ts";
@@ -256,6 +257,7 @@ export async function buildApp({
   await app.register(importRoutes, { db, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(billingRoutes, { db, now, provider: billing });
+  await app.register(subscriptionRoutes, { db, now, provider: billing, config: subscription, appUrl });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, testCheckout: !production || demo });
   await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(portalRoutes, { db, now, store, appUrl });
