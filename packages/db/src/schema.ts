@@ -669,24 +669,38 @@ export interface ImportsTable {
   organizationId: string;
   filename: string;
   status: Generated<"preview" | "committed" | "failed" | "discarded">;
-  headers: ColumnType<unknown, string, never>;
+  headers: ColumnType<unknown, string, string>;
   mapping: ColumnType<unknown, string, string>;
   createdBy: string;
   createdAt: CreatedAt;
   committedAt: Timestamp | null;
   error: string | null;
   result: ColumnType<unknown, string | null | undefined, string | null>;
+  sheets: ColumnType<unknown, string, never>;
+  sheetIndex: Generated<number>;
+  mappingSource: Generated<"detected" | "saved" | "edited">;
 }
 
 export interface ImportRowsTable {
   organizationId: string;
   importId: string;
+  sheetIndex: Generated<number>;
   rowNo: number;
   raw: ColumnType<unknown, string, never>;
   include: boolean | null;
   customerId: string | null;
   siteId: string | null;
   contractId: string | null;
+}
+
+export interface ImportMappingsTable {
+  id: Generated<string>;
+  organizationId: string;
+  headerKey: string;
+  columns: ColumnType<unknown, string, string>;
+  importId: string;
+  updatedBy: string;
+  updatedAt: Generated<Timestamp>;
 }
 
 export interface InvoicesTable {
@@ -1165,6 +1179,7 @@ export interface DB {
   filingAttempts: FilingAttemptsTable;
   imports: ImportsTable;
   importRows: ImportRowsTable;
+  importMappings: ImportMappingsTable;
   invoices: InvoicesTable;
   invoiceLines: InvoiceLinesTable;
   payments: PaymentsTable;

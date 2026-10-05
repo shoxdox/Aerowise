@@ -1,0 +1,46 @@
+name: Deploy to production
+
+# Started by hand from the Actions tab, which only people with write access to the repository
+# can do. It runs in the "production" environment, so any required reviewers set on it in the
+# repository settings must also approve. Takes a commit
+# on main whose CI passed (main's latest by default). See docs/engineering/DEPLOY.md.
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit on main to deploy (leave empty for main's latest)
+        required: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: { group: deploy-production, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, fetch-depth: 0 }
+      - name: Pick the commit and check it
+        id: pick
+        env:
+          INPUT_COMMIT: ${{ inputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit=$(git rev-parse --verify "${INPUT_COMMIT:-origin/main}^{commit}")
+          git merge-base --is-ancestor "$commit" origin/main || { echo "::error::$commit is not on main"; exit 1; }
+          for job in check docker e2e; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/commits/$commit/check-runs?check_name=$job" --jq '[.check_runs[] | select(.conclusion == "success")] | length')
+            [ "$result" -gt 0 ] || { echo "::error::CI job $job has not passed on $commit"; exit 1; }
+          done
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Deploying $(git log -1 --format='%h %s' "$commit")"
+      - run: ./scripts/ci-deploy.sh production "$COMMIT"
+        env:
+          COMMIT: ${{ steps.pick.outputs.commit }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}

@@ -54,9 +54,20 @@ It asks for the password. Staging needs its own if you want `/admin` there; the 
 
 A deploy checks the commit out on the server, builds the image, runs the settings check, runs the migrations, swaps the containers and waits up to five minutes for every one to report healthy. A failed build, settings check or migration stops it before anything is replaced, and the running version keeps serving. On staging, the demo company and users are loaded if they are missing. Production only takes commits that are on `main`.
 
-- **From CI** (W1.3), or by hand with the same restricted key: `ssh deploy@<server> aerowise-deploy staging|production <full commit sha>`. The CI key in `~deploy/.ssh/authorized_keys` is pinned to [`aerowise-deploy`](../../deploy/vps/aerowise-deploy.sh): no shell, no port forwarding.
+- **Staging, from CI, on every push to `main`.** The `deploy-staging` job in [`ci.yml`](../../.github/workflows/ci.yml) runs once the check, docker and e2e jobs pass, and calls [`scripts/ci-deploy.sh`](../../scripts/ci-deploy.sh). Until the secrets below exist it skips with a notice and stays green.
+- **Production, by hand.** In GitHub, **Actions > Deploy to production > Run workflow**, with a commit on `main` (empty means `main`'s latest). It refuses a commit that is not on `main` or whose check, docker and e2e jobs did not pass. Only people with write access can start it. It runs in the `production` environment, so required reviewers set under **Settings > Environments > production** (where the GitHub plan offers them) must also approve.
+- CI's SSH key in `~deploy/.ssh/authorized_keys` is pinned to [`aerowise-deploy`](../../deploy/vps/aerowise-deploy.sh): it can run `aerowise-deploy staging|production <full commit sha>` and nothing else, with no shell and no port forwarding.
 - **From your machine**, with your own SSH access as `deploy`: `VPS_SSH=deploy@<server> ./scripts/deploy-vps.sh staging [commit]`. The commit must be pushed.
 - **On the server:** `sudo -u deploy /opt/aerowise/<env>/deploy/vps/deploy.sh <env> <commit>`.
+
+The repository secrets CI uses, all printed by `setup.sh` (**Settings > Secrets and variables > Actions**):
+
+| Secret | What it is |
+| --- | --- |
+| `VPS_HOST` | The server's IP address |
+| `VPS_SSH_PORT` | Its SSH port, if not 22 |
+| `VPS_KNOWN_HOSTS` | The server's SSH host key, so CI knows it is talking to the right machine |
+| `VPS_SSH_KEY` | The private half of the deploy-only key |
 
 To roll back, deploy the earlier commit. Migrations are forward-only and are not rolled back; a fix goes in a new migration.
 

@@ -236,6 +236,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Usage on the organization list.** Active contracts are contracts not cancelled whose dates cover today in the organization's own time zone. Users are active users with an active membership. Last activity is the newer of the latest audit event and the latest sign-in; the seed writes neither, so the demo company shows "Never" until someone signs in.
 - **Not in W2.1:** the plan state and price override (W4.1), inviting the first owner (W2.2), and read-only impersonation (W2.6).
 
+## 2026-10-05 · W5.1 Import: several sheets and saved column mappings
+
+- **Every sheet is kept at upload.** All sheets with a header row and data are stored on the import (`import_rows.sheet_index`), so switching sheets in the preview needs no second upload. One import saves one sheet; a workbook with two customer sheets is imported twice. Sheets with only a title or only a header are left out; a sheet over 5,000 rows still refuses the whole file, so the row limit cannot be dodged.
+- **The preview opens on the likeliest sheet**: the one whose detected columns cover the most of customer name, service address and city, the first on a tie. A leading "Read me" or notes sheet is skipped this way.
+- **Column choices are saved when an import is saved, not when they are edited**, so abandoned previews never change what the next file gets. They are kept per organization and per file layout (the normalized headers in order), by header name rather than column position. A file with the same layout gets exactly the saved choices, including fields left out on purpose. A file with another layout gets detection, with the most recent saved choices laid over it wherever their header appears. The preview says when saved choices were used (`mapping_source`).
+
 ## 2026-10-05 · W3.1 Real email transport
 
 - **Resend, not Postmark.** Resend takes an `Idempotency-Key` header on every send (kept 24 hours; resend.com/docs/dashboard/emails/idempotency-keys, read 2026-10-05). Postmark has no idempotency key, so a lost answer could only be resolved by searching. Resend was already the candidate in PILOT-FILING-READINESS.md item 5.
@@ -337,6 +343,13 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **CI can deploy and nothing else.** Its SSH key is pinned in `authorized_keys` to `aerowise-deploy`, which accepts only an environment name and a full commit hash. A leaked CI key can redeploy a commit on `main` (or any pushed commit to staging), not open a shell.
 - **Restarting unhealthy containers is a cron line.** Docker restarts containers that exit, not ones that are running but unhealthy (a stuck worker). A one-minute cron job restarts any Aerowise container Docker reports unhealthy, instead of adding an autoheal container with access to the Docker socket.
 - **A deploy to staging loads the demo data when it is missing**, and cron resets it nightly (W1.3's reseed, on the server's clock, so it runs even when CI is down).
+
+## 2026-10-05 · Deploys from CI (W1.3)
+
+- **Staging follows `main`.** A push to `main` deploys to staging once the check, docker and e2e jobs pass, as a job in the same CI workflow, so it cannot run ahead of them. Deploys queue rather than cancel each other, so a migration is never interrupted.
+- **Production is a separate, hand-started workflow** that takes a commit on `main` whose check, docker and e2e jobs passed. GitHub's environment reviewers are an extra gate where the plan has them; the gate that always applies is that only people with write access can start it, and the server itself refuses production commits that are not on `main`.
+- **No secrets, no deploy, still green.** Without `VPS_SSH_KEY` the deploy step prints a notice and succeeds, so CI works on forks and before the server exists.
+- **The nightly reseed runs on the server** (cron, 09:00 UTC), not in CI, so it does not depend on GitHub Actions being up or on CI's key being allowed to run anything besides a deploy.
 
 ## 2026-10-05 · Demo mode (W1.2)
 
