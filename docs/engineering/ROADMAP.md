@@ -61,8 +61,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W7.1 | Stripe Connect live readiness | W1.3 | not started |
 | W7.2 | QuickBooks against an Intuit sandbox | W1.3 | not started |
 | W7.3 | Twilio on a real account | W1.3 | not started |
-| W8.1 | Public marketing page | W6.5 | in progress (PR open) |
-| W8.2 | Demo request form | W2.1, W8.1 | not started |
+| W8.1 | Public marketing page | W6.5 | done (#37) |
+| W8.2 | Demo request form | W2.1, W8.1 | in progress (PR open) |
 | W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | not started |
 
 ## W1. Hosted demo and staging
