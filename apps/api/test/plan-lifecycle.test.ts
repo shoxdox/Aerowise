@@ -116,8 +116,8 @@ describe("plan reminders", () => {
     expect((await runPlanLifecycle({ db: ctx.db, provider, config, now: ctx.now, mail }, a.org.id)).reminded).toEqual([14]);
     // The trial is extended: the new end date gets its own reminders.
     await setPlan(ctx, a.org.id, "trial", "2026-03-08");
-    const org = await ctx.db.selectFrom("organizations").select(["id", "name", "email"]).where("id", "=", a.org.id).executeTakeFirstOrThrow();
-    const { customerId } = await provider.createCustomer({ organizationId: org.id, name: org.name, email: org.email });
+    const org = await ctx.db.selectFrom("organizations").select(["id", "name"]).where("id", "=", a.org.id).executeTakeFirstOrThrow();
+    const { customerId } = await provider.createCustomer({ organizationId: org.id, name: org.name });
     await ctx.db.updateTable("organizations").set({ billingCustomerId: customerId }).where("id", "=", a.org.id).execute();
     await provider.managePaymentMethod({ customerId, returnUrl: "https://app.example.com/settings/subscription" });
     expect((await runPlanLifecycle({ db: ctx.db, provider, config, now: ctx.now, mail }, a.org.id)).reminded).toEqual([14, 7]);

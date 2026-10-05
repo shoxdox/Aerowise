@@ -191,13 +191,13 @@ export async function applyBillingEvent(
 
     const org = await trx
       .selectFrom("organizations")
-      .select(["id", "timezone", "subscriptionState", "subscriptionStartsOn"])
+      .select(["id", "timezone", "subscriptionState"])
       .where("id", "=", period.organizationId)
       .forUpdate()
       .executeTakeFirstOrThrow();
     const today = dateInZone(now, org.timezone);
     if (status === "failed" && org.subscriptionState === "active") {
-      await changePlan(trx, org.id, "active", { state: "past_due", startsOn: org.subscriptionStartsOn, endsOn: pastDueUntil(today, config) }, `payment failed (${event.type})`);
+      await changePlan(trx, org.id, "active", { state: "past_due", startsOn: today, endsOn: pastDueUntil(today, config) }, `payment failed (${event.type})`);
     }
     if (status === "paid" && (org.subscriptionState === "past_due" || org.subscriptionState === "read_only")) {
       const stillFailed = await trx.selectFrom("billingPeriods").select("id").where("organizationId", "=", org.id).where("status", "=", "failed").executeTakeFirst();
