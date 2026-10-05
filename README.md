@@ -17,6 +17,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Public marketing page at `/`: the problem, how it works, county coverage read from the rulesets (verified ones badged), design-partner pricing from configuration, and a demo request form that lands in `/admin` and emails Aerowise (rate-limited, with a spam trap); placeholder copy | Done |
 | Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, invite an organization's first owner, platform audit log | Done |
 | User invitations: owner and office invite by email with a role (office cannot invite an owner); single-use links that expire after 7 days; accepting sets a password and signs in | Done |
+| Password reset by email (single-use, one-hour links, rate-limited, never says whether an email exists) and deactivating a user (signed out at once) | Done |
 | Aerowise plans: plan state (design partner, trial, active, past due, read-only), dates and founder price per organization, set in `/admin`; read-only companies can view and export everything but change nothing | Done |
 | Aerowise billing: monthly count of active contracts per organization, stored with each month; Stripe Billing invoices (per-contract price, monthly minimum, founder price) collected automatically; test stand-in in development | Code done; **needs Stripe Billing keys** |
 | Owner subscription page (`/settings/subscription`): plan, days left, estimate at today's count, saved payment method (Stripe customer portal), past invoices | Done |

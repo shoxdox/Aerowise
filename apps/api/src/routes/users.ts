@@ -154,6 +154,81 @@ export const userRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; 
     },
   );
 
+  async function memberIn(organizationId: string, userId: string) {
+    const row = await db
+      .selectFrom("memberships")
+      .select(["userId", "active", "role"])
+      .where("organizationId", "=", organizationId)
+      .where("userId", "=", userId)
+      .executeTakeFirst();
+    if (!row) throw notFound("User");
+    return row;
+  }
+
+  app.post(
+    "/users/:id/deactivate",
+    {
+      config: { permission: "users:manage" },
+      schema: {
+        tags: ["users"],
+        summary: "Deactivate someone in this organization",
+        description: "Their sessions in this organization end at once and they can no longer sign in to it. Other organizations they belong to are not affected.",
+        params,
+        body: z.object({}).optional(),
+        response: { 204: z.null() },
+      },
+    },
+    async (req, reply) => {
+      const { organizationId, userId } = req.requireAuth();
+      if (req.params.id === userId) throw new HttpError(422, "cannot_deactivate_self", "You cannot deactivate yourself");
+      const target = await memberIn(organizationId, req.params.id);
+      if (target.active) {
+        const at = now();
+        await db.transaction().execute(async (trx) => {
+          await trx
+            .updateTable("memberships")
+            .set({ active: false, deactivatedAt: at, deactivatedBy: userId })
+            .where("organizationId", "=", organizationId)
+            .where("userId", "=", req.params.id)
+            .execute();
+          await trx
+            .updateTable("sessions")
+            .set({ revokedAt: new Date() })
+            .where("organizationId", "=", organizationId)
+            .where("userId", "=", req.params.id)
+            .where("revokedAt", "is", null)
+            .execute();
+          await audit(trx, req, { action: "user.deactivated", entityType: "user", entityId: req.params.id, changes: { role: target.role } });
+        });
+      }
+      return reply.status(204).send(null);
+    },
+  );
+
+  app.post(
+    "/users/:id/reactivate",
+    {
+      config: { permission: "users:manage" },
+      schema: { tags: ["users"], summary: "Let a deactivated person sign in again", params, body: z.object({}).optional(), response: { 204: z.null() } },
+    },
+    async (req, reply) => {
+      const { organizationId } = req.requireAuth();
+      const target = await memberIn(organizationId, req.params.id);
+      if (!target.active) {
+        await db.transaction().execute(async (trx) => {
+          await trx
+            .updateTable("memberships")
+            .set({ active: true, deactivatedAt: null, deactivatedBy: null })
+            .where("organizationId", "=", organizationId)
+            .where("userId", "=", req.params.id)
+            .execute();
+          await audit(trx, req, { action: "user.reactivated", entityType: "user", entityId: req.params.id, changes: { role: target.role } });
+        });
+      }
+      return reply.status(204).send(null);
+    },
+  );
+
   // ---- The invited person's side (no sign-in; the link is the key) ----
 
   async function invitationFor(token: string) {
@@ -236,7 +311,7 @@ export const userRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; 
           .executeTakeFirst();
         if (membership?.active) throw new HttpError(409, "already_member", "You are already a member of this organization. Sign in instead.");
         if (membership) {
-          await trx.updateTable("memberships").set({ role: inv.role, active: true }).where("organizationId", "=", inv.organizationId).where("userId", "=", id).execute();
+          await trx.updateTable("memberships").set({ role: inv.role, active: true, deactivatedAt: null, deactivatedBy: null }).where("organizationId", "=", inv.organizationId).where("userId", "=", id).execute();
         } else {
           await trx.insertInto("memberships").values({ organizationId: inv.organizationId, userId: id, role: inv.role, technicianLicense: null }).execute();
         }

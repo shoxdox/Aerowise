@@ -22,7 +22,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     // Sign-in forms and invitation links show a wrong password themselves.
-    const showsOwn401 = path.endsWith("/auth/login") || path.startsWith("/invitations/accept/");
+    const showsOwn401 = path.endsWith("/auth/login") || path.startsWith("/invitations/accept/") || path.startsWith("/auth/password-reset");
     if (res.status === 401 && !showsOwn401 && typeof window !== "undefined") {
       // The platform-admin console has its own sign-in, separate from the office one.
       const login = path.startsWith("/admin/") ? "/admin/login" : "/login";
