@@ -249,6 +249,7 @@ export interface ServiceObligationsTable {
   dueOn: string;
   status: Generated<"open" | "completed" | "cancelled">;
   completedAt: Timestamp | null;
+  completedByImport: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }

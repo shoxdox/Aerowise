@@ -191,7 +191,13 @@ export default function ImportPreviewPage() {
               </td>
               <td>
                 {r.record.planName}
-                {r.record.contractStart && <div className="muted">from {r.record.contractStart}</div>}
+                {r.record.contractStart && (
+                  <div className="muted">
+                    {r.record.contractStart}
+                    {r.record.contractEnd && ` to ${r.record.contractEnd}`}
+                  </div>
+                )}
+                {r.record.lastInspection && <div className="muted">last inspected {r.record.lastInspection}</div>}
               </td>
               <td>
                 <span className={`badge ${STATUS_CLASS[r.status]}`}>{r.status}</span>
@@ -201,6 +207,11 @@ export default function ImportPreviewPage() {
                     {r.duplicateOf.siteId ? <Link href={`/sites/${r.duplicateOf.siteId}`}>{r.duplicateOf.label}</Link> : r.duplicateOf.label}
                   </div>
                 )}
+                {r.notes.map((m) => (
+                  <div key={m} className="muted">
+                    {m}
+                  </div>
+                ))}
                 {r.messages.map((m) => (
                   <div key={m} className={r.status === "error" ? "error" : "muted"}>
                     {m}

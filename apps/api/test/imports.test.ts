@@ -220,6 +220,65 @@ describe("customer import", () => {
     ]);
   });
 
+  it("imports contracts mid-term so renewals and overdue visits show at once", async () => {
+    const t = await tenant(ctx);
+    // Today is 2026-03-01. The plan is 12 months with a visit every 4 months.
+    const csv = [
+      "Name,Address,City,Plan,Contract End,Last Inspection,Start Date,Permit #,Make,Model",
+      // Ends in 20 days; every visit of its term was done before Aerowise.
+      "Renew Soon,1 R St,Austin,Annual Aerobic,3/21/2026,12/10/2025,,p-1,Aqua,AS-500",
+      // Last inspected 5 months ago in its first window; the second window closed yesterday.
+      "Over Due,2 O St,Austin,Annual Aerobic,,10/1/2025,7/1/2025,,,",
+      // Ended a month ago.
+      "Long Gone,3 E St,Austin,Annual Aerobic,1/31/2026,,,,,",
+      // Starts today.
+      "Brand New,4 N St,Austin,Annual Aerobic,,,3/1/2026,,,",
+    ].join("\n");
+    const imp = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    expect(imp.mapping).toMatchObject({ contractEnd: 4, lastInspection: 5, contractStart: 6, permitNumber: 7, manufacturer: 8, model: 9 });
+    expect(imp.rows.map((r) => [r.record.contractStart, r.record.contractEnd])).toEqual([
+      ["2025-03-22", "2026-03-21"],
+      ["2025-07-01", "2026-06-30"],
+      ["2025-02-01", "2026-01-31"],
+      ["2026-03-01", "2027-02-28"],
+    ]);
+    const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    expect(done.result).toEqual({ customers: 4, sites: 4, contracts: 4 });
+
+    // The contract ending in 20 days is waiting for its renewal; the ended one is not.
+    expect((await t.api.get("/renewals")).json().notStarted).toBe(1);
+    const created = (await t.api.post("/renewals/campaign", {})).json().created;
+    expect(created).toBe(1);
+
+    // Only the visit missed since the last inspection is overdue.
+    const overdue = (await t.api.get("/obligations/due?overdueOnly=true")).json();
+    expect(overdue.items).toMatchObject([{ dueOn: "2026-02-28", overdue: true, customer: { displayName: "Over Due" } }]);
+    const due = (await t.api.get("/obligations/due?through=2027-03-01")).json();
+    expect(due.items.map((o: { customer: { displayName: string }; dueOn: string }) => `${o.customer.displayName} ${o.dueOn}`).sort((a: string, b: string) => a.slice(-10).localeCompare(b.slice(-10)) || a.localeCompare(b))).toEqual([
+      "Over Due 2026-02-28",
+      "Brand New 2026-06-30",
+      "Over Due 2026-06-30",
+      "Brand New 2026-10-31",
+      "Brand New 2027-02-28",
+    ]);
+    const visits = await ctx.db
+      .selectFrom("serviceObligations as o")
+      .innerJoin("customers as c", (j) => j.on((eb) => eb.exists(eb.selectFrom("sites as s").select("s.id").whereRef("s.id", "=", "o.siteId").whereRef("s.customerId", "=", "c.id"))))
+      .select(["c.displayName", "o.status", "o.completedByImport"])
+      .orderBy("c.displayName")
+      .orderBy("o.sequence")
+      .execute();
+    const byCustomer = (name: string) => visits.filter((v) => v.displayName === name).map((v) => `${v.status}${v.completedByImport === imp.id ? " by import" : ""}`);
+    expect(byCustomer("Renew Soon")).toEqual(["completed by import", "completed by import", "completed by import"]);
+    expect(byCustomer("Over Due")).toEqual(["completed by import", "open", "open"]);
+    expect(byCustomer("Long Gone")).toEqual(["cancelled by import", "cancelled by import", "cancelled by import"]);
+    expect(byCustomer("Brand New")).toEqual(["open", "open", "open"]);
+
+    const site = await ctx.db.selectFrom("sites").select(["id", "permitNumber"]).where("addressLine1", "=", "1 R St").executeTakeFirstOrThrow();
+    expect(site.permitNumber).toBe("P-1");
+    expect(await ctx.db.selectFrom("wastewaterSystems").select(["manufacturer", "model"]).where("siteId", "=", site.id).execute()).toEqual([{ manufacturer: "Aqua", model: "AS-500" }]);
+  });
+
   it("lets the office fix the mapping and choose rows", async () => {
     const t = await tenant(ctx);
     const csv = "Owner,Where,Town,Other\nAnn Lee,9 Elm Rd,Austin,x\nBo Diaz,1 Main St,Austin,y\nCy Moss,2 Oak Dr,Austin,z\n";
