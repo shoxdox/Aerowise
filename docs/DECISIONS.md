@@ -331,3 +331,10 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Fees are recorded, not charged.** A filing keeps the filing fee, the late fee that would apply and the schedule they came from, copied when it opens. Paying the authority and passing fees on to customers are left to the office. Open question for Justin: should fees go on the customer's invoice?
 - **"Late" means it first reached the authority after the deadline day,** in the organization's time zone. The deadline day itself is on time. A rejected filing sent again keeps the late fee its first send decided. Open question per county: does a rejected-then-corrected report count from the first or the accepted submission?
 - **No real ruleset sets a layout or fees yet.** LCRA's fee schedule is cited as a source, but its v1 is published and immutable; amounts go into each county's next version once they are read from the authority's own schedule.
+
+## 2026-10-05 · W6.5 Ruleset verification and badge
+
+- **The verification record lives in the ruleset file, not in a table.** Ruleset versions are immutable, hashed files reviewed in pull requests, and their status already lives there. A database record could make a version "verified" without review, or differ between staging and production. So verifying is a new version with `profile.verification` (who at the authority, who asked, date, method, evidence), and the schema refuses a verified profile without it. The roadmap's "migration" for this was not needed.
+- **Only Justin marks a ruleset verified** (brief). That is a review rule, not something the code can check: a pull request that sets `status: "verified"` needs his approval.
+- **The badge follows the version.** A filing shows the version it recorded, so the badge on an old filing never claims more than was true when it was filed.
+- **Send guard:** automatic submission needs a verified version with its record (or fictional rules, which are not loaded in production). Before, it was "anything but draft"; it now names what is allowed rather than what is not, so a future status can't send by default.

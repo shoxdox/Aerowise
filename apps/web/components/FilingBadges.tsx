@@ -1,4 +1,4 @@
-import type { DeadlineState, FilingStatus } from "@aerowise/domain";
+import type { DeadlineState, FilingStatus, VerificationBadge } from "@aerowise/domain";
 import { day } from "@/lib/format";
 
 export const FILING_STATUS_LABELS: Record<FilingStatus, string> = {
@@ -33,5 +33,16 @@ export function DeadlineCell({ deadlineOn, state }: { deadlineOn: string | null;
       {state === "approaching" && <span className="badge warn"> due soon</span>}
       {state === "overdue" && <span className="badge danger">overdue</span>}
     </>
+  );
+}
+
+const VERIFIED_BY: Record<VerificationBadge["method"], string> = { email: "by email", phone: "by phone", meeting: "in a meeting", letter: "by letter" };
+
+/** Shown only for a ruleset version someone confirmed with the authority. */
+export function VerifiedBadge({ verified }: { verified: VerificationBadge }) {
+  return (
+    <span className="badge ok" title={`Confirmed with ${verified.confirmedWith} ${VERIFIED_BY[verified.method]}`}>
+      Verified with {verified.authorityName} on {day(verified.confirmedOn)}
+    </span>
   );
 }

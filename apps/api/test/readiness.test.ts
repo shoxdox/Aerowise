@@ -100,7 +100,11 @@ describe("authority profiles", () => {
     expect(mayAutoSubmit(example)).toBe(true);
     const draft = { ...example, profile: { status: "draft" as const, sourcesCheckedOn: "2026-10-04", requirementEffective: { date: null, basis: "x" }, sources: [], unresolved: ["x"] } };
     expect(mayAutoSubmit(draft)).toBe(false);
-    expect(mayAutoSubmit({ ...draft, profile: { ...draft.profile, status: "verified" as const, unresolved: [] } })).toBe(true);
+    // Verified sends on its own only with the record of who confirmed it with the authority (W6.5).
+    const verified = { ...draft, profile: { ...draft.profile, status: "verified" as const, unresolved: [] } };
+    expect(mayAutoSubmit(verified)).toBe(false);
+    const verification = { confirmedWith: "x", confirmedBy: "y", confirmedOn: "2026-10-05", method: "email" as const, evidence: "z" };
+    expect(mayAutoSubmit({ ...verified, profile: { ...verified.profile, verification } })).toBe(true);
   });
 
   it("read the LCRA and Harris drafts as written", () => {

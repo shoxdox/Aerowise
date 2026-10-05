@@ -55,7 +55,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W6.2 | Annual lab tests as required tests | W6.1 | done (#26) |
 | W6.3 | Six-month schedule with electronic monitoring | W6.1 | done (#28) |
 | W6.4 | Per-authority report templates and fees | W6.1 | done (#33) |
-| W6.5 | Ruleset verification workflow and badge | — | not started |
+| W6.5 | Ruleset verification workflow and badge | — | in review |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | not started |
 | W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | not started |
 | W7.1 | Stripe Connect live readiness | W1.3 | not started |
