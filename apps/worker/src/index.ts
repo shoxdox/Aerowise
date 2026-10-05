@@ -2,28 +2,30 @@ import { hostname } from "node:os";
 import { syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
-import { quickBooksFromEnv } from "@aerowise/quickbooks";
-import { geocoderFromEnv } from "@aerowise/routing";
-import { smsFromEnv } from "@aerowise/sms";
-import { heartbeatFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
+import { heartbeatFromEnv, providersFromEnv, runNextTask, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations) from the Postgres queue.
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
-// Fictional rules (the example county) are for development and tests only.
-await syncRulesets(db, undefined, { includeFictional: process.env.NODE_ENV !== "production" });
-// Filing and invoice emails go to the development outbox in file storage; see README for production.
+const production = process.env.NODE_ENV === "production";
+const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// The same outside services as the API; DEMO_MODE=true makes every one a test stand-in.
+const providers = providersFromEnv({ db, store, env: process.env, production });
+// Fictional rules (the example county) are for development, tests and the demo only.
+await syncRulesets(db, undefined, { includeFictional: !production || providers.demo });
+// Filing and invoice emails go to the outbox in file storage; see README for production.
 const ctx = {
   db,
-  store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
+  store,
   now: () => new Date(),
+  mail: providers.mail,
   mailFrom: process.env.FILING_EMAIL_FROM,
   invoiceMailFrom: process.env.INVOICE_EMAIL_FROM,
   appUrl: process.env.PUBLIC_APP_URL,
-  quickbooks: quickBooksFromEnv(db, process.env, process.env.NODE_ENV === "production"),
-  sms: smsFromEnv(process.env, process.env.NODE_ENV === "production"),
-  geocoder: geocoderFromEnv(process.env, process.env.NODE_ENV === "production"),
+  quickbooks: providers.quickbooks,
+  sms: providers.sms,
+  geocoder: providers.geocoder,
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
 const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);

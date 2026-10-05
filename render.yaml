@@ -53,6 +53,10 @@ projects:
                 generateValue: true
               - key: HEALTH_INCLUDES_WORKER
                 value: "true"
+              # The hosted demo: every outside service is a test stand-in, whatever keys are set,
+              # the fictional example rules load, and the web app shows "Demo data. Nothing is sent."
+              - key: DEMO_MODE
+                value: "true"
               - key: PUBLIC_APP_URL
                 sync: false
               - key: FILING_EMAIL_FROM

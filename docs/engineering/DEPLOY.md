@@ -53,8 +53,20 @@ The script finds the services by name, deploys the API first (its pre-deploy ste
 
 To roll back, choose an earlier deploy under the service's **Events** in the dashboard and **Rollback**, or run the script with the earlier commit. Migrations are not rolled back; a fix goes in a new migration.
 
+## Staging is the demo
+
+Staging runs with `DEMO_MODE=true`. Every outside service uses its test stand-in whatever keys are set: email (filings, invoices, portal links, renewals) goes to the outbox in file storage, texts to the test provider, payments to the test Stripe provider (with its test checkout), QuickBooks to the built-in test company, and addresses to the test geocoder. The fictional example county rules load, and every screen shows "Demo data. Nothing is sent." The sign-in page lists the demo users: `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`.
+
+To load or reset the demo data, open the API service's **Shell** and run:
+
+```sh
+pnpm db:seed           # first time: loads the fictional company, its users and data
+pnpm db:reseed-demo    # later: empties everything except the authority rules and platform admins, removes stored files, seeds again
+```
+
+Both refuse to run when `NODE_ENV=production` unless `DEMO_MODE=true`, so they cannot touch production. W1.3 runs the reseed every night.
+
 ## Not here yet
 
-- Demo mode, the demo seed and the "Demo data. Nothing is sent." banner on staging (W1.2). Until then staging runs like production: test providers off, no fictional rulesets.
 - Deploys from CI, the nightly staging reseed and a custom domain with HTTPS (W1.3). Render already serves the `onrender.com` addresses over HTTPS.
 - Object storage, so the worker can run as its own service (W3.2); backups beyond Render's point-in-time recovery and a restore runbook (W3.5).
