@@ -69,6 +69,8 @@ tr:last-child td { border-bottom: none; }
 .badge.completed { background: #e3f4ec; color: var(--accent); border-color: transparent; }
 tr.overdue td:first-child { border-left: 3px solid var(--error); }
 table.compact th, table.compact td { padding: 6px 10px; }
+/* Wide tables scroll inside their box on a phone instead of widening the whole page. */
+.table-scroll { overflow-x: auto; max-width: 100%; }
 
 .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .weekday { display: flex; flex-direction: column; align-items: flex-start; gap: 0; background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; }

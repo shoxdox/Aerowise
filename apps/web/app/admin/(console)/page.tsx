@@ -239,43 +239,45 @@ export default function AdminOrganizationsPage() {
         />
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Organization</th>
-            <th>Active contracts</th>
-            <th>Users</th>
-            <th>Last activity</th>
-            <th>Created</th>
-            <th />
-            <th>Plan</th>
-            <th>Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data?.items.map((o) => (
-            <tr key={o.id}>
-              <td>
-                {o.name}{" "}
-                <button className="link small" onClick={() => setEditing(o.id)} aria-label={`Edit plan for ${o.name}`}>
-                  Edit plan
-                </button>
-              </td>
-              <td>{o.activeContracts}</td>
-              <td>{o.users}</td>
-              <td>{when(o.lastActivityAt)}</td>
-              <td>{when(o.createdAt)}</td>
-              <td>
-                <button className="link" onClick={() => { setInvitingFor(o); setSent(null); }}>
-                  Invite owner
-                </button>
-              </td>
-              <td>{planSummary(o)}</td>
-              <td>{priceSummary(o, data.defaults)}</td>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th>Active contracts</th>
+              <th>Users</th>
+              <th>Last activity</th>
+              <th>Created</th>
+              <th />
+              <th>Plan</th>
+              <th>Price</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data?.items.map((o) => (
+              <tr key={o.id}>
+                <td>
+                  {o.name}{" "}
+                  <button className="link small" onClick={() => setEditing(o.id)} aria-label={`Edit plan for ${o.name}`}>
+                    Edit plan
+                  </button>
+                </td>
+                <td>{o.activeContracts}</td>
+                <td>{o.users}</td>
+                <td>{when(o.lastActivityAt)}</td>
+                <td>{when(o.createdAt)}</td>
+                <td>
+                  <button className="link" onClick={() => { setInvitingFor(o); setSent(null); }}>
+                    Invite owner
+                  </button>
+                </td>
+                <td>{planSummary(o)}</td>
+                <td>{priceSummary(o, data.defaults)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {data && data.items.length === 0 && <p className="muted">No organizations yet.</p>}
     </div>
   );

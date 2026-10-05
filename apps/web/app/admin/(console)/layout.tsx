@@ -2,11 +2,13 @@
 
 import type { PlatformAdminMe } from "@aerowise/domain";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<PlatformAdminMe | null>(null);
+  const path = usePathname();
   useEffect(() => {
     api<PlatformAdminMe>("/admin/auth/me").then(setMe, () => {});
   }, []);
@@ -21,8 +23,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <header className="topbar">
         <strong>Aerowise admin</strong>
         <nav>
-          <Link href="/admin" className="active">
+          <Link href="/admin" className={path === "/admin" ? "active" : undefined}>
             Organizations
+          </Link>
+          <Link href="/admin/rulesets" className={path.startsWith("/admin/rulesets") ? "active" : undefined}>
+            Rulesets
           </Link>
         </nav>
         <span className="spacer" />

@@ -1,3 +1,4 @@
+import { rulesetCoverage } from "@aerowise/compliance";
 import { verifyPassword, type Database } from "@aerowise/db";
 import {
   adminOrganization,
@@ -9,6 +10,7 @@ import {
   invitationSent,
   ownerInvitationInput,
   platformAdminMe,
+  rulesetCoverage as rulesetCoverageSchema,
   SUBSCRIPTION_STATE_LABELS,
   subscriptionDefaults,
   subscriptionPlanInput,
@@ -165,6 +167,19 @@ export const adminRoutes: FastifyPluginAsyncZod<{
     async (req) => loadAdmin(req.requireAdmin().adminId),
   );
 
+
+  app.get(
+    "/admin/rulesets",
+    {
+      config: { platformAdmin: true },
+      schema: {
+        tags: ["admin"],
+        summary: "Every reporting authority: how far its rules are checked, what is open, and how many sites use it",
+        response: { 200: rulesetCoverageSchema },
+      },
+    },
+    async () => rulesetCoverage(db, now().toISOString().slice(0, 10)),
+  );
 
   app.get(
     "/admin/organizations",
