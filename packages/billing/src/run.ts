@@ -95,11 +95,7 @@ export async function runMonthlyBilling(
   if (period.status !== "pending" || !opts.provider) return { periodId: period.id, status: period.status, counted, invoiced: false };
 
   const provider = opts.provider;
-  let customerId = org.billingCustomerId;
-  if (!customerId) {
-    customerId = (await provider.createCustomer({ organizationId, name: org.name, email: org.email })).customerId;
-    await db.updateTable("organizations").set({ billingCustomerId: customerId }).where("id", "=", organizationId).execute();
-  }
+  const customerId = await ensureBillingCustomer(db, provider, org);
   const invoice = await provider.createInvoice({
     customerId,
     idempotencyKey: `aerowise-billing-${period.id}`,
@@ -115,6 +111,19 @@ export async function runMonthlyBilling(
     .returning("status")
     .executeTakeFirst();
   return { periodId: period.id, status: updated?.status ?? invoice.status, counted, invoiced: true };
+}
+
+/** The organization's Stripe Billing customer, made the first time it is needed. */
+export async function ensureBillingCustomer(
+  db: Database,
+  provider: BillingProvider,
+  org: { id: string; name: string; email: string | null; billingCustomerId: string | null },
+): Promise<string> {
+  if (org.billingCustomerId) return org.billingCustomerId;
+  const { customerId } = await provider.createCustomer({ organizationId: org.id, name: org.name, email: org.email });
+  await db.updateTable("organizations").set({ billingCustomerId: customerId }).where("id", "=", org.id).where("billingCustomerId", "is", null).execute();
+  const stored = await db.selectFrom("organizations").select("billingCustomerId").where("id", "=", org.id).executeTakeFirstOrThrow();
+  return stored.billingCustomerId!;
 }
 
 async function findPeriod(db: Executor, organizationId: string, startsOn: string) {

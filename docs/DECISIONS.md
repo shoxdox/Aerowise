@@ -393,6 +393,14 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **The email is sent while the request is answered, not from the worker.** It is one short email, and the worker queue is per organization. If it fails, the request is still saved and `/admin/demo-requests` shows "Email failed" with the reason; the visitor sees the same thank-you either way.
 - **Spam protection:** 5 requests an hour per client address (keyed by address only, so it runs at `onRequest`; see W3.3), length limits on every field, and a hidden "website" field. A request that fills it gets the normal answer and is dropped, so a bot cannot tell. No CAPTCHA: it needs an outside account and hurts real visitors; add Cloudflare Turnstile if spam gets through.
 - **Open:** the address to notify (Justin).
+## 2026-10-05 · W4.3 Owner subscription page
+
+- **Owner only, under its own permission.** `subscription:manage` is held by owners alone. `billing:manage` stays the permission for the company's Stripe Connect account (homeowner payments), so the two Stripe relationships never share a permission or a page: `/settings/billing` versus `/settings/subscription`.
+- **The estimate is at today's count.** The page counts contracts in force today with the same rule as the monthly run, and applies the company's price and minimum. During a free period it says what the company would pay afterwards. Months already counted show their stored count, amount and status, linked to Stripe's hosted invoice.
+- **Saving a card uses Stripe's customer portal**, opened straight on updating the payment method. It saves the card or bank account as the default for invoices, so Aerowise never handles card details. The test provider saves a test Visa at once and returns.
+- **A read-only company can still save a payment method.** Routes opt in with `config.allowedWhenReadOnly`. Saving a payment method is the only one, because paying is how a lapsed company gets back. Moving back to `active` when the payment clears comes in W4.4.
+- **A lapsed company's automatic sends keep going (Justin, 2026-10-05).** Queued county filings and homeowner reminder emails keep going out while a company is read-only, so a lapse never causes a missed county deadline. W4.4 keeps it this way.
+
 
 ## 2026-10-05 · W6.6 Ruleset coverage page
 
