@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Calls the API through the same-origin /api proxy. Sends to /login on 401. */
+/** Calls the API through the same-origin /api proxy. Sends to the matching sign-in page on 401. */
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: init.method ?? "GET",
@@ -21,8 +21,10 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401 && !path.startsWith("/auth/login") && typeof window !== "undefined") {
-      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    if (res.status === 401 && !path.endsWith("/auth/login") && typeof window !== "undefined") {
+      // The platform-admin console has its own sign-in, separate from the office one.
+      const login = path.startsWith("/admin/") ? "/admin/login" : "/login";
+      window.location.href = `${login}?next=${encodeURIComponent(window.location.pathname)}`;
     }
     throw new ApiError(res.status, data.error ?? "error", data.message ?? res.statusText);
   }

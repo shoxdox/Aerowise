@@ -1,6 +1,7 @@
 import { sql } from "kysely";
 import { createDb, requireDatabaseUrl } from "./client.ts";
 import { migrate } from "./migrate.ts";
+import { createPlatformAdmin } from "./platform-admin.ts";
 import { seed } from "./seed.ts";
 
 const command = process.argv[2];
@@ -34,7 +35,37 @@ if (command === "migrate") {
     await admin.destroy();
   }
   console.log(`reset ${name}`);
+} else if (command === "create-platform-admin") {
+  // cli.ts create-platform-admin <email> <name...>, with the password on stdin (or in
+  // PLATFORM_ADMIN_PASSWORD), so it never lands in shell history or the process list.
+  const [email, ...nameParts] = process.argv.slice(3);
+  if (!email || nameParts.length === 0) {
+    console.error('usage: cli.ts create-platform-admin <email> <name>   (password on stdin)');
+    process.exit(1);
+  }
+  const password = process.env.PLATFORM_ADMIN_PASSWORD ?? (await readStdinLine());
+  await migrate(url, console.log);
+  const db = createDb(url);
+  try {
+    const admin = await createPlatformAdmin(db, { email, name: nameParts.join(" "), password });
+    console.log(`created platform admin ${admin.email} (${admin.id})`);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+  } finally {
+    await db.destroy();
+  }
 } else {
-  console.error("usage: cli.ts migrate|seed|reset");
+  console.error("usage: cli.ts migrate|seed|reset|create-platform-admin");
   process.exit(1);
+}
+
+async function readStdinLine(): Promise<string> {
+  if (process.stdin.isTTY) process.stdout.write("Password: ");
+  let data = "";
+  for await (const chunk of process.stdin) {
+    data += String(chunk);
+    if (data.includes("\n")) break;
+  }
+  return data.split("\n")[0]?.replace(/\r$/, "") ?? "";
 }

@@ -3,6 +3,7 @@ import { roleHasPermission, type Permission } from "@aerowise/domain";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { forbidden, HttpError, unauthorized } from "../lib/errors.ts";
+import { ADMIN_SESSION_COOKIE, findAdminSession, type AdminContext } from "./admin-sessions.ts";
 import { findSession, SESSION_COOKIE, type AuthContext } from "./sessions.ts";
 
 declare module "fastify" {
@@ -11,6 +12,11 @@ declare module "fastify" {
     permission?: Permission;
     /** Marks a route as callable without signing in (health, login). */
     public?: boolean;
+    /**
+     * A platform-admin (/admin) route: needs a platform-admin session. No tenant role
+     * or tenant session ever satisfies it.
+     */
+    platformAdmin?: boolean;
     /** Accepts a raw image body instead of JSON (photo uploads). */
     imageUpload?: boolean;
     /** Accepts a form-encoded body: provider webhooks that sign their requests (Twilio). */
@@ -19,6 +25,8 @@ declare module "fastify" {
   interface FastifyRequest {
     auth: AuthContext | null;
     requireAuth(): AuthContext;
+    admin: AdminContext | null;
+    requireAdmin(): AdminContext;
   }
 }
 
@@ -34,11 +42,18 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     return this.auth;
   });
 
+  app.decorateRequest("admin", null);
+  app.decorateRequest("requireAdmin", function (this: FastifyRequest) {
+    if (!this.admin) throw unauthorized();
+    return this.admin;
+  });
+
   app.addHook("onRoute", (route) => {
-    const config = route.config as { permission?: Permission; public?: boolean } | undefined;
+    const config = route.config as { permission?: Permission; public?: boolean; platformAdmin?: boolean } | undefined;
     if (route.method === "HEAD") return;
-    if (!config?.public && !config?.permission) {
-      throw new Error(`Route ${route.method} ${route.url} must declare config.permission or config.public`);
+    const declared = [config?.public, config?.permission, config?.platformAdmin].filter(Boolean).length;
+    if (declared !== 1) {
+      throw new Error(`Route ${route.method} ${route.url} must declare config.permission, config.platformAdmin or config.public (exactly one)`);
     }
   });
 
@@ -60,6 +75,13 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
       if (!allowed) {
         throw new HttpError(415, "unsupported_media_type", "Requests must send application/json");
       }
+    }
+
+    if (config.platformAdmin) {
+      const adminToken = req.cookies[ADMIN_SESSION_COOKIE];
+      req.admin = adminToken ? await findAdminSession(opts.db, adminToken) : null;
+      req.requireAdmin();
+      return;
     }
 
     const token = req.cookies[SESSION_COOKIE];

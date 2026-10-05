@@ -1,6 +1,7 @@
 import { addDays, addMonths, buildTermSchedule } from "@aerowise/domain";
 import type { Database } from "./client.ts";
 import { hashPassword } from "./password.ts";
+import { createPlatformAdmin } from "./platform-admin.ts";
 
 // Demo data for local development: one fictional provider, three users, ~50
 // customers with sites and systems, two plans and a contract on most sites. Every
@@ -13,6 +14,8 @@ export const DEMO_USERS = [
   { name: "Oscar Office", email: "office@example.com", role: "office" },
   { name: "Tess Tech", email: "tech@example.com", role: "technician" },
 ] as const;
+/** Development-only platform admin for /admin. Production admins come from the CLI. */
+export const DEMO_PLATFORM_ADMIN = { name: "Pat Platform", email: "admin@example.com" } as const;
 
 const FIRST = ["James", "Maria", "Robert", "Linda", "Carlos", "Patricia", "David", "Rosa", "Michael", "Karen", "Jose", "Susan", "Daniel", "Lupe", "Thomas", "Nancy"];
 const LAST = ["Hartley", "Gonzales", "Whitfield", "Ramirez", "Calloway", "Nguyen", "Brennan", "Salinas", "Dorsey", "Medina", "Pruitt", "Castillo", "Langford", "Villarreal"];
@@ -50,6 +53,7 @@ function todayInChicago(): string {
 }
 
 export async function seed(db: Database, log: (msg: string) => void = () => {}) {
+  await seedPlatformAdmin(db, log);
   const existing = await db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).executeTakeFirst();
   if (existing) {
     log(`demo organization already exists (${existing.id}); nothing to do`);
@@ -285,4 +289,16 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
   });
 
   log(`log in as ${DEMO_USERS.map((u) => u.email).join(", ")} with password "${DEMO_PASSWORD}"`);
+}
+
+/** Never in production: there, platform admins are created only with the CLI command. */
+async function seedPlatformAdmin(db: Database, log: (msg: string) => void) {
+  if (process.env.NODE_ENV === "production") {
+    log("production: no platform admin seeded; use cli.ts create-platform-admin");
+    return;
+  }
+  const existing = await db.selectFrom("platformAdmins").select("id").where("email", "=", DEMO_PLATFORM_ADMIN.email).executeTakeFirst();
+  if (existing) return;
+  await createPlatformAdmin(db, { ...DEMO_PLATFORM_ADMIN, password: DEMO_PASSWORD });
+  log(`platform admin for /admin: ${DEMO_PLATFORM_ADMIN.email} with password "${DEMO_PASSWORD}"`);
 }
