@@ -19,15 +19,13 @@ declare module "fastify" {
     platformAdmin?: boolean;
     /**
      * A write a read-only organization may still make: only what gets it out of read-only
-     * (saving a payment method to pay Aerowise).
+     * or lets its owner back in (saving a payment method to pay Aerowise, accepting the terms).
      */
     allowedWhenReadOnly?: boolean;
     /** Accepts a raw image body instead of JSON (photo uploads). */
     imageUpload?: boolean;
     /** Accepts a form-encoded body: provider webhooks that sign their requests (Twilio). */
     signedForm?: boolean;
-    /** May change data even when the organization is read-only (accepting the terms). */
-    allowedWhenReadOnly?: boolean;
   }
   interface FastifyRequest {
     auth: AuthContext | null;
