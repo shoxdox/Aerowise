@@ -23,6 +23,7 @@ export const PERMISSIONS = [
   "invoices:read",
   "invoices:write",
   "billing:manage",
+  "subscription:manage",
   "quickbooks:read",
   "quickbooks:write",
   "sms:read",
@@ -52,6 +53,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "invoices:read",
     "invoices:write",
     "billing:manage",
+    // What the company pays Aerowise: the owner's alone (W4.3).
+    "subscription:manage",
     "quickbooks:read",
     "quickbooks:write",
     "sms:read",

@@ -1,7 +1,8 @@
+import { runMonthlyBilling, TestBillingProvider } from "@aerowise/billing";
 import { createPlatformAdmin } from "@aerowise/db";
 import { describe, expect, it } from "vitest";
-import { subscriptionConfigFromEnv } from "@aerowise/domain";
-import { client, createTenant, PASSWORD, setupTestApp, type TestContext } from "./helpers.ts";
+import { DEFAULT_SUBSCRIPTION_CONFIG, subscriptionConfigFromEnv } from "@aerowise/domain";
+import { client, createTenant, createUser, login, PASSWORD, setupTestApp, type TestContext } from "./helpers.ts";
 import { payload, setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
@@ -154,5 +155,88 @@ describe("subscription configuration", () => {
       monthlyMinimumCents: 9900,
     });
     expect(() => subscriptionConfigFromEnv({ AEROWISE_MONTHLY_MINIMUM_CENTS: "99.00" })).toThrow(/whole number/);
+  });
+});
+
+describe("owner subscription page", () => {
+  it("shows the plan, days left and what the company will pay at today's count", async () => {
+    // One contract in force (setup's), on a trial with 30 days left and a founder minimum.
+    const a = await setup(ctx, "Org A");
+    const admin = await adminApi(ctx);
+    // Test organizations start active; a new free period is given from read-only.
+    await admin.put(`/admin/organizations/${a.org.id}/plan`, plan("read_only"));
+    expect((await admin.put(`/admin/organizations/${a.org.id}/plan`, plan("trial", "2026-03-31", { monthlyMinimumCentsOverride: 4900 }))).statusCode).toBe(200);
+
+    const res = await a.api.get("/subscription");
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      plan: { state: "trial", startsOn: "2026-03-01", endsOn: "2026-03-31", daysLeft: 30, readOnly: false },
+      price: { pricePerContractCents: 150, monthlyMinimumCents: 4900, founder: true },
+      estimate: { countedOn: "2026-03-01", activeContracts: 1, amountCents: 4900, charged: false },
+      paymentMethod: null,
+      provider: "test",
+      invoices: [],
+    });
+  });
+
+  it("is the owner's alone", async () => {
+    const a = await createTenant(ctx, "Org A");
+    for (const role of ["office", "technician", "read_only"] as const) {
+      const user = await createUser(ctx.db, a.org.id, role);
+      const api = client(ctx.app, await login(ctx.app, user.email));
+      expect((await api.get("/subscription")).statusCode, role).toBe(403);
+      expect((await api.post("/subscription/payment-method", {})).statusCode, role).toBe(403);
+    }
+  });
+
+  it("saves a payment method through Stripe and shows it", async () => {
+    const a = await createTenant(ctx, "Org A");
+    const res = await a.api.post("/subscription/payment-method", {});
+    expect(res.statusCode).toBe(200);
+    expect(res.json().url).toBe("http://localhost:3000/settings/subscription?payment=test");
+
+    const org = await ctx.db.selectFrom("organizations").select("billingCustomerId").where("id", "=", a.org.id).executeTakeFirstOrThrow();
+    expect(org.billingCustomerId).toMatch(/^cus_test_/);
+    expect((await a.api.get("/subscription")).json().paymentMethod).toEqual({ label: "Visa", last4: "4242", expires: "12/2034" });
+    // A second visit reuses the same Stripe customer.
+    await a.api.post("/subscription/payment-method", {});
+    const again = await ctx.db.selectFrom("organizations").select("billingCustomerId").where("id", "=", a.org.id).executeTakeFirstOrThrow();
+    expect(again.billingCustomerId).toBe(org.billingCustomerId);
+    const events = await ctx.db.selectFrom("auditEvents").select("action").where("action", "=", "subscription.payment_method_opened").execute();
+    expect(events).toHaveLength(2);
+  });
+
+  it("lets a read-only company add a payment method, and nothing else", async () => {
+    const a = await createTenant(ctx, "Org A");
+    const admin = await adminApi(ctx);
+    await admin.put(`/admin/organizations/${a.org.id}/plan`, plan("read_only"));
+    expect((await a.api.post("/subscription/payment-method", {})).statusCode).toBe(200);
+    expect((await a.api.post("/customers", { displayName: "New" })).statusCode).toBe(403);
+    const overview = (await a.api.get("/subscription")).json();
+    expect(overview.plan).toMatchObject({ state: "read_only", readOnly: true });
+    expect(overview.estimate.charged).toBe(false);
+  });
+
+  it("lists the company's own invoices with the count each one used", async () => {
+    const a = await setup(ctx, "Org A");
+    const b = await createTenant(ctx, "Org B");
+    const provider = new TestBillingProvider();
+    await runMonthlyBilling(ctx.db, { provider, config: DEFAULT_SUBSCRIPTION_CONFIG, now: ctx.now }, a.org.id);
+
+    const invoices = (await a.api.get("/subscription")).json().invoices;
+    expect(invoices).toEqual([
+      {
+        id: expect.any(String),
+        startsOn: "2026-03-01",
+        endsOn: "2026-03-31",
+        activeContracts: 1,
+        pricePerContractCents: 150,
+        monthlyMinimumCents: 9900,
+        amountCents: 9900,
+        status: "open",
+        hostedInvoiceUrl: expect.stringMatching(/^https:\/\/invoice\.stripe\.test\//),
+      },
+    ]);
+    expect((await b.api.get("/subscription")).json().invoices).toEqual([]);
   });
 });

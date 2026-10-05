@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { BillingSignatureError, type BillingEvent, type BillingInvoiceInput, type BillingProvider } from "./provider.ts";
+import { BillingSignatureError, type BillingEvent, type BillingInvoiceInput, type BillingProvider, type PaymentMethodSummary } from "./provider.ts";
 
 /**
  * Stripe Billing on Aerowise's own Stripe account (never a connected account). Aerowise
@@ -66,6 +66,32 @@ export class StripeBillingProvider implements BillingProvider {
     }
     const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id, { auto_advance: true }, { idempotencyKey: `${input.idempotencyKey}-finalize` });
     return { invoiceId: invoice.id, status: finalized.status === "paid" ? ("paid" as const) : ("open" as const), hostedUrl: finalized.hosted_invoice_url ?? null };
+  }
+
+  async paymentMethod(customerId: string): Promise<PaymentMethodSummary | null> {
+    const customer = await this.stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] });
+    if (customer.deleted) return null;
+    const pm = customer.invoice_settings.default_payment_method;
+    if (!pm || typeof pm === "string") return null;
+    if (pm.card) {
+      const brand = pm.card.brand === "amex" ? "American Express" : pm.card.brand.charAt(0).toUpperCase() + pm.card.brand.slice(1);
+      return { label: brand, last4: pm.card.last4, expires: `${String(pm.card.exp_month).padStart(2, "0")}/${pm.card.exp_year}` };
+    }
+    if (pm.us_bank_account) return { label: pm.us_bank_account.bank_name ?? "Bank account", last4: pm.us_bank_account.last4 ?? "", expires: null };
+    return { label: pm.type, last4: "", expires: null };
+  }
+
+  /**
+   * Stripe's customer portal, opened straight on updating the payment method; it saves the
+   * new method as the default for invoices. The portal must be turned on in Stripe's settings.
+   */
+  async managePaymentMethod(input: { customerId: string; returnUrl: string }) {
+    const session = await this.stripe.billingPortal.sessions.create({
+      customer: input.customerId,
+      return_url: input.returnUrl,
+      flow_data: { type: "payment_method_update" },
+    });
+    return { url: session.url };
   }
 
   parseWebhook(rawBody: Buffer | string, signature: string): BillingEvent {
