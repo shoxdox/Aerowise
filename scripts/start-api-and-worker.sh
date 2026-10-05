@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs the API and the worker in one container, for hosts where they must share a disk
-# (uploaded photos and report PDFs live in FILE_STORAGE_DIR until object storage lands).
+# (uploaded photos and report PDFs live in FILE_STORAGE_DIR unless Cloudflare R2 is configured).
 # If either process stops, the other is stopped and the container exits, so the host
 # restarts both. The API's /health also checks the worker (HEALTH_INCLUDES_WORKER=true).
 set -u

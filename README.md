@@ -96,7 +96,7 @@ packages/
   reports/    Report snapshot and PDF rendering
   routing/    Travel estimates, route optimization, geocoders (US Census, built-in test) and the site lookup sweep
   sms/        Twilio client, the built-in test provider, sending once per text, replies (STOP/START) and delivery receipts
-  storage/    File storage interface (local disk for now)
+  storage/    File storage: local disk, or Cloudflare R2 over the S3 API
   tasks/      Background task queue and task handlers
 ```
 
@@ -104,7 +104,7 @@ packages/
 
 ## Stubbed or deferred
 
-- Files (photos, report PDFs) are stored on local disk behind an interface; an S3-compatible store is needed before production.
+- Files (photos, report PDFs, outbox mail) are stored on local disk unless the four `R2_*` settings are present; then they go to a private Cloudflare R2 bucket, keyed by organization id. `pnpm files:copy-to-r2` copies existing files across and checks each SHA-256.
 - **Real authorities are drafts.** `tx-lcra-ossf` and `tx-harris-county-oce` are written from public pages (docs/jurisdictions/) and list their open questions; a draft never sends on its own and Harris inspection reports are never sent (submission unpublished). Brazoria has no ruleset (its site refused every fetch). `tx-example-county` is fictional and is not loaded in production.
 - Authority boundaries are not automated: sites in counties LCRA or Harris County partly cover wait for a person to choose the authority with evidence.
 - The LCRA cover sheet is LCRA's own fillable PDF, filled in and flattened. LCRA has not confirmed it accepts it filled electronically and emailed.
