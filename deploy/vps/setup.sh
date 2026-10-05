@@ -6,8 +6,9 @@
 # point at this server first. With no domain yet, give the server's IP instead and the
 # addresses are staging.<ip>.sslip.io and app.<ip>.sslip.io.
 # The first run stops after printing the key GitHub needs. Add it, run it again, and it
-# finishes: both environments checked out, settings files written with new secrets, the HTTPS
-# front door started, nightly jobs installed and the demo deployed to staging.
+# finishes: both environments checked out, settings files written with new secrets, HTTPS set
+# up (Caddy, or the server's nginx plus certbot when nginx already has ports 80 and 443),
+# nightly jobs installed and the demo deployed to staging.
 # See docs/engineering/DEPLOY.md.
 set -euo pipefail
 
@@ -29,14 +30,23 @@ say "Checking Docker, Compose and git"
 command -v docker >/dev/null || { echo "Docker is not installed. Install it with: curl -fsSL https://get.docker.com | sh" >&2; exit 1; }
 docker compose version >/dev/null || { echo "The Docker Compose plugin is missing (apt install docker-compose-plugin)" >&2; exit 1; }
 command -v git >/dev/null || { echo "git is not installed (apt install git)" >&2; exit 1; }
-if ! docker ps --format '{{.Names}}' | grep -qx aerowise-edge-caddy-1; then
-  if command -v ss >/dev/null && ss -ltnH '( sport = :80 or sport = :443 )' | grep -q .; then
-    echo "Something on this server already listens on port 80 or 443:" >&2
-    ss -ltnp '( sport = :80 or sport = :443 )' >&2
-    echo "Aerowise's front door (Caddy) needs both ports. Stop that service or ask for a shared setup." >&2
-    exit 1
+# The front door on ports 80 and 443: Caddy, unless nginx already has them, in which case nginx
+# forwards the two addresses and certbot gets their certificates.
+front=caddy
+if ! docker ps --format '{{.Names}}' | grep -qx aerowise-edge-caddy-1 && command -v ss >/dev/null; then
+  listeners=$(ss -ltnpH '( sport = :80 or sport = :443 )')
+  if [[ -n $listeners ]]; then
+    if ! grep -qv '"nginx"' <<<"$listeners"; then
+      front=nginx
+    else
+      echo "Something other than nginx already listens on port 80 or 443:" >&2
+      echo "$listeners" >&2
+      echo "Aerowise needs those ports, or nginx in front. Stop that service or ask for a shared setup." >&2
+      exit 1
+    fi
   fi
 fi
+echo "front door: $front"
 
 say "Creating the deploy user"
 id deploy >/dev/null 2>&1 || useradd --create-home --shell /bin/bash deploy
@@ -82,12 +92,14 @@ for env in staging production; do
   [[ -f $file ]] && { echo "$file exists; left as it is"; continue; }
   host=$([[ $env == staging ]] && echo "$staging_host" || echo "$production_host")
   demo=$([[ $env == staging ]] && echo true || echo false)
+  port=$([[ $env == staging ]] && echo 3101 || echo 3102)
   sed -e "s|^AW_ENV=.*|AW_ENV=$env|" \
       -e "s|^AW_DOMAIN=.*|AW_DOMAIN=$host|" \
       -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(secret)|" \
       -e "s|^FILE_SIGNING_SECRET=.*|FILE_SIGNING_SECRET=$(secret)|" \
       -e "s|^QUICKBOOKS_TOKEN_KEY=.*|QUICKBOOKS_TOKEN_KEY=$(secret)|" \
       -e "s|^DEMO_MODE=.*|DEMO_MODE=$demo|" \
+      -e "s|^AW_WEB_PORT=.*|AW_WEB_PORT=$port|" \
       "$root/staging/deploy/vps/env.example" > "$file"
   chown root:deploy "$file"; chmod 640 "$file"
   echo "wrote $file"
@@ -112,11 +124,30 @@ say "Installing nightly backups, the demo reset and the restarter"
 install -m 644 "$root/staging/deploy/vps/cron" /etc/cron.d/aerowise
 install -d -m 700 /var/backups/aerowise
 
-say "Starting the HTTPS front door"
+say "Starting the HTTPS front door ($front)"
 for host in "$staging_host" "$production_host"; do
-  getent hosts "$host" >/dev/null || echo "warning: $host does not resolve yet; Caddy will get its certificate once the DNS record exists"
+  getent hosts "$host" >/dev/null || echo "warning: $host does not resolve yet; its certificate needs the DNS record first"
 done
-(cd "$root/staging" && docker compose -f deploy/vps/edge.compose.yaml --env-file "$etc/edge.env" up -d)
+if [[ $front == caddy ]]; then
+  (cd "$root/staging" && docker compose -f deploy/vps/edge.compose.yaml --env-file "$etc/edge.env" up -d)
+else
+  # The two Aerowise sites only; the rest of nginx's configuration is left as it is.
+  install -m 644 "$root/staging/deploy/vps/nginx/aerowise-proxy.conf" /etc/nginx/aerowise-proxy.conf
+  site=$([[ -d /etc/nginx/sites-enabled ]] && echo /etc/nginx/sites-available/aerowise.conf || echo /etc/nginx/conf.d/aerowise.conf)
+  if [[ ! -f $site ]]; then
+    sed -e "s/STAGING_HOST/$staging_host/" -e "s/PRODUCTION_HOST/$production_host/" "$root/staging/deploy/vps/nginx/aerowise.conf" > "$site"
+    [[ $site == /etc/nginx/sites-available/* ]] && ln -sf "$site" /etc/nginx/sites-enabled/aerowise.conf
+  fi
+  nginx -t && systemctl reload nginx
+  if ! command -v certbot >/dev/null; then
+    command -v apt-get >/dev/null || { echo "install certbot and its nginx plugin, then run this again" >&2; exit 1; }
+    apt-get install -y -q certbot python3-certbot-nginx >/dev/null
+  fi
+  # Adds HTTPS and the redirect to the two sites; certbot's timer renews them.
+  certbot_cmd=(certbot --nginx --non-interactive --agree-tos -m "$acme_email" --redirect --cert-name aerowise -d "$staging_host" -d "$production_host")
+  "${certbot_cmd[@]}" || echo "warning: no certificate yet (is DNS pointing here?). Once it is, run: sudo ${certbot_cmd[*]}"
+  docker network inspect aerowise-edge >/dev/null 2>&1 || docker network create aerowise-edge >/dev/null
+fi
 
 say "Deploying the demo to staging"
 commit=$(sudo -u deploy git -C "$root/staging" ls-remote origin refs/heads/main | cut -f1)

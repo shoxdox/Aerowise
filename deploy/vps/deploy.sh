@@ -30,6 +30,8 @@ main() {
 
   export GIT_COMMIT=$commit
   compose=(docker compose -p "aerowise-$env" --env-file "$env_file" -f deploy/vps/app.compose.yaml)
+  # Caddy creates this network; with nginx in front nothing else does.
+  docker network inspect aerowise-edge >/dev/null 2>&1 || docker network create aerowise-edge >/dev/null
   "${compose[@]}" build
   # A missing secret stops the deploy here, before anything is replaced.
   "${compose[@]}" run --rm --no-deps migrate pnpm --filter @aerowise/db check-config

@@ -119,6 +119,8 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 3
+    # Where nginx reaches it when nginx, not Caddy, is the front door. The server itself only.
+    ports: ["127.0.0.1:${AW_WEB_PORT:-3101}:3000"]
     networks:
       default: {}
       # Caddy (deploy/vps/edge.compose.yaml) reaches each environment's web app by this name.
