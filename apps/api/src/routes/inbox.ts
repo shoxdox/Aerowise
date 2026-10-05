@@ -129,7 +129,33 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .limit(PER_KIND)
       .execute();
     const authority = (name: string | null) => name ?? "the authority";
-    return rows.map((r) => {
+    // A sent filing whose email the mail provider later reported as bounced (or spam):
+    // the authority probably never got it.
+    const bounced = await sites(organizationId)
+      .innerJoin("filings as f", (j) => j.onRef("f.siteId", "=", "s.id").onRef("f.organizationId", "=", "s.organizationId"))
+      .innerJoin("filingAttempts as a", (j) =>
+        j.onRef("a.filingId", "=", "f.id").onRef("a.organizationId", "=", "f.organizationId").onRef("a.submissionNo", "=", "f.submissionNo").on("a.status", "=", "succeeded"),
+      )
+      .innerJoin("emailSends as e", (j) => j.onRef("e.organizationId", "=", "a.organizationId").onRef("e.idempotencyKey", "=", "a.idempotencyKey"))
+      .leftJoin("jurisdictions as jr", "jr.id", "f.jurisdictionId")
+      .select(["f.id", "f.deadlineOn", "e.recipient", "e.deliveryStatus", "e.deliveryDetail", "jr.authorityName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("f.status", "=", "sent")
+      .where("e.deliveryStatus", "in", ["bounced", "complained", "failed", "suppressed"])
+      .orderBy("e.deliveryUpdatedAt")
+      .limit(PER_KIND)
+      .execute();
+    const bouncedItems: InboxException[] = bounced.map((r) => ({
+      site: site(r),
+      customer: customer(r),
+      target: { type: "filing" as const, id: r.id },
+      dueOn: r.deadlineOn,
+      key: `filing_bounced:${r.id}`,
+      kind: "filing_bounced" as const,
+      severity: "high" as const,
+      title: r.deliveryStatus === "complained" ? `${authority(r.authorityName)} marked the filing email as spam` : `Filing email to ${authority(r.authorityName)} did not arrive`,
+      detail: `${r.recipient}: ${r.deliveryStatus}${r.deliveryDetail ? ` (${r.deliveryDetail})` : ""}. File it another way and record it.`,
+    }));
+    const items = rows.map((r) => {
       const overdue = r.deadlineOn !== null && r.deadlineOn < today;
       const base = { site: site(r), customer: customer(r), target: { type: "filing" as const, id: r.id }, dueOn: r.deadlineOn };
       switch (r.status) {
@@ -163,6 +189,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           };
       }
     }) satisfies InboxException[];
+    return [...bouncedItems, ...items];
   }
 
   /**

@@ -1,4 +1,4 @@
-import { OutboxTransport, syncRulesets, type EmailTransport } from "@aerowise/compliance";
+import { OutboxTransport, syncRulesets, type EmailProvider, type EmailTransport } from "@aerowise/compliance";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
@@ -31,6 +31,7 @@ import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
+import { emailRoutes } from "./routes/email.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { DEFAULT_APP_URL, enqueue } from "@aerowise/tasks";
@@ -54,6 +55,8 @@ export interface AppOptions {
   fileSigningSecret?: string;
   /** How filings are emailed. Defaults to the development outbox in file storage. */
   mail?: EmailTransport;
+  /** The mail provider behind `mail`, whose delivery webhooks the API receives. None for the outbox. */
+  mailProvider?: EmailProvider | null;
   /**
    * Takes card and bank payments. Defaults to the built-in test provider outside
    * production; in production, online payments are off unless Stripe is configured.
@@ -87,6 +90,7 @@ export async function buildApp({
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
   mail,
+  mailProvider = null,
   payments = production ? null : new TestPaymentProvider(),
   appUrl = DEFAULT_APP_URL,
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
@@ -173,6 +177,7 @@ export async function buildApp({
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
   await app.register(routingRoutes, { db, now, geocoder });
+  await app.register(emailRoutes, { db, now, provider: mailProvider });
   const compliance = { store, mail: mail ?? new OutboxTransport(store, now), enqueue };
   await app.register(filingRoutes, { db, now, signer, compliance });
   await app.register(readinessRoutes, { db, now, signer, compliance });
