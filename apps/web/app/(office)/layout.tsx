@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { api } from "@/lib/api";
-import { canEdit, SessionProvider, useSession } from "@/lib/session";
+import { canEdit, isReadOnlyAccount, SessionProvider, useSession } from "@/lib/session";
 
 function Shell({ children }: { children: ReactNode }) {
   const me = useSession();
@@ -47,6 +47,12 @@ function Shell({ children }: { children: ReactNode }) {
           Sign out
         </button>
       </header>
+      {isReadOnlyAccount(me) && (
+        <p className="banner warn" role="status" data-testid="read-only-banner">
+          This account is read-only because its Aerowise plan has lapsed. You can still see due inspections, filings and
+          deadlines, and view and export everything. Contact Aerowise to reactivate it.
+        </p>
+      )}
       <main className="page">{children}</main>
     </>
   );
