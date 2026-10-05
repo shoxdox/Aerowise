@@ -15,6 +15,7 @@ import {
   type ColumnMapping,
   type ExistingRecords,
 } from "@aerowise/domain";
+import { loadCatalog } from "@aerowise/compliance";
 import { queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Insertable, type Transaction } from "kysely";
@@ -51,7 +52,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   async function activePlans(organizationId: string) {
     const rows = await db
       .selectFrom("plans")
-      .select(["id", "name", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType"])
+      .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType"])
       .where("organizationId", "=", organizationId)
       .where("active", "=", true)
       .execute();
@@ -405,10 +406,12 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
   for (const part of chunks(systems)) await trx.insertInto("wastewaterSystems").values(part).execute();
 
   let contracts = 0;
+  // Each contract's visits follow its site's authority; load the authorities once.
+  const catalog = await loadCatalog(trx);
   for (const [i, row] of rows.entries()) {
     const terms = row.record.planName ? plans.get(row.record.planName) : undefined;
     if (!terms || !row.record.contractStart) continue;
-    results[i]!.contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: row.record.contractStart, terms, autoRenew: false });
+    results[i]!.contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: row.record.contractStart, terms, autoRenew: false }, { catalog });
     contracts++;
   }
 

@@ -9,14 +9,14 @@ import { HttpError } from "../lib/errors.ts";
 const DUMMY_HASH =
   "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
-const me = z.object({
+export const meResponse = z.object({
   user: z.object({ id: z.uuid(), name: z.string(), email: z.string() }),
   organization: z.object({ id: z.uuid(), name: z.string(), timezone: z.string() }),
   role: z.enum(ROLES),
   organizations: z.array(z.object({ id: z.uuid(), name: z.string(), role: z.enum(ROLES) })),
 });
 
-async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role">) {
+export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role">) {
   const user = await db.selectFrom("users").select(["id", "name", "email"]).where("id", "=", auth.userId).executeTakeFirstOrThrow();
   const organizations = await db
     .selectFrom("memberships as m")
@@ -61,7 +61,7 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
           password: z.string().max(200),
           organizationId: z.uuid().optional(),
         }),
-        response: { 200: me },
+        response: { 200: meResponse },
       },
     },
     async (req, reply) => {
@@ -104,7 +104,7 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
 
   app.get(
     "/auth/me",
-    { config: { permission: "self:read" }, schema: { tags: ["auth"], summary: "Current user and organization", response: { 200: me } } },
+    { config: { permission: "self:read" }, schema: { tags: ["auth"], summary: "Current user and organization", response: { 200: meResponse } } },
     async (req) => loadMe(db, req.requireAuth()),
   );
 };

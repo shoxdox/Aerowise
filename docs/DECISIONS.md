@@ -250,6 +250,21 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **The API's `onrender.com` address is public**, because Render runs health checks only on web services. It serves the same signed-in API the web app proxies; nothing links to it. Region is Ohio, the closest Render region to Texas with Virginia.
 - **`render.yaml` is checked against Render's published JSON schema in CI**, when the schema can be downloaded; the Render CLI's validator needs an account.
 
+## 2026-10-05 · W6.1 Per-ruleset service intervals
+
+- **Commercial comes from the plan.** Plans already say residential or commercial. A contract now copies that (`contracts.customer_type`, and `renewals.customer_type` for the offer), and existing contracts were backfilled from their plans. Commercial is not recorded on a site or system yet. Open question: should it be a property of the site or system instead, so a residential plan sold to a commercial property still gets the commercial interval?
+- **The authority's interval wins over the plan's visit count.** A plan whose windows are longer than the site's authority allows gets extra visits on the contract (the fewest that keep equal whole-month windows). The price is not changed: the office sets prices, and the contract shows the visit count it actually has. Open question: should Aerowise instead refuse the contract, or warn the office before it is made?
+- **The interval is the one in force on the start date.** A later ruleset version, or a site assigned to a different authority, does not reschedule a contract already made. The inbox's "next visit starts later than the authority allows" item still catches a gap.
+- **Draft rulesets count.** A draft profile only holds automatic sending. Scheduling more often than a plan says is the cautious direction, so drafts set intervals too.
+
+## 2026-10-05 · W2.2 User invitations
+
+- **The link is made in the request and also shown to the inviter once.** The email goes out right after the invitation is saved, through `EmailTransport` (the outbox until W3.1). The inviter sees the same link once, to text it to a technician if the email is slow or bounces. If the email fails, the invitation still stands, and the page says the email was not sent. The token is never stored or queued; only its SHA-256 hash is kept.
+- **One live link per person.** Sending again makes a new link, restarts the 7-day expiry and stops the old link working. Inviting the same email again replaces the open invitation. Cancelled, used and expired links answer 410 with a plain reason; an unknown or altered token answers 404.
+- **Who may invite whom:** owners anyone, office staff anyone but an owner (`canInviteRole` in packages/domain). Office staff also cannot resend or cancel an owner invitation. Platform admins invite owners from `/admin`; that is audited in the platform log, and the accepted invitation in the organization's own log.
+- **Someone who already has an Aerowise login** (the email is global) accepts by entering that login's password, not by choosing a new one. Otherwise anyone holding the link could take over another organization's account. Their existing memberships and password stay as they were.
+- **Passwords for new users are at least 10 characters**; platform admins need 12.
+
 ## 2026-10-05 · Demo mode (W1.2)
 
 - **One switch, read in one place.** `DEMO_MODE=true` is read by `providersFromEnv` in `packages/tasks`, which the API and the worker both use to pick every outside service: email, Stripe, QuickBooks, Twilio and the geocoder. In demo mode each one is its test stand-in even when real keys are set; there is no per-service override. New outside services (W3.1's mail provider, W4's Stripe Billing) are added there, with their stand-in. Filings go out by email, so they are covered by the email stand-in (the outbox).

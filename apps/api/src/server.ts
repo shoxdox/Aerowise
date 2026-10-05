@@ -24,6 +24,7 @@ const app = await buildApp({
   payments: providers.payments,
   quickbooks: providers.quickbooks,
   appUrl: process.env.PUBLIC_APP_URL,
+  accountMailFrom: process.env.ACCOUNT_EMAIL_FROM || undefined,
   sms: providers.sms,
   geocoder: providers.geocoder,
   // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).

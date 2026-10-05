@@ -63,6 +63,8 @@ projects:
                 sync: false
               - key: INVOICE_EMAIL_FROM
                 sync: false
+              - key: ACCOUNT_EMAIL_FROM
+                sync: false
           - type: web
             name: aerowise-web-staging
             runtime: docker
@@ -131,6 +133,8 @@ projects:
               - key: FILING_EMAIL_FROM
                 sync: false
               - key: INVOICE_EMAIL_FROM
+                sync: false
+              - key: ACCOUNT_EMAIL_FROM
                 sync: false
               # Real providers. Left empty, each one is off in production (see .env.example).
               - key: STRIPE_SECRET_KEY

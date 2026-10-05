@@ -4,6 +4,7 @@ import { renewalCharges, type RenewalTerms } from "./renewals.ts";
 const terms = (over: Partial<RenewalTerms> = {}): RenewalTerms => ({
   planId: null,
   planName: "Standard",
+  customerType: "residential",
   termMonths: 12,
   visitsPerTerm: 2,
   priceCents: 30000,

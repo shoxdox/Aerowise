@@ -200,6 +200,7 @@ export interface ContractsTable {
   siteId: string;
   planId: string | null;
   planName: string;
+  customerType: Generated<"residential" | "commercial">;
   startOn: string;
   endOn: string;
   termMonths: number;
@@ -822,6 +823,7 @@ export interface RenewalsTable {
   version: Generated<number>;
   planId: string | null;
   planName: string;
+  customerType: Generated<"residential" | "commercial">;
   termMonths: number;
   visitsPerTerm: number;
   priceCents: number;
@@ -983,6 +985,23 @@ export interface PlatformAuditEventsTable {
   occurredAt: CreatedAt;
 }
 
+export interface InvitationsTable {
+  id: Generated<string>;
+  organizationId: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  tokenHash: Buffer;
+  invitedByUserId: string | null;
+  invitedByAdminId: string | null;
+  createdAt: CreatedAt;
+  sentAt: Timestamp;
+  expiresAt: Timestamp;
+  acceptedAt: Timestamp | null;
+  acceptedUserId: string | null;
+  revokedAt: Timestamp | null;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -1038,4 +1057,5 @@ export interface DB {
   platformAdmins: PlatformAdminsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
+  invitations: InvitationsTable;
 }

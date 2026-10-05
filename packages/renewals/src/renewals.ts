@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import { addDays, buildTermSchedule, contractInstallments, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
-import { insertContract } from "./contracts.ts";
+import { insertContract, termsForSite } from "./contracts.ts";
 
 type Executor = Database | Transaction<DB>;
 
@@ -70,7 +70,7 @@ export async function offerTerms(db: Executor, organizationId: string, contract:
   const p = planId
     ? await db
         .selectFrom("plans")
-        .select(["id", "name", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active"])
+        .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", planId)
         .executeTakeFirst()
@@ -79,10 +79,11 @@ export async function offerTerms(db: Executor, organizationId: string, contract:
   const startOn = addDays(contract.endOn, 1);
   const base =
     p && p.active
-      ? { planId: p.id, planName: p.name, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm, priceCents: p.priceCents, billingFrequency: p.billingFrequency, serviceType: p.serviceType }
+      ? { planId: p.id, planName: p.name, customerType: p.customerType, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm, priceCents: p.priceCents, billingFrequency: p.billingFrequency, serviceType: p.serviceType }
       : {
           planId: contract.planId,
           planName: contract.planName,
+          customerType: contract.customerType,
           termMonths: contract.termMonths,
           visitsPerTerm: contract.visitsPerTerm,
           priceCents: contract.priceCents,
@@ -90,7 +91,9 @@ export async function offerTerms(db: Executor, organizationId: string, contract:
           serviceType: contract.serviceType,
         };
   const priceCents = override.priceCents ?? base.priceCents;
-  return { ...base, priceCents, autoRenew: contract.autoRenew, startOn, endOn: buildTermSchedule(startOn, base.termMonths, base.visitsPerTerm).endOn };
+  // The offer shows the visits the new contract will have under the site's authority.
+  const terms = await termsForSite(db, organizationId, contract.siteId, startOn, base);
+  return { ...terms, priceCents, autoRenew: contract.autoRenew, startOn, endOn: buildTermSchedule(startOn, terms.termMonths, terms.visitsPerTerm).endOn };
 }
 
 export interface ContractRow {
@@ -98,6 +101,7 @@ export interface ContractRow {
   siteId: string;
   planId: string | null;
   planName: string;
+  customerType: "residential" | "commercial";
   startOn: string;
   endOn: string;
   termMonths: number;
@@ -128,6 +132,7 @@ export async function createRenewal(trx: Transaction<DB>, organizationId: string
       "c.siteId",
       "c.planId",
       "c.planName",
+      "c.customerType",
       "c.startOn",
       "c.endOn",
       "c.termMonths",
@@ -245,6 +250,7 @@ export async function activateRenewal(
     terms: {
       planId: r.planId,
       planName: r.planName,
+      customerType: r.customerType,
       termMonths: r.termMonths,
       visitsPerTerm: r.visitsPerTerm,
       priceCents: r.priceCents,

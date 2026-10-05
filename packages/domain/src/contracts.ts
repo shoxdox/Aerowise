@@ -81,6 +81,8 @@ export const contract = z.object({
   siteId: id,
   planId: id.nullable(),
   planName: z.string(),
+  /** Copied from the plan. An authority may require commercial systems to be serviced more often. */
+  customerType: z.enum(CUSTOMER_TYPES),
   startOn: date,
   endOn: date,
   termMonths: z.number().int(),
