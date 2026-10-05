@@ -1,0 +1,13 @@
+# Install as /etc/cron.d/aerowise on the server (times are UTC; 08:30 UTC is 3:30 in Texas).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Docker restarts a container that exits, not one that is up but unhealthy (a stuck worker).
+* * * * * root docker ps -q --filter label=aerowise.autoheal=true --filter health=unhealthy | xargs -r docker restart >> /var/log/aerowise-autoheal.log 2>&1
+
+# Nightly backups of both environments.
+30 8 * * * root /opt/aerowise/production/deploy/vps/backup.sh production >> /var/log/aerowise-backup.log 2>&1
+45 8 * * * root /opt/aerowise/staging/deploy/vps/backup.sh staging >> /var/log/aerowise-backup.log 2>&1
+
+# The demo starts each day fresh.
+0 9 * * * root docker exec aerowise-staging-api-1 pnpm db:reseed-demo >> /var/log/aerowise-reseed.log 2>&1

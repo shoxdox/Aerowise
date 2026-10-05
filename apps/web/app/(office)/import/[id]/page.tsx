@@ -103,6 +103,22 @@ export default function ImportPreviewPage() {
       )}
       {imp.status === "failed" && <p className="card problems">Nothing was imported: {imp.error}. Fix the cause and try again; the preview is unchanged.</p>}
 
+      {imp.sheets.length > 1 && (
+        <div className="card row">
+          <label className="check" htmlFor="import-sheet">
+            Sheet
+          </label>
+          <select id="import-sheet" value={imp.sheetIndex} disabled={!open || busy} onChange={(e) => run("/sheet", { sheetIndex: Number(e.currentTarget.value) }, "PUT")}>
+            {imp.sheets.map((sheet, i) => (
+              <option key={i} value={i}>
+                {sheet.name} ({plural(sheet.rows, "row")})
+              </option>
+            ))}
+          </select>
+          <span className="muted">This workbook has {imp.sheets.length} sheets with data. Only the chosen sheet is imported.</span>
+        </div>
+      )}
+
       <div className="tiles">
         {tiles.map(([key, label, n]) => (
           <button key={key} className={`card tile${filter === key ? " selected" : ""}${key === "error" && n > 0 ? " alert" : ""}`} onClick={() => setFilter(key)}>
@@ -111,6 +127,8 @@ export default function ImportPreviewPage() {
           </button>
         ))}
       </div>
+
+      {imp.mappingSource === "saved" && open && <p className="muted">Columns were matched using the choices saved with your last import. Check them below.</p>}
 
       <Mapping imp={imp} disabled={!open || busy} onSave={(mapping) => run("/mapping", { mapping }, "PUT")} />
 
