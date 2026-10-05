@@ -37,6 +37,8 @@ export const adminRoutes: FastifyPluginAsyncZod<{
         rateLimit: {
           max: loginRateLimit,
           timeWindow: "1 minute",
+          // After the body is parsed, so the key really includes the email (onRequest has no body yet).
+          hook: "preHandler",
           keyGenerator: (req) => `admin:${req.ip}:${String((req.body as { email?: unknown } | undefined)?.email ?? "").toLowerCase()}`,
         },
       },
