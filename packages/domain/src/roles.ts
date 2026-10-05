@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   "users:read",
   "users:invite",
   "users:manage",
+  "data:export",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -64,6 +65,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "users:read",
     "users:invite",
     "users:manage",
+    "data:export",
   ],
   office: ["self:read", "crm:read", "crm:write", "contracts:read", "contracts:write", "schedule:read", "schedule:write", "route:read", "inspections:read", "inspections:review", "filings:read", "filings:write", "reports:sign", "invoices:read", "invoices:write", "quickbooks:read", "quickbooks:write", "sms:read", "sms:write", "users:read", "users:invite"],
   // Signing still needs the person's own MP license; the permission only opens the door.

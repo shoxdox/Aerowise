@@ -21,7 +21,7 @@ declare module "fastify" {
     platformAdmin?: boolean;
     /**
      * A write a read-only organization may still make: only what gets it out of read-only
-     * (saving a payment method to pay Aerowise).
+     * (saving a payment method to pay Aerowise), and asking for a data export.
      */
     allowedWhenReadOnly?: boolean;
     /** A GET that changes data (an OAuth callback). Support access is refused it like any write. */

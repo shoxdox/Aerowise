@@ -23,6 +23,8 @@ const reporter = reporterFromEnv(process.env);
 const app = await buildApp({
   db,
   production,
+  // Sign-ins per minute per address and email (default 10). The e2e suite raises it: it signs the same demo users in from one address.
+  loginRateLimit: process.env.LOGIN_RATE_LIMIT ? Number(process.env.LOGIN_RATE_LIMIT) : undefined,
   demo: providers.demo,
   // JSON lines: each request's lines carry its reqId, and organizationId and userId once signed in.
   logger: { level: process.env.LOG_LEVEL ?? "info" },
