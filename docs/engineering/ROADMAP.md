@@ -29,7 +29,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W1.1 | Hosting choice and deploy config | — | not started |
 | W1.2 | Demo mode: banner, nothing leaves, demo seed | — | not started |
 | W1.3 | Deploy from main through CI | W1.1 | not started |
-| W2.1 | Platform admin and `/admin`: create and list organizations | — | not started |
+| W2.1 | Platform admin and `/admin`: create and list organizations | — | in progress (PR open) |
 | W2.2 | User invites | W2.1 | not started |
 | W2.3 | Password reset and user deactivation | W2.2 | not started |
 | W2.4 | Organization settings | — | not started |
