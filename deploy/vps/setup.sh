@@ -138,7 +138,7 @@ else
     sed -e "s/STAGING_HOST/$staging_host/" -e "s/PRODUCTION_HOST/$production_host/" "$root/staging/deploy/vps/nginx/aerowise.conf" > "$site"
     [[ $site == /etc/nginx/sites-available/* ]] && ln -sf "$site" /etc/nginx/sites-enabled/aerowise.conf
   fi
-  nginx -t && systemctl reload nginx
+  nginx -t && { systemctl reload nginx 2>/dev/null || nginx -s reload; }
   if ! command -v certbot >/dev/null; then
     command -v apt-get >/dev/null || { echo "install certbot and its nginx plugin, then run this again" >&2; exit 1; }
     apt-get install -y -q certbot python3-certbot-nginx >/dev/null
