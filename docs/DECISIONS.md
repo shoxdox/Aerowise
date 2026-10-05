@@ -350,6 +350,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **What read-only does not stop.** Public routes are not tenant sessions: homeowners can still pay invoices they owe, sign renewals and use the portal, and provider webhooks still land. Tasks already queued (filing sends, reminders) still run, since stopping a filing mid-flight could cause the missed deadline the brief warns about. W4.4 revisits automatic sends once the lifecycle runs on its own.
 - **Technicians lose nothing.** The phone treats a read-only refusal like being offline: the change stays queued on the phone, is not marked failed, and sends once the account is active again. The office screens show a read-only banner and hide edit controls.
 
+## 2026-10-05 · W6.5 Ruleset verification and badge
+
+- **The verification record lives in the ruleset file, not in a table.** Ruleset versions are immutable, hashed files reviewed in pull requests, and their status already lives there. A database record could make a version "verified" without review, or differ between staging and production. So verifying is a new version with `profile.verification` (who at the authority, who asked, date, method, evidence), and the schema refuses a verified profile without it. The roadmap's "migration" for this was not needed.
+- **Only Justin marks a ruleset verified** (brief). That is a review rule, not something the code can check: a pull request that sets `status: "verified"` needs his approval.
+- **The badge follows the version.** A filing shows the version it recorded, so the badge on an old filing never claims more than was true when it was filed.
+- **Send guard:** automatic submission needs a verified version with its record (or fictional rules, which are not loaded in production). Before, it was "anything but draft"; it now names what is allowed rather than what is not, so a future status can't send by default.
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
