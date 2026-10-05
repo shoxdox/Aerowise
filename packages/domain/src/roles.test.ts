@@ -13,4 +13,9 @@ describe("roleHasPermission", () => {
       expect(roleHasPermission(role, "crm:write")).toBe(false);
     }
   });
+
+  it("leaves what the company pays Aerowise to the owner", () => {
+    expect(roleHasPermission("owner", "subscription:manage")).toBe(true);
+    for (const role of ["office", "technician", "read_only"] as const) expect(roleHasPermission(role, "subscription:manage")).toBe(false);
+  });
 });

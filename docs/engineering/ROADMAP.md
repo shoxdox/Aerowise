@@ -41,8 +41,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W3.4 | Observability: logs, error tracking, alerts | — | done (PR pending); needs a Sentry DSN and an uptime monitor from Justin |
 | W3.5 | Backups and restore runbook | W1.1 | not started |
 | W4.1 | Plan states and read-only mode | W2.1 | done (#35) |
-| W4.2 | Active-contract count and Stripe Billing provider | W4.1 | in progress (PR open); needs Stripe Billing keys from Justin |
-| W4.3 | Owner subscription page | W4.2 | not started |
+| W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
+| W4.3 | Owner subscription page | W4.2 | in progress (PR open); needs the Stripe customer portal turned on |
 | W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | not started |
 | W4.5 | Platform fee on homeowner payments | W4.1 | not started |
 | W5.1 | Import: several sheets and saved column mappings | W2.1 | done |

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import Stripe from "stripe";
-import { BillingSignatureError, type BillingEvent, type BillingInvoiceInput, type BillingProvider } from "./provider.ts";
+import { BillingSignatureError, type BillingEvent, type BillingInvoiceInput, type BillingProvider, type PaymentMethodSummary } from "./provider.ts";
 
 const TEST_WEBHOOK_SECRET = "whsec_aerowise_test_billing";
 
@@ -16,6 +16,8 @@ export class TestBillingProvider implements BillingProvider {
   private readonly webhooks = new Stripe("sk_test_aerowise_offline").webhooks;
   readonly customers: { customerId: string; organizationId: string; name: string }[] = [];
   readonly invoices: (BillingInvoiceInput & { invoiceId: string; totalCents: number })[] = [];
+  /** Saved payment methods by customer. */
+  readonly paymentMethods = new Map<string, PaymentMethodSummary>();
   /** Set to make the next calls fail, as a network error would. */
   failNext = 0;
 
@@ -41,6 +43,19 @@ export class TestBillingProvider implements BillingProvider {
     const invoice = existing ?? { ...input, invoiceId: rid("in"), totalCents: input.lines.reduce((sum, l) => sum + l.quantity * l.unitAmountCents, 0) };
     if (!existing) this.invoices.push(invoice);
     return { invoiceId: invoice.invoiceId, status: "open" as const, hostedUrl: `https://invoice.stripe.test/${invoice.invoiceId}` };
+  }
+
+  async paymentMethod(customerId: string) {
+    return this.paymentMethods.get(customerId) ?? null;
+  }
+
+  /** There is no Stripe page to visit: a test card is saved at once and the owner goes straight back. */
+  async managePaymentMethod(input: { customerId: string; returnUrl: string }) {
+    this.maybeFail();
+    this.paymentMethods.set(input.customerId, { label: "Visa", last4: "4242", expires: "12/2034" });
+    const url = new URL(input.returnUrl);
+    url.searchParams.set("payment", "test");
+    return { url: url.toString() };
   }
 
   parseWebhook(rawBody: Buffer | string, signature: string): BillingEvent {
