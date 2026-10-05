@@ -1,6 +1,6 @@
 import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
-import { subscriptionConfigFromEnv } from "./lib/subscription.ts";
+import { subscriptionConfigFromEnv } from "@aerowise/domain";
 import { reporterFromEnv } from "@aerowise/observability";
 import { storeFromEnv } from "@aerowise/storage";
 import { heartbeatFromEnv, providersFromEnv } from "@aerowise/tasks";
@@ -39,6 +39,7 @@ const app = await buildApp({
   sms: providers.sms,
   geocoder: providers.geocoder,
   subscription: subscriptionConfigFromEnv(process.env),
+  billing: providers.billing,
   // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).
   workerHeartbeat: process.env.HEALTH_INCLUDES_WORKER === "true" ? heartbeatFromEnv(process.env) : undefined,
 });
