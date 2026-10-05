@@ -373,7 +373,7 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Coverage comes from the rulesets, through `GET /public/overview`** (no sign-in, 60 requests a minute per address). It lists every active authority with a real ruleset (draft or verified) and never the fictional example. Verified authorities show the W6.5 "Verified with <authority> on <date>" badge and are listed first; drafts show "In progress". A new county ruleset appears on the page when it merges, with no copy change.
 - **Pricing comes from the W4.1 subscription config** (`AEROWISE_DESIGN_PARTNER_DAYS`, `AEROWISE_PRICE_PER_CONTRACT_CENTS`, `AEROWISE_MONTHLY_MINIMUM_CENTS`), so the page and billing cannot disagree. The page says "Free for 90 days" (the brief's design-partner offer), then the per-contract price and monthly minimum.
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
-- **Open:** whether to show the post-free-period price publicly at all, or only "free for 90 days" (Justin); the demo request button arrives with W8.2.
+- **The price after the free period is shown publicly** (Justin, 2026-10-05): it builds trust and filters out poor fits. It is read from the billing config, never typed into the copy.
 
 ## 2026-10-05 · W8.2 Demo request form
 
