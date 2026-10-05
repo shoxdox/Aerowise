@@ -8,7 +8,7 @@ import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
 import { ReportSignature } from "@/components/ReportSignature";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day, when } from "@/lib/format";
+import { day, money, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 /** "field_key: value" lines into corrected answers; numbers and yes/no are read as such. */
@@ -101,6 +101,20 @@ export default function FilingPage() {
           <>
             <dt>Next inspection due by</dt>
             <dd>{f.nextDueOn ? day(f.nextDueOn) : "—"}</dd>
+          </>
+        )}
+        {f.fees && (
+          <>
+            <dt>Authority fees</dt>
+            <dd>
+              {money(f.fees.totalCents)}
+              <div className="muted small">
+                {f.fees.lateFeeCents === null
+                  ? `Filing fee ${money(f.fees.filingFeeCents)}${f.fees.lateFeeIfLateCents > 0 ? `; ${money(f.fees.lateFeeIfLateCents)} more if it reaches the authority after the deadline` : ""}`
+                  : `Filing fee ${money(f.fees.filingFeeCents)}${f.fees.lateFeeCents > 0 ? ` plus a late fee of ${money(f.fees.lateFeeCents)}` : ", sent on time"}`}
+                . {f.fees.basis}
+              </div>
+            </dd>
           </>
         )}
         <dt>Method</dt>
