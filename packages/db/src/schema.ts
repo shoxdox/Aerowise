@@ -50,6 +50,7 @@ export interface OrganizationsTable {
   subscriptionEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
   pricePerContractCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
   monthlyMinimumCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
+  billingCustomerId: ColumnType<string | null, string | null | undefined, string | null>;
   renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
   smsEnabled: Generated<boolean>;
   smsKinds: ColumnType<SmsKind[], SmsKind[] | undefined, SmsKind[]>;
@@ -1064,6 +1065,34 @@ export interface PlatformAuditEventsTable {
   occurredAt: CreatedAt;
 }
 
+export type BillingPeriodStatus = "free" | "pending" | "open" | "paid" | "failed" | "void";
+
+export interface BillingPeriodsTable {
+  id: Generated<string>;
+  organizationId: string;
+  startsOn: string;
+  endsOn: string;
+  countedOn: string;
+  activeContracts: number;
+  subscriptionState: "design_partner" | "trial" | "active" | "past_due" | "read_only";
+  pricePerContractCents: number;
+  monthlyMinimumCents: number;
+  amountCents: number;
+  status: BillingPeriodStatus;
+  provider: ColumnType<"stripe" | "test" | null, "stripe" | "test" | null | undefined, "stripe" | "test" | null>;
+  providerInvoiceId: ColumnType<string | null, string | null | undefined, string | null>;
+  hostedInvoiceUrl: ColumnType<string | null, string | null | undefined, string | null>;
+  createdAt: CreatedAt;
+  updatedAt: Generated<Date>;
+}
+
+export interface BillingEventsTable {
+  id: string;
+  type: string;
+  organizationId: string | null;
+  receivedAt: CreatedAt;
+}
+
 export interface InvitationsTable {
   id: Generated<string>;
   organizationId: string;
@@ -1149,6 +1178,8 @@ export interface DB {
   platformAdmins: PlatformAdminsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
+  billingPeriods: BillingPeriodsTable;
+  billingEvents: BillingEventsTable;
   invitations: InvitationsTable;
   passwordResetTokens: PasswordResetTokensTable;
 }

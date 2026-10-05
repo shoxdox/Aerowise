@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { StripeBillingProvider, TestBillingProvider } from "@aerowise/billing";
 import { OutboxTransport, ProviderTransport, ResendEmailProvider } from "@aerowise/compliance";
 import { createDb, migrate, reseedDemo, type Database } from "@aerowise/db";
 import { sql } from "kysely";
@@ -25,6 +26,8 @@ const store = new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-demo-")));
 const realKeys = {
   STRIPE_SECRET_KEY: "sk_live_not_a_real_key",
   STRIPE_WEBHOOK_SECRET: "whsec_not_real",
+  STRIPE_BILLING_SECRET_KEY: "sk_live_not_a_real_billing_key",
+  STRIPE_BILLING_WEBHOOK_SECRET: "whsec_billing_not_real",
   QUICKBOOKS_CLIENT_ID: "intuit-client",
   QUICKBOOKS_CLIENT_SECRET: "intuit-secret",
   QUICKBOOKS_ENVIRONMENT: "production",
@@ -49,6 +52,7 @@ describe("demo mode providers", () => {
       expect(p.sms?.provider).toBeInstanceOf(TestSmsProvider);
       expect(p.sms?.webhookBaseUrl).toBe("https://demo.example.com/api");
       expect(p.geocoder).toBeInstanceOf(TestGeocoder);
+      expect(p.billing).toBeInstanceOf(TestBillingProvider);
     }
   });
 
@@ -61,11 +65,12 @@ describe("demo mode providers", () => {
     expect(p.quickbooks?.provider).toBeInstanceOf(IntuitQuickBooksProvider);
     expect(p.sms?.provider).toBeInstanceOf(TwilioSmsProvider);
     expect(p.geocoder).toBeInstanceOf(CensusGeocoder);
+    expect(p.billing).toBeInstanceOf(StripeBillingProvider);
   });
 
   it("turns unconfigured services off in production and uses stand-ins elsewhere", () => {
     const prod = providersFromEnv({ db: ctx.db, store, env: { DEMO_MODE: "false" }, production: true });
-    expect([prod.payments, prod.quickbooks, prod.sms, prod.mailProvider]).toEqual([null, null, null, null]);
+    expect([prod.payments, prod.quickbooks, prod.sms, prod.mailProvider, prod.billing]).toEqual([null, null, null, null, null]);
     expect(prod.mail).toBeInstanceOf(OutboxTransport);
     expect(prod.geocoder).toBeInstanceOf(CensusGeocoder);
     const dev = providersFromEnv({ db: ctx.db, store, env: {}, production: false });
@@ -73,6 +78,7 @@ describe("demo mode providers", () => {
     expect(dev.quickbooks?.provider).toBeInstanceOf(TestQuickBooksProvider);
     expect(dev.sms?.provider).toBeInstanceOf(TestSmsProvider);
     expect(dev.geocoder).toBeInstanceOf(TestGeocoder);
+    expect(dev.billing).toBeInstanceOf(TestBillingProvider);
   });
 
   it("accepts only true or false", () => {
