@@ -1,12 +1,17 @@
-import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
+import { emailFromEnv } from "@aerowise/compliance";
+import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
 import { subscriptionConfigFromEnv } from "./lib/subscription.ts";
-import { LocalDiskStore } from "@aerowise/storage";
+import { reporterFromEnv } from "@aerowise/observability";
+import { storeFromEnv } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
 import { geocoderFromEnv } from "@aerowise/routing";
 import { smsFromEnv } from "@aerowise/sms";
+import { heartbeatFromEnv } from "@aerowise/tasks";
 
+// In production, refuse to start without the secrets and providers it needs (names them all).
+checkConfig();
 const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 
@@ -18,24 +23,45 @@ const payments = stripeKey
   ? new StripeProvider({ secretKey: stripeKey, webhookSecrets: (process.env.STRIPE_WEBHOOK_SECRET ?? "").split(",").map((s) => s.trim()).filter(Boolean) })
   : undefined;
 const production = process.env.NODE_ENV === "production";
+// Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
+const store = storeFromEnv(process.env);
+// With a Resend key, email is really sent; without one it goes to the outbox in file storage.
+const email = emailFromEnv(db, store, process.env);
+// Unexpected errors go to Sentry when SENTRY_DSN is set (tagged with the organization).
+const reporter = reporterFromEnv(process.env);
 const app = await buildApp({
   db,
   production,
-  logger: true,
-  store: new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files"),
+  // JSON lines: each request's lines carry its reqId, and organizationId and userId once signed in.
+  logger: { level: process.env.LOG_LEVEL ?? "info" },
+  reporter,
+  trustProxy: trustProxyFrom(process.env.TRUST_PROXY),
+  store,
+  mail: email.transport,
+  mailProvider: email.provider,
   fileSigningSecret: process.env.FILE_SIGNING_SECRET,
   payments,
   // Intuit keys connect real QuickBooks companies; without them, a test company outside production.
   quickbooks: quickBooksFromEnv(db, process.env, production),
   appUrl: process.env.PUBLIC_APP_URL,
+  accountMailFrom: process.env.ACCOUNT_EMAIL_FROM || undefined,
   // Twilio keys send real texts; without them, a test provider outside production.
   sms: smsFromEnv(process.env, production),
   geocoder: geocoderFromEnv(process.env, production),
   subscription: subscriptionConfigFromEnv(process.env),
+  // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).
+  workerHeartbeat: process.env.HEALTH_INCLUDES_WORKER === "true" ? heartbeatFromEnv(process.env) : undefined,
 });
+
+/** TRUST_PROXY: "true", or the proxies' comma-separated addresses or ranges; unset means none. */
+function trustProxyFrom(v: string | undefined): boolean | string {
+  if (!v) return false;
+  return v === "true" ? true : v;
+}
 
 const shutdown = async () => {
   await app.close();
+  await reporter.flush();
   await db.destroy();
   process.exit(0);
 };

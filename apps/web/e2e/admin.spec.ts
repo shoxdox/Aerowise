@@ -27,7 +27,7 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await expect(row.getByRole("cell").nth(1)).toHaveText("0");
   await expect(row.getByRole("cell").nth(3)).toHaveText("Never");
   // New companies start on the configured free trial.
-  await expect(row.getByRole("cell").nth(5)).toHaveText(/^Trial until .* \(30 days left\)$/);
+  await expect(row.getByRole("cell").nth(6)).toHaveText(/^Trial until .* \(30 days left\)$/);
 
   // The founder gives them a founder price, then their plan lapses to read-only.
   await page.getByRole("button", { name: "Edit plan for Brazos Aerobic Co" }).click();
@@ -37,6 +37,6 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await editor.getByLabel("Ends on").fill("");
   await editor.getByRole("button", { name: "Save plan" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved the plan for Brazos Aerobic Co.");
-  await expect(row.getByRole("cell").nth(5)).toHaveText("Read-only");
-  await expect(row.getByRole("cell").nth(6)).toHaveText("$1.00/contract, $99.00 min (founder)");
+  await expect(row.getByRole("cell").nth(6)).toHaveText("Read-only");
+  await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $99.00 min (founder)");
 });

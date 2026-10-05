@@ -6,6 +6,8 @@ import {
   dateInZone,
   daysLeft,
   initialPlan,
+  invitationSent,
+  ownerInvitationInput,
   platformAdminMe,
   SUBSCRIPTION_STATE_LABELS,
   subscriptionDefaults,
@@ -18,6 +20,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { ADMIN_SESSION_COOKIE, createAdminSession, findAdminSession, revokeAdminSession } from "../auth/admin-sessions.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { createInvitation, emailInvitation, inviteUrlFor, listInvitations, type InvitationMail } from "../lib/invitations.ts";
 import { platformAudit } from "../lib/platform-audit.ts";
 
 // Same shape as a real hash so an unknown email costs the same time as a wrong password.
@@ -33,8 +36,9 @@ export const adminRoutes: FastifyPluginAsyncZod<{
   production: boolean;
   loginRateLimit: number;
   now: () => Date;
+  invitations: InvitationMail;
   subscription: SubscriptionConfig;
-}> = async (app, { db, production, loginRateLimit, now, subscription }) => {
+}> = async (app, { db, production, loginRateLimit, now, invitations, subscription }) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
   const planColumns = [
@@ -111,6 +115,8 @@ export const adminRoutes: FastifyPluginAsyncZod<{
         rateLimit: {
           max: loginRateLimit,
           timeWindow: "1 minute",
+          // After the body is parsed: the key includes the email, which onRequest cannot see.
+          hook: "preHandler",
           keyGenerator: (req) => `admin:${req.ip}:${String((req.body as { email?: unknown } | undefined)?.email ?? "").toLowerCase()}`,
         },
       },
@@ -272,6 +278,43 @@ export const adminRoutes: FastifyPluginAsyncZod<{
       });
       const [updated] = await loadOrganizations(req.params.id);
       return updated!;
+    },
+  );
+
+  app.post(
+    "/admin/organizations/:id/invitations",
+    {
+      config: { platformAdmin: true },
+      schema: {
+        tags: ["admin"],
+        summary: "Invite an organization's owner",
+        description: "Emails a single-use owner invitation and returns the link once.",
+        params: z.object({ id: z.uuid() }),
+        body: ownerInvitationInput,
+        response: { 201: invitationSent },
+      },
+    },
+    async (req, reply) => {
+      const { adminId } = req.requireAdmin();
+      const organizationId = req.params.id;
+      const org = await db.selectFrom("organizations").select("id").where("id", "=", organizationId).executeTakeFirst();
+      if (!org) throw notFound("Organization");
+      const at = now();
+      const created = await db.transaction().execute(async (trx) => {
+        const inv = await createInvitation(trx, { organizationId, email: req.body.email, name: req.body.name ?? null, role: "owner", by: { adminId }, now: at });
+        await platformAudit(trx, req, {
+          adminId,
+          action: "invitation.sent",
+          entityType: "invitation",
+          entityId: inv.id,
+          organizationId,
+          changes: { email: req.body.email, role: "owner" },
+        });
+        return inv;
+      });
+      const emailed = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: created.id, token: created.token, inviterName: "The Aerowise team" });
+      const [invitation] = await listInvitations(db, organizationId, at, [created.id]);
+      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, created.token), emailed });
     },
   );
 };

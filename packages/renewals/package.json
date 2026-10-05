@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
     "@aerowise/domain": "workspace:*",
     "kysely": "^0.29.6"

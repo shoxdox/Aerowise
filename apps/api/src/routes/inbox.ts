@@ -1,10 +1,11 @@
 import type { Database } from "@aerowise/db";
-import { AWAITING_SIGNATURE } from "@aerowise/compliance";
+import { AWAITING_SIGNATURE, labTestStatuses } from "@aerowise/compliance";
 import {
   addDays,
   CONTRACT_EXPIRED_WINDOW_DAYS,
   CONTRACT_EXPIRING_DAYS,
   FILING_OPEN_STATUSES,
+  LAB_ANALYTE_LABELS,
   id,
   inbox,
   INVOICE_LATE_DAYS,
@@ -129,7 +130,33 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .limit(PER_KIND)
       .execute();
     const authority = (name: string | null) => name ?? "the authority";
-    return rows.map((r) => {
+    // A sent filing whose email the mail provider later reported as bounced (or spam):
+    // the authority probably never got it.
+    const bounced = await sites(organizationId)
+      .innerJoin("filings as f", (j) => j.onRef("f.siteId", "=", "s.id").onRef("f.organizationId", "=", "s.organizationId"))
+      .innerJoin("filingAttempts as a", (j) =>
+        j.onRef("a.filingId", "=", "f.id").onRef("a.organizationId", "=", "f.organizationId").onRef("a.submissionNo", "=", "f.submissionNo").on("a.status", "=", "succeeded"),
+      )
+      .innerJoin("emailSends as e", (j) => j.onRef("e.organizationId", "=", "a.organizationId").onRef("e.idempotencyKey", "=", "a.idempotencyKey"))
+      .leftJoin("jurisdictions as jr", "jr.id", "f.jurisdictionId")
+      .select(["f.id", "f.deadlineOn", "e.recipient", "e.deliveryStatus", "e.deliveryDetail", "jr.authorityName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("f.status", "=", "sent")
+      .where("e.deliveryStatus", "in", ["bounced", "complained", "failed", "suppressed"])
+      .orderBy("e.deliveryUpdatedAt")
+      .limit(PER_KIND)
+      .execute();
+    const bouncedItems: InboxException[] = bounced.map((r) => ({
+      site: site(r),
+      customer: customer(r),
+      target: { type: "filing" as const, id: r.id },
+      dueOn: r.deadlineOn,
+      key: `filing_bounced:${r.id}`,
+      kind: "filing_bounced" as const,
+      severity: "high" as const,
+      title: r.deliveryStatus === "complained" ? `${authority(r.authorityName)} marked the filing email as spam` : `Filing email to ${authority(r.authorityName)} did not arrive`,
+      detail: `${r.recipient}: ${r.deliveryStatus}${r.deliveryDetail ? ` (${r.deliveryDetail})` : ""}. File it another way and record it.`,
+    }));
+    const items = rows.map((r) => {
       const overdue = r.deadlineOn !== null && r.deadlineOn < today;
       const base = { site: site(r), customer: customer(r), target: { type: "filing" as const, id: r.id }, dueOn: r.deadlineOn };
       switch (r.status) {
@@ -163,6 +190,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           };
       }
     }) satisfies InboxException[];
+    return [...bouncedItems, ...items];
   }
 
   /**
@@ -225,6 +253,30 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         site: site(r),
         customer: customer(r),
         target: r.visitId ? { type: "obligation" as const, id: r.visitId } : { type: "site" as const, id: r.siteId },
+      };
+    });
+  }
+
+  /** Lab tests (BOD, TSS) the site's authority requires that are past their due date. */
+  async function lateLabTests(organizationId: string, today: string): Promise<InboxException[]> {
+    const late = (await labTestStatuses(db, organizationId, today)).filter((t) => t.state === "late").slice(0, PER_KIND);
+    if (late.length === 0) return [];
+    const rows = await sites(organizationId)
+      .select(["s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("s.id", "in", late.map((t) => t.siteId))
+      .execute();
+    return late.map((t) => {
+      const r = rows.find((x) => x.siteId === t.siteId)!;
+      return {
+        key: `lab_test_late:${t.siteId}`,
+        kind: "lab_test_late" as const,
+        severity: "high" as const,
+        title: `${t.analytes.map((a) => LAB_ANALYTE_LABELS[a]).join(" and ")} lab test overdue`,
+        detail: `${t.authorityName} requires one every ${t.everyMonths} months; due ${t.dueOn} (${t.dueBasis})`,
+        dueOn: t.dueOn,
+        site: site(r),
+        customer: customer(r),
+        target: { type: "site" as const, id: t.siteId },
       };
     });
   }
@@ -575,6 +627,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           incompleteInspections(organizationId),
           filingExceptions(organizationId, today),
           lateNextVisits(organizationId, today),
+          lateLabTests(organizationId, today),
           openIssues(organizationId),
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),

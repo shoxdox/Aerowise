@@ -1,4 +1,4 @@
-import { OutboxTransport, syncRulesets, type EmailTransport } from "@aerowise/compliance";
+import { OutboxTransport, syncRulesets, type EmailProvider, type EmailTransport } from "@aerowise/compliance";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
@@ -27,14 +27,19 @@ import { contractRoutes } from "./routes/contracts.ts";
 import { customerRoutes } from "./routes/customers.ts";
 import { inspectionRoutes } from "./routes/inspections.ts";
 import { readinessRoutes } from "./routes/readiness.ts";
+import { labTestRoutes } from "./routes/lab-tests.ts";
+import { monitoringRoutes } from "./routes/monitoring.ts";
 import { reportRoutes } from "./routes/reports.ts";
 import { scheduleRoutes } from "./routes/schedule.ts";
 import { siteRoutes } from "./routes/sites.ts";
 import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
+import { emailRoutes } from "./routes/email.ts";
+import { userRoutes } from "./routes/users.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
-import { DEFAULT_APP_URL, enqueue } from "@aerowise/tasks";
+import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
+import { NoopReporter, type ErrorReporter } from "@aerowise/observability";
 import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
@@ -48,14 +53,26 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
+  /**
+   * Which proxies in front of the API to believe about the client's address (Fastify's
+   * `trustProxy`: true, or the proxies' addresses and ranges). Rate limits key on that
+   * address, so leave it off unless every request really passes through those proxies.
+   */
+  trustProxy?: boolean | string;
+  /** Where unexpected errors go (Sentry when configured). Defaults to nowhere; they are logged either way. */
+  reporter?: ErrorReporter;
   /** Clock used for "today" in due dates and contract states. Tests pin it. */
   now?: () => Date;
-  /** Where uploaded photos are kept. Defaults to ./.data/files on local disk. */
+  /** Where uploaded photos, reports and outbox mail are kept. Defaults to ./.data/files on local disk. */
   store?: ObjectStore;
   /** Secret for signed file links. Required in production. */
   fileSigningSecret?: string;
-  /** How filings are emailed. Defaults to the development outbox in file storage. */
+  /** How filings and invitations are emailed. Defaults to the development outbox in file storage. */
   mail?: EmailTransport;
+  /** The mail provider behind `mail`, whose delivery webhooks the API receives. None for the outbox. */
+  mailProvider?: EmailProvider | null;
+  /** From address on account emails (invitations). */
+  accountMailFrom?: string;
   /**
    * Takes card and bank payments. Defaults to the built-in test provider outside
    * production; in production, online payments are off unless Stripe is configured.
@@ -80,6 +97,11 @@ export interface AppOptions {
   geocoder?: Geocoder | null;
   /** Aerowise's own prices and free-period lengths (what companies pay Aerowise). */
   subscription?: SubscriptionConfig;
+  /**
+   * When the worker runs on the same machine as the API (one hosted service sharing a disk),
+   * /health also fails if the worker's heartbeat is missing or old, so the host restarts both.
+   */
+  workerHeartbeat?: HeartbeatOptions;
 }
 
 export async function buildApp({
@@ -87,16 +109,21 @@ export async function buildApp({
   production = false,
   logger = false,
   loginRateLimit = 10,
+  trustProxy = false,
+  reporter = new NoopReporter(),
   now = () => new Date(),
   store = new LocalDiskStore(".data/files"),
   fileSigningSecret,
   mail,
+  mailProvider = null,
+  accountMailFrom = "accounts@aerowise.invalid",
   payments = production ? null : new TestPaymentProvider(),
   appUrl = DEFAULT_APP_URL,
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
   subscription = DEFAULT_SUBSCRIPTION_CONFIG,
+  workerHeartbeat,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -108,6 +135,7 @@ export async function buildApp({
     logger,
     genReqId: () => crypto.randomUUID(),
     requestIdHeader: false,
+    trustProxy,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
@@ -132,12 +160,24 @@ export async function buildApp({
       return reply.status(status).send({ error: "bad_request", message: (err as Error).message });
     }
     req.log.error({ err }, "unhandled error");
+    reporter.captureException(err, {
+      organizationId: req.auth?.organizationId ?? null,
+      requestId: req.id,
+      tags: { route: `${req.method} ${req.routeOptions.url ?? "unknown"}` },
+    });
     return reply.status(500).send({ error: "internal", message: "Something went wrong", requestId: req.id });
   });
 
   app.addHook("onSend", async (req, reply) => {
     reply.header("x-request-id", req.id);
     reply.header("cache-control", "no-store");
+    // The API serves JSON and files, never pages: nothing it returns may be framed, sniffed
+    // into another type, or leak its URL (signed links carry tokens) to another site.
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("x-frame-options", "DENY");
+    reply.header("referrer-policy", "no-referrer");
+    reply.header("cross-origin-resource-policy", "same-origin");
+    if (production) reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   });
 
   await app.register(cookie);
@@ -162,13 +202,27 @@ export async function buildApp({
 
   await app.register(authPlugin, { db });
 
-  app.get("/health", { config: { public: true }, schema: { hide: true } }, async () => {
+  app.get("/health", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
     await db.selectNoFrom((eb) => eb.lit(1).as("ok")).execute();
-    return { ok: true };
+    if (!workerHeartbeat) return { ok: true };
+    const worker = await checkHeartbeat(workerHeartbeat, now());
+    if (!worker.ok) return reply.code(503).send({ ok: false, worker: worker.reason });
+    return { ok: true, worker: "ok" };
   });
 
+  // A second uptime check target: fails while work is due and nobody runs it, or a filing
+  // task keeps failing. Counts only; the worker's alerts carry the details.
+  app.get("/health/queue", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
+    const q = await checkQueue(db, now());
+    const body = { ok: q.ok, waiting: q.waiting, oldestWaitSeconds: q.oldestWaitSeconds, failingFilingTasks: q.failingFilingTasks };
+    return q.ok ? body : reply.code(503).send(body);
+  });
+
+  const transport = mail ?? new OutboxTransport(store, now);
+  const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(adminRoutes, { db, production, loginRateLimit, now, subscription });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
+  await app.register(userRoutes, { db, now, production, invitations });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });
@@ -184,9 +238,12 @@ export async function buildApp({
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
   await app.register(routingRoutes, { db, now, geocoder });
-  const compliance = { store, mail: mail ?? new OutboxTransport(store, now), enqueue };
+  await app.register(emailRoutes, { db, now, provider: mailProvider });
+  const compliance = { store, mail: transport, enqueue };
   await app.register(filingRoutes, { db, now, signer, compliance });
   await app.register(readinessRoutes, { db, now, signer, compliance });
+  await app.register(labTestRoutes, { db, now });
+  await app.register(monitoringRoutes, { db, now });
 
   return app;
 }

@@ -60,7 +60,7 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     }
   });
 
-  app.addHook("onRequest", async (req) => {
+  app.addHook("onRequest", async (req, reply) => {
     const config = req.routeOptions.config;
     // Unknown routes fall through to the 404 handler.
     if (!req.routeOptions.url) return;
@@ -83,12 +83,15 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     if (config.platformAdmin) {
       const adminToken = req.cookies[ADMIN_SESSION_COOKIE];
       req.admin = adminToken ? await findAdminSession(opts.db, adminToken) : null;
+      if (req.admin) req.log = reply.log = req.log.child({ platformAdminId: req.admin.adminId });
       req.requireAdmin();
       return;
     }
 
     const token = req.cookies[SESSION_COOKIE];
     req.auth = token ? await findSession(opts.db, token) : null;
+    // Every later log line for this request (including "request completed") names the tenant.
+    if (req.auth) req.log = reply.log = req.log.child({ organizationId: req.auth.organizationId, userId: req.auth.userId });
 
     if (config.public) return;
     const auth = req.requireAuth();

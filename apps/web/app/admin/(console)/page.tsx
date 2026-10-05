@@ -4,6 +4,7 @@ import {
   SUBSCRIPTION_STATE_LABELS,
   SUBSCRIPTION_TRANSITIONS,
   type AdminOrganization,
+  type InvitationSent,
   type SubscriptionConfig,
   type SubscriptionState,
 } from "@aerowise/domain";
@@ -107,6 +108,26 @@ export default function AdminOrganizationsPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [invitingFor, setInvitingFor] = useState<AdminOrganization | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ org: string; result: InvitationSent } | null>(null);
+
+  async function onInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!invitingFor) return;
+    setInviteError(null);
+    const v = formValues(event.currentTarget);
+    try {
+      const result = await api<InvitationSent>(`/admin/organizations/${invitingFor.id}/invitations`, {
+        method: "POST",
+        body: { email: v.email, name: v.name },
+      });
+      setSent({ org: invitingFor.name, result });
+      setInvitingFor(null);
+    } catch (err) {
+      setInviteError(err instanceof ApiError ? err.message : "Could not send the invitation");
+    }
+  }
 
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,6 +156,39 @@ export default function AdminOrganizationsPage() {
         <button onClick={() => setCreating((c) => !c)}>{creating ? "Cancel" : "New organization"}</button>
       </div>
       {notice && <p role="status">{notice}</p>}
+
+      {sent && (
+        <div className="card stack" role="status">
+          <p style={{ margin: 0 }}>
+            {sent.result.emailed ? `Owner invitation for ${sent.org} emailed to ${sent.result.invitation.email}.` : `The email to ${sent.result.invitation.email} could not be sent.`}{" "}
+            The link below works once, for 7 days.
+          </p>
+          <input readOnly value={sent.result.url} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} />
+        </div>
+      )}
+
+      {invitingFor && (
+        <form className="card grid" onSubmit={onInvite}>
+          <p className="wide" style={{ margin: 0 }}>
+            <strong>Invite the owner of {invitingFor.name}</strong>
+          </p>
+          <label>
+            Owner email
+            <input name="email" type="email" required />
+          </label>
+          <label>
+            Owner name
+            <input name="name" placeholder="Optional" />
+          </label>
+          {inviteError && <p className="error wide">{inviteError}</p>}
+          <div className="wide row">
+            <button type="submit">Send owner invitation</button>
+            <button type="button" className="link" onClick={() => setInvitingFor(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       {creating && data && (
         <form className="card grid" onSubmit={onCreate}>
@@ -193,6 +247,7 @@ export default function AdminOrganizationsPage() {
             <th>Users</th>
             <th>Last activity</th>
             <th>Created</th>
+            <th />
             <th>Plan</th>
             <th>Price</th>
           </tr>
@@ -210,6 +265,11 @@ export default function AdminOrganizationsPage() {
               <td>{o.users}</td>
               <td>{when(o.lastActivityAt)}</td>
               <td>{when(o.createdAt)}</td>
+              <td>
+                <button className="link" onClick={() => { setInvitingFor(o); setSent(null); }}>
+                  Invite owner
+                </button>
+              </td>
               <td>{planSummary(o)}</td>
               <td>{priceSummary(o, data.defaults)}</td>
             </tr>

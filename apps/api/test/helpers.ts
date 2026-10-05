@@ -1,7 +1,8 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDb, hashPassword, type Database } from "@aerowise/db";
+import type { EmailTransport } from "@aerowise/compliance";
+import { createDb, createPlatformAdmin, hashPassword, type Database } from "@aerowise/db";
 import type { Role } from "@aerowise/domain";
 import { sql } from "kysely";
 import { afterAll, beforeEach } from "vitest";
@@ -25,17 +26,17 @@ export interface TestContext {
 }
 
 /** One app + db per test file; every table is emptied before each test. */
-export function setupTestApp(): TestContext {
+export function setupTestApp(opts: { mail?: EmailTransport } = {}): TestContext {
   const ctx = {} as TestContext;
   ctx.db = createDb(testDatabaseUrl());
   ctx.now = new Date("2026-03-01T18:00:00Z");
   ctx.store = new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-files-")));
   ctx.sms = { provider: new TestSmsProvider(), webhookBaseUrl: "http://localhost:3000/api" };
   beforeEach(async () => {
-    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store, sms: ctx.sms });
+    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store, sms: ctx.sms, mail: opts.mail });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate platform_audit_events, platform_admin_sessions, platform_admins, report_signatures, customer_deliveries, submission_packages, contract_documents, site_authority_identifiers, site_authority_assignments, provider_credentials, sms_messages, sms_opt_outs, service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate system_monitoring, email_events, email_sends, lab_tests, invitations, platform_audit_events, platform_admin_sessions, platform_admins, report_signatures, customer_deliveries, submission_packages, contract_documents, site_authority_identifiers, site_authority_assignments, provider_credentials, sms_messages, sms_opt_outs, service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
       ctx.db,
     );
   });
@@ -102,4 +103,18 @@ export function client(app: App, cookie?: string) {
     putImage: (url: string, body: Buffer, extra: Record<string, string> = {}) =>
       app.inject({ method: "PUT", url, payload: body, headers: { ...headers, "content-type": "image/jpeg", ...extra } }),
   };
+}
+
+/** A platform admin for /admin, created the way the CLI does it. */
+export async function createAdmin(c: TestContext, email = "founder@example.com") {
+  return createPlatformAdmin(c.db, { name: "Founder", email, password: PASSWORD });
+}
+
+/** Signs a platform admin in and returns a Cookie header value. */
+export async function adminLogin(c: TestContext, email = "founder@example.com", password = PASSWORD) {
+  const res = await c.app.inject({ method: "POST", url: "/admin/auth/login", payload: { email, password } });
+  if (res.statusCode !== 200) throw new Error(`admin login failed: ${res.statusCode} ${res.body}`);
+  const cookie = res.cookies.find((k) => k.name === "aw_admin_session");
+  if (!cookie) throw new Error("no admin session cookie");
+  return `aw_admin_session=${cookie.value}`;
 }

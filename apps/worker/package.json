@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "health": "tsx src/health.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@aerowise/compliance": "workspace:*",
     "@aerowise/db": "workspace:*",
+    "@aerowise/observability": "workspace:*",
     "@aerowise/quickbooks": "workspace:*",
     "@aerowise/routing": "workspace:*",
     "@aerowise/sms": "workspace:*",

@@ -71,6 +71,18 @@ export function buildTermSchedule(startOn: string, termMonths: number, visitsPer
   return { endOn: addDays(addMonths(startOn, termMonths), -1), visits };
 }
 
+/**
+ * The fewest visits, at least `visitsPerTerm`, that split the term into equal whole-month
+ * windows no longer than `maxIntervalMonths`. A 12-month plan with 3 visits stays at 3
+ * under a 4-month rule, becomes 4 under a quarterly rule and 12 under a monthly one.
+ */
+export function visitsWithin(termMonths: number, visitsPerTerm: number, maxIntervalMonths: number): number {
+  let visits = visitsPerTerm;
+  // Always ends: one visit a month splits any term into 1-month windows.
+  while (visits < termMonths && (termMonths % visits !== 0 || termMonths / visits > maxIntervalMonths)) visits++;
+  return visits;
+}
+
 export type ContractState = "upcoming" | "active" | "expired" | "cancelled";
 
 /** A contract's state is derived from its dates, so nothing has to flip it at midnight. */

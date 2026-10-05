@@ -1,21 +1,9 @@
 import { createPlatformAdmin } from "@aerowise/db";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
-import { client, createOrg, createTenant, createUser, login, PASSWORD, setupTestApp, type TestContext } from "./helpers.ts";
+import { adminLogin, client, createAdmin, createOrg, createTenant, createUser, login, PASSWORD, setupTestApp, type TestContext } from "./helpers.ts";
 
 const ctx = setupTestApp();
-
-async function createAdmin(c: TestContext, email = "founder@example.com") {
-  return createPlatformAdmin(c.db, { name: "Founder", email, password: PASSWORD });
-}
-
-async function adminLogin(c: TestContext, email = "founder@example.com", password = PASSWORD) {
-  const res = await c.app.inject({ method: "POST", url: "/admin/auth/login", payload: { email, password } });
-  if (res.statusCode !== 200) throw new Error(`admin login failed: ${res.statusCode} ${res.body}`);
-  const cookie = res.cookies.find((k) => k.name === "aw_admin_session");
-  if (!cookie) throw new Error("no admin session cookie");
-  return `aw_admin_session=${cookie.value}`;
-}
 
 /** Every guarded admin route, read from the API's own route table so new ones are covered too. */
 async function adminRoutes(c: TestContext) {

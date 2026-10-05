@@ -9,11 +9,13 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Area | Status |
 | --- | --- |
 | Monorepo, Postgres migrations, Docker Compose, CI | Done |
+| Hosting config (Render staging and production, migrations on deploy, API and worker health checks) | Config done; **no hosting account yet** |
 | Sign-in, sessions, roles (owner / office / technician / read-only) | Done |
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
 | Append-only audit log | Done |
-| Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, platform audit log | Done |
+| Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, invite an organization's first owner, platform audit log | Done |
+| User invitations: owner and office invite by email with a role (office cannot invite an owner); single-use links that expire after 7 days; accepting sets a password and signs in | Done |
 | Aerowise plans: plan state (design partner, trial, active, past due, read-only), dates and founder price per organization, set in `/admin`; read-only companies can view and export everything but change nothing | Done |
 | Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
 | Due-inspections list for the office | Done |
@@ -64,6 +66,8 @@ pnpm db:create-platform-admin you@example.com "Your Name"
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
+Hosted staging and production run on Render from [`render.yaml`](render.yaml); [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers setup, the one-command deploy (`scripts/deploy.sh`), migrations and health checks.
+
 ## Checks
 
 ```sh
@@ -93,7 +97,7 @@ packages/
   reports/    Report snapshot and PDF rendering
   routing/    Travel estimates, route optimization, geocoders (US Census, built-in test) and the site lookup sweep
   sms/        Twilio client, the built-in test provider, sending once per text, replies (STOP/START) and delivery receipts
-  storage/    File storage interface (local disk for now)
+  storage/    File storage: local disk, or Cloudflare R2 over the S3 API
   tasks/      Background task queue and task handlers
 ```
 
@@ -101,16 +105,16 @@ packages/
 
 ## Stubbed or deferred
 
-- Files (photos, report PDFs) are stored on local disk behind an interface; an S3-compatible store is needed before production.
+- Files (photos, report PDFs, outbox mail) are stored on local disk unless the four `R2_*` settings are present; then they go to a private Cloudflare R2 bucket, keyed by organization id. `pnpm files:copy-to-r2` copies existing files across and checks each SHA-256.
 - **Real authorities are drafts.** `tx-lcra-ossf` and `tx-harris-county-oce` are written from public pages (docs/jurisdictions/) and list their open questions; a draft never sends on its own and Harris inspection reports are never sent (submission unpublished). Brazoria has no ruleset (its site refused every fetch). `tx-example-county` is fictional and is not loaded in production.
 - Authority boundaries are not automated: sites in counties LCRA or Harris County partly cover wait for a person to choose the authority with evidence.
 - The LCRA cover sheet is LCRA's own fillable PDF, filled in and flattened. LCRA has not confirmed it accepts it filled electronically and emailed.
-- **Filing emails are not really sent.** They are written as `.eml` files to `<org>/outbox/` in file storage. Production needs a mail provider that honours an idempotency key (for example Resend's `Idempotency-Key`) behind the `EmailTransport` interface.
+- **Email goes through Resend when `RESEND_API_KEY` is set**, and otherwise is written as `.eml` files to `<org>/outbox/` in file storage. Every send carries an idempotency key; a send whose outcome was lost is looked up at Resend before any retry past Resend's 24-hour key window. Point a Resend webhook (events `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained`, `email.failed`, `email.suppressed`) at `<PUBLIC_APP_URL>/api/webhooks/email` and set `RESEND_WEBHOOK_SECRET`; a bounced filing email shows in the inbox. Set `EMAIL_REDIRECT_TO` on staging so every message lands in one test inbox.
 - Acknowledgments are recorded by hand (reference, kind of evidence, date, from whom); nothing reads the authority's replies, and receipt files cannot be uploaded yet. Neither LCRA nor Harris County publishes an acknowledgment process.
 - No organization switcher in the UI; a user in several organizations picks one at sign-in via the API.
 - **Imports** read the first sheet of an `.xlsx` or a CSV, up to 10 MB and 5,000 rows; old `.xls` files are refused. A committed import cannot be undone from the screen yet, though every customer and site it created carries its `import_id`.
 - **Stripe runs in test mode by default.** Without `STRIPE_SECRET_KEY`, a built-in test provider stands in outside production: "Connect Stripe" is ready at once and checkout opens Aerowise's own test page, which plays signed webhooks through the real handler. With keys, set the Connect webhook endpoint to `/api/webhooks/stripe` (events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `account.updated`) and enable card and US bank account payment methods for connected accounts.
-- **Invoice emails are not really sent** either; they go to the same outbox as filings.
+- Invoice, renewal and portal emails use the same transport as filings.
 - No autopay or saved payment methods yet, no processing-fee pass-through, no recurring automatic invoicing (the office bills each contract installment); credit notes are done by voiding and reissuing.
 - **QuickBooks runs against a test company by default.** Without `QUICKBOOKS_CLIENT_ID`, a built-in stand-in company (kept in the database) replaces QuickBooks Online outside production. With an Intuit app's keys, register `<PUBLIC_APP_URL>/api/quickbooks/callback` as its redirect URI and set `QUICKBOOKS_TOKEN_KEY`. The Intuit client is covered by unit tests with a stubbed network, not yet by a run against an Intuit sandbox company.
 - QuickBooks sync is one-way (Aerowise to QuickBooks). Sales tax, refunds, sub-customers per site and estimates are not sent yet; an invoice with tax waits in the conflict center to be entered by hand.

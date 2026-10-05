@@ -205,6 +205,7 @@ export interface ContractsTable {
   siteId: string;
   planId: string | null;
   planName: string;
+  customerType: Generated<"residential" | "commercial">;
   startOn: string;
   endOn: string;
   termMonths: number;
@@ -462,6 +463,10 @@ export interface FilingsTable {
   rejectionReason: string | null;
   reviewReason: string | null;
   lastError: string | null;
+  filingFeeCents: ColumnType<number | null, number | null | undefined, number | null>;
+  lateFeeRuleCents: ColumnType<number | null, number | null | undefined, number | null>;
+  lateFeeCents: ColumnType<number | null, number | null | undefined, number | null>;
+  feeBasis: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -591,6 +596,44 @@ export interface CustomerDeliveriesTable {
   transportResponse: ColumnType<unknown, string | undefined, never>;
   error: string | null;
   requestedBy: string | null;
+}
+
+export type EmailSendStatus = "sending" | "accepted" | "failed" | "needs_review";
+export type EmailDeliveryStatus = "delayed" | "delivered" | "bounced" | "complained" | "failed" | "suppressed";
+export type EmailEventType = "sent" | EmailDeliveryStatus;
+
+export interface EmailSendsTable {
+  id: Generated<string>;
+  organizationId: string;
+  idempotencyKey: string;
+  provider: string;
+  recipient: string;
+  subject: string;
+  status: EmailSendStatus;
+  attempts: Generated<number>;
+  firstAttemptAt: Timestamp;
+  lastAttemptAt: Timestamp;
+  uncertainSince: Timestamp | null;
+  providerMessageId: string | null;
+  acceptedAt: Timestamp | null;
+  response: ColumnType<unknown, string | undefined, string>;
+  error: string | null;
+  deliveryStatus: EmailDeliveryStatus | null;
+  deliveryDetail: string | null;
+  deliveryUpdatedAt: Timestamp | null;
+}
+
+export interface EmailEventsTable {
+  id: Generated<string>;
+  organizationId: string;
+  emailSendId: string;
+  provider: string;
+  providerEventId: string;
+  type: EmailEventType;
+  occurredAt: Timestamp;
+  receivedAt: Timestamp;
+  detail: string | null;
+  payload: ColumnType<unknown, string | undefined, never>;
 }
 
 export interface ImportsTable {
@@ -827,6 +870,7 @@ export interface RenewalsTable {
   version: Generated<number>;
   planId: string | null;
   planName: string;
+  customerType: Generated<"residential" | "commercial">;
   termMonths: number;
   visitsPerTerm: number;
   priceCents: number;
@@ -951,6 +995,36 @@ export interface SmsMessagesTable {
   updatedAt: Timestamp;
 }
 
+export interface SystemMonitoringTable {
+  id: Generated<string>;
+  organizationId: string;
+  systemId: string;
+  method: "autodialer" | "remote_telemetry" | "other";
+  description: string;
+  notifies: string;
+  startedOn: string;
+  checkedOn: string;
+  endedOn: string | null;
+  endReason: string | null;
+  endedBy: string | null;
+  recordedBy: string;
+  recordedAt: ColumnType<Date, Date | string, never>;
+}
+
+export interface LabTestsTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  sampledOn: string;
+  labName: string;
+  labReference: string | null;
+  results: ColumnType<unknown, string, never>;
+  notes: string | null;
+  replacesId: string | null;
+  recordedBy: string;
+  recordedAt: ColumnType<Date, Date | string, never>;
+}
+
 export interface SmsOptOutsTable {
   organizationId: string;
   phone: string;
@@ -988,6 +1062,23 @@ export interface PlatformAuditEventsTable {
   occurredAt: CreatedAt;
 }
 
+export interface InvitationsTable {
+  id: Generated<string>;
+  organizationId: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  tokenHash: Buffer;
+  invitedByUserId: string | null;
+  invitedByAdminId: string | null;
+  createdAt: CreatedAt;
+  sentAt: Timestamp;
+  expiresAt: Timestamp;
+  acceptedAt: Timestamp | null;
+  acceptedUserId: string | null;
+  revokedAt: Timestamp | null;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -997,6 +1088,8 @@ export interface DB {
   sites: SitesTable;
   contacts: ContactsTable;
   wastewaterSystems: WastewaterSystemsTable;
+  labTests: LabTestsTable;
+  systemMonitoring: SystemMonitoringTable;
   auditEvents: AuditEventsTable;
   plans: PlansTable;
   contracts: ContractsTable;
@@ -1040,7 +1133,10 @@ export interface DB {
   contractDocuments: ContractDocumentsTable;
   reportSignatures: ReportSignaturesTable;
   customerDeliveries: CustomerDeliveriesTable;
+  emailSends: EmailSendsTable;
+  emailEvents: EmailEventsTable;
   platformAdmins: PlatformAdminsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
+  invitations: InvitationsTable;
 }

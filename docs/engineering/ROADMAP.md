@@ -26,19 +26,19 @@ Where two streams touch the same file, the dependency column says who goes first
 
 | ID | Task | Depends on | Status |
 | --- | --- | --- | --- |
-| W1.1 | Hosting choice and deploy config | — | not started |
+| W1.1 | Hosting choice and deploy config | — | done (Render chosen; config in `render.yaml`, waiting on a Render account) |
 | W1.2 | Demo mode: banner, nothing leaves, demo seed | — | not started |
 | W1.3 | Deploy from main through CI | W1.1 | not started |
-| W2.1 | Platform admin and `/admin`: create and list organizations | — | in progress (PR open) |
-| W2.2 | User invites | W2.1 | not started |
+| W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
+| W2.2 | User invites | W2.1 | in progress (PR open) |
 | W2.3 | Password reset and user deactivation | W2.2 | not started |
 | W2.4 | Organization settings | — | not started |
 | W2.5 | First-run checklist | W2.2, W2.4 | not started |
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |
-| W3.1 | Real email transport with idempotency and bounces | — | not started |
-| W3.2 | Cloudflare R2 object store | — | not started |
-| W3.3 | Production secrets check and hardening | — | not started |
-| W3.4 | Observability: logs, error tracking, alerts | — | not started |
+| W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
+| W3.2 | Cloudflare R2 object store | — | done (#30); using R2 needs Justin's Cloudflare account, bucket and token |
+| W3.3 | Production secrets check and hardening | — | done (#32); Render's TRUST_PROXY value to be read off staging |
+| W3.4 | Observability: logs, error tracking, alerts | — | done (PR pending); needs a Sentry DSN and an uptime monitor from Justin |
 | W3.5 | Backups and restore runbook | W1.1 | not started |
 | W4.1 | Plan states and read-only mode | W2.1 | in progress (PR open) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | not started |
@@ -51,10 +51,10 @@ Where two streams touch the same file, the dependency column says who goes first
 | W5.4 | Onboarding summary | W5.2 | not started |
 | W5.5 | Full data export | W2.1 | not started |
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
-| W6.1 | Per-ruleset service intervals | — | not started |
-| W6.2 | Annual lab tests as required tests | W6.1 | not started |
-| W6.3 | Six-month schedule with electronic monitoring | W6.1 | not started |
-| W6.4 | Per-authority report templates and fees | W6.1 | not started |
+| W6.1 | Per-ruleset service intervals | — | done (#21) |
+| W6.2 | Annual lab tests as required tests | W6.1 | done (#26) |
+| W6.3 | Six-month schedule with electronic monitoring | W6.1 | done (#28) |
+| W6.4 | Per-authority report templates and fees | W6.1 | done (#33) |
 | W6.5 | Ruleset verification workflow and badge | — | not started |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | not started |
 | W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | not started |
