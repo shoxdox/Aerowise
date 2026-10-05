@@ -10,7 +10,9 @@ export type SyncState =
   | { kind: "idle"; pending: number; failed: number }
   | { kind: "syncing"; pending: number; failed: number }
   | { kind: "offline"; pending: number; failed: number }
-  | { kind: "signed_out"; pending: number; failed: number };
+  | { kind: "signed_out"; pending: number; failed: number }
+  /** The company's Aerowise plan has lapsed: changes wait on the phone until it is reactivated. */
+  | { kind: "read_only"; pending: number; failed: number };
 
 type Listener = (s: SyncState) => void;
 const listeners = new Set<Listener>();
@@ -31,7 +33,7 @@ const emit = (s: SyncState) => {
 
 /** Thrown when the request never got a usable answer; the op stays queued. */
 class RetryLater extends Error {
-  constructor(readonly reason: "offline" | "signed_out" | "server") {
+  constructor(readonly reason: "offline" | "signed_out" | "server" | "read_only") {
     super(reason);
   }
 }
@@ -45,6 +47,10 @@ async function send(url: string, init: RequestInit): Promise<Response> {
   }
   if (res.status === 401) throw new RetryLater("signed_out");
   if (res.status >= 500 || res.status === 429) throw new RetryLater("server");
+  // Not the inspection's fault, so never marked failed: it sends once the account is reactivated.
+  if (res.status === 403 && ((await res.clone().json().catch(() => ({}))) as { error?: string }).error === "organization_read_only") {
+    throw new RetryLater("read_only");
+  }
   return res;
 }
 
@@ -121,7 +127,8 @@ async function drainOnce() {
       await runOp(next, live, inspections);
     } catch (err) {
       if (err instanceof RetryLater) {
-        emit({ kind: err.reason === "signed_out" ? "signed_out" : err.reason === "offline" ? "offline" : "idle", pending: live.length, failed });
+        const kind = err.reason === "server" ? "idle" : err.reason;
+        emit({ kind, pending: live.length, failed });
         return;
       }
       throw err;

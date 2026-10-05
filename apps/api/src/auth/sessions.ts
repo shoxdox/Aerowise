@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Database } from "@aerowise/db";
-import type { Role } from "@aerowise/domain";
+import type { Role, SubscriptionState } from "@aerowise/domain";
 
 export const SESSION_COOKIE = "aw_session";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -10,6 +10,8 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   role: Role;
+  /** The organization's Aerowise plan state; `read_only` refuses every write. */
+  subscriptionState: SubscriptionState;
 }
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest();
@@ -32,7 +34,8 @@ export async function findSession(db: Database, token: string): Promise<AuthCont
     .innerJoin("memberships as m", (join) =>
       join.onRef("m.organizationId", "=", "s.organizationId").onRef("m.userId", "=", "s.userId"),
     )
-    .select(["s.id as sessionId", "s.userId", "s.organizationId", "m.role"])
+    .innerJoin("organizations as o", "o.id", "s.organizationId")
+    .select(["s.id as sessionId", "s.userId", "s.organizationId", "m.role", "o.subscriptionState"])
     .where("s.tokenHash", "=", hashToken(token))
     .where("s.revokedAt", "is", null)
     .where("s.expiresAt", ">", new Date())

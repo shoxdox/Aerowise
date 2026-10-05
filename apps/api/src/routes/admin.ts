@@ -1,10 +1,25 @@
 import { verifyPassword, type Database } from "@aerowise/db";
-import { adminOrganization, adminOrganizationInput, invitationSent, ownerInvitationInput, platformAdminMe } from "@aerowise/domain";
+import {
+  adminOrganization,
+  adminOrganizationInput,
+  canChangePlan,
+  dateInZone,
+  daysLeft,
+  initialPlan,
+  invitationSent,
+  ownerInvitationInput,
+  platformAdminMe,
+  SUBSCRIPTION_STATE_LABELS,
+  subscriptionDefaults,
+  subscriptionPlanInput,
+  type SubscriptionConfig,
+  type SubscriptionPlan,
+} from "@aerowise/domain";
 import { sql } from "kysely";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { ADMIN_SESSION_COOKIE, createAdminSession, findAdminSession, revokeAdminSession } from "../auth/admin-sessions.ts";
-import { HttpError, notFound } from "../lib/errors.ts";
+import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { createInvitation, emailInvitation, inviteUrlFor, listInvitations, type InvitationMail } from "../lib/invitations.ts";
 import { platformAudit } from "../lib/platform-audit.ts";
 
@@ -22,8 +37,71 @@ export const adminRoutes: FastifyPluginAsyncZod<{
   loginRateLimit: number;
   now: () => Date;
   invitations: InvitationMail;
-}> = async (app, { db, production, loginRateLimit, now, invitations }) => {
+  subscription: SubscriptionConfig;
+}> = async (app, { db, production, loginRateLimit, now, invitations, subscription }) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
+
+  const planColumns = [
+    "o.subscriptionState",
+    "o.subscriptionStartsOn",
+    "o.subscriptionEndsOn",
+    "o.pricePerContractCentsOverride",
+    "o.monthlyMinimumCentsOverride",
+  ] as const;
+
+  function planOf(row: {
+    timezone: string;
+    subscriptionState: SubscriptionPlan["state"];
+    subscriptionStartsOn: string;
+    subscriptionEndsOn: string | null;
+    pricePerContractCentsOverride: number | null;
+    monthlyMinimumCentsOverride: number | null;
+  }) {
+    const plan: SubscriptionPlan = {
+      state: row.subscriptionState,
+      startsOn: row.subscriptionStartsOn,
+      endsOn: row.subscriptionEndsOn,
+      pricePerContractCentsOverride: row.pricePerContractCentsOverride,
+      monthlyMinimumCentsOverride: row.monthlyMinimumCentsOverride,
+    };
+    return { plan, daysLeft: daysLeft(plan, dateInZone(now(), row.timezone)) };
+  }
+
+  /** Organizations with usage and plan, for the list or for one organization after a change. */
+  async function loadOrganizations(id?: string) {
+    const at = now();
+    let query = db
+      .selectFrom("organizations as o")
+      .select([
+        "o.id",
+        "o.name",
+        "o.timezone",
+        "o.createdAt",
+        ...planColumns,
+        // In force today in the organization's own time zone; cancelled contracts never count.
+        sql<number>`(select count(*)::int from contracts c
+          where c.organization_id = o.id and c.status = 'active'
+            and (${at}::timestamptz at time zone o.timezone)::date between c.start_on and c.end_on)`.as("activeContracts"),
+        sql<number>`(select count(*)::int from memberships m join users u on u.id = m.user_id
+          where m.organization_id = o.id and m.active and u.active)`.as("users"),
+        sql<Date | null>`greatest(
+          (select max(a.occurred_at) from audit_events a where a.organization_id = o.id),
+          (select max(s.created_at) from sessions s where s.organization_id = o.id))`.as("lastActivityAt"),
+      ])
+      .orderBy("o.name");
+    if (id) query = query.where("o.id", "=", id);
+    const rows = await query.execute();
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      timezone: r.timezone,
+      createdAt: r.createdAt.toISOString(),
+      activeContracts: r.activeContracts,
+      users: r.users,
+      lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
+      ...planOf(r),
+    }));
+  }
 
   async function loadAdmin(adminId: string) {
     return db.selectFrom("platformAdmins").select(["id", "name", "email"]).where("id", "=", adminId).executeTakeFirstOrThrow();
@@ -87,45 +165,18 @@ export const adminRoutes: FastifyPluginAsyncZod<{
     async (req) => loadAdmin(req.requireAdmin().adminId),
   );
 
+
   app.get(
     "/admin/organizations",
     {
       config: { platformAdmin: true },
       schema: {
         tags: ["admin"],
-        summary: "Every organization with its usage",
-        response: { 200: z.object({ items: z.array(adminOrganization) }) },
+        summary: "Every organization with its usage and plan",
+        response: { 200: z.object({ items: z.array(adminOrganization), defaults: subscriptionDefaults }) },
       },
     },
-    async () => {
-      const at = now();
-      const rows = await db
-        .selectFrom("organizations as o")
-        .select([
-          "o.id",
-          "o.name",
-          "o.timezone",
-          "o.createdAt",
-          // In force today in the organization's own time zone; cancelled contracts never count.
-          sql<number>`(select count(*)::int from contracts c
-            where c.organization_id = o.id and c.status = 'active'
-              and (${at}::timestamptz at time zone o.timezone)::date between c.start_on and c.end_on)`.as("activeContracts"),
-          sql<number>`(select count(*)::int from memberships m join users u on u.id = m.user_id
-            where m.organization_id = o.id and m.active and u.active)`.as("users"),
-          sql<Date | null>`greatest(
-            (select max(a.occurred_at) from audit_events a where a.organization_id = o.id),
-            (select max(s.created_at) from sessions s where s.organization_id = o.id))`.as("lastActivityAt"),
-        ])
-        .orderBy("o.name")
-        .execute();
-      return {
-        items: rows.map((r) => ({
-          ...r,
-          createdAt: r.createdAt.toISOString(),
-          lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
-        })),
-      };
-    },
+    async () => ({ items: await loadOrganizations(), defaults: subscription }),
   );
 
   app.post(
@@ -141,7 +192,8 @@ export const adminRoutes: FastifyPluginAsyncZod<{
     },
     async (req, reply) => {
       const { adminId } = req.requireAdmin();
-      const input = req.body;
+      const { plan: kind, ...input } = req.body;
+      const plan = initialPlan(kind, dateInZone(now(), input.timezone), subscription);
       const org = await db.transaction().execute(async (trx) => {
         const created = await trx
           .insertInto("organizations")
@@ -156,8 +208,11 @@ export const adminRoutes: FastifyPluginAsyncZod<{
             state: null,
             postalCode: null,
             logoUrl: null,
+            subscriptionState: plan.state,
+            subscriptionStartsOn: plan.startsOn,
+            subscriptionEndsOn: plan.endsOn,
           })
-          .returning(["id", "name", "timezone", "createdAt"])
+          .returning(["id"])
           .executeTakeFirstOrThrow();
         await platformAudit(trx, req, {
           adminId,
@@ -165,13 +220,64 @@ export const adminRoutes: FastifyPluginAsyncZod<{
           entityType: "organization",
           entityId: created.id,
           organizationId: created.id,
-          changes: input,
+          changes: { ...input, plan },
         });
         return created;
       });
-      return reply
-        .status(201)
-        .send({ ...org, createdAt: org.createdAt.toISOString(), activeContracts: 0, users: 0, lastActivityAt: null });
+      const [created] = await loadOrganizations(org.id);
+      return reply.status(201).send(created!);
+    },
+  );
+
+  app.put(
+    "/admin/organizations/:id/plan",
+    {
+      config: { platformAdmin: true },
+      schema: {
+        tags: ["admin"],
+        summary: "Set an organization's plan state, dates and founder price",
+        params: z.object({ id: z.uuid() }),
+        body: subscriptionPlanInput,
+        response: { 200: adminOrganization },
+      },
+    },
+    async (req) => {
+      const { adminId } = req.requireAdmin();
+      const next = req.body;
+      await db.transaction().execute(async (trx) => {
+        const current = await trx
+          .selectFrom("organizations as o")
+          .select(["o.id", "o.timezone", ...planColumns])
+          .where("o.id", "=", req.params.id)
+          .forUpdate()
+          .executeTakeFirst();
+        if (!current) throw notFound("Organization");
+        const before = planOf(current).plan;
+        if (!canChangePlan(before.state, next.state)) {
+          throw unprocessable(`A plan cannot go from ${SUBSCRIPTION_STATE_LABELS[before.state]} to ${SUBSCRIPTION_STATE_LABELS[next.state]}`);
+        }
+        await trx
+          .updateTable("organizations")
+          .set({
+            subscriptionState: next.state,
+            subscriptionStartsOn: next.startsOn,
+            subscriptionEndsOn: next.endsOn,
+            pricePerContractCentsOverride: next.pricePerContractCentsOverride,
+            monthlyMinimumCentsOverride: next.monthlyMinimumCentsOverride,
+          })
+          .where("id", "=", current.id)
+          .execute();
+        await platformAudit(trx, req, {
+          adminId,
+          action: "organization.plan_changed",
+          entityType: "organization",
+          entityId: current.id,
+          organizationId: current.id,
+          changes: { before, after: next },
+        });
+      });
+      const [updated] = await loadOrganizations(req.params.id);
+      return updated!;
     },
   );
 

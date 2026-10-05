@@ -46,6 +46,7 @@ import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
 import type { QuickBooksConfig } from "./lib/quickbooks.ts";
 import { TestSmsProvider, type SmsConfig } from "@aerowise/sms";
 import { CensusGeocoder, TestGeocoder, type Geocoder } from "@aerowise/routing";
+import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/domain";
 
 export interface AppOptions {
   db: Database;
@@ -97,6 +98,8 @@ export interface AppOptions {
    * and the US Census geocoder in production.
    */
   geocoder?: Geocoder | null;
+  /** Aerowise's own prices and free-period lengths (what companies pay Aerowise). */
+  subscription?: SubscriptionConfig;
   /**
    * When the worker runs on the same machine as the API (one hosted service sharing a disk),
    * /health also fails if the worker's heartbeat is missing or old, so the host restarts both.
@@ -123,6 +126,7 @@ export async function buildApp({
   quickbooks = production ? null : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher() },
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
+  subscription = DEFAULT_SUBSCRIPTION_CONFIG,
   workerHeartbeat,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
@@ -221,7 +225,7 @@ export async function buildApp({
   const transport = mail ?? new OutboxTransport(store, now);
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
   await app.register(customerRoutes, { db, now });

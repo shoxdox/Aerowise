@@ -45,6 +45,11 @@ export interface OrganizationsTable {
   renewalWindowDays: Generated<number>;
   renewalAutoSend: Generated<boolean>;
   renewalPayment: Generated<"pay_to_activate" | "invoice">;
+  subscriptionState: Generated<"design_partner" | "trial" | "active" | "past_due" | "read_only">;
+  subscriptionStartsOn: Generated<string>;
+  subscriptionEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
+  pricePerContractCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
+  monthlyMinimumCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
   renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
   smsEnabled: Generated<boolean>;
   smsKinds: ColumnType<SmsKind[], SmsKind[] | undefined, SmsKind[]>;

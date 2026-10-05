@@ -12,9 +12,11 @@ export function SyncBanner({ state, failures, needsSignIn, onRetry }: { state: S
         </p>
       )}
       {state.pending > 0 ? (
-        <p className={`sync ${state.kind === "offline" ? "warn" : ""}`} role="status" data-testid="sync-status">
+        <p className={`sync ${state.kind === "offline" || state.kind === "read_only" ? "warn" : ""}`} role="status" data-testid="sync-status">
           {state.kind === "offline"
             ? `No signal. ${plural(state.pending, "change")} saved on this phone, will send when you're back online.`
+            : state.kind === "read_only"
+              ? `Your company's account is read-only. ${plural(state.pending, "change")} saved on this phone, will send once it is reactivated.`
             : state.kind === "syncing"
               ? `Sending ${plural(state.pending, "change")}…`
               : `${plural(state.pending, "change")} waiting to send.`}{" "}
