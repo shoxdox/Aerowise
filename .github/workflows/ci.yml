@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       # The self-hosted server's files (docs/engineering/DEPLOY.md): the scripts pass shellcheck,
       # both Compose files resolve, and Caddy and nginx accept their configs.
-      - run: shellcheck -S warning deploy/vps/*.sh scripts/deploy-vps.sh
+      - run: shellcheck -S warning deploy/vps/*.sh scripts/deploy-vps.sh scripts/ci-deploy.sh
       - run: AW_ENV=staging AW_DOMAIN=staging.example.com POSTGRES_PASSWORD=x FILE_SIGNING_SECRET=x docker compose -f deploy/vps/app.compose.yaml config -q
       - run: STAGING_DOMAIN=staging.example.com PRODUCTION_DOMAIN=app.example.com ACME_EMAIL=ops@example.com docker compose -f deploy/vps/edge.compose.yaml config -q
       - run: >-
@@ -107,3 +107,19 @@ jobs:
         with:
           name: playwright-traces
           path: apps/web/test-results
+
+  # Every push to main that passes the jobs above goes to staging (docs/engineering/DEPLOY.md).
+  # Skips with a notice until the server's secrets are added.
+  deploy-staging:
+    needs: [check, docker, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: { group: deploy-staging, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/ci-deploy.sh staging "$GITHUB_SHA"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}

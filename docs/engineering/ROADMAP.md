@@ -26,9 +26,9 @@ Where two streams touch the same file, the dependency column says who goes first
 
 | ID | Task | Depends on | Status |
 | --- | --- | --- | --- |
-| W1.1 | Hosting choice and deploy config | — | done: Justin's server with Docker Compose (`deploy/vps/`), waiting on `setup.sh` being run there; Render config kept for later |
+| W1.1 | Hosting choice and deploy config | — | done (#39): Justin's server with Docker Compose (`deploy/vps/`), waiting on `setup.sh` being run there; Render config kept for later |
 | W1.2 | Demo mode: banner, nothing leaves, demo seed | — | done (`DEMO_MODE`, `pnpm db:reseed-demo`, banner on every screen) |
-| W1.3 | Deploy from main through CI | W1.1 | not started |
+| W1.3 | Deploy from main through CI | W1.1 | done: staging on every green push to main, production by hand, nightly reseed; waiting on the server's GitHub secrets |
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
 | W2.2 | User invites | W2.1 | done (#25) |
 | W2.3 | Password reset and user deactivation | W2.2 | in progress (PR open) |
