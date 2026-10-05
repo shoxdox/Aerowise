@@ -61,7 +61,7 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
             </div>
             {m && (
               <p className="small">
-                {MONITORING_METHOD_LABELS[m.method]}: {m.description}. Notifies {m.notifies}. Since {day(m.startedOn)}, checked {day(m.checkedOn)}.
+                {MONITORING_METHOD_LABELS[m.method]}: {m.description}. Notifies: {m.notifies}. Since {day(m.startedOn)}, checked {day(m.checkedOn)}.
               </p>
             )}
             {form?.kind === "record" && form.systemId === s.id && (
