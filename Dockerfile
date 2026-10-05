@@ -11,6 +11,7 @@ COPY apps/worker/package.json apps/worker/
 COPY packages/compliance/package.json packages/compliance/
 COPY packages/db/package.json packages/db/
 COPY packages/domain/package.json packages/domain/
+COPY packages/observability/package.json packages/observability/
 COPY packages/payments/package.json packages/payments/
 COPY packages/quickbooks/package.json packages/quickbooks/
 COPY packages/renewals/package.json packages/renewals/
