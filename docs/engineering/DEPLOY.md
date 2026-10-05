@@ -34,7 +34,7 @@ Each API deploy runs `pnpm db:migrate` as its pre-deploy command: after the imag
 2. In the Render dashboard choose **New > Blueprint**, pick the repo and the `main` branch. Render reads `render.yaml` and lists the six resources.
 3. Fill in the values Render asks for (the `sync: false` keys):
    - `PUBLIC_APP_URL`: the web service's address, for example `https://aerowise-web-staging.onrender.com`, until a domain is bought.
-   - `FILING_EMAIL_FROM`, `INVOICE_EMAIL_FROM`: leave empty for now; email is written to the outbox until W3.1.
+   - `FILING_EMAIL_FROM`, `INVOICE_EMAIL_FROM`, `ACCOUNT_EMAIL_FROM`: leave empty for now; email is written to the outbox until W3.1.
    - Production only: Stripe, QuickBooks and Twilio keys. Leave them empty and each one stays off.
 4. Apply. Render creates the databases, generates `FILE_SIGNING_SECRET` and `QUICKBOOKS_TOKEN_KEY`, and builds and starts everything.
 5. Create your platform admin for `/admin`: open the API service's **Shell** in the dashboard and run `pnpm db:create-platform-admin you@example.com "Your Name"` (it asks for the password).
