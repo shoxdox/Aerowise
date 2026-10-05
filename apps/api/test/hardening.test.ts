@@ -73,6 +73,7 @@ describe("boot-time configuration check", () => {
       "QUICKBOOKS_TOKEN_KEY must not be the development key",
     ]);
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_live_x" })).toEqual(["STRIPE_WEBHOOK_SECRET is required when Stripe is configured"]);
+    expect(configProblems({ ...staging, STRIPE_BILLING_SECRET_KEY: "sk_live_x" })).toEqual(["STRIPE_BILLING_WEBHOOK_SECRET is required when Stripe Billing is configured"]);
     expect(configProblems({ ...staging, TWILIO_ACCOUNT_SID: "AC1" })).toEqual(["TWILIO_AUTH_TOKEN is required together"]);
   });
 

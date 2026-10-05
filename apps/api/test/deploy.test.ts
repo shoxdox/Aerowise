@@ -33,7 +33,7 @@ describe("the self-hosted server's settings", () => {
   // Tuning knobs and development-only settings that keep their defaults on the server.
   const notOnTheServer = new Set([
     "API_PORT", "API_URL", "HEALTH_INCLUDES_WORKER", "PLATFORM_ADMIN_PASSWORD", "R2_ENDPOINT", "SMS_WEBHOOK_BASE_URL", "TEST_DATABASE_URL",
-    "QUEUE_CHECK_INTERVAL_MS", "QUICKBOOKS_SYNC_INTERVAL_MS", "SMS_SWEEP_INTERVAL_MS", "WORKER_HEARTBEAT_FILE", "WORKER_HEARTBEAT_MAX_AGE_MS",
+    "BILLING_RUN_INTERVAL_MS", "QUEUE_CHECK_INTERVAL_MS", "QUICKBOOKS_SYNC_INTERVAL_MS", "SMS_SWEEP_INTERVAL_MS", "WORKER_HEARTBEAT_FILE", "WORKER_HEARTBEAT_MAX_AGE_MS",
   ]);
   const read = (path: string) => readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), "utf8");
   const keys = (text: string, pattern: RegExp) => new Set([...text.matchAll(pattern)].map((m) => m[1]!));

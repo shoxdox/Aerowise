@@ -1,3 +1,4 @@
+import { billingFromEnv, TestBillingProvider, type BillingProvider } from "@aerowise/billing";
 import { emailFromEnv, OutboxTransport, type EmailProvider, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import { StripeProvider, TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
@@ -32,6 +33,8 @@ export interface Providers {
   quickbooks: { provider: QuickBooksProvider; cipher: TokenCipher } | null;
   sms: SmsConfig | null;
   geocoder: Geocoder | null;
+  /** Stripe Billing, for what companies pay Aerowise (not homeowner payments); null means months are counted but not invoiced. */
+  billing: BillingProvider | null;
 }
 
 /**
@@ -51,6 +54,7 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
       quickbooks: { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher(env.QUICKBOOKS_TOKEN_KEY || undefined) },
       sms: { provider: new TestSmsProvider(), webhookBaseUrl: smsWebhookBaseUrl(env) },
       geocoder: new TestGeocoder(),
+      billing: new TestBillingProvider(),
     };
   }
   const stripeKey = env.STRIPE_SECRET_KEY;
@@ -68,6 +72,7 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
     quickbooks: quickBooksFromEnv(db, env, production, now),
     sms: smsFromEnv(env, production),
     geocoder: geocoderFromEnv(env, production),
+    billing: billingFromEnv(env) ?? (production ? null : new TestBillingProvider()),
   };
 }
 
