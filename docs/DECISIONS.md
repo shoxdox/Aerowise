@@ -364,3 +364,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Pricing comes from the W4.1 subscription config** (`AEROWISE_DESIGN_PARTNER_DAYS`, `AEROWISE_PRICE_PER_CONTRACT_CENTS`, `AEROWISE_MONTHLY_MINIMUM_CENTS`), so the page and billing cannot disagree. The page says "Free for 90 days" (the brief's design-partner offer), then the per-contract price and monthly minimum.
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
 - **Open:** whether to show the post-free-period price publicly at all, or only "free for 90 days" (Justin); the demo request button arrives with W8.2.
+
+## 2026-10-05 · W8.2 Demo request form
+
+- **Requests are platform data, not tenant data.** A prospect is not an organization yet, so `demo_requests` (migration 0025) has no `organization_id`, like the platform admin tables. Only platform admins read it (`GET /admin/demo-requests`), and marking one handled writes a platform audit event.
+- **Email to Aerowise belongs to no organization.** The alert goes through `EmailTransport` like every other email (the outbox until Resend is configured), with `organizationId: null`. `email_sends` and `email_events` now allow a null organization; such sends are unique by idempotency key among platform sends, and their delivery events are recorded but never touch a filing. Resend tags them `aw_org=platform`.
+- **Who is emailed:** `DEMO_REQUEST_NOTIFY_TO` (comma-separated). Left empty, every active platform admin is emailed, so Justin hears about requests from the first day without setting anything.
+- **The email is sent while the request is answered, not from the worker.** It is one short email, and the worker queue is per organization. If it fails, the request is still saved and `/admin/demo-requests` shows "Email failed" with the reason; the visitor sees the same thank-you either way.
+- **Spam protection:** 5 requests an hour per client address (keyed by address only, so it runs at `onRequest`; see W3.3), length limits on every field, and a hidden "website" field. A request that fills it gets the normal answer and is dropped, so a bot cannot tell. No CAPTCHA: it needs an outside account and hurts real visitors; add Cloudflare Turnstile if spam gets through.
+- **Open:** the address to notify (Justin).

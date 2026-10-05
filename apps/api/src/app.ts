@@ -37,6 +37,7 @@ import { smsRoutes } from "./routes/sms.ts";
 import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
 import { publicRoutes } from "./routes/public.ts";
+import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -98,6 +99,8 @@ export interface AppOptions {
   geocoder?: Geocoder | null;
   /** Aerowise's own prices and free-period lengths (what companies pay Aerowise). */
   subscription?: SubscriptionConfig;
+  /** Who is emailed about a new demo request; empty means every active platform admin. */
+  demoRequestNotifyTo?: string[];
   /**
    * When the worker runs on the same machine as the API (one hosted service sharing a disk),
    * /health also fails if the worker's heartbeat is missing or old, so the host restarts both.
@@ -124,6 +127,7 @@ export async function buildApp({
   sms = production ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production ? new CensusGeocoder() : new TestGeocoder(),
   subscription = DEFAULT_SUBSCRIPTION_CONFIG,
+  demoRequestNotifyTo = [],
   workerHeartbeat,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
@@ -246,6 +250,7 @@ export async function buildApp({
   await app.register(labTestRoutes, { db, now });
   await app.register(monitoringRoutes, { db, now });
   await app.register(publicRoutes, { db, now, subscription });
+  await app.register(demoRequestRoutes, { db, now, demoMail: { mail: transport, from: accountMailFrom, notifyTo: demoRequestNotifyTo, appUrl } });
 
   return app;
 }

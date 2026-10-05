@@ -93,7 +93,7 @@ export class ResendEmailProvider implements EmailProvider {
         attachments: m.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), content_type: a.contentType })),
         tags: [
           { name: "aw_send", value: sendId },
-          { name: "aw_org", value: m.organizationId },
+          { name: "aw_org", value: m.organizationId ?? "platform" },
         ],
         headers: { "X-Aerowise-Key": m.idempotencyKey.slice(0, 200) },
       },
