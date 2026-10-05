@@ -13,8 +13,17 @@ test("the office sees tomorrow's route on the map with its driving, and puts a s
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const date = tomorrow.toISOString().slice(0, 10);
 
+  // Today's route answers late, after tomorrow's has been picked: the page must not show it.
+  const todayRoute = `**/api/routing/day?date=${today}`;
+  await page.route(todayRoute, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await route.continue();
+  });
+  const lateAnswer = page.waitForResponse(todayRoute);
+
   await page.goto("/schedule");
   await page.locator('input[type="date"]').fill(date);
+  await lateAnswer;
   await expect(page.getByRole("img", { name: /Map of 1 route/ })).toBeVisible();
   const column = page.locator(".column", { hasText: "4 stops" });
   await expect(column.getByText(/\d+(\.\d)? mi · .* driving/)).toBeVisible();
