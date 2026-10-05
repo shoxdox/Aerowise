@@ -233,7 +233,7 @@ export function normalizeDate(raw: string): string | null {
 
 // API shapes.
 
-export const IMPORT_STATUSES = ["preview", "committed", "failed", "discarded"] as const;
+export const IMPORT_STATUSES = ["preview", "committed", "failed", "discarded", "undone"] as const;
 export const IMPORT_ROW_STATUSES = ["ready", "warning", "duplicate", "error"] as const;
 export type ImportRowStatus = (typeof IMPORT_ROW_STATUSES)[number];
 
@@ -307,11 +307,22 @@ export const importDetail = z.object({
   summary: importSummary,
   createdAt: z.iso.datetime({ offset: true }),
   committedAt: z.iso.datetime({ offset: true }).nullable(),
+  undoneAt: z.iso.datetime({ offset: true }).nullable(),
   error: z.string().nullable(),
   result: z.object({ customers: z.number().int(), sites: z.number().int(), contracts: z.number().int() }).nullable(),
   rows: z.array(importRow),
 });
 export type ImportDetail = z.infer<typeof importDetail>;
+
+/** What undoing a committed import would delete, and the work that stops it. */
+export const importUndoCheck = z.object({
+  canUndo: z.boolean(),
+  /** Why it cannot be undone when that is not about work done (not committed, already undone). */
+  reason: z.string().nullable(),
+  removes: z.object({ customers: z.number().int(), sites: z.number().int(), contracts: z.number().int(), visits: z.number().int() }),
+  blockers: z.array(z.object({ table: z.string(), label: z.string(), count: z.number().int() })),
+});
+export type ImportUndoCheck = z.infer<typeof importUndoCheck>;
 
 export const importListItem = importDetail
   .pick({ id: true, filename: true, status: true, createdAt: true, committedAt: true, result: true })

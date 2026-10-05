@@ -663,7 +663,7 @@ export interface ImportsTable {
   id: Generated<string>;
   organizationId: string;
   filename: string;
-  status: Generated<"preview" | "committed" | "failed" | "discarded">;
+  status: Generated<"preview" | "committed" | "failed" | "discarded" | "undone">;
   headers: ColumnType<unknown, string, string>;
   mapping: ColumnType<unknown, string, string>;
   createdBy: string;
@@ -674,6 +674,8 @@ export interface ImportsTable {
   sheets: ColumnType<unknown, string, never>;
   sheetIndex: Generated<number>;
   mappingSource: Generated<"detected" | "saved" | "edited">;
+  undoneAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  undoneBy: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface ImportRowsTable {
