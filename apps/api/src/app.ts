@@ -53,7 +53,7 @@ export interface AppOptions {
   loginRateLimit?: number;
   /** Clock used for "today" in due dates and contract states. Tests pin it. */
   now?: () => Date;
-  /** Where uploaded photos are kept. Defaults to ./.data/files on local disk. */
+  /** Where uploaded photos, reports and outbox mail are kept. Defaults to ./.data/files on local disk. */
   store?: ObjectStore;
   /** Secret for signed file links. Required in production. */
   fileSigningSecret?: string;

@@ -14,7 +14,7 @@ Two environments, each with its own database and services, all in Render's Ohio 
 
 All three services build the same `Dockerfile` and differ only in their start command, as in `docker-compose.yml`.
 
-- **The API and the worker share one service** (`scripts/start-api-and-worker.sh`), because uploaded photos and report PDFs live on a disk (`FILE_STORAGE_DIR=/data/files`) and a Render disk belongs to one service. If either process stops, the script stops the other and the container exits, so Render restarts both. Once object storage lands (W3.2), the worker becomes its own service and the disk goes away.
+- **The API and the worker share one service** (`scripts/start-api-and-worker.sh`), because uploaded photos and report PDFs live on a disk (`FILE_STORAGE_DIR=/data/files`) and a Render disk belongs to one service. If either process stops, the script stops the other and the container exits, so Render restarts both. With R2 configured (W3.2) nothing needs the disk any more, so the worker can become its own service; that split is left for a later change.
 - **The web app** proxies `/api/*` to the API over Render's private network. `API_URL` is the API's private `host:port`; Render passes it to the Docker build, where Next.js bakes it into its rewrites. People, Stripe, Twilio and Intuit only ever use the web app's address.
 - The API service also has a public `onrender.com` address because Render health checks only run on web services. Nothing links to it; it answers the same signed-in requests the web app proxies.
 
@@ -34,6 +34,7 @@ Each API deploy runs `pnpm db:migrate` as its pre-deploy command: after the imag
 2. In the Render dashboard choose **New > Blueprint**, pick the repo and the `main` branch. Render reads `render.yaml` and lists the six resources.
 3. Fill in the values Render asks for (the `sync: false` keys):
    - `PUBLIC_APP_URL`: the web service's address, for example `https://aerowise-web-staging.onrender.com`, until a domain is bought.
+   - Files: leave the four `R2_*` keys empty and photos and PDFs stay on the service's disk. To use Cloudflare R2, create a private bucket and an R2 API token with object read and write on that bucket only, then set `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. Files already on the disk are copied with `pnpm files:copy-to-r2` from the API service's Shell (run it before setting the keys, with them exported in the shell, then again after; it is safe to repeat and checks every file's SHA-256).
    - Email: leave `RESEND_API_KEY` empty and every email is written to the outbox in file storage. To send for real, set `RESEND_API_KEY`, `FILING_EMAIL_FROM`, `INVOICE_EMAIL_FROM` and `ACCOUNT_EMAIL_FROM` (addresses on the domain verified in Resend), point a Resend webhook at `<PUBLIC_APP_URL>/api/webhooks/email` and put its signing secret in `RESEND_WEBHOOK_SECRET`. On staging, set `EMAIL_REDIRECT_TO` to a test inbox so synthetic filings never reach a real authority.
    - Production only: Stripe, QuickBooks and Twilio keys. Leave them empty and each one stays off.
 4. Apply. Render creates the databases, generates `FILE_SIGNING_SECRET` and `QUICKBOOKS_TOKEN_KEY`, and builds and starts everything.

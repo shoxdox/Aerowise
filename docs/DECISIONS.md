@@ -285,6 +285,15 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **No limits or pass/fail.** Aerowise records the values but does not judge them, because no authority's limits have been read yet. A county ruleset that publishes limits can add them later.
 - **Who records them:** the office (`filings:write`). Anyone who can read filings can see them.
 
+## 2026-10-05 · W3.2 Cloudflare R2 object store
+
+- **R2 over its S3 API, signed with `aws4fetch`** (a small SigV4 signer with no dependencies, which Cloudflare's R2 docs use), not the AWS SDK. The payload's SHA-256 is signed too (no `UNSIGNED-PAYLOAD`), so R2 refuses a body changed in transit. Its signature was checked against the AWS SDK's signer (`@smithy/signature-v4`) on the same request: they match.
+- **Private bucket, Aerowise's signed links only.** The store never makes bucket or presigned URLs. Files still reach people only through the API's short-lived signed links, which check the organization and stream the file from R2. A presigned R2 URL would skip that check and make revoking access harder. The cost is that downloads pass through the API.
+- **Every key starts with an organization id**, and both stores refuse any other key (also `..`, empty segments and unusual characters). This is tested against both.
+- **Configuration is all or nothing.** All four `R2_*` settings select R2; none selects local disk. Some but not all is a startup error naming what is missing, so files never land silently on a server's disk. Production refusing to start without storage keys is W3.3's check.
+- **Moving existing files:** `pnpm files:copy-to-r2` copies everything under `FILE_STORAGE_DIR`, reads each object back and compares SHA-256. Files already there with the same hash are skipped, and stray files outside an organization are listed. It is safe to run again and exits non-zero on any mismatch.
+- **Tests:** the same store tests run against local disk and against R2 through an in-memory S3 double. The double refuses requests with bad credentials or a payload hash that does not match. An API test round-trips a photo through R2.
+
 ## 2026-10-05 · W6.3 Six-month schedule with electronic monitoring
 
 - **Monitoring is recorded on a system, by a person, with a check date.** A record says what the monitoring is (autodialer, remote telemetry, other), the device or service, who it notifies automatically and how, when it started and when someone checked that it works. It counts from the check date, not the start date, so a system nobody has checked never stretches a schedule. Ending it records when and why; records are not deleted. Each system has one open record at a time.
