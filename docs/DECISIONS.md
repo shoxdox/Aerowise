@@ -393,3 +393,13 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **The email is sent while the request is answered, not from the worker.** It is one short email, and the worker queue is per organization. If it fails, the request is still saved and `/admin/demo-requests` shows "Email failed" with the reason; the visitor sees the same thank-you either way.
 - **Spam protection:** 5 requests an hour per client address (keyed by address only, so it runs at `onRequest`; see W3.3), length limits on every field, and a hidden "website" field. A request that fills it gets the normal answer and is dropped, so a bot cannot tell. No CAPTCHA: it needs an outside account and hurts real visitors; add Cloudflare Turnstile if spam gets through.
 - **Open:** the address to notify (Justin).
+
+## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
+
+- **Versions live in code** (`CURRENT_LEGAL_VERSIONS` in `packages/domain/src/legal.ts`), next to the placeholder text in `apps/web/components/legal/text.ts`. Changing the text means bumping the version in the same pull request, so the version on the page and the version owners accept can never disagree.
+- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0027) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
+- **When it is asked:** `/auth/me` returns `legalDue`, and the office screens show only the acceptance prompt until the owner accepts. The prompt links to the public `/terms` and `/privacy` pages and sends the versions it showed; if either changed meanwhile, the API answers 409 and records nothing.
+- **The API does not refuse other requests until acceptance.** The prompt is the gate. Blocking every API call would also block the technician app and the worker's own calls, and a forgotten click should never stop a county filing. Revisit if the lawyer requires a hard block.
+- **A read-only (lapsed) company can still accept** (`config.allowedWhenReadOnly`), or its owner could never get past the prompt to export their data.
+- **The demo owner is seeded as having accepted**, so the hosted demo and the e2e tests go straight in. A demo reseed now also keeps `demo_requests`, since real prospects can ask for a demo from the demo site.
+- **Open:** lawyer-reviewed text (Justin). The pages say clearly that the current text is a placeholder.

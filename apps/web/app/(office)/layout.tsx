@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { LegalGate } from "@/components/legal/LegalGate";
 import { api } from "@/lib/api";
 import { canEdit, isReadOnlyAccount, SessionProvider, useSession } from "@/lib/session";
 
@@ -53,7 +54,7 @@ function Shell({ children }: { children: ReactNode }) {
           deadlines, and view and export everything. Contact Aerowise to reactivate it.
         </p>
       )}
-      <main className="page">{children}</main>
+      <main className="page">{me.legalDue?.length ? <LegalGate due={me.legalDue} companyName={me.organization.name} /> : children}</main>
     </>
   );
 }

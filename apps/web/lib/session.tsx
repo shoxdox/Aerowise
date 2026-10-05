@@ -13,6 +13,8 @@ export interface Me {
     subscription?: { state: "design_partner" | "trial" | "active" | "past_due" | "read_only"; endsOn: string | null; readOnly: boolean };
   };
   role: "owner" | "office" | "technician" | "read_only";
+  /** Documents this owner must accept first (W8.3). Missing from a copy cached on a phone before then. */
+  legalDue?: ("terms" | "privacy")[];
 }
 
 const SessionContext = createContext<Me | null>(null);

@@ -21,6 +21,8 @@ declare module "fastify" {
     imageUpload?: boolean;
     /** Accepts a form-encoded body: provider webhooks that sign their requests (Twilio). */
     signedForm?: boolean;
+    /** May change data even when the organization is read-only (accepting the terms). */
+    allowedWhenReadOnly?: boolean;
   }
   interface FastifyRequest {
     auth: AuthContext | null;
@@ -99,7 +101,7 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     // A lapsed organization keeps reading and exporting everything (reads are GETs) but
     // changes nothing. Public routes (homeowner links, provider webhooks) are not tenant
     // sessions and keep working, so a homeowner can still pay what they owe.
-    if (!SAFE_METHODS.includes(req.method) && isReadOnly(auth.subscriptionState)) {
+    if (!SAFE_METHODS.includes(req.method) && isReadOnly(auth.subscriptionState) && !config.allowedWhenReadOnly) {
       throw new HttpError(403, "organization_read_only", READ_ONLY_MESSAGE);
     }
   });

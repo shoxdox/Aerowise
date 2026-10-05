@@ -1,9 +1,10 @@
 import { verifyPassword, type Database } from "@aerowise/db";
-import { isReadOnly, organizationSubscription, ROLES } from "@aerowise/domain";
+import { isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { createSession, revokeSession, SESSION_COOKIE, type AuthContext } from "../auth/sessions.ts";
 import { HttpError } from "../lib/errors.ts";
+import { loadLegalStatus } from "../lib/legal.ts";
 
 // Used when the email is unknown so a failed login takes the same time either way.
 const DUMMY_HASH =
@@ -14,6 +15,8 @@ export const meResponse = z.object({
   organization: z.object({ id: z.uuid(), name: z.string(), timezone: z.string(), subscription: organizationSubscription }),
   role: z.enum(ROLES),
   organizations: z.array(z.object({ id: z.uuid(), name: z.string(), role: z.enum(ROLES) })),
+  /** Documents this owner must accept before using the office screens (W8.3). Empty for other roles. */
+  legalDue: z.array(z.enum(LEGAL_DOCUMENTS)),
 });
 
 export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role">) {
@@ -38,6 +41,7 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
     },
     role: auth.role,
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
+    legalDue: (await loadLegalStatus(db, auth)).due,
   };
 }
 

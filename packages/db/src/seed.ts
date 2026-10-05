@@ -1,4 +1,4 @@
-import { addDays, addMonths, buildTermSchedule } from "@aerowise/domain";
+import { addDays, addMonths, buildTermSchedule, CURRENT_LEGAL_VERSIONS, LEGAL_DOCUMENTS } from "@aerowise/domain";
 import type { Database } from "./client.ts";
 import { hashPassword } from "./password.ts";
 import { createPlatformAdmin } from "./platform-admin.ts";
@@ -101,6 +101,13 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
         })
         .execute();
       if (u.role === "technician") techId = user.id;
+      // The fictional owner has accepted the current terms, so demo and e2e sign-ins go
+      // straight in. Real owners accept on their first sign-in (W8.3).
+      if (u.role === "owner") {
+        for (const document of LEGAL_DOCUMENTS) {
+          await trx.insertInto("legalAcceptances").values({ organizationId: org.id, userId: user.id, document, version: CURRENT_LEGAL_VERSIONS[document], acceptedAt: new Date(), requestId: null }).execute();
+        }
+      }
     }
 
     const siteIds: string[] = [];

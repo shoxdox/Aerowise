@@ -209,3 +209,7 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .message { white-space: pre-wrap; margin: 0; }
 .marketing .cta { align-self: flex-start; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
+.legal { max-width: 720px; }
+.legal-gate { max-width: 560px; margin: 24px auto; }
+.legal-gate ul { margin: 0; padding-left: 20px; }
+.marketing .topbar a strong { color: var(--text); }
