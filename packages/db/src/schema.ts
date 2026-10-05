@@ -200,6 +200,7 @@ export interface ContractsTable {
   siteId: string;
   planId: string | null;
   planName: string;
+  customerType: Generated<"residential" | "commercial">;
   startOn: string;
   endOn: string;
   termMonths: number;
@@ -822,6 +823,7 @@ export interface RenewalsTable {
   version: Generated<number>;
   planId: string | null;
   planName: string;
+  customerType: Generated<"residential" | "commercial">;
   termMonths: number;
   visitsPerTerm: number;
   priceCents: number;
