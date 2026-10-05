@@ -12,6 +12,9 @@ import {
   importRowsInput,
   importSheetInput,
   importUndoCheck,
+  onboardingCounts,
+  onboardingSummary,
+  onboardingSummaryQuery,
   importUpload,
   mappingScore,
   MAX_IMPORT_BYTES,
@@ -22,7 +25,7 @@ import {
   type ExistingRecords,
   type SavedColumn,
 } from "@aerowise/domain";
-import { loadCatalog } from "@aerowise/compliance";
+import { loadCatalog, resolveSite } from "@aerowise/compliance";
 import { queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Insertable, type Transaction } from "kysely";
@@ -169,6 +172,68 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     if (imp.status === "preview" || (allowFailed && imp.status === "failed")) return;
     throw new HttpError(409, "import_closed", `This import is already ${imp.status}`);
   };
+
+  app.get(
+    "/onboarding/summary",
+    {
+      config: { permission: "contracts:read" },
+      schema: {
+        tags: ["imports"],
+        summary: "The book at a glance: active and expiring contracts, late visits, sites missing an authority or permit",
+        description: "For the whole organization, or for what one saved import created.",
+        querystring: onboardingSummaryQuery,
+        response: { 200: onboardingSummary },
+      },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const importId = req.query.importId ?? null;
+      if (importId) await findImport(organizationId, importId);
+      const today = await organizationToday(db, organizationId, now());
+      // An import's records are its sites and the contracts it created on them.
+      const sites = await db
+        .selectFrom("sites as s")
+        .innerJoin("customers as c", "c.id", "s.customerId")
+        .select(["s.id", "s.addressLine1", "s.city", "s.county", "s.state", "s.jurisdictionId", "s.permitNumber", "s.customerId", "c.displayName as customerName"])
+        .where("s.organizationId", "=", organizationId)
+        .$if(importId !== null, (q) => q.where("s.importId", "=", importId!))
+        .orderBy("c.displayName")
+        .orderBy("s.addressLine1")
+        .execute();
+      const siteIds = sites.map((s) => s.id);
+      const [contracts, visits] = siteIds.length
+        ? await Promise.all([
+            db
+              .selectFrom("contracts")
+              .select(["status", "startOn", "endOn", "serviceEndsOn"])
+              .where("organizationId", "=", organizationId)
+              .$if(importId !== null, (q) => q.where("siteId", "in", siteIds))
+              .execute(),
+            db
+              .selectFrom("serviceObligations")
+              .select("dueOn")
+              .where("organizationId", "=", organizationId)
+              .where("status", "=", "open")
+              .$if(importId !== null, (q) => q.where("siteId", "in", siteIds))
+              .execute(),
+          ])
+        : [[], []];
+      const catalog = await loadCatalog(db);
+      const withAuthority = sites.map((s) => ({ ...s, hasAuthority: resolveSite(catalog, s, today) !== null }));
+      const ref = (s: (typeof withAuthority)[number]) => ({ id: s.id, addressLine1: s.addressLine1, city: s.city, customerName: s.customerName });
+      return {
+        importId,
+        today,
+        customers: new Set(sites.map((s) => s.customerId)).size,
+        sites: sites.length,
+        ...onboardingCounts({ today, contracts, visits, sites: withAuthority }),
+        examples: {
+          withoutAuthority: withAuthority.filter((s) => !s.hasAuthority).slice(0, 10).map(ref),
+          withoutPermit: withAuthority.filter((s) => !s.permitNumber).slice(0, 10).map(ref),
+        },
+      };
+    },
+  );
 
   app.get(
     "/imports",
