@@ -34,7 +34,7 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
   doc.fillColor(ACCENT).font("Helvetica-Bold").fontSize(18).text(s.provider.name, left, 54);
   doc.fillColor(MUTED).font("Helvetica").fontSize(9).text([s.provider.address, s.provider.phone, s.provider.email].filter(Boolean).join("  ·  "));
   doc.moveDown(0.8);
-  doc.fillColor("#000").font("Helvetica-Bold").fontSize(14).text("Aerobic System Maintenance Inspection");
+  doc.fillColor("#000").font("Helvetica-Bold").fontSize(14).text(s.layout?.title ?? "Aerobic System Maintenance Inspection");
   doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(s.audience === "customer" ? "Customer copy" : "Copy for the permitting authority");
   if (s.correction) {
     doc.moveDown(0.4);
@@ -188,7 +188,7 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
       .fontSize(7.5)
       .fillColor(MUTED)
       .text(
-        `Report ${s.reportId} · ${s.template.name} v${s.template.version} · generated ${when(s.generatedAt, s.timezone)} · page ${i - range.start + 1} of ${range.count}`,
+        `Report ${s.reportId} · ${s.template.name} v${s.template.version}${s.layout ? ` · ${s.layout.jurisdictionKey} layout v${s.layout.rulesetVersion}` : ""} · generated ${when(s.generatedAt, s.timezone)} · page ${i - range.start + 1} of ${range.count}`,
         left,
         bottom,
         { width, align: "center", lineBreak: false },

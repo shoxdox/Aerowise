@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, labTestRequirement, rulesetRules, serviceIntervalMonths } from "./filings.ts";
+import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, filingFees, labTestRequirement, lateFeeOwed, rulesetRules, serviceIntervalMonths } from "./filings.ts";
 import { DEFAULT_TEMPLATE, validateInspection } from "./inspections.ts";
 
 describe("filing state machine", () => {
@@ -123,5 +123,41 @@ describe("labTestRequirement", () => {
     expect(() => rules({ analytes: ["cod"], everyMonths: 12, appliesTo: ["residential"] })).toThrow();
     expect(() => rules({ analytes: [], everyMonths: 12, appliesTo: ["residential"] })).toThrow();
     expect(() => rules({ analytes: ["bod"], everyMonths: 12, appliesTo: [] })).toThrow();
+  });
+});
+
+describe("filing fees", () => {
+  const rules = (fees?: Record<string, unknown>) =>
+    rulesetRules.parse({
+      jurisdiction: { key: "tx-fixture", state: "TX", authorityName: "Fixture (fictional)", type: "county" },
+      version: 1,
+      effectiveFrom: "2020-01-01",
+      effectiveTo: null,
+      sourceReference: "FICTIONAL",
+      applicability: { counties: ["Fixture County"] },
+      service: { intervalMonths: 4 },
+      fees,
+      inspection: {},
+      filing: { deadlineDays: 14, warningDays: 5 },
+      submission: { method: "manual_export" },
+      customerCopy: { required: true },
+      confirmation: { mode: "manual_reference" },
+    });
+
+  it("come from the ruleset per kind of filing, or not at all", () => {
+    const r = rules({ inspectionReport: { filingCents: 1000, lateCents: 2500 }, contract: { filingCents: 500 }, basis: "Fee schedule" });
+    expect(filingFees(r, "inspection_report")).toEqual({ filingFeeCents: 1000, lateFeeRuleCents: 2500, feeBasis: "Fee schedule" });
+    expect(filingFees(r, "contract")).toEqual({ filingFeeCents: 500, lateFeeRuleCents: 0, feeBasis: "Fee schedule" });
+    expect(filingFees(rules({ contract: { filingCents: 500 }, basis: "x" }), "inspection_report")).toBeNull();
+    expect(filingFees(rules(), "inspection_report")).toBeNull();
+    expect(() => rules({ inspectionReport: { filingCents: -1 }, basis: "x" })).toThrow();
+    expect(() => rules({ inspectionReport: { filingCents: 10 } })).toThrow();
+  });
+
+  it("add the late fee only when sent after the deadline day", () => {
+    expect(lateFeeOwed(2500, "2026-03-15", "2026-03-15")).toBe(0);
+    expect(lateFeeOwed(2500, "2026-03-15", "2026-03-16")).toBe(2500);
+    expect(lateFeeOwed(null, "2026-03-15", "2026-03-16")).toBe(0);
+    expect(lateFeeOwed(2500, null, "2026-03-16")).toBe(0);
   });
 });

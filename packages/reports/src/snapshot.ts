@@ -1,4 +1,4 @@
-import { ISSUE_LABELS, visibleFields, type InspectionValues, type TemplateDefinition, type TemplateField } from "@aerowise/domain";
+import { ISSUE_LABELS, visibleFields, type InspectionValues, type ReportLayoutRule, type TemplateDefinition, type TemplateField } from "@aerowise/domain";
 
 export type Audience = "customer" | "authority";
 
@@ -47,6 +47,11 @@ export interface ReportSnapshot {
     accessIssue: string | null;
   };
   template: { id: string; name: string; version: number };
+  /**
+   * Set when the authority's ruleset defines its own report layout (authority copy only):
+   * the title it uses and the ruleset version the sections were laid out under.
+   */
+  layout?: { title: string; formReference: string; jurisdictionKey: string; rulesetVersion: number } | null;
   sections: { title: string; rows: { label: string; value: string; failed: boolean }[] }[];
   issues: { type: string; severity: string; description: string }[];
   photos: { label: string; storageKey: string; contentType: string; capturedAt: string | null }[];
@@ -78,6 +83,29 @@ export function reportSections(def: TemplateDefinition, values: InspectionValues
     let section = sections.find((s) => s.title === f.section);
     if (!section) sections.push((section = { title: f.section, rows: [] }));
     section.rows.push({ label: f.label, value: formatValue(f, values[f.key]), failed: f.type === "pass_fail" && values[f.key] === "fail" });
+  }
+  return sections;
+}
+
+const unanswered = (v: InspectionValues[string] | undefined) => v === undefined || v === null || v === "";
+
+/**
+ * The authority copy laid out as the authority's ruleset says: its sections, in its order,
+ * under its labels. A listed answer the inspection never asked for (a conditional field
+ * that did not apply, or one the template lacks) is left off, as is an optional one nobody
+ * filled in; answers the layout does not list are not on this copy.
+ */
+export function layoutSections(def: TemplateDefinition, values: InspectionValues, layout: ReportLayoutRule): ReportSnapshot["sections"] {
+  const visible = new Map(visibleFields(def, values).map((f) => [f.key, f]));
+  const sections: ReportSnapshot["sections"] = [];
+  for (const section of layout.sections) {
+    const rows: ReportSnapshot["sections"][number]["rows"] = [];
+    for (const item of section.fields) {
+      const f = visible.get(item.key);
+      if (!f || (!f.required && unanswered(values[f.key]))) continue;
+      rows.push({ label: item.label ?? f.label, value: formatValue(f, values[f.key]), failed: f.type === "pass_fail" && values[f.key] === "fail" });
+    }
+    if (rows.length) sections.push({ title: section.title, rows });
   }
   return sections;
 }

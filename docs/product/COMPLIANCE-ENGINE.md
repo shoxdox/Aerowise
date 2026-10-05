@@ -59,6 +59,14 @@ A site has a lab test requirement while it has a contract in force and its autho
 
 Fixture tests: `apps/api/test/lab-tests.test.ts`, with a fictional annual BOD/TSS ruleset in `apps/api/test/fixtures/rulesets/`.
 
+### Report layout and fees
+
+A ruleset can lay out its own copy of the inspection report with `report`: a title, the form it follows (`formReference`), and sections, each listing template field keys in order with an optional label in the authority's wording. The authority copy then shows only those answers, in that order. A listed answer the inspection never asked for (a chlorine reading with no chlorinator) or an optional one left blank is left off. The customer copy is unaffected. The layout comes from the ruleset version the inspection's filing recorded, so corrected versions keep it. A bundled ruleset whose layout leaves off a field it requires is refused. Without `report`, the authority copy uses the template's sections as before.
+
+A ruleset can set fees with `fees`: for `inspectionReport` and `contract` filings, a filing fee and a late fee in cents, with the `basis` they come from. A filing records them when it opens (or is checked again), so a later fee schedule never changes what an earlier filing owed. The late fee is decided the first time the filing reaches the authority, by email or by hand, on the organization's date: after the deadline day it is owed, otherwise it is 0. Sending again after a rejection does not decide it again. The filing page shows the fees and the timeline says when a late fee applied. Aerowise records fees; it does not pay or invoice them.
+
+Fixture tests: `apps/api/test/report-templates.test.ts`, with a fictional ruleset that has a report layout and fees in `apps/api/test/fixtures/rulesets/`.
+
 ### Validation
 
 Inspection cannot reach `COMPLETE_VALID` until required inputs are present.
