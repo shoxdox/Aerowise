@@ -401,6 +401,12 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **A read-only company can still save a payment method.** Routes opt in with `config.allowedWhenReadOnly`. Saving a payment method is the only one, because paying is how a lapsed company gets back. Moving back to `active` when the payment clears comes in W4.4.
 - **A lapsed company's automatic sends keep going (Justin, 2026-10-05).** Queued county filings and homeowner reminder emails keep going out while a company is read-only, so a lapse never causes a missed county deadline. W4.4 keeps it this way.
 
+## 2026-10-05 · W6.6 Ruleset coverage page
+
+- **Counts come from the resolver, not a SQL count by county.** County names are free text and some authorities are assigned by hand, so the page resolves each active site with `explainSite`, as a filing would. That is fine at pilot scale (thousands of sites); if it ever gets slow, the answer is a cached count, not a different rule.
+- **"Today" is the UTC date** for the platform view. Organizations' own time zones only matter within a day of a version change.
+- **The coverage table scrolls inside its box on a phone,** using the `.table-scroll` wrapper W8.2 added for the organizations table, so the page stays screen-wide.
+
 ## 2026-10-05 · W4.4 Expiry reminders and the full plan lifecycle
 
 - **The worker's hourly billing run moves the plan first, then counts the month.** `runPlanLifecycle` (packages/billing) runs before `runMonthlyBilling` in the same task, so a month is counted in the state the company is actually in. It is safe to run any number of times.
