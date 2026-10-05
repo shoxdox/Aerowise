@@ -17,7 +17,7 @@ function resend(c: TestContext, opts: { redirectTo?: string } = {}) {
   return { api, provider, mail };
 }
 
-const message = (organizationId: string, over: Partial<EmailMessage> = {}): EmailMessage => ({
+const message = (organizationId: string | null, over: Partial<EmailMessage> = {}): EmailMessage => ({
   organizationId,
   idempotencyKey: "filing-1-submission-1",
   from: "Reports <reports@example.com>",
@@ -173,6 +173,25 @@ describe("Resend webhooks", () => {
     // Opens and clicks are not tracked; an email this server never sent is not ours.
     expect((await post(api.webhook("email.opened", "re_2"))).json().outcome).toBe("ignored");
     expect((await post(api.webhook("email.delivered", "re_999"))).json().outcome).toBe("unknown");
+    await app.close();
+  });
+
+  it("email to Aerowise itself (no organization) sends once per key and records its delivery", async () => {
+    const { api, mail, provider } = resend(ctx);
+    const app = await appWith(provider);
+    const platform = message(null, { idempotencyKey: "demo-request-1-founder@example.com", to: "founder@example.com", attachments: [] });
+    expect((await mail.send(platform)).messageId).toBe("re_1");
+    expect((await mail.send(platform)).messageId).toBe("re_1");
+    expect(api.emails).toHaveLength(1);
+    expect(api.emails[0]!.tags).toContainEqual({ name: "aw_org", value: "platform" });
+    // An organization may use the same key; it is a different send.
+    const org = await createOrg(ctx.db, "Org A");
+    expect((await mail.send(message(org.id, { idempotencyKey: platform.idempotencyKey }))).messageId).toBe("re_2");
+
+    const w = api.webhook("email.bounced", "re_1", { bounce: { type: "Permanent", subType: "General", message: "Mailbox does not exist" } });
+    expect((await app.inject({ method: "POST", url: "/webhooks/email", payload: w.body, headers: w.headers })).json().outcome).toBe("applied");
+    const row = await ctx.db.selectFrom("emailSends").selectAll().where("organizationId", "is", null).executeTakeFirstOrThrow();
+    expect(row).toMatchObject({ status: "accepted", deliveryStatus: "bounced", recipient: "founder@example.com" });
     await app.close();
   });
 

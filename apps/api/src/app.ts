@@ -39,6 +39,7 @@ import { smsRoutes } from "./routes/sms.ts";
 import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
 import { publicRoutes } from "./routes/public.ts";
+import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -105,6 +106,8 @@ export interface AppOptions {
   geocoder?: Geocoder | null;
   /** Aerowise's own prices and free-period lengths (what companies pay Aerowise). */
   subscription?: SubscriptionConfig;
+  /** Who is emailed about a new demo request; empty means every active platform admin. */
+  demoRequestNotifyTo?: string[];
   /**
    * Stripe Billing, for what companies pay Aerowise (not homeowner payments). Defaults to the
    * built-in test provider outside production; in production it is off unless configured.
@@ -137,6 +140,7 @@ export async function buildApp({
   sms = production && !demo ? null : { provider: new TestSmsProvider(), webhookBaseUrl: `${appUrl.replace(/\/$/, "")}/api` },
   geocoder = production && !demo ? new CensusGeocoder() : new TestGeocoder(),
   subscription = DEFAULT_SUBSCRIPTION_CONFIG,
+  demoRequestNotifyTo = [],
   billing = production && !demo ? null : new TestBillingProvider(),
   workerHeartbeat,
 }: AppOptions) {
@@ -264,6 +268,7 @@ export async function buildApp({
   await app.register(labTestRoutes, { db, now });
   await app.register(monitoringRoutes, { db, now });
   await app.register(publicRoutes, { db, now, subscription });
+  await app.register(demoRequestRoutes, { db, now, demoMail: { mail: transport, from: accountMailFrom, notifyTo: demoRequestNotifyTo, appUrl } });
 
   return app;
 }

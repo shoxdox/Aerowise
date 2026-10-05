@@ -206,3 +206,8 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .marketing .coverage { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .marketing .price { font-size: 1.4rem; font-weight: 600; margin: 0; }
 .marketing .card p { margin: 0; }
+.marketing .trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.marketing form.card { max-width: 520px; }
+.message { white-space: pre-wrap; margin: 0; }
+.marketing .cta { align-self: flex-start; }
+.table-scroll { overflow-x: auto; max-width: 100%; }

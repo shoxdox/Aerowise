@@ -14,30 +14,60 @@ import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
 
 const when = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }) : "Never";
+  iso
+    ? new Date(iso).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "America/Chicago",
+      })
+    : "Never";
 
 /** Dollars typed in a form to cents, or null when left blank (use the configured price). */
-const toCents = (dollars: string | undefined) => (dollars === undefined ? null : Math.round(Number(dollars) * 100));
-const toDollars = (cents: number | null) => (cents === null ? "" : (cents / 100).toFixed(2));
+const toCents = (dollars: string | undefined) =>
+  dollars === undefined ? null : Math.round(Number(dollars) * 100);
+const toDollars = (cents: number | null) =>
+  cents === null ? "" : (cents / 100).toFixed(2);
 
 function planSummary(o: AdminOrganization) {
   const label = SUBSCRIPTION_STATE_LABELS[o.plan.state];
   if (!o.plan.endsOn) return label;
   const left = o.daysLeft ?? 0;
-  const remaining = left > 0 ? `${left} days left` : left === 0 ? "ends today" : `ended ${-left} days ago`;
+  const remaining =
+    left > 0
+      ? `${left} days left`
+      : left === 0
+        ? "ends today"
+        : `ended ${-left} days ago`;
   return `${label} until ${day(o.plan.endsOn)} (${remaining})`;
 }
 
 function priceSummary(o: AdminOrganization, defaults: SubscriptionConfig) {
-  const price = o.plan.pricePerContractCentsOverride ?? defaults.pricePerContractCents;
-  const minimum = o.plan.monthlyMinimumCentsOverride ?? defaults.monthlyMinimumCents;
-  const founder = o.plan.pricePerContractCentsOverride !== null || o.plan.monthlyMinimumCentsOverride !== null;
+  const price =
+    o.plan.pricePerContractCentsOverride ?? defaults.pricePerContractCents;
+  const minimum =
+    o.plan.monthlyMinimumCentsOverride ?? defaults.monthlyMinimumCents;
+  const founder =
+    o.plan.pricePerContractCentsOverride !== null ||
+    o.plan.monthlyMinimumCentsOverride !== null;
   return `${money(price)}/contract, ${money(minimum)} min${founder ? " (founder)" : ""}`;
 }
 
-function PlanEditor({ org, defaults, onSaved, onCancel }: { org: AdminOrganization; defaults: SubscriptionConfig; onSaved: () => void; onCancel: () => void }) {
+function PlanEditor({
+  org,
+  defaults,
+  onSaved,
+  onCancel,
+}: {
+  org: AdminOrganization;
+  defaults: SubscriptionConfig;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
-  const states: SubscriptionState[] = [org.plan.state, ...SUBSCRIPTION_TRANSITIONS[org.plan.state]];
+  const states: SubscriptionState[] = [
+    org.plan.state,
+    ...SUBSCRIPTION_TRANSITIONS[org.plan.state],
+  ];
 
   async function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,12 +86,18 @@ function PlanEditor({ org, defaults, onSaved, onCancel }: { org: AdminOrganizati
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the plan");
+      setError(
+        err instanceof ApiError ? err.message : "Could not save the plan",
+      );
     }
   }
 
   return (
-    <form className="card grid" onSubmit={onSave} aria-label={`Plan for ${org.name}`}>
+    <form
+      className="card grid"
+      onSubmit={onSave}
+      aria-label={`Plan for ${org.name}`}
+    >
       <h2 className="wide">Plan for {org.name}</h2>
       <label>
         State
@@ -75,22 +111,57 @@ function PlanEditor({ org, defaults, onSaved, onCancel }: { org: AdminOrganizati
       </label>
       <label>
         Starts on
-        <input name="startsOn" type="date" required defaultValue={org.plan.startsOn} />
+        <input
+          name="startsOn"
+          type="date"
+          required
+          defaultValue={org.plan.startsOn}
+        />
       </label>
       <label>
         Ends on
         <input name="endsOn" type="date" defaultValue={org.plan.endsOn ?? ""} />
-        <span className="muted small">Required for a trial or design-partner period.</span>
+        <span className="muted small">
+          Required for a trial or design-partner period.
+        </span>
       </label>
       <label>
         Founder price per active contract ($/month)
-        <input name="price" type="number" min="0" step="0.01" defaultValue={toDollars(org.plan.pricePerContractCentsOverride)} placeholder={toDollars(defaults.pricePerContractCents)} />
+        <input
+          name="price"
+          type="number"
+          min="0"
+          step="0.01"
+          defaultValue={toDollars(org.plan.pricePerContractCentsOverride)}
+          placeholder={toDollars(defaults.pricePerContractCents)}
+        />
       </label>
       <label>
         Founder monthly minimum ($)
-        <input name="minimum" type="number" min="0" step="0.01" defaultValue={toDollars(org.plan.monthlyMinimumCentsOverride)} placeholder={toDollars(defaults.monthlyMinimumCents)} />
+        <input
+          name="minimum"
+          type="number"
+          min="0"
+          step="0.01"
+          defaultValue={toDollars(org.plan.monthlyMinimumCentsOverride)}
+          placeholder={toDollars(defaults.monthlyMinimumCents)}
+        />
       </label>
-      <p className="muted small wide">Leave a price blank to use the standard price ({priceSummary({ ...org, plan: { ...org.plan, pricePerContractCentsOverride: null, monthlyMinimumCentsOverride: null } }, defaults)}).</p>
+      <p className="muted small wide">
+        Leave a price blank to use the standard price (
+        {priceSummary(
+          {
+            ...org,
+            plan: {
+              ...org.plan,
+              pricePerContractCentsOverride: null,
+              monthlyMinimumCentsOverride: null,
+            },
+          },
+          defaults,
+        )}
+        ).
+      </p>
       {error && <p className="error wide">{error}</p>}
       <div className="wide row">
         <button type="submit">Save plan</button>
@@ -103,14 +174,22 @@ function PlanEditor({ org, defaults, onSaved, onCancel }: { org: AdminOrganizati
 }
 
 export default function AdminOrganizationsPage() {
-  const { data, reload } = useLoad<{ items: AdminOrganization[]; defaults: SubscriptionConfig }>("/admin/organizations");
+  const { data, reload } = useLoad<{
+    items: AdminOrganization[];
+    defaults: SubscriptionConfig;
+  }>("/admin/organizations");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [invitingFor, setInvitingFor] = useState<AdminOrganization | null>(null);
+  const [invitingFor, setInvitingFor] = useState<AdminOrganization | null>(
+    null,
+  );
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ org: string; result: InvitationSent } | null>(null);
+  const [sent, setSent] = useState<{
+    org: string;
+    result: InvitationSent;
+  } | null>(null);
 
   async function onInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,14 +197,19 @@ export default function AdminOrganizationsPage() {
     setInviteError(null);
     const v = formValues(event.currentTarget);
     try {
-      const result = await api<InvitationSent>(`/admin/organizations/${invitingFor.id}/invitations`, {
-        method: "POST",
-        body: { email: v.email, name: v.name },
-      });
+      const result = await api<InvitationSent>(
+        `/admin/organizations/${invitingFor.id}/invitations`,
+        {
+          method: "POST",
+          body: { email: v.email, name: v.name },
+        },
+      );
       setSent({ org: invitingFor.name, result });
       setInvitingFor(null);
     } catch (err) {
-      setInviteError(err instanceof ApiError ? err.message : "Could not send the invitation");
+      setInviteError(
+        err instanceof ApiError ? err.message : "Could not send the invitation",
+      );
     }
   }
 
@@ -136,13 +220,23 @@ export default function AdminOrganizationsPage() {
     try {
       const org = await api<AdminOrganization>("/admin/organizations", {
         method: "POST",
-        body: { name: v.name, email: v.email, phone: v.phone, timezone: v.timezone, plan: v.plan },
+        body: {
+          name: v.name,
+          email: v.email,
+          phone: v.phone,
+          timezone: v.timezone,
+          plan: v.plan,
+        },
       });
       setCreating(false);
       setNotice(`Created ${org.name}.`);
       await reload();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create the organization");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not create the organization",
+      );
     }
   }
 
@@ -153,17 +247,26 @@ export default function AdminOrganizationsPage() {
       <div className="row">
         <h1>Organizations</h1>
         <span className="spacer" />
-        <button onClick={() => setCreating((c) => !c)}>{creating ? "Cancel" : "New organization"}</button>
+        <button onClick={() => setCreating((c) => !c)}>
+          {creating ? "Cancel" : "New organization"}
+        </button>
       </div>
       {notice && <p role="status">{notice}</p>}
 
       {sent && (
         <div className="card stack" role="status">
           <p style={{ margin: 0 }}>
-            {sent.result.emailed ? `Owner invitation for ${sent.org} emailed to ${sent.result.invitation.email}.` : `The email to ${sent.result.invitation.email} could not be sent.`}{" "}
+            {sent.result.emailed
+              ? `Owner invitation for ${sent.org} emailed to ${sent.result.invitation.email}.`
+              : `The email to ${sent.result.invitation.email} could not be sent.`}{" "}
             The link below works once, for 7 days.
           </p>
-          <input readOnly value={sent.result.url} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} />
+          <input
+            readOnly
+            value={sent.result.url}
+            aria-label="Invitation link"
+            onFocus={(e) => e.currentTarget.select()}
+          />
         </div>
       )}
 
@@ -183,7 +286,11 @@ export default function AdminOrganizationsPage() {
           {inviteError && <p className="error wide">{inviteError}</p>}
           <div className="wide row">
             <button type="submit">Send owner invitation</button>
-            <button type="button" className="link" onClick={() => setInvitingFor(null)}>
+            <button
+              type="button"
+              className="link"
+              onClick={() => setInvitingFor(null)}
+            >
               Cancel
             </button>
           </div>
@@ -214,8 +321,12 @@ export default function AdminOrganizationsPage() {
           <label>
             Starts on
             <select name="plan" defaultValue="trial">
-              <option value="trial">Free trial ({data.defaults.trialDays} days)</option>
-              <option value="design_partner">Design partner ({data.defaults.designPartnerDays} days)</option>
+              <option value="trial">
+                Free trial ({data.defaults.trialDays} days)
+              </option>
+              <option value="design_partner">
+                Design partner ({data.defaults.designPartnerDays} days)
+              </option>
             </select>
           </label>
           {error && <p className="error wide">{error}</p>}
@@ -239,6 +350,10 @@ export default function AdminOrganizationsPage() {
         />
       )}
 
+<<<<<<< HEAD
+=======
+      {/* The table scrolls on its own on a phone, so the page (and the plan form) stays screen-wide. */}
+>>>>>>> origin/main
       <div className="table-scroll">
         <table>
           <thead>
@@ -258,7 +373,15 @@ export default function AdminOrganizationsPage() {
               <tr key={o.id}>
                 <td>
                   {o.name}{" "}
+<<<<<<< HEAD
                   <button className="link small" onClick={() => setEditing(o.id)} aria-label={`Edit plan for ${o.name}`}>
+=======
+                  <button
+                    className="link small"
+                    onClick={() => setEditing(o.id)}
+                    aria-label={`Edit plan for ${o.name}`}
+                  >
+>>>>>>> origin/main
                     Edit plan
                   </button>
                 </td>
@@ -267,7 +390,17 @@ export default function AdminOrganizationsPage() {
                 <td>{when(o.lastActivityAt)}</td>
                 <td>{when(o.createdAt)}</td>
                 <td>
+<<<<<<< HEAD
                   <button className="link" onClick={() => { setInvitingFor(o); setSent(null); }}>
+=======
+                  <button
+                    className="link"
+                    onClick={() => {
+                      setInvitingFor(o);
+                      setSent(null);
+                    }}
+                  >
+>>>>>>> origin/main
                     Invite owner
                   </button>
                 </td>
@@ -278,7 +411,13 @@ export default function AdminOrganizationsPage() {
           </tbody>
         </table>
       </div>
+<<<<<<< HEAD
       {data && data.items.length === 0 && <p className="muted">No organizations yet.</p>}
+=======
+      {data && data.items.length === 0 && (
+        <p className="muted">No organizations yet.</p>
+      )}
+>>>>>>> origin/main
     </div>
   );
 }
