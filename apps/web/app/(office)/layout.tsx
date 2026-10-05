@@ -22,6 +22,7 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/plans", label: "Plans" },
     ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
     ...(canEdit(me) ? [{ href: "/settings/users", label: "Users" }] : []),
+    ...(canEdit(me) ? [{ href: "/settings/company", label: "Company" }] : []),
     ...(me.role === "owner"
       ? [
           { href: "/settings/billing", label: "Billing" },

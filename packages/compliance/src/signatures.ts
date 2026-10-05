@@ -4,7 +4,7 @@ import { CREDENTIAL_LABELS, credentialProblems, INSPECTING_CREDENTIALS, type Cre
 import { renderReport, type ReportSnapshot } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
-import { latestAuthorityReport } from "./reports.ts";
+import { latestAuthorityReport, snapshotImages } from "./reports.ts";
 import { dateInZone } from "./rulesets.ts";
 
 type Executor = Database | Transaction<DB>;
@@ -230,7 +230,7 @@ export async function signAuthorityReport(
       reportVersion: t.report.version,
       reportSha256: t.report.sha256,
     };
-    const pdf = await renderReport({ ...t.snapshot, signature });
+    const pdf = await renderReport({ ...t.snapshot, signature }, await snapshotImages(ctx.store, t.snapshot));
     const id = crypto.randomUUID();
     const storageKey = `${args.organizationId}/reports/${args.inspectionId}/${t.audience}-v${t.report.version}-signed-${id}.pdf`;
     await ctx.store.put(storageKey, pdf, "application/pdf");
