@@ -356,3 +356,11 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **Only Justin marks a ruleset verified** (brief). That is a review rule, not something the code can check: a pull request that sets `status: "verified"` needs his approval.
 - **The badge follows the version.** A filing shows the version it recorded, so the badge on an old filing never claims more than was true when it was filed.
 - **Send guard:** automatic submission needs a verified version with its record (or fictional rules, which are not loaded in production). Before, it was "anything but draft"; it now names what is allowed rather than what is not, so a future status can't send by default.
+
+## 2026-10-05 · W8.1 Public marketing page
+
+- **The marketing page is `/`.** Before, `/` only redirected to `/inbox`. Sign-in and accepting an invitation now go straight to `/inbox` (technicians still go to `/tech`), so the office's start screen is unchanged; anyone who opens the bare address sees the public page with a "Sign in" link. One address for the site and the app keeps hosting to one web service; a separate marketing domain can come later if Justin wants one.
+- **Coverage comes from the rulesets, through `GET /public/overview`** (no sign-in, 60 requests a minute per address). It lists every active authority with a real ruleset (draft or verified) and never the fictional example. Verified authorities show the W6.5 "Verified with <authority> on <date>" badge and are listed first; drafts show "In progress". A new county ruleset appears on the page when it merges, with no copy change.
+- **Pricing comes from the W4.1 subscription config** (`AEROWISE_DESIGN_PARTNER_DAYS`, `AEROWISE_PRICE_PER_CONTRACT_CENTS`, `AEROWISE_MONTHLY_MINIMUM_CENTS`), so the page and billing cannot disagree. The page says "Free for 90 days" (the brief's design-partner offer), then the per-contract price and monthly minimum.
+- **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
+- **Open:** whether to show the post-free-period price publicly at all, or only "free for 90 days" (Justin); the demo request button arrives with W8.2.
