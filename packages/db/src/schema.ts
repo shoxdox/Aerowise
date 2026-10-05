@@ -986,6 +986,20 @@ export interface SmsMessagesTable {
   updatedAt: Timestamp;
 }
 
+export interface LabTestsTable {
+  id: Generated<string>;
+  organizationId: string;
+  siteId: string;
+  sampledOn: string;
+  labName: string;
+  labReference: string | null;
+  results: ColumnType<unknown, string, never>;
+  notes: string | null;
+  replacesId: string | null;
+  recordedBy: string;
+  recordedAt: ColumnType<Date, Date | string, never>;
+}
+
 export interface SmsOptOutsTable {
   organizationId: string;
   phone: string;
@@ -1049,6 +1063,7 @@ export interface DB {
   sites: SitesTable;
   contacts: ContactsTable;
   wastewaterSystems: WastewaterSystemsTable;
+  labTests: LabTestsTable;
   auditEvents: AuditEventsTable;
   plans: PlansTable;
   contracts: ContractsTable;

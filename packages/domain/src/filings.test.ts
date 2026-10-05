@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, rulesetRules, serviceIntervalMonths } from "./filings.ts";
+import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, labTestRequirement, rulesetRules, serviceIntervalMonths } from "./filings.ts";
 import { DEFAULT_TEMPLATE, validateInspection } from "./inspections.ts";
 
 describe("filing state machine", () => {
@@ -83,5 +83,37 @@ describe("serviceIntervalMonths", () => {
   it("rejects intervals outside 1 to 24 months", () => {
     expect(() => rules({ intervalMonths: 0 })).toThrow();
     expect(() => rules({ intervalMonths: 4, commercialIntervalMonths: 25 })).toThrow();
+  });
+});
+
+describe("labTestRequirement", () => {
+  const rules = (labTests?: Record<string, unknown>) =>
+    rulesetRules.parse({
+      jurisdiction: { key: "tx-fixture", state: "TX", authorityName: "Fixture (fictional)", type: "county" },
+      version: 1,
+      effectiveFrom: "2020-01-01",
+      effectiveTo: null,
+      sourceReference: "FICTIONAL",
+      applicability: { counties: ["Fixture County"] },
+      service: { intervalMonths: 4 },
+      labTests,
+      inspection: {},
+      filing: { deadlineDays: 14, warningDays: 5 },
+      submission: { method: "manual_export" },
+      customerCopy: { required: true },
+      confirmation: { mode: "manual_reference" },
+    });
+
+  it("applies only to the system types the ruleset names", () => {
+    const commercialOnly = rules({ analytes: ["bod", "tss"], everyMonths: 12, appliesTo: ["commercial"] });
+    expect(labTestRequirement(commercialOnly, "commercial")).toMatchObject({ analytes: ["bod", "tss"], everyMonths: 12 });
+    expect(labTestRequirement(commercialOnly, "residential")).toBeNull();
+    expect(labTestRequirement(rules(), "commercial")).toBeNull();
+  });
+
+  it("rejects unknown analytes and empty lists", () => {
+    expect(() => rules({ analytes: ["cod"], everyMonths: 12, appliesTo: ["residential"] })).toThrow();
+    expect(() => rules({ analytes: [], everyMonths: 12, appliesTo: ["residential"] })).toThrow();
+    expect(() => rules({ analytes: ["bod"], everyMonths: 12, appliesTo: [] })).toThrow();
   });
 });
