@@ -98,6 +98,7 @@ async function partiesFor(db: Database | Transaction<DB>, organizationId: string
 const termsOf = (r: RenewalRow) => ({
   planId: r.planId,
   planName: r.planName,
+  customerType: r.customerType,
   termMonths: r.termMonths,
   visitsPerTerm: r.visitsPerTerm,
   priceCents: r.priceCents,
@@ -119,6 +120,7 @@ interface RenewalRow {
   version: number;
   planId: string | null;
   planName: string;
+  customerType: "residential" | "commercial";
   termMonths: number;
   visitsPerTerm: number;
   priceCents: number;

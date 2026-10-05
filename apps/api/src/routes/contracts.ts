@@ -43,6 +43,7 @@ const CONTRACT_COLUMNS = [
   "c.siteId",
   "c.planId",
   "c.planName",
+  "c.customerType",
   "c.startOn",
   "c.endOn",
   "c.termMonths",
@@ -127,7 +128,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   async function activePlanTerms(organizationId: string, planId: string, priceCents?: number): Promise<Terms> {
     const p = await db
       .selectFrom("plans")
-      .select(["id", "name", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active"])
+      .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", planId)
       .executeTakeFirst();
@@ -136,6 +137,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     return {
       planId: p.id,
       planName: p.name,
+      customerType: p.customerType,
       termMonths: p.termMonths,
       visitsPerTerm: p.visitsPerTerm,
       priceCents: priceCents ?? p.priceCents,
@@ -326,6 +328,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         : {
             planId: prev.planId,
             planName: prev.planName,
+            customerType: prev.customerType,
             termMonths: prev.termMonths,
             visitsPerTerm: prev.visitsPerTerm,
             priceCents: req.body.priceCents ?? prev.priceCents,

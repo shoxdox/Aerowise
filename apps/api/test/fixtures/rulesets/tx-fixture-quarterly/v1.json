@@ -1,0 +1,52 @@
+{
+  "jurisdiction": {
+    "key": "tx-fixture-quarterly",
+    "state": "TX",
+    "authorityName": "Quarterly Fixture County (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL test fixture: an authority that requires quarterly inspections. Not any real county's rules.",
+  "applicability": {
+    "counties": [
+      "Quarterly Fixture County"
+    ]
+  },
+  "service": {
+    "intervalMonths": 3
+  },
+  "inspection": {
+    "requiredFields": [
+      "air_pressure"
+    ],
+    "requiredPhotos": [
+      {
+        "key": "overview",
+        "minCount": 1
+      }
+    ],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-fixture-quarterly.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}
