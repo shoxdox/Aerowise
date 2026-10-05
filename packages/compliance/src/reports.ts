@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { CREDENTIAL_LABELS, validateInspection, type CredentialKind, type InspectionValues, type ReportedResponse, type TemplateDefinition } from "@aerowise/domain";
-import { renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
+import { CREDENTIAL_LABELS, validateInspection, type CredentialKind, type InspectionValues, type ReportedResponse, type RulesetRules, type TemplateDefinition } from "@aerowise/domain";
+import { layoutSections, renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
 
@@ -180,6 +180,23 @@ async function responsibleProvider(db: Executor, organizationId: string, credent
   return c ? { name: c.holderName, label: CREDENTIAL_LABELS[c.kind as CredentialKind], number: c.number } : null;
 }
 
+/**
+ * The authority's report layout, from the ruleset version the inspection's filing recorded,
+ * or null when there is no filing yet or its ruleset sets none.
+ */
+async function authorityLayout(db: Executor, organizationId: string, inspectionId: string) {
+  const row = await db
+    .selectFrom("filings as f")
+    .innerJoin("jurisdictionRulesets as r", "r.id", "f.rulesetId")
+    .innerJoin("jurisdictions as j", "j.id", "r.jurisdictionId")
+    .select(["r.rules", "j.key"])
+    .where("f.organizationId", "=", organizationId)
+    .where("f.inspectionId", "=", inspectionId)
+    .executeTakeFirst();
+  const rules = row?.rules as RulesetRules | undefined;
+  return rules?.report ? { rule: rules.report, jurisdictionKey: row!.key, rulesetVersion: rules.version } : null;
+}
+
 interface SnapshotOptions {
   reportId: string;
   now: Date;
@@ -189,7 +206,7 @@ interface SnapshotOptions {
 
 async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: string, inspectionId: string, audience: Audience, opts: SnapshotOptions) {
   const insp = await loadInspection(db, organizationId, inspectionId);
-  const [values, issues, photos, system, credentials, provider, responses] = await Promise.all([
+  const [values, issues, photos, system, credentials, provider, responses, layout] = await Promise.all([
     db.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).execute(),
     db.selectFrom("issues").select(["type", "severity", "description"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).orderBy("createdAt").execute(),
     db
@@ -211,6 +228,7 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
     credentialsOf(db, organizationId, insp.technicianUserId),
     responsibleProvider(db, organizationId, insp.responsibleCredentialId),
     audience === "authority" ? responsesForInspection(db, organizationId, inspectionId) : null,
+    audience === "authority" ? authorityLayout(db, organizationId, inspectionId) : null,
   ]);
   const def = insp.definition as TemplateDefinition;
   const answers: InspectionValues = { ...Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...(opts.amendments ?? {}) };
@@ -255,7 +273,8 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
       accessIssue: insp.accessIssue,
     },
     template: { id: insp.templateId, name: insp.templateName, version: insp.templateVersion },
-    sections: reportSections(def, answers, audience),
+    layout: layout ? { title: layout.rule.title, formReference: layout.rule.formReference, jurisdictionKey: layout.jurisdictionKey, rulesetVersion: layout.rulesetVersion } : null,
+    sections: layout ? layoutSections(def, answers, layout.rule) : reportSections(def, answers, audience),
     issues: reportIssues(issues, audience),
     // Photos go on the customer copy; the authority copy is the form itself.
     photos: audience === "customer" ? photos.map((p) => ({ label: photoLabel(p.photoKey), storageKey: p.storageKey, contentType: p.contentType, capturedAt: p.capturedAt?.toISOString() ?? null })) : [],

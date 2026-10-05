@@ -5,6 +5,8 @@ import {
   canTransitionFiling,
   contractFilingRequired,
   FILING_STATE_MACHINE,
+  filingFees,
+  lateFeeOwed,
   mayAutoSubmit,
   serviceIntervalMonths,
   type FilingKind,
@@ -159,6 +161,11 @@ async function move(
   actorUserId: string | null = null,
 ) {
   if (!canTransitionFiling(f.status, to)) throw new FilingStateError(`A ${f.status.replace("_", " ")} filing cannot become ${to.replace("_", " ")}`);
+  const late = to === "sent" ? await lateFeeOnFirstSend(trx, f, at) : null;
+  if (late) {
+    set = { ...set, lateFeeCents: late.cents };
+    if (late.cents > 0 && event) event = { ...event, summary: `${event.summary} Sent after the ${late.deadlineOn} deadline: late fee ${dollars(late.cents)}.`, details: { ...event.details, lateFeeCents: late.cents } };
+  }
   const res = await trx
     .updateTable("filings")
     .set({ ...set, status: to, updatedAt: at })
@@ -169,6 +176,25 @@ async function move(
   if (Number(res.numUpdatedRows) !== 1) throw new FilingStateError("The filing changed while this was happening; reload and try again");
   f.status = to;
   if (event) await recordEvent(trx, f, at, actorUserId, event);
+}
+
+const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * The late fee a filing owes, decided the first time it reaches the authority (by email or
+ * by hand) on the organization's date: its recorded late fee when that is after the
+ * deadline, else 0. A resubmission after a rejection does not decide it again.
+ */
+async function lateFeeOnFirstSend(trx: Executor, f: FilingRow, at: Date) {
+  const row = await trx
+    .selectFrom("filings as f")
+    .innerJoin("organizations as o", "o.id", "f.organizationId")
+    .select(["f.deadlineOn", "f.lateFeeRuleCents", "f.lateFeeCents", "f.filingFeeCents", "o.timezone"])
+    .where("f.organizationId", "=", f.organizationId)
+    .where("f.id", "=", f.id)
+    .executeTakeFirstOrThrow();
+  if (row.lateFeeCents !== null || row.filingFeeCents === null) return null;
+  return { cents: lateFeeOwed(row.lateFeeRuleCents, row.deadlineOn, dateInZone(at, row.timezone)), deadlineOn: row.deadlineOn };
 }
 
 /** The jurisdiction and exact ruleset version a filing recorded. */
@@ -258,7 +284,14 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { 
     deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
     nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored)),
+    ...feeColumns(r, "inspection_report"),
   };
+}
+
+/** The fee columns a filing records under a ruleset (all null when it sets no fee). */
+function feeColumns(rules: ResolvedJurisdiction["rules"], kind: FilingKind) {
+  const fees = filingFees(rules, kind);
+  return { filingFeeCents: fees?.filingFeeCents ?? null, lateFeeRuleCents: fees?.lateFeeRuleCents ?? null, feeBasis: fees?.feeBasis ?? null };
 }
 
 const NO_ADAPTER = "There is no way to file with this authority yet.";
@@ -305,6 +338,9 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
       deadlineBasis: terms?.deadlineBasis ?? null,
       warningDays: terms?.warningDays ?? 0,
       nextDueOn: terms?.nextDueOn ?? null,
+      filingFeeCents: terms?.filingFeeCents ?? null,
+      lateFeeRuleCents: terms?.lateFeeRuleCents ?? null,
+      feeBasis: terms?.feeBasis ?? null,
       reportId: null,
       sentAt: null,
       confirmedAt: null,
@@ -422,6 +458,7 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
       deadlineBasis: deadline.basis,
       warningDays: resolved?.rules.filing.warningDays ?? 0,
       nextDueOn: null,
+      ...(resolved ? feeColumns(resolved.rules, "contract") : {}),
       reportId: null,
       sentAt: null,
       confirmedAt: null,
@@ -965,6 +1002,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
       deadlineOn: deadline.deadlineOn,
       deadlineBasis: deadline.basis,
       warningDays: resolved.rules.filing.warningDays,
+      ...feeColumns(resolved.rules, "contract"),
       signedDocumentId: c.signedDocumentId,
       contractDocumentId: document?.id ?? null,
       reviewReason: null,

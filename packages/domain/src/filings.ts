@@ -89,6 +89,45 @@ export const COVER_SHEET_SOURCES = [
 export type CoverSheetSource = (typeof COVER_SHEET_SOURCES)[number];
 
 /**
+ * The authority's own layout for its copy of the inspection report: its title, and which
+ * answers go in which section, in order, under the authority's wording. Answers it does
+ * not list are left off its copy (the customer copy is unaffected).
+ */
+export const reportLayoutRule = z.object({
+  title: z.string().min(1).max(200),
+  /** The authority form or page this layout follows, and how closely. */
+  formReference: z.string().min(1).max(500),
+  sections: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(100),
+        fields: z.array(z.object({ key: fieldKey, label: z.string().min(1).max(200).optional() })).min(1),
+      }),
+    )
+    .min(1),
+});
+export type ReportLayoutRule = z.infer<typeof reportLayoutRule>;
+
+/** One kind of filing's fees, in cents. */
+const feeRule = z.object({
+  filingCents: z.number().int().min(0).max(1_000_000),
+  /** Charged on top when the filing reaches the authority after its deadline. */
+  lateCents: z.number().int().min(0).max(1_000_000).default(0),
+});
+
+/**
+ * What the authority charges per filing, and for a late one. Recorded on each filing when
+ * it opens, so a later fee schedule never changes what an earlier filing owed.
+ */
+export const feeScheduleRule = z.object({
+  inspectionReport: feeRule.optional(),
+  contract: feeRule.optional(),
+  /** Where the amounts come from (the fee schedule and its date). */
+  basis: z.string().min(1).max(500),
+});
+export type FeeScheduleRule = z.infer<typeof feeScheduleRule>;
+
+/**
  * A jurisdiction's rules for one version. Stored as JSON in packages/compliance/rulesets
  * and copied into `jurisdiction_rulesets`; a published version never changes.
  */
@@ -226,6 +265,10 @@ export const rulesetRules = z.object({
   }),
   /** Lab tests the authority requires on a schedule, such as annual BOD and TSS. */
   labTests: labTestRule.optional(),
+  /** The authority copy's layout. Absent: the template's own sections. */
+  report: reportLayoutRule.optional(),
+  /** Filing and late fees. Absent: the authority charges none, or it is not known. */
+  fees: feeScheduleRule.optional(),
   inspection: z.object({
     /** Template fields the authority requires an answer for, on top of the template's own rules. */
     requiredFields: z.array(fieldKey).default([]),
@@ -291,6 +334,15 @@ export const labTestRequirement = (rules: RulesetRules, customerType: "residenti
   rules.labTests?.appliesTo.includes(customerType) ? rules.labTests : null;
 
 export const contractFilingRequired = (rules: RulesetRules) => rules.contracts?.filingRequired === true;
+
+/** A filing's fees under these rules, as recorded when it opens; null when none are set. */
+export function filingFees(rules: RulesetRules, kind: FilingKind) {
+  const fee = kind === "contract" ? rules.fees?.contract : rules.fees?.inspectionReport;
+  return fee ? { filingFeeCents: fee.filingCents, lateFeeRuleCents: fee.lateCents, feeBasis: rules.fees!.basis } : null;
+}
+
+/** The late fee owed when a filing first reaches the authority on `sentOn`. */
+export const lateFeeOwed = (lateFeeRuleCents: number | null, deadlineOn: string | null, sentOn: string) => (deadlineOn && sentOn > deadlineOn ? (lateFeeRuleCents ?? 0) : 0);
 
 /** What a jurisdiction adds to an inspection, as sent to the technician's phone. */
 export const inspectionRequirements = z.object({
@@ -437,6 +489,14 @@ export const filingListItem = z.object({
   site: z.object({ id, addressLine1: z.string(), city: z.string(), permitNumber: z.string().nullable() }),
   customer: z.object({ id, displayName: z.string() }),
   jurisdiction: z.object({ key: z.string(), authorityName: z.string(), rulesetVersion: z.number().int() }).nullable(),
+  /**
+   * The authority's fees, as recorded when the filing opened. `lateFeeCents` is decided when
+   * it is first sent (0 when on time); until then it is null and `lateFeeIfLateCents` says
+   * what a late filing would add. `totalCents` is what is owed so far.
+   */
+  fees: z
+    .object({ filingFeeCents: z.number().int(), lateFeeIfLateCents: z.number().int(), lateFeeCents: z.number().int().nullable(), totalCents: z.number().int(), basis: z.string() })
+    .nullable(),
 });
 export type FilingListItem = z.infer<typeof filingListItem>;
 

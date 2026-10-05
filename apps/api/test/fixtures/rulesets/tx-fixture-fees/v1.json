@@ -1,0 +1,74 @@
+{
+  "jurisdiction": {
+    "key": "tx-fixture-fees",
+    "state": "TX",
+    "authorityName": "Fee Fixture County (fictional)",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL test fixture: an authority with its own report form and a fee schedule. Not any real county's rules.",
+  "applicability": {
+    "counties": ["Fee Fixture County"]
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "report": {
+    "title": "Fee Fixture County Aerobic Maintenance Report",
+    "formReference": "FICTIONAL: Fee Fixture County form FF-1",
+    "sections": [
+      {
+        "title": "Treatment",
+        "fields": [
+          { "key": "aerator", "label": "Aerator operating" },
+          { "key": "air_pressure", "label": "Air pressure at the aerator" },
+          { "key": "treatment_tank" }
+        ]
+      },
+      {
+        "title": "Disinfection",
+        "fields": [
+          { "key": "chlorinator", "label": "Chlorinator" },
+          { "key": "chlorine_level", "label": "Chlorine residual" },
+          { "key": "repairs_made" }
+        ]
+      }
+    ]
+  },
+  "fees": {
+    "inspectionReport": { "filingCents": 1000, "lateCents": 2500 },
+    "contract": { "filingCents": 500 },
+    "basis": "FICTIONAL: Fee Fixture County fee schedule"
+  },
+  "inspection": {
+    "requiredFields": ["air_pressure"],
+    "requiredPhotos": [{ "key": "overview", "minCount": 1 }],
+    "technicianLicenseRequired": true
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-fixture-fees.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}

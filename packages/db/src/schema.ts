@@ -460,6 +460,10 @@ export interface FilingsTable {
   rejectionReason: string | null;
   reviewReason: string | null;
   lastError: string | null;
+  filingFeeCents: ColumnType<number | null, number | null | undefined, number | null>;
+  lateFeeRuleCents: ColumnType<number | null, number | null | undefined, number | null>;
+  lateFeeCents: ColumnType<number | null, number | null | undefined, number | null>;
+  feeBasis: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
