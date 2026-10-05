@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "check-config": "tsx src/cli.ts check-config",
     "migrate": "tsx src/cli.ts migrate",
     "seed": "tsx src/cli.ts seed",
     "reseed-demo": "tsx src/cli.ts reseed-demo",

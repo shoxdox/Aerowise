@@ -39,7 +39,7 @@ const app = await buildApp({
   sms: providers.sms,
   geocoder: providers.geocoder,
   subscription: subscriptionConfigFromEnv(process.env),
-  // Set where the worker shares this machine (see docs/engineering/DEPLOY.md).
+  // Set where the worker shares this container (Render; see docs/engineering/DEPLOY-RENDER.md).
   workerHeartbeat: process.env.HEALTH_INCLUDES_WORKER === "true" ? heartbeatFromEnv(process.env) : undefined,
 });
 

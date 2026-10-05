@@ -1,0 +1,131 @@
+# One Aerowise environment (staging or production) on the self-hosted server.
+# Each environment is its own Compose project with its own database and volumes:
+# deploy/vps/deploy.sh builds, migrates and starts it. See docs/engineering/DEPLOY.md.
+name: aerowise-${AW_ENV:?set AW_ENV to staging or production}
+
+# Every app service builds the same image (the build is cached after the first).
+x-build: &build
+  image: aerowise:${AW_ENV}
+  build: { context: ../.., dockerfile: Dockerfile }
+
+x-app: &app
+  <<: *build
+  restart: unless-stopped
+  labels: [aerowise.autoheal=true]
+  # Every setting the API and worker read is listed here; a new one in .env.example needs a line too.
+  environment: &app-env
+    NODE_ENV: production
+    DEPLOY_ENV: ${AW_ENV}
+    DATABASE_URL: postgres://aerowise:${POSTGRES_PASSWORD:?}@db:5432/aerowise
+    FILE_STORAGE_DIR: /data/files
+    FILE_SIGNING_SECRET: ${FILE_SIGNING_SECRET:?}
+    PUBLIC_APP_URL: https://${AW_DOMAIN:?}
+    DEMO_MODE: ${DEMO_MODE:-false}
+    # Requests reach the API through Caddy and the web app, both on this server's private Docker
+    # networks; Caddy replaces any X-Forwarded-For a client sends, so the address it adds is the client's.
+    TRUST_PROXY: uniquelocal
+    FILING_EMAIL_FROM: ${FILING_EMAIL_FROM:-}
+    INVOICE_EMAIL_FROM: ${INVOICE_EMAIL_FROM:-}
+    ACCOUNT_EMAIL_FROM: ${ACCOUNT_EMAIL_FROM:-}
+    RESEND_API_KEY: ${RESEND_API_KEY:-}
+    RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+    EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
+    R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+    R2_BUCKET: ${R2_BUCKET:-}
+    R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+    R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    QUICKBOOKS_CLIENT_ID: ${QUICKBOOKS_CLIENT_ID:-}
+    QUICKBOOKS_CLIENT_SECRET: ${QUICKBOOKS_CLIENT_SECRET:-}
+    QUICKBOOKS_ENVIRONMENT: ${QUICKBOOKS_ENVIRONMENT:-sandbox}
+    QUICKBOOKS_TOKEN_KEY: ${QUICKBOOKS_TOKEN_KEY:-}
+    TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+    TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+    AEROWISE_TRIAL_DAYS: ${AEROWISE_TRIAL_DAYS:-}
+    AEROWISE_DESIGN_PARTNER_DAYS: ${AEROWISE_DESIGN_PARTNER_DAYS:-}
+    AEROWISE_PRICE_PER_CONTRACT_CENTS: ${AEROWISE_PRICE_PER_CONTRACT_CENTS:-}
+    AEROWISE_MONTHLY_MINIMUM_CENTS: ${AEROWISE_MONTHLY_MINIMUM_CENTS:-}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    # The deployed commit, set by deploy.sh (error reports name it as the release).
+    GIT_COMMIT: ${GIT_COMMIT:-}
+  volumes: [files:/data/files]
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    labels: [aerowise.autoheal=true]
+    environment:
+      POSTGRES_USER: aerowise
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: aerowise
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "aerowise"]
+      interval: 5s
+      retries: 30
+
+  # Runs once per deploy, after the image builds and before the new API starts.
+  # A failed migration stops the deploy; the running containers are left as they were.
+  migrate:
+    <<: *app
+    restart: "no"
+    labels: []
+    command: pnpm db:migrate
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    <<: *app
+    command: pnpm --filter @aerowise/api start
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: pnpm --filter @aerowise/worker start
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    # Healthy while the worker keeps finishing passes of its loop.
+    healthcheck:
+      test: ["CMD", "pnpm", "--filter", "@aerowise/worker", "health"]
+      interval: 30s
+      timeout: 20s
+      start_period: 60s
+      retries: 3
+
+  web:
+    <<: *build
+    restart: unless-stopped
+    labels: [aerowise.autoheal=true]
+    command: pnpm --filter @aerowise/web start
+    depends_on:
+      api: { condition: service_healthy }
+    # Through the web app's /api proxy, so it fails when either is down.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    networks:
+      default: {}
+      # Caddy (deploy/vps/edge.compose.yaml) reaches each environment's web app by this name.
+      edge: { aliases: ["aerowise-${AW_ENV}-web"] }
+
+networks:
+  edge:
+    name: aerowise-edge
+    external: true
+
+volumes:
+  db-data:
+  files:

@@ -1,5 +1,6 @@
 import { sql } from "kysely";
 import { createDb, requireDatabaseUrl } from "./client.ts";
+import { ConfigError, checkConfig } from "./config-check.ts";
 import { migrate } from "./migrate.ts";
 import { createPlatformAdmin } from "./platform-admin.ts";
 import { reseedDemo } from "./reseed.ts";
@@ -8,7 +9,18 @@ import { seed } from "./seed.ts";
 const command = process.argv[2];
 const url = requireDatabaseUrl();
 
-if (command === "migrate") {
+if (command === "check-config") {
+  // The same check the API and worker run when they start, so a deploy can stop before it
+  // replaces anything when a secret is missing.
+  try {
+    checkConfig();
+    console.log("configuration complete");
+  } catch (err) {
+    if (!(err instanceof ConfigError)) throw err;
+    console.error(err.message);
+    process.exit(1);
+  }
+} else if (command === "migrate") {
   await migrate(url, console.log);
   console.log("migrations up to date");
 } else if (command === "seed" || command === "reseed-demo") {
@@ -64,7 +76,7 @@ if (command === "migrate") {
     await db.destroy();
   }
 } else {
-  console.error("usage: cli.ts migrate|seed|reseed-demo|reset|create-platform-admin");
+  console.error("usage: cli.ts check-config|migrate|seed|reseed-demo|reset|create-platform-admin");
   process.exit(1);
 }
 

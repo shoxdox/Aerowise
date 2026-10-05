@@ -9,7 +9,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Area | Status |
 | --- | --- |
 | Monorepo, Postgres migrations, Docker Compose, CI | Done |
-| Hosting config (Render staging and production, migrations on deploy, API and worker health checks) and demo mode for staging (test stand-ins, banner, reseed) | Config done; **no hosting account yet** |
+| Hosting on our own server (Docker Compose staging and production, HTTPS, migrations on deploy, health checks, nightly backups) and demo mode for staging (test stand-ins, banner, nightly reseed) | Config done; **server not set up yet** |
 | Sign-in, sessions, roles (owner / office / technician / read-only) | Done |
 | Tenant isolation (query scoping + composite foreign keys), with tests | Done |
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
@@ -67,7 +67,7 @@ pnpm db:create-platform-admin you@example.com "Your Name"
 
 The OpenAPI document is at http://localhost:4000/openapi.json outside production.
 
-Hosted staging and production run on Render from [`render.yaml`](render.yaml); [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers setup, the one-command deploy (`scripts/deploy.sh`), migrations and health checks. Staging is the public demo: with `DEMO_MODE=true` every outside service is a test stand-in whatever keys are set, every screen says "Demo data. Nothing is sent.", and `pnpm db:reseed-demo` resets it to the seed.
+Hosted staging and production run with Docker Compose on our own server, behind Caddy for HTTPS; [docs/engineering/DEPLOY.md](docs/engineering/DEPLOY.md) covers the one-time setup (`deploy/vps/setup.sh`), deploys, backups and health checks. A Render setup is kept for later in [`render.yaml`](render.yaml). Staging is the public demo: with `DEMO_MODE=true` every outside service is a test stand-in whatever keys are set, every screen says "Demo data. Nothing is sent.", and it resets to the seed every night.
 
 ## Checks
 

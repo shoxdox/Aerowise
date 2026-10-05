@@ -131,10 +131,10 @@ export class SentryReporter implements ErrorReporter {
   }
 }
 
-/** Sentry when SENTRY_DSN is set, nothing otherwise. Events are tagged with DEPLOY_ENV and the deployed commit. */
+/** Sentry when SENTRY_DSN is set, nothing otherwise. Events are tagged with DEPLOY_ENV and the deployed commit (GIT_COMMIT on our server, RENDER_GIT_COMMIT on Render). */
 export function reporterFromEnv(env: Record<string, string | undefined>, onError?: (err: unknown) => void): ErrorReporter {
   if (!env.SENTRY_DSN) return new NoopReporter();
-  return new SentryReporter(env.SENTRY_DSN, { environment: env.DEPLOY_ENV ?? env.NODE_ENV ?? "development", release: env.RENDER_GIT_COMMIT || undefined, onError });
+  return new SentryReporter(env.SENTRY_DSN, { environment: env.DEPLOY_ENV ?? env.NODE_ENV ?? "development", release: env.GIT_COMMIT || env.RENDER_GIT_COMMIT || undefined, onError });
 }
 
 /** JSON lines on stdout, one object per event, the same shape as the API's request logs. */
