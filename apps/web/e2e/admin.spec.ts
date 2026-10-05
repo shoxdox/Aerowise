@@ -39,4 +39,12 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await expect(page.getByRole("status")).toHaveText("Saved the plan for Brazos Aerobic Co.");
   await expect(row.getByRole("cell").nth(6)).toHaveText("Read-only");
   await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $99.00 min (founder)");
+
+  // Coverage: every authority, its status and open questions, and the sites using it.
+  await page.getByRole("link", { name: "Rulesets" }).click();
+  await expect(page.getByRole("heading", { name: "Ruleset coverage" })).toBeVisible();
+  const lcra = page.getByRole("row").filter({ hasText: "tx-lcra-ossf" });
+  await expect(lcra.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(lcra.getByText(/^\d+ open$/)).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "tx-example-county" }).getByText("Example rules")).toBeVisible();
 });

@@ -10,3 +10,4 @@ export * from "./email-env.ts";
 export * from "./resend.ts";
 export * from "./lab-tests.ts";
 export * from "./monitoring.ts";
+export * from "./coverage.ts";
