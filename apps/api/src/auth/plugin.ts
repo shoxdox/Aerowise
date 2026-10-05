@@ -1,5 +1,5 @@
 import type { Database } from "@aerowise/db";
-import { roleHasPermission, type Permission } from "@aerowise/domain";
+import { isReadOnly, READ_ONLY_MESSAGE, roleHasPermission, type Permission } from "@aerowise/domain";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { forbidden, HttpError, unauthorized } from "../lib/errors.ts";
@@ -30,10 +30,13 @@ declare module "fastify" {
   }
 }
 
+const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
+
 /**
  * Deny by default: registering a route without `config.permission` or `config.public`
  * throws at startup, and every request to a protected route must carry a valid session
- * whose role grants the declared permission.
+ * whose role grants the declared permission. A read-only organization's sessions may
+ * only use safe methods.
  */
 export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }) => {
   app.decorateRequest("auth", null);
@@ -65,7 +68,7 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     // CSRF defense alongside SameSite=Lax cookies: state-changing requests must be JSON,
     // which a cross-site HTML form cannot send without a CORS preflight. Image uploads
     // are allowed on routes that opt in: image/* is not a CORS-safelisted type either.
-    if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    if (!SAFE_METHODS.includes(req.method)) {
       const type = req.headers["content-type"] ?? "";
       const allowed =
         type.startsWith("application/json") ||
@@ -93,5 +96,11 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
     if (config.public) return;
     const auth = req.requireAuth();
     if (!config.permission || !roleHasPermission(auth.role, config.permission)) throw forbidden();
+    // A lapsed organization keeps reading and exporting everything (reads are GETs) but
+    // changes nothing. Public routes (homeowner links, provider webhooks) are not tenant
+    // sessions and keep working, so a homeowner can still pay what they owe.
+    if (!SAFE_METHODS.includes(req.method) && isReadOnly(auth.subscriptionState)) {
+      throw new HttpError(403, "organization_read_only", READ_ONLY_MESSAGE);
+    }
   });
 });
