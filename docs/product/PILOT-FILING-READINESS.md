@@ -74,7 +74,7 @@ Profiles now keep two dates apart:
 
 Superseded by section 3 below: each kind of contract now has its own deadline.
 
-- **Six-month monitoring:** the six-month schedule, for systems with electronic monitoring and automatic notification, is not offered. `intervalMonths` stays 4 until the qualifying conditions can be recorded and checked.
+- **Six-month monitoring:** the six-month schedule, for systems with electronic monitoring and automatic notification, is not offered. `intervalMonths` stays 4 until the qualifying conditions can be recorded and checked. (Update, W6.3: Aerowise now records monitoring on a system, and a ruleset can allow the six-month interval with `service.monitored`. The LCRA and Harris v1 rulesets still don't, because published versions don't change; their next versions can.)
 
 ### Official LCRA cover sheet
 

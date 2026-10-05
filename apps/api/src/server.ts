@@ -1,7 +1,7 @@
 import { emailFromEnv } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
-import { LocalDiskStore } from "@aerowise/storage";
+import { storeFromEnv } from "@aerowise/storage";
 import { StripeProvider } from "@aerowise/payments";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
 import { geocoderFromEnv } from "@aerowise/routing";
@@ -19,7 +19,8 @@ const payments = stripeKey
   ? new StripeProvider({ secretKey: stripeKey, webhookSecrets: (process.env.STRIPE_WEBHOOK_SECRET ?? "").split(",").map((s) => s.trim()).filter(Boolean) })
   : undefined;
 const production = process.env.NODE_ENV === "production";
-const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
+const store = storeFromEnv(process.env);
 // With a Resend key, email is really sent; without one it goes to the outbox in file storage.
 const email = emailFromEnv(db, store, process.env);
 const app = await buildApp({

@@ -10,6 +10,7 @@ import { SiteAuthority } from "@/components/SiteAuthority";
 import { SiteContracts } from "@/components/SiteContracts";
 import { SiteLabTests } from "@/components/SiteLabTests";
 import { SiteServiceRequests } from "@/components/SiteServiceRequests";
+import { SystemMonitoring } from "@/components/SystemMonitoring";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { canEdit, useSession } from "@/lib/session";
@@ -250,6 +251,8 @@ export default function SitePage() {
           </dl>
         ))}
       </section>
+
+      <SystemMonitoring siteId={site.id} systems={site.systems} editable={editable} />
 
       <section className="stack">
         <h2>Contacts</h2>

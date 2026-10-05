@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { emailFromEnv, syncRulesets } from "@aerowise/compliance";
 import { createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
-import { LocalDiskStore } from "@aerowise/storage";
+import { storeFromEnv } from "@aerowise/storage";
 import { quickBooksFromEnv } from "@aerowise/quickbooks";
 import { geocoderFromEnv } from "@aerowise/routing";
 import { smsFromEnv } from "@aerowise/sms";
@@ -13,7 +13,8 @@ await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
 // Fictional rules (the example county) are for development and tests only.
 await syncRulesets(db, undefined, { includeFictional: process.env.NODE_ENV !== "production" });
-const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
+// Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
+const store = storeFromEnv(process.env);
 // Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
 const email = emailFromEnv(db, store, process.env);
 console.log(`email: ${email.transport.name}${process.env.EMAIL_REDIRECT_TO && email.provider ? " (redirected to a test inbox)" : ""}`);

@@ -36,7 +36,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W2.5 | First-run checklist | W2.2, W2.4 | not started |
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |
 | W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
-| W3.2 | Cloudflare R2 object store | — | not started |
+| W3.2 | Cloudflare R2 object store | — | done (#30); using R2 needs Justin's Cloudflare account, bucket and token |
 | W3.3 | Production secrets check and hardening | — | not started |
 | W3.4 | Observability: logs, error tracking, alerts | — | not started |
 | W3.5 | Backups and restore runbook | W1.1 | not started |
@@ -53,7 +53,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
 | W6.1 | Per-ruleset service intervals | — | done (#21) |
 | W6.2 | Annual lab tests as required tests | W6.1 | done (#26) |
-| W6.3 | Six-month schedule with electronic monitoring | W6.1 | not started |
+| W6.3 | Six-month schedule with electronic monitoring | W6.1 | done (#28) |
 | W6.4 | Per-authority report templates and fees | W6.1 | not started |
 | W6.5 | Ruleset verification workflow and badge | — | not started |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | not started |
