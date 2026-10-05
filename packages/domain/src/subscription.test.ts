@@ -62,7 +62,7 @@ describe("plan input", () => {
 });
 
 describe("plan configuration", () => {
-  const config = { trialDays: 14, designPartnerDays: 60, pricePerContractCents: 200, monthlyMinimumCents: 5000 };
+  const config = { trialDays: 14, designPartnerDays: 60, pricePerContractCents: 200, monthlyMinimumCents: 5000, pastDueGraceDays: 14 };
 
   it("starts free periods from the configured lengths", () => {
     expect(initialPlan("trial", "2026-03-01", config)).toMatchObject({ state: "trial", startsOn: "2026-03-01", endsOn: "2026-03-15" });

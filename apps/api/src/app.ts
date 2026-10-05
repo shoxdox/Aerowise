@@ -255,7 +255,7 @@ export async function buildApp({
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
-  await app.register(billingRoutes, { db, now, provider: billing });
+  await app.register(billingRoutes, { db, now, provider: billing, config: subscription });
   await app.register(subscriptionRoutes, { db, now, provider: billing, config: subscription, appUrl });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, testCheckout: !production || demo });
   await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl } });

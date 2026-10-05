@@ -1100,6 +1100,14 @@ export interface BillingPeriodsTable {
   updatedAt: Generated<Date>;
 }
 
+export interface PlanRemindersTable {
+  id: Generated<string>;
+  organizationId: string;
+  endsOn: string;
+  daysBefore: number;
+  sentAt: CreatedAt;
+}
+
 export interface BillingEventsTable {
   id: string;
   type: string;
@@ -1186,5 +1194,6 @@ export interface DB {
   platformAuditEvents: PlatformAuditEventsTable;
   billingPeriods: BillingPeriodsTable;
   billingEvents: BillingEventsTable;
+  planReminders: PlanRemindersTable;
   invitations: InvitationsTable;
 }

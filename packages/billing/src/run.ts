@@ -1,6 +1,7 @@
 import type { BillingPeriodStatus, Database, DB } from "@aerowise/db";
-import { BILLABLE_STATES, billingMonth, dateInZone, effectivePrice, monthlyCharge, type SubscriptionConfig } from "@aerowise/domain";
+import { BILLABLE_STATES, billingMonth, dateInZone, DEFAULT_SUBSCRIPTION_CONFIG, effectivePrice, monthlyCharge, type SubscriptionConfig } from "@aerowise/domain";
 import type { Transaction } from "kysely";
+import { changePlan, pastDueUntil } from "./lifecycle.ts";
 import type { BillingEvent, BillingLine, BillingProvider } from "./provider.ts";
 
 type Executor = Database | Transaction<DB>;
@@ -164,10 +165,16 @@ const STATUS_FOR_EVENT: Record<string, BillingPeriodStatus> = {
 
 /**
  * Applies a Stripe Billing webhook to the month it invoices. Each event is applied once.
- * A paid invoice stays paid whatever arrives after it. Plan state changes on payment and
- * failure come with the full lifecycle (W4.4).
+ * A paid invoice stays paid whatever arrives after it. A failed payment makes an active
+ * company past due for the grace period; a payment that leaves nothing unpaid makes a past
+ * due or read-only company active again.
  */
-export async function applyBillingEvent(db: Database, event: BillingEvent, now: Date): Promise<"applied" | "duplicate" | "ignored"> {
+export async function applyBillingEvent(
+  db: Database,
+  event: BillingEvent,
+  now: Date,
+  config: SubscriptionConfig = DEFAULT_SUBSCRIPTION_CONFIG,
+): Promise<"applied" | "duplicate" | "ignored"> {
   return db.transaction().execute(async (trx) => {
     const fresh = await trx.insertInto("billingEvents").values({ id: event.id, type: event.type, organizationId: null }).onConflict((oc) => oc.column("id").doNothing()).returning("id").executeTakeFirst();
     if (!fresh) return "duplicate";
@@ -181,6 +188,21 @@ export async function applyBillingEvent(db: Database, event: BillingEvent, now: 
     // A failed payment that Stripe retries reopens the invoice; "finalized" never undoes a failure.
     if (status === "open" && period.status === "failed") return "applied";
     await trx.updateTable("billingPeriods").set({ status, updatedAt: now }).where("id", "=", period.id).execute();
+
+    const org = await trx
+      .selectFrom("organizations")
+      .select(["id", "timezone", "subscriptionState", "subscriptionStartsOn"])
+      .where("id", "=", period.organizationId)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
+    const today = dateInZone(now, org.timezone);
+    if (status === "failed" && org.subscriptionState === "active") {
+      await changePlan(trx, org.id, "active", { state: "past_due", startsOn: org.subscriptionStartsOn, endsOn: pastDueUntil(today, config) }, `payment failed (${event.type})`);
+    }
+    if (status === "paid" && (org.subscriptionState === "past_due" || org.subscriptionState === "read_only")) {
+      const stillFailed = await trx.selectFrom("billingPeriods").select("id").where("organizationId", "=", org.id).where("status", "=", "failed").executeTakeFirst();
+      if (!stillFailed) await changePlan(trx, org.id, org.subscriptionState, { state: "active", startsOn: today, endsOn: null }, "invoice paid");
+    }
     return "applied";
   });
 }

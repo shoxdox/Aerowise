@@ -1,5 +1,6 @@
 import { applyBillingEvent, BillingSignatureError, type BillingProvider } from "@aerowise/billing";
 import type { Database } from "@aerowise/db";
+import type { SubscriptionConfig } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { HttpError } from "../lib/errors.ts";
 
@@ -7,7 +8,10 @@ import { HttpError } from "../lib/errors.ts";
  * Stripe Billing's webhook: what companies pay Aerowise. Its own endpoint and signing
  * secret, separate from /webhooks/stripe (Stripe Connect, homeowner payments).
  */
-export const billingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; provider: BillingProvider | null }> = async (app, { db, now, provider }) => {
+export const billingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; provider: BillingProvider | null; config: SubscriptionConfig }> = async (
+  app,
+  { db, now, provider, config },
+) => {
   // Stripe signs the exact bytes it sent, so this route reads the raw body.
   app.register(async (hook) => {
     hook.removeContentTypeParser("application/json");
@@ -23,7 +27,7 @@ export const billingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (err instanceof BillingSignatureError) throw new HttpError(400, "bad_signature", "Stripe signature did not verify");
         throw err;
       }
-      const outcome = await applyBillingEvent(db, event, now());
+      const outcome = await applyBillingEvent(db, event, now(), config);
       req.log.info({ stripeEvent: event.id, type: event.type, outcome }, "stripe billing webhook");
       return reply.send({ received: true, outcome });
     });

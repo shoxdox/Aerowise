@@ -45,7 +45,7 @@ describe("the marketing page's overview", () => {
 
   it("reads pricing from the deployment's subscription config, not fixed copy", async () => {
     expect((await overview()).json().pricing).toEqual({ designPartnerDays: 90, trialDays: 30, pricePerContractCents: 150, monthlyMinimumCents: 9900 });
-    const app = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, subscription: { designPartnerDays: 60, trialDays: 14, pricePerContractCents: 200, monthlyMinimumCents: 4900 } });
+    const app = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, subscription: { designPartnerDays: 60, trialDays: 14, pricePerContractCents: 200, monthlyMinimumCents: 4900, pastDueGraceDays: 14 } });
     try {
       expect((await overview(app)).json().pricing).toEqual({ designPartnerDays: 60, trialDays: 14, pricePerContractCents: 200, monthlyMinimumCents: 4900 });
     } finally {

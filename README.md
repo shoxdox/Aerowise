@@ -20,6 +20,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Aerowise plans: plan state (design partner, trial, active, past due, read-only), dates and founder price per organization, set in `/admin`; read-only companies can view and export everything but change nothing | Done |
 | Aerowise billing: monthly count of active contracts per organization, stored with each month; Stripe Billing invoices (per-contract price, monthly minimum, founder price) collected automatically; test stand-in in development | Code done; **needs Stripe Billing keys** |
 | Owner subscription page (`/settings/subscription`): plan, days left, estimate at today's count, saved payment method (Stripe customer portal), past invoices | Done |
+| Plan lifecycle: owner reminders 14, 7 and 1 days before a free period ends; trial to active with a saved card, read-only without; past due on a failed payment, read-only after a grace period, active again once paid | Done |
 | Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
 | Due-inspections list for the office | Done |
 | Jobs, office scheduling screen, technician daily route | Done |

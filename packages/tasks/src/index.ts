@@ -12,7 +12,7 @@ import { runSmsSweep, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 import type { Geocoder } from "@aerowise/routing";
 import { LOCATE_SITES, locateSites } from "./routing-task.ts";
 import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement, runRenewalSweep, sendRenewalEmail } from "./renewal-task.ts";
-import { runMonthlyBilling, type BillingProvider } from "@aerowise/billing";
+import { runMonthlyBilling, runPlanLifecycle, type BillingProvider } from "@aerowise/billing";
 import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/domain";
 import { BILLING_RUN } from "./billing-task.ts";
 import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
@@ -53,6 +53,8 @@ export interface TaskContext {
   mailFrom?: string;
   /** From address on invoice emails; the provider's name is shown with it. */
   invoiceMailFrom?: string;
+  /** From address on email from Aerowise itself to a company (plan reminders). */
+  accountMailFrom?: string;
   /** Where customers open pay links: the web app's public address. */
   appUrl?: string;
   /** QuickBooks Online; without it, sync tasks do nothing. */
@@ -66,6 +68,7 @@ export interface TaskContext {
 }
 
 export const DEFAULT_APP_URL = "http://localhost:3000";
+export const DEFAULT_ACCOUNT_MAIL_FROM = "accounts@aerowise.invalid";
 
 export function complianceContext(ctx: TaskContext): ComplianceContext {
   return { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, enqueue, from: ctx.mailFrom };
@@ -147,13 +150,24 @@ async function run(ctx: TaskContext, task: Task) {
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
       return;
-    case BILLING_RUN:
-      await runMonthlyBilling(
-        ctx.db,
-        { provider: ctx.billing?.provider ?? null, config: ctx.billing?.config ?? DEFAULT_SUBSCRIPTION_CONFIG, now: ctx.now() },
+    case BILLING_RUN: {
+      const provider = ctx.billing?.provider ?? null;
+      const config = ctx.billing?.config ?? DEFAULT_SUBSCRIPTION_CONFIG;
+      // The plan first (reminders, a free period ending, a grace period running out), so the
+      // month is counted in the state the company is actually in.
+      await runPlanLifecycle(
+        {
+          db: ctx.db,
+          provider,
+          config,
+          now: ctx.now(),
+          mail: { transport: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), from: ctx.accountMailFrom ?? DEFAULT_ACCOUNT_MAIL_FROM, appUrl: ctx.appUrl ?? DEFAULT_APP_URL },
+        },
         payload.organizationId!,
       );
+      await runMonthlyBilling(ctx.db, { provider, config, now: ctx.now() }, payload.organizationId!);
       return;
+    }
     default:
       throw new Error(`unknown task kind ${task.kind}`);
   }
