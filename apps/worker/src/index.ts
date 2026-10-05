@@ -11,10 +11,11 @@ const db = createDb(url);
 const production = process.env.NODE_ENV === "production";
 const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
 // The same outside services as the API; DEMO_MODE=true makes every one a test stand-in.
+// Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
 const providers = providersFromEnv({ db, store, env: process.env, production });
+console.log(`email: ${providers.mail.name}${process.env.EMAIL_REDIRECT_TO && providers.mailProvider ? " (redirected to a test inbox)" : ""}`);
 // Fictional rules (the example county) are for development, tests and the demo only.
 await syncRulesets(db, undefined, { includeFictional: !production || providers.demo });
-// Filing and invoice emails go to the outbox in file storage; see README for production.
 const ctx = {
   db,
   store,

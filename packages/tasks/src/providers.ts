@@ -1,4 +1,4 @@
-import { OutboxTransport, type EmailTransport } from "@aerowise/compliance";
+import { emailFromEnv, OutboxTransport, type EmailProvider, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import { StripeProvider, TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { quickBooksFromEnv, TestQuickBooksProvider, TokenCipher, type QuickBooksProvider } from "@aerowise/quickbooks";
@@ -23,8 +23,10 @@ export function demoModeFromEnv(env: Env): boolean {
 /** Every service outside Aerowise that the API and worker talk to. */
 export interface Providers {
   demo: boolean;
-  /** Email (filings, invoices, portal links, renewals). Today always the outbox in file storage. */
+  /** Email (filings, invoices, portal links, renewals, invitations): Resend with a key, else the outbox in file storage. */
   mail: EmailTransport;
+  /** The mail provider behind `mail`, whose delivery webhooks the API receives; null for the outbox. */
+  mailProvider: EmailProvider | null;
   /** Stripe Connect for homeowner payments; null means online payments are off. */
   payments: PaymentProvider | null;
   quickbooks: { provider: QuickBooksProvider; cipher: TokenCipher } | null;
@@ -40,11 +42,11 @@ export interface Providers {
 export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: Env; production: boolean; now?: () => Date }): Providers {
   const { db, store, env, production, now = () => new Date() } = opts;
   const demo = demoModeFromEnv(env);
-  const mail = new OutboxTransport(store, now);
   if (demo) {
     return {
       demo,
-      mail,
+      mail: new OutboxTransport(store, now),
+      mailProvider: null,
       payments: new TestPaymentProvider(),
       quickbooks: { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher(env.QUICKBOOKS_TOKEN_KEY || undefined) },
       sms: { provider: new TestSmsProvider(), webhookBaseUrl: smsWebhookBaseUrl(env) },
@@ -52,9 +54,11 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
     };
   }
   const stripeKey = env.STRIPE_SECRET_KEY;
+  const email = emailFromEnv(db, store, env, now);
   return {
     demo,
-    mail,
+    mail: email.transport,
+    mailProvider: email.provider,
     // Without Stripe keys the built-in test provider runs outside production, and online payments are off in production.
     payments: stripeKey
       ? new StripeProvider({ secretKey: stripeKey, webhookSecrets: (env.STRIPE_WEBHOOK_SECRET ?? "").split(",").map((s) => s.trim()).filter(Boolean) })

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { OutboxTransport } from "@aerowise/compliance";
+import { OutboxTransport, ProviderTransport, ResendEmailProvider } from "@aerowise/compliance";
 import { createDb, migrate, reseedDemo, type Database } from "@aerowise/db";
 import { sql } from "kysely";
 import { StripeProvider, TestPaymentProvider } from "@aerowise/payments";
@@ -32,6 +32,8 @@ const realKeys = {
   TWILIO_ACCOUNT_SID: "AC00000000000000000000000000000000",
   TWILIO_AUTH_TOKEN: "twilio-token",
   GEOCODER: "census",
+  RESEND_API_KEY: "re_not_a_real_key",
+  EMAIL_REDIRECT_TO: "inbox@example.com",
   PUBLIC_APP_URL: "https://demo.example.com",
 };
 
@@ -41,6 +43,7 @@ describe("demo mode providers", () => {
       const p = providersFromEnv({ db: ctx.db, store, env: { ...realKeys, DEMO_MODE: "true" }, production });
       expect(p.demo).toBe(true);
       expect(p.mail).toBeInstanceOf(OutboxTransport);
+      expect(p.mailProvider).toBeNull();
       expect(p.payments).toBeInstanceOf(TestPaymentProvider);
       expect(p.quickbooks?.provider).toBeInstanceOf(TestQuickBooksProvider);
       expect(p.sms?.provider).toBeInstanceOf(TestSmsProvider);
@@ -52,7 +55,8 @@ describe("demo mode providers", () => {
   it("uses the real services when demo mode is off", () => {
     const p = providersFromEnv({ db: ctx.db, store, env: realKeys, production: true });
     expect(p.demo).toBe(false);
-    expect(p.mail).toBeInstanceOf(OutboxTransport);
+    expect(p.mail).toBeInstanceOf(ProviderTransport);
+    expect(p.mailProvider).toBeInstanceOf(ResendEmailProvider);
     expect(p.payments).toBeInstanceOf(StripeProvider);
     expect(p.quickbooks?.provider).toBeInstanceOf(IntuitQuickBooksProvider);
     expect(p.sms?.provider).toBeInstanceOf(TwilioSmsProvider);
@@ -61,7 +65,8 @@ describe("demo mode providers", () => {
 
   it("turns unconfigured services off in production and uses stand-ins elsewhere", () => {
     const prod = providersFromEnv({ db: ctx.db, store, env: { DEMO_MODE: "false" }, production: true });
-    expect([prod.payments, prod.quickbooks, prod.sms]).toEqual([null, null, null]);
+    expect([prod.payments, prod.quickbooks, prod.sms, prod.mailProvider]).toEqual([null, null, null, null]);
+    expect(prod.mail).toBeInstanceOf(OutboxTransport);
     expect(prod.geocoder).toBeInstanceOf(CensusGeocoder);
     const dev = providersFromEnv({ db: ctx.db, store, env: {}, production: false });
     expect(dev.payments).toBeInstanceOf(TestPaymentProvider);

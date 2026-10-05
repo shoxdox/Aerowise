@@ -9,8 +9,8 @@ await migrate(url, (msg) => console.log(msg));
 const db = createDb(url);
 const production = process.env.NODE_ENV === "production";
 const store = new LocalDiskStore(process.env.FILE_STORAGE_DIR ?? ".data/files");
-// Stripe, QuickBooks, Twilio and the geocoder: real with keys, test stand-ins without them outside
-// production, off in production. DEMO_MODE=true forces every one to its stand-in.
+// Email, Stripe, QuickBooks, Twilio and the geocoder: real with keys; without them, test stand-ins outside
+// production (email: the outbox) and off in production. DEMO_MODE=true forces every one to its stand-in.
 const providers = providersFromEnv({ db, store, env: process.env, production });
 if (providers.demo) console.log("demo mode: every outside service is a test stand-in; nothing is sent");
 const app = await buildApp({
@@ -21,6 +21,7 @@ const app = await buildApp({
   store,
   fileSigningSecret: process.env.FILE_SIGNING_SECRET,
   mail: providers.mail,
+  mailProvider: providers.mailProvider,
   payments: providers.payments,
   quickbooks: providers.quickbooks,
   appUrl: process.env.PUBLIC_APP_URL,

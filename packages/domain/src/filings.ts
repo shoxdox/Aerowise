@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
 import type { TemplateDefinition } from "./inspections.ts";
+import { labTestRule, type LabTestRule } from "./lab-tests.ts";
 import { addDays } from "./schedule.ts";
 
 // Filing an inspection with the authority that requires it. What each authority wants is
@@ -217,6 +218,8 @@ export const rulesetRules = z.object({
     /** A shorter maximum for commercial systems (1 for monthly), where the authority sets one. */
     commercialIntervalMonths: z.number().int().min(1).max(24).optional(),
   }),
+  /** Lab tests the authority requires on a schedule, such as annual BOD and TSS. */
+  labTests: labTestRule.optional(),
   inspection: z.object({
     /** Template fields the authority requires an answer for, on top of the template's own rules. */
     requiredFields: z.array(fieldKey).default([]),
@@ -269,6 +272,10 @@ export const mayAutoSubmit = (rules: RulesetRules) => rules.filing.autoSubmit &&
 /** The longest the authority allows between inspections of a residential or commercial system. */
 export const serviceIntervalMonths = (rules: RulesetRules, customerType: "residential" | "commercial") =>
   (customerType === "commercial" ? rules.service.commercialIntervalMonths : undefined) ?? rules.service.intervalMonths;
+
+/** The lab tests a residential or commercial system needs under these rules, or null. */
+export const labTestRequirement = (rules: RulesetRules, customerType: "residential" | "commercial"): LabTestRule | null =>
+  rules.labTests?.appliesTo.includes(customerType) ? rules.labTests : null;
 
 export const contractFilingRequired = (rules: RulesetRules) => rules.contracts?.filingRequired === true;
 
