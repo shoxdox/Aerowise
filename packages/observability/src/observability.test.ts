@@ -1,5 +1,5 @@
 import { Writable } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createLogger, NoopReporter, reporterFromEnv, SentryReporter } from "./index.ts";
 
 function fakeSentry() {
@@ -16,6 +16,21 @@ describe("error reporting", () => {
     expect(reporterFromEnv({})).toBeInstanceOf(NoopReporter);
     expect(reporterFromEnv({ SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/42" })).toBeInstanceOf(SentryReporter);
     expect(() => reporterFromEnv({ SENTRY_DSN: "https://o1.ingest.sentry.io/notaproject" })).toThrow(/not a Sentry DSN/);
+  });
+
+  it("names the deployed commit as the release, on our server and on Render", async () => {
+    for (const [key, commit] of [["GIT_COMMIT", "abc123def"], ["RENDER_GIT_COMMIT", "fed321cba"]] as const) {
+      const s = fakeSentry();
+      vi.stubGlobal("fetch", s.fetch);
+      try {
+        const r = reporterFromEnv({ SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/42", DEPLOY_ENV: "staging", [key]: commit });
+        r.captureException(new Error("boom"));
+        await r.flush();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      expect(s.sent[0]!.lines[2]).toMatchObject({ environment: "staging", release: commit });
+    }
   });
 
   it("sends an exception as a Sentry envelope tagged with the organization and request", async () => {

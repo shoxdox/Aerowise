@@ -1,83 +1,95 @@
 # Deploying Aerowise
 
-Aerowise runs on [Render](https://render.com). Everything Render needs is in [`render.yaml`](../../render.yaml) at the repo root (a Render Blueprint), and one command deploys a commit. Why Render and what it costs are in [DECISIONS.md](../DECISIONS.md) (2026-10-05, Hosting).
+Staging and production both run on Justin's own server (Chicago, 4 GB RAM, 2 vCPUs) with Docker Compose, until Aerowise moves to a managed host such as Render ([DEPLOY-RENDER.md](DEPLOY-RENDER.md), with `render.yaml` kept ready). Why, and what that costs in risk, is in [DECISIONS.md](../DECISIONS.md) (2026-10-05, Hosting on our own server). Everything the server runs is in [`deploy/vps/`](../../deploy/vps).
 
 ## What runs where
 
-Two environments, each with its own database and services, all in Render's Ohio region:
-
-| Resource | Staging | Production |
+| | Staging (the public demo) | Production |
 | --- | --- | --- |
-| Postgres 16 | `aerowise-db-staging` (Basic-256mb, 1 GB) | `aerowise-db-production` (Basic-1gb, 5 GB) |
-| API and worker | `aerowise-api-staging` (Starter, 1 GB disk) | `aerowise-api-production` (Starter, 5 GB disk) |
-| Web app | `aerowise-web-staging` (Starter) | `aerowise-web-production` (Starter) |
+| Address | `https://staging.<domain>` | `https://app.<domain>` |
+| Checkout | `/opt/aerowise/staging` | `/opt/aerowise/production` |
+| Settings file | `/etc/aerowise/staging.env` | `/etc/aerowise/production.env` |
+| Compose project | `aerowise-staging` | `aerowise-production` |
+| `DEMO_MODE` | `true` | `false` |
 
-All three services build the same `Dockerfile` and differ only in their start command, as in `docker-compose.yml`.
+- **One front door.** Caddy ([`edge.compose.yaml`](../../deploy/vps/edge.compose.yaml), [`Caddyfile`](../../deploy/vps/Caddyfile)) is the only thing listening on ports 80 and 443. It gets a Let's Encrypt certificate for each address, redirects HTTP to HTTPS and passes requests to that environment's web app over the shared `aerowise-edge` Docker network. Changing an address means changing `AW_DOMAIN` in the environment's settings file and the matching line in `/etc/aerowise/edge.env`, then restarting Caddy and redeploying.
+- **Or nginx in front.** When the server's own nginx already has ports 80 and 443 (Justin's does), `setup.sh` leaves Caddy out. It adds two sites to nginx ([`nginx/aerowise.conf`](../../deploy/vps/nginx/aerowise.conf)) that forward each address to its environment's web app on `127.0.0.1:3101` (staging) or `127.0.0.1:3102` (production), and runs certbot for the certificates and the HTTPS redirect; certbot's timer renews them. The rest of nginx's configuration is not touched. The shared proxy settings ([`nginx/aerowise-proxy.conf`](../../deploy/vps/nginx/aerowise-proxy.conf)) replace any `X-Forwarded-For` a client sends and allow uploads up to 20 MB (photos are up to 15 MB).
+- **Each environment** ([`app.compose.yaml`](../../deploy/vps/app.compose.yaml)) has its own Postgres 16, API, worker and web app, built from the repo's `Dockerfile`, and its own volumes for the database and stored files. Only the web app is on the shared network; the database and API are reachable only inside their own environment. The web app proxies `/api/*` to the API, as in development.
+- **Settings.** Each environment's settings file feeds the `environment:` list in `app.compose.yaml`, which names every setting the API and worker read. A change that adds a setting to `.env.example` adds it there and to `deploy/vps/env.example` too; `apps/api/test/deploy.test.ts` fails until it does.
+- **The client's address.** Caddy replaces any `X-Forwarded-For` a client sends with the address it saw, so `TRUST_PROXY=uniquelocal` (the private Docker addresses of Caddy and the web app) lets the rate limits key on the real client and nothing a client can fake.
+- **Memory.** Both environments together used about 1 GB in a local test. Building the image needs more for a minute or two, so on a 4 GB server shared with other things a 2 GB swap file is a cheap margin.
 
-- **The API and the worker share one service** (`scripts/start-api-and-worker.sh`), because uploaded photos and report PDFs live on a disk (`FILE_STORAGE_DIR=/data/files`) and a Render disk belongs to one service. If either process stops, the script stops the other and the container exits, so Render restarts both. With R2 configured (W3.2) nothing needs the disk any more, so the worker can become its own service; that split is left for a later change.
-- **The web app** proxies `/api/*` to the API over Render's private network. `API_URL` is the API's private `host:port`; Render passes it to the Docker build, where Next.js bakes it into its rewrites. People, Stripe, Twilio and Intuit only ever use the web app's address.
-- The API service also has a public `onrender.com` address because Render health checks only run on web services. Nothing links to it; it answers the same signed-in requests the web app proxies.
+## Setting the server up (once)
 
-## Migrations
+First, DNS: two records pointing at the server, `staging.<domain>` and `app.<domain>` (A records to its IP). In Cloudflare, set them to **DNS only** (grey cloud), so the certificates can be issued on the server and the address Aerowise sees is the visitor's. Proxied (orange cloud) also works with SSL/TLS mode **Full (strict)**, but then every visitor arrives from a Cloudflare address, so the sign-in rate limits need Cloudflare's ranges in `TRUST_PROXY`. With no domain, pass the server's IP to the script instead and it uses `staging.<ip>.sslip.io` and `app.<ip>.sslip.io`, which resolve to the server by themselves.
 
-Each API deploy runs `pnpm db:migrate` as its pre-deploy command: after the image builds, on a separate instance, before the new API starts. If a migration fails, the deploy stops there and the running version keeps serving. Migrations are forward-only and applied files are never edited, so the old API keeps working against the new schema during the switch. The API and worker still run `migrate` when they start, which is a no-op after the pre-deploy step and keeps `docker compose up` working. A Postgres advisory lock stops two migrators from running at once.
-
-## Health checks
-
-- **API:** `GET /health` checks the database. With `HEALTH_INCLUDES_WORKER=true` (set in `render.yaml`) it also answers 503 when the worker's heartbeat is missing or more than `WORKER_HEARTBEAT_MAX_AGE_MS` old (5 minutes by default), so a stuck or dead worker makes Render restart the service.
-- **Worker:** after every clean pass of its loop, the worker touches `WORKER_HEARTBEAT_FILE` (a file in the temp directory by default). `pnpm --filter @aerowise/worker health` exits 0 when that file is recent and 1 otherwise; Docker Compose uses it as the worker's health check. A pass that throws (for example, the database is unreachable) does not count.
-- **Web:** `GET /api/health` goes through the web app's proxy to the API, so it fails when either is down.
-- **Queue:** `GET /health/queue` (and `/api/health/queue` through the web app) answers 503 when due work has waited more than 15 minutes with no worker on it, or a filing task (reports, contract filings, sending to an authority) has failed 3 times or more. The body says how many tasks wait, for how long, and how many filing tasks are failing. Render does not use it: restarting would not fix a failing filing.
-
-## Monitoring
-
-- **Uptime checks** (an external monitor such as UptimeRobot or Better Stack, every 5 minutes, alert on two failures in a row):
-  - `<PUBLIC_APP_URL>/api/health`: the web app, the API and the database are up.
-  - `<PUBLIC_APP_URL>/api/health/queue`: the worker keeps up and filings are going out.
-- **Logs** are JSON lines on stdout from the API and the worker (`LOG_LEVEL`, `info` by default). API lines carry `reqId` and, once signed in, `organizationId` and `userId`; a 500's response body carries the same `requestId`, so a customer's report can be matched to its log lines. Worker lines name each task with its `organizationId`.
-- **Error tracking:** with `SENTRY_DSN` set, unexpected API errors (500s), failed background tasks and queue alerts go to Sentry, tagged with `organization_id`, `request_id`, the route or task kind, `DEPLOY_ENV` as the environment and the deployed commit as the release. Without it, they are only in the logs. The worker checks the queue every `QUEUE_CHECK_INTERVAL_MS` (5 minutes) and sends each alert once, then every 6 hours while it lasts.
-
-## First-time setup (Justin, once)
-
-1. Create a Render account (the free Hobby workspace is enough to start) and connect GitHub with access to `shoxdox/Aerowise`.
-2. In the Render dashboard choose **New > Blueprint**, pick the repo and the `main` branch. Render reads `render.yaml` and lists the six resources.
-3. Fill in the values Render asks for (the `sync: false` keys):
-   - `PUBLIC_APP_URL`: the web service's address, for example `https://aerowise-web-staging.onrender.com`, until a domain is bought.
-   - `DEPLOY_ENV` is already set (`staging` / `production`). Production refuses to start until Resend and R2 are configured; the deploy log names exactly what is missing. Staging runs without them.
-   - Files: leave the four `R2_*` keys empty and photos and PDFs stay on the service's disk. To use Cloudflare R2, create a private bucket and an R2 API token with object read and write on that bucket only, then set `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. Files already on the disk are copied with `pnpm files:copy-to-r2` from the API service's Shell (run it before setting the keys, with them exported in the shell, then again after; it is safe to repeat and checks every file's SHA-256).
-   - Email: leave `RESEND_API_KEY` empty and every email is written to the outbox in file storage. To send for real, set `RESEND_API_KEY`, `FILING_EMAIL_FROM`, `INVOICE_EMAIL_FROM` and `ACCOUNT_EMAIL_FROM` (addresses on the domain verified in Resend), point a Resend webhook at `<PUBLIC_APP_URL>/api/webhooks/email` and put its signing secret in `RESEND_WEBHOOK_SECRET`. On staging, set `EMAIL_REDIRECT_TO` to a test inbox so synthetic filings never reach a real authority.
-   - Production only: Stripe, QuickBooks and Twilio keys. Leave them empty and each one stays off.
-4. Apply. Render creates the databases, generates `FILE_SIGNING_SECRET` and `QUICKBOOKS_TOKEN_KEY`, and builds and starts everything.
-5. Create your platform admin for `/admin`: open the API service's **Shell** in the dashboard and run `pnpm db:create-platform-admin you@example.com "Your Name"` (it asks for the password).
-6. Create an API key under **Account settings > API keys** for the deploy command below.
-
-Changing `render.yaml` later and syncing the Blueprint updates the services to match; values entered by hand are kept.
-
-## Deploy
+Then `deploy/vps/setup.sh` does the rest and is safe to run again. As root on the server, with Docker and git installed:
 
 ```sh
-RENDER_API_KEY=... ./scripts/deploy.sh staging            # deploys the commit you have checked out
-RENDER_API_KEY=... ./scripts/deploy.sh production <sha>   # or a given commit
+curl -fsSL https://get.docker.com | sh      # if Docker is not installed yet
+sudo bash setup.sh <domain> <your email>    # copy deploy/vps/setup.sh over first
 ```
 
-The script finds the services by name, deploys the API first (its pre-deploy step migrates the database), waits until it is live, then deploys the web app. It stops with an error at the first failed build, failed migration or failed health check. Render never deploys on a push by itself (`autoDeployTrigger: off`); W1.3 runs this script from CI after the checks pass.
+The first run creates a `deploy` user and a read-only key for GitHub, prints that key and stops. Add it under the repository's **Settings > Deploy keys** (write access off), then run the script again. The second run:
 
-To roll back, choose an earlier deploy under the service's **Events** in the dashboard and **Rollback**, or run the script with the earlier commit. Migrations are not rolled back; a fix goes in a new migration.
+1. clones the repository into `/opt/aerowise/staging` and `/opt/aerowise/production`;
+2. writes `/etc/aerowise/staging.env`, `production.env` and `edge.env` (readable by root and the `deploy` user only) from [`env.example`](../../deploy/vps/env.example), with new random values for the database password, `FILE_SIGNING_SECRET` and `QUICKBOOKS_TOKEN_KEY`. Files that already exist are left alone;
+3. makes a key that CI can use to deploy and for nothing else (see below);
+4. installs [`/etc/cron.d/aerowise`](../../deploy/vps/cron): nightly backups, the nightly demo reset and the restarter;
+5. sets up HTTPS (Caddy, or nginx and certbot when nginx already has ports 80 and 443) and deploys `main` to staging, loading the demo data. If a certificate cannot be issued yet (DNS not pointing at the server), it says so and prints the certbot command to run later.
+
+It ends by printing the GitHub secrets CI needs. To pick up later changes to the cron file or `aerowise-deploy`, run it again.
+
+Production refuses to start until its settings file has Resend and Cloudflare R2 filled in (W3.3's check). Every other service is optional and stays off when its lines are empty.
+
+### Platform admin
+
+```sh
+docker exec -it aerowise-production-api-1 pnpm db:create-platform-admin you@example.com "Your Name"
+```
+
+It asks for the password. Staging needs its own if you want `/admin` there; the demo seed does not create one.
+
+## Deploying
+
+A deploy checks the commit out on the server, builds the image, runs the settings check, runs the migrations, swaps the containers and waits up to five minutes for every one to report healthy. A failed build, settings check or migration stops it before anything is replaced, and the running version keeps serving. On staging, the demo company and users are loaded if they are missing. Production only takes commits that are on `main`.
+
+- **From CI** (W1.3), or by hand with the same restricted key: `ssh deploy@<server> aerowise-deploy staging|production <full commit sha>`. The CI key in `~deploy/.ssh/authorized_keys` is pinned to [`aerowise-deploy`](../../deploy/vps/aerowise-deploy.sh): no shell, no port forwarding.
+- **From your machine**, with your own SSH access as `deploy`: `VPS_SSH=deploy@<server> ./scripts/deploy-vps.sh staging [commit]`. The commit must be pushed.
+- **On the server:** `sudo -u deploy /opt/aerowise/<env>/deploy/vps/deploy.sh <env> <commit>`.
+
+To roll back, deploy the earlier commit. Migrations are forward-only and are not rolled back; a fix goes in a new migration.
 
 ## Staging is the demo
 
-Staging runs with `DEMO_MODE=true`. Every outside service uses its test stand-in whatever keys are set: email (filings, invoices, portal links, renewals) goes to the outbox in file storage, texts to the test provider, payments to the test Stripe provider (with its test checkout), QuickBooks to the built-in test company, and addresses to the test geocoder. The fictional example county rules load, and every screen shows "Demo data. Nothing is sent." The sign-in page lists the demo users: `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`.
-
-To load or reset the demo data, open the API service's **Shell** and run:
+Staging runs with `DEMO_MODE=true`: every outside service is its test stand-in whatever keys are set, the fictional example county rules load, and every screen shows "Demo data. Nothing is sent." The sign-in page lists the demo users: `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`. Every night at 09:00 UTC cron runs `pnpm db:reseed-demo`, which empties everything except the authority rules and platform admins, removes stored files and seeds again. To reset it now:
 
 ```sh
-pnpm db:seed           # first time: loads the fictional company, its users and data
-pnpm db:reseed-demo    # later: empties everything except the authority rules and platform admins, removes stored files, seeds again
+docker exec aerowise-staging-api-1 pnpm db:reseed-demo
 ```
 
-Both refuse to run when `NODE_ENV=production` unless `DEMO_MODE=true`, so they cannot touch production. W1.3 runs the reseed every night.
+`seed` and `reseed-demo` refuse to run unless `DEMO_MODE=true`, so they cannot touch production.
 
-## Not here yet
+## Keeping it up
 
-- Deploys from CI, the nightly staging reseed and a custom domain with HTTPS (W1.3). Render already serves the `onrender.com` addresses over HTTPS.
-- Object storage, so the worker can run as its own service (W3.2); backups beyond Render's point-in-time recovery and a restore runbook (W3.5).
+- **Restarts.** Every container restarts if it exits or the server reboots. Docker does not restart a container that is running but unhealthy, so cron restarts any Aerowise container reported unhealthy, every minute (`/var/log/aerowise-autoheal.log`).
+- **Health checks.** The API's `GET /health` checks the database. The worker touches a heartbeat file after every clean pass of its loop, and `pnpm --filter @aerowise/worker health` fails when it is more than five minutes old. The web app's check goes through its proxy to the API, so it fails when either is down. `docker ps` shows each one's state. `GET /api/health/queue` answers 503 when due work has waited more than 15 minutes with no worker on it, or a filing task has failed 3 times or more; nothing restarts on it, because a restart would not fix a failing filing.
+- **Uptime checks** from outside (UptimeRobot, Better Stack or similar, every 5 minutes, alerting on two failures in a row) on `https://app.<domain>/api/health` and `https://app.<domain>/api/health/queue`. They are the only thing that notices the whole server being down.
+- **Logs** are JSON lines (`LOG_LEVEL`, `info` by default): `docker logs aerowise-<env>-<api|worker|web>-1`, or `docker compose -p aerowise-<env> logs -f` from the checkout. API lines carry `reqId` and, once signed in, `organizationId` and `userId`; a 500's response carries the same `requestId`.
+- **Error tracking:** with `SENTRY_DSN` in the settings file, unexpected API errors, failed background tasks and queue alerts also go to Sentry, tagged with the environment and the deployed commit. It is optional.
+
+## Backups and restore
+
+[`backup.sh`](../../deploy/vps/backup.sh) runs nightly for each environment (08:30 UTC production, 08:45 UTC staging). It writes a `pg_dump` and a tarball of stored files to `/var/backups/aerowise/<env>/`, readable by root only, and keeps 14 days. With R2 configured, files live in R2 and the tarball is close to empty.
+
+These copies are on the same server, so they protect against mistakes, not against losing the server. W3.5 copies them off the server and writes the restore runbook. Until then, to restore:
+
+```sh
+sudo /opt/aerowise/<env>/deploy/vps/restore.sh <env> /var/backups/aerowise/<env>/db-<stamp>.dump [/var/backups/aerowise/<env>/files-<stamp>.tar.gz]
+```
+
+It stops the app, replaces the database (and the files, if given) and starts the app again.
+
+## Moving to Render later
+
+`render.yaml` and [DEPLOY-RENDER.md](DEPLOY-RENDER.md) stay current. The move is: create the Render Blueprint, copy the settings from `/etc/aerowise/<env>.env` into Render, restore the latest `pg_dump` into Render's database, point the domain at Render, and switch CI's deploy step to `scripts/deploy.sh`.
