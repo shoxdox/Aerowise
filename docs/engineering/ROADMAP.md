@@ -38,8 +38,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
 | W3.2 | Cloudflare R2 object store | — | done (#30); using R2 needs Justin's Cloudflare account, bucket and token |
 | W3.3 | Production secrets check and hardening | — | done (#32); Render's TRUST_PROXY value to be read off staging |
-| W3.4 | Observability: logs, error tracking, alerts | — | done (PR pending); needs a Sentry DSN and an uptime monitor from Justin |
-| W3.5 | Backups and restore runbook | W1.1 | not started |
+| W3.4 | Observability: logs, error tracking, alerts | — | done (#34); needs a Sentry DSN and an uptime monitor from Justin |
+| W3.5 | Backups and restore runbook | W1.1 | done (PR pending); scripts tested locally, the staging restore run is Justin's |
 | W4.1 | Plan states and read-only mode | W2.1 | done (#35) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
 | W4.3 | Owner subscription page | W4.2 | in progress (PR open); needs the Stripe customer portal turned on |
