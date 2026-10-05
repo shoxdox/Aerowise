@@ -115,6 +115,36 @@ async function recordEvent(trx: Executor, f: FilingRow, at: Date, actorUserId: s
     .execute();
 }
 
+const DELIVERY_PROBLEM_WORDS = {
+  bounced: "bounced: the receiving mail server rejected it",
+  complained: "was marked as spam by the recipient",
+  failed: "could not be delivered",
+  suppressed: "was not delivered: the mail provider holds this address on its suppression list",
+} as const;
+
+/**
+ * The mail provider reported that a filing's email did not get through (or was marked as
+ * spam). The filing keeps its status (the provider did accept it), but the site's ledger
+ * says so and the inbox asks the office to file it another way. Not a filing email: no-op.
+ */
+export async function recordFilingDeliveryProblem(
+  trx: Executor,
+  e: { organizationId: string; idempotencyKey: string; recipient: string; status: keyof typeof DELIVERY_PROBLEM_WORDS; detail: string | null; at: Date },
+) {
+  const attempt = await trx
+    .selectFrom("filingAttempts")
+    .select(["filingId", "submissionNo"])
+    .where("organizationId", "=", e.organizationId)
+    .where("idempotencyKey", "=", e.idempotencyKey)
+    .where("status", "=", "succeeded")
+    .executeTakeFirst();
+  if (!attempt) return;
+  const f = await loadFiling(trx, e.organizationId, attempt.filingId);
+  if (!f) return;
+  const summary = `The filing email to ${e.recipient} (submission ${attempt.submissionNo}) ${DELIVERY_PROBLEM_WORDS[e.status]}${e.detail ? ` (${e.detail.slice(0, 300)})` : ""}`;
+  await recordEvent(trx, f, e.at, null, { type: `filing_email_${e.status}`, summary, details: { submissionNo: attempt.submissionNo, recipient: e.recipient, detail: e.detail } });
+}
+
 /**
  * Moves a filing to a new status if the state machine allows it and nobody moved it
  * first, then records the step on the site's compliance ledger. Mutates `f.status`.
