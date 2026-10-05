@@ -324,6 +324,14 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **The client address behind proxies.** On Render, requests reach the API through Render's edge, and pages' API calls also pass through the Next.js proxy, so the API sees a proxy's address. `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxies' addresses) makes the limits key on the real client. It is off by default, because trusting `X-Forwarded-For` from anywhere lets clients make up addresses. The right value for Render has to be read off staging (open question). Until then, keying login and magic links by email keeps one shared address from locking out everyone.
 - **Dependency audit in CI:** `pnpm audit --prod --audit-level=high`. It passes today. The two moderate advisories, `csv-parse` (only with `columns`, which import does not use) and `uuid` under `exceljs` (buffer arguments not used), are not reachable.
 
+## 2026-10-05 · W6.4 Per-authority report templates and fees
+
+- **A layout lists answers; it does not draw a form.** The ruleset says the title, the sections, the order and the authority's labels for the authority copy. Header blocks (site, visit, provider, complaints, signature) stay as they are, because 30 TAC 285.7 asks for them on every report. Where an authority has its own fillable PDF, the cover sheet's `officialForm` (#17) is still the way to fill it.
+- **Fields the layout does not list are left off the authority copy.** An authority that publishes a form wants that form, not extra answers. A bundled ruleset cannot leave off a field it requires.
+- **Fees are recorded, not charged.** A filing keeps the filing fee, the late fee that would apply and the schedule they came from, copied when it opens. Paying the authority and passing fees on to customers are left to the office. Open question for Justin: should fees go on the customer's invoice?
+- **"Late" means it first reached the authority after the deadline day,** in the organization's time zone. The deadline day itself is on time. A rejected filing sent again keeps the late fee its first send decided. Open question per county: does a rejected-then-corrected report count from the first or the accepted submission?
+- **No real ruleset sets a layout or fees yet.** LCRA's fee schedule is cited as a source, but its v1 is published and immutable; amounts go into each county's next version once they are read from the authority's own schedule.
+
 ## 2026-10-05 · W3.4 Observability
 
 - **Logs are JSON lines on stdout** from the API (Fastify's pino) and the worker (pino, replacing `console`). Every API line carries the request id; once the session is found, the request's logger also carries `organizationId` and `userId` (`platformAdminId` for platform admins). Worker lines name the task, its kind and organization, and how long it took. Shipping logs somewhere searchable is the host's job (Render keeps them; the VPS can use `docker compose logs` or a log shipper later).
