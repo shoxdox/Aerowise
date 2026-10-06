@@ -320,16 +320,16 @@ Priority 1 is whatever the first design partner works in; it jumps the queue whe
 | W6.C8 | Collin County | 3 | draft (#74); filed by hand through the county's report portal; every 4 months; 4 questions in docs/jurisdictions/tx-collin-county.md |
 | W6.C9 | Denton County (and the City of Denton) | 3 | draft (#76): Denton County reports go to ossfinspections@dentoncounty.gov when the office presses Send (the county form names it); its contracts and all City of Denton filings are held for review, no channel published; questions in docs/jurisdictions/tx-denton-county.md and tx-city-of-denton.md |
 | W6.C10 | Kaufman County | 3 | draft (#77); held for review, no report or contract channel published; most county pages timed out; 6 questions in docs/jurisdictions/tx-kaufman-county.md |
-| W6.C11 | Bell County | 4 | draft profile (this PR); the Bell County Public Health District; held for review, no report or contract channel published (ossf@ is for complaints only); food-dealer 3-month schedule and BOD/TSS left to the office; 9 questions in docs/jurisdictions/tx-bell-county-phd.md |
-| W6.C12 | McLennan County | 4 | not started |
-| W6.C13 | Hill County | 4 | not started |
-| W6.C14 | Bastrop County | 4 | not started |
-| W6.C15 | Montgomery County | 5 | not started |
+| W6.C11 | Bell County | 4 | draft (#78); the Bell County Public Health District; held for review, no report or contract channel published (ossf@ is for complaints only); food-dealer 3-month schedule and BOD/TSS left to the office; 9 questions in docs/jurisdictions/tx-bell-county-phd.md |
+| W6.C12 | McLennan County | 4 | draft profile (this PR); run by the Waco-McLennan County Public Health District; held for review, no report or contract channel published; published fees conflict ($40/$30 vs $20/$25), none recorded; 8 questions in docs/jurisdictions/tx-mclennan-county.md |
+| W6.C13 | Hill County | 4 | draft profile (this PR); program moved from the Sheriff's Office to Development Services on 2026-01-01; held for review, no report or contract channel published; no county order found; 7 questions in docs/jurisdictions/tx-hill-county.md |
+| W6.C14 | Bastrop County | 4 | draft profile (this PR); held for review, no report channel published; OSSF order is an unreadable scan; $100 late and $20 renewal fees unexplained, none recorded; 7 questions in docs/jurisdictions/tx-bastrop-county.md |
+| W6.C15 | Montgomery County | 5 | draft profile (this PR); held for review, no report channel readable (mctx.org blocked); every 4 months with no monitoring schedule; annual BOD/TSS for commercial; 11 questions in docs/jurisdictions/tx-montgomery-county.md |
 | W6.C16 | Harris County v2 (quarterly residential, monthly commercial, annual tests) | 5 | blocked: needs the submission channel confirmed |
-| W6.C17 | Grimes County | 5 | not started |
-| W6.C18 | Brazoria County | 5 | not started |
+| W6.C17 | Grimes County | 5 | draft profile (this PR); held for review, no report channel published; main OSSF page and order unreadable; 12 questions in docs/jurisdictions/tx-grimes-county.md |
+| W6.C18 | Brazoria County | 5 | draft profile (this PR); held for review; ehmaintenance@ unconfirmed and not used; most county pages returned 403; 12 questions in docs/jurisdictions/tx-brazoria-county.md |
 | W6.C19 | LCRA (finish verification) | 5 | blocked: needs LCRA to confirm the emailed cover sheet |
-| W6.C20 | San Jacinto River Authority | 5 | not started |
+| W6.C20 | San Jacinto River Authority | 5 | draft profile (this PR); Lake Conroe 2,075-ft band, reviewed assignment; reports and contracts on SJRA's customer portal, filed by hand; order number unconfirmed (not 384053.4); 12 questions in docs/jurisdictions/tx-sjra-ossf.md |
 
 ## W7. Integrations to live readiness
 

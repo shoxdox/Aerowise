@@ -1,0 +1,115 @@
+{
+  "jurisdiction": {
+    "key": "tx-mclennan-county",
+    "state": "TX",
+    "authorityName": "McLennan County (Waco-McLennan County Public Health District), On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from McLennan County's 2009 OSSF Order (rev. 08/09), the Waco-McLennan County Public Health District's OSSF page and permit application, 30 TAC 285.7 and TCEQ's OSSF maintenance page. The district publishes no way to submit maintenance reports or contracts. See docs/jurisdictions/tx-mclennan-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "McLennan County's OSSF Order is marked 'REV 08/09' but shows no adoption date, court order number or TCEQ approval date. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "McLennan County 2009 OSSF Order (rev. 08/09)",
+        "url": "https://www.mclennan.gov/DocumentCenter/View/591/2009-OSSF-Order-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "'The Rules shall apply to all the unincorporated areas of McLennan County, Texas' and to member cities of the Waco-McLennan County Public Health District, which is 'declared the Designated Representative (DR)'. Adopts 30 TAC 285 by reference. Homeowner maintenance only with listed qualifications. No adoption date or order number. Read twice through a page summarizer."
+      },
+      {
+        "title": "Waco-McLennan County Public Health District: On-Site Sewage Facilities Program",
+        "url": "https://waco-texas.com/Departments/Health-District/Environmental-Health/On-Site-Sewage-Facilities-Program",
+        "retrievedOn": "2026-10-06",
+        "note": "'the Health District administers the program for McLennan County, the cities in McLennan County, and the City of Waco.' (254) 299-2473, fax (254) 750-6619, 401 Franklin Avenue. Fees effective October 1, 2026: Annual Aerobic Unit Maintenance Fee $40.00; Maintenance Provider Admin. Penalty Fee $30.00. Nothing on how reports or contracts are submitted."
+      },
+      {
+        "title": "Waco-McLennan County Public Health District: OSSF permit application (fee page updated 1/27/2026)",
+        "url": "https://www.waco-texas.com/files/sharedassets/public/v/7/departments/health-district/documents/enviro-health/ossf-permit-app.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "A two-year maintenance contract comes with the application; 'at least 30 days prior to the expiration of the initial two-year service policy, a maintenance contract with a certified maintenance provider or approved homeowner training is required'. OSSF@wacotx.gov is for inspection requests only. Lists the annual aerobic fee as $20.00 and the provider administrative fee as $25.00. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "The district publishes no way to submit maintenance inspection reports or contracts. OSSF@wacotx.gov is published for scheduling permit inspections only, so inspection filings are held for review and contracts are filed by hand.",
+      "No local report deadline is published, though a provider penalty fee applies to reports not submitted 'in a timely manner'; Aerowise uses TCEQ's 14 days after the test.",
+      "Fees conflict: the district's web schedule (effective 2026-10-01) says $40 annual aerobic fee and $30 provider penalty; the permit application (1/27/2026) says $20 and $25. Who is billed and how isn't stated, so no fee is recorded on filings.",
+      "The order covers unincorporated McLennan County and member cities; the district's page says 'the cities in McLennan County'. No member list is published; every site needs a reviewed assignment.",
+      "Whether electronic monitoring allows 6 months between visits isn't addressed locally; the order adopts 30 TAC 285 by reference, so Aerowise follows 285.7(e).",
+      "Renewal timing after the first two-year contract and the transfer rule aren't published locally; Aerowise uses 30 days before expiry (30 TAC 285.7(d)(2)).",
+      "The order shows no adoption date, court order number or TCEQ approval date; a newer order may exist.",
+      "The district publishes no acknowledgment of a received report or contract, and no report form."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "McLennan"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "McLennan County's OSSF program is run by the Waco-McLennan County Public Health District for unincorporated McLennan County and member cities; no member list is published. If unsure, call the district's OSSF program at (254) 299-2473. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "The Waco-McLennan County Public Health District publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Waco-McLennan County Public Health District (read 2026-10-06): a two-year contract comes with the permit application, and the next one is required 'at least 30 days prior to the expiration of the initial two-year service policy'. No channel is published. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e), which McLennan County's order adopts by reference: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Not addressed locally."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "The Waco-McLennan County Public Health District describes no reply to maintenance reports or contracts."
+  }
+}

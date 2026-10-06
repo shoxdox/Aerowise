@@ -1,0 +1,118 @@
+{
+  "jurisdiction": {
+    "key": "tx-bastrop-county",
+    "state": "TX",
+    "authorityName": "Bastrop County Development Services, Environmental & Sanitation, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Bastrop County Development Services' OSSF page, fee page, aerobic affidavit (2019-02-12) and OSSF application (rev. 2024-06-20), 30 TAC 285.7 and TCEQ's OSSF maintenance page. The county's OSSF Order is an unreadable scan. Bastrop County publishes no way to submit maintenance reports. See docs/jurisdictions/tx-bastrop-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "Bastrop County's OSSF Order (TCEQAppdOSSFOrder.pdf) is a scan with no readable text, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Bastrop County Development Services: On-Site Sewage Facilities",
+        "url": "https://www.bastropcounty.gov/page/ds.ossf",
+        "retrievedOn": "2026-10-06",
+        "note": "'A mandatory two year initial maintenance contract with a Licensed Maintenance Provider is required with the installation of a new aerobic OSSF system.' Homeowners may self-maintain after that with approved training. Emergency repairs reported within 72 hours. (512) 581-7176, 211 Jackson Street, Bastrop. Nothing on where maintenance reports go. Read through a page summarizer."
+      },
+      {
+        "title": "Bastrop County On-Site Sewage Facilities Order",
+        "url": "https://www.bastropcounty.gov/upload/page/0148/docs/TCEQAppdOSSFOrder.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Could not be read: a scan with no text layer (two attempts)."
+      },
+      {
+        "title": "Bastrop County Development Services: Application Fees",
+        "url": "https://www.bastropcounty.gov/page/ds.fees",
+        "retrievedOn": "2026-10-06",
+        "note": "'Maintenance Contract Late Fee $100'; 'OSSF Renewal Fee' $20 residential and commercial. What the renewal fee covers and when the late fee applies isn't stated. Read through a page summarizer."
+      },
+      {
+        "title": "Bastrop County Affidavit for Aerobic OSSF Systems (2019-02-12)",
+        "url": "https://www.bastropcounty.gov/upload/shared/DevServices/2019.02.12%20Affidavit%20-%20Aerobic%20OSSFs.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "'This OSSF shall be covered by a continuous service contract for the first two years.' After that, a single-family owner 'shall either obtain a maintenance contract within 30 days or maintain the system personally (after providing proof of approved training).' Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Bastrop County publishes no way to submit maintenance inspection reports or renewal contracts. MyGovernmentOnline is published for permit applications only, and the department's general email is not a stated report channel, so inspection filings are held for review and contracts are filed by hand.",
+      "The county's OSSF Order is an unreadable scan. Any county-specific frequency, deadline, report contents, lab tests and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+      "A $100 'Maintenance Contract Late Fee' and a $20 'OSSF Renewal Fee' are published without saying what they cover or when they apply, so no fee is recorded on filings.",
+      "The City of Bastrop publishes its own OSSF checklist; whether it, Elgin or Smithville run their own program, and over what area, is not published. Every site needs a reviewed assignment.",
+      "Bastrop County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Bastrop"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Bastrop County Development Services permits OSSFs in Bastrop County; the City of Bastrop publishes its own OSSF checklist, and Elgin and Smithville are unknown. Check city limits; if unsure, call the county at (512) 581-7176 (inside the City of Bastrop, city Planning at (512) 322-8840). Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Bastrop County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Bastrop County (read 2026-10-06): a two-year initial contract comes with the permit application. No channel or renewal deadline is published; timing from 30 TAC 285.7(d)(2), 30 days before the current contract expires. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Bastrop County's order could not be read."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Bastrop County describes no reply to maintenance reports or contracts."
+  }
+}
