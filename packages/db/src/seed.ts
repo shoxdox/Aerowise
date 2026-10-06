@@ -76,12 +76,14 @@ export interface DemoCompanyOptions {
   password?: string | null;
   /** A visitor's own demo company ends then (W10.2); the shared one never does. */
   expiresAt?: Date | null;
+  /** A prospect demo (W10.6): who it is for, and the counties they work in. */
+  prospect?: { name: string; serviceCounties: string[] } | null;
   log?: (msg: string) => void;
 }
 
 /** One fictional demo company, as the seed makes it. Returns its id. */
 export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {}): Promise<string> {
-  const { name = DEMO_ORG_NAME, users = DEMO_USERS, password = DEMO_PASSWORD, expiresAt = null, log = () => {} } = opts;
+  const { name = DEMO_ORG_NAME, users = DEMO_USERS, password = DEMO_PASSWORD, expiresAt = null, prospect = null, log = () => {} } = opts;
   const r = rng(42);
   const passwordHash = password ? await hashPassword(password) : null;
 
@@ -91,6 +93,8 @@ export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {
       .values({
         name,
         demoExpiresAt: expiresAt,
+        demoProspect: prospect?.name ?? null,
+        ...(prospect ? { serviceCounties: prospect.serviceCounties } : {}),
         // Fictional: its email, texts, filings, payments and books only ever reach the stand-ins.
         demo: true,
         phone: "(512) 555-0100",

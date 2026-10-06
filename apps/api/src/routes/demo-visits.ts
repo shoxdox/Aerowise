@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createSession, SESSION_COOKIE } from "../auth/sessions.ts";
 import { playDemoStory } from "../demo-story.ts";
 import { HttpError } from "../lib/errors.ts";
-import { eraseOrganization } from "../lib/org-erase.ts";
+import { emptyEndedDemos } from "../lib/demo-lifecycle.ts";
 
 // The public demo (W10.2). On the demo deployment, "Try the demo" gives each visitor a demo
 // company of their own: the seeded data with the five-minute story played, signed in as its
@@ -43,28 +43,6 @@ export const demoVisitRoutes: FastifyPluginAsyncZod<{
   const maxLive = limits.maxLive ?? DEMO_MAX_LIVE;
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
-  /**
-   * Visitor demos past their end: emptied like a deleted company, their people with them. No
-   * platform admin deleted them, so the row is not marked as a deletion; having no members
-   * left is what says it was emptied.
-   */
-  async function removeExpired() {
-    const expired = await db
-      .selectFrom("organizations as o")
-      .select("o.id")
-      .where("o.demoExpiresAt", "<=", now())
-      .where((eb) => eb.exists(eb.selectFrom("memberships as m").select("m.userId").whereRef("m.organizationId", "=", "o.id")))
-      .execute();
-    for (const { id } of expired) {
-      await db.transaction().execute(async (trx) => {
-        await eraseOrganization(trx, id);
-        await trx.updateTable("organizations").set({ subscriptionState: "read_only", subscriptionEndsOn: null }).where("id", "=", id).execute();
-      });
-      if (store.deleteOrganization) await store.deleteOrganization(id).catch(() => null);
-    }
-    return expired.length;
-  }
-
   app.post(
     "/demo/start",
     {
@@ -84,11 +62,12 @@ export const demoVisitRoutes: FastifyPluginAsyncZod<{
       const recent = await db.selectFrom("demoVisits").select((eb) => eb.fn.countAll<string>().as("n")).where("requesterHash", "=", requesterHash).where("createdAt", ">", hourAgo).executeTakeFirstOrThrow();
       if (Number(recent.n) >= perHour) throw new HttpError(429, "demo_limit", "You have started several demos in the last hour. Use the one you have, or try again later.");
 
-      await removeExpired();
+      await emptyEndedDemos(db, store, now());
       const live = await db
         .selectFrom("organizations")
         .select((eb) => eb.fn.countAll<string>().as("n"))
         .where("demoExpiresAt", ">", now())
+        .where("demoProspect", "is", null)
         .executeTakeFirstOrThrow();
       if (Number(live.n) >= maxLive) throw new HttpError(503, "demo_busy", "The demo is busy right now. Please try again in a few minutes.");
 

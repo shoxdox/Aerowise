@@ -32,6 +32,8 @@ export interface OrganizationsTable {
   demo: Generated<boolean>;
   /** A visitor's own demo company ends then (W10.2); null for every other company. */
   demoExpiresAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  /** A prospect demo (W10.6): who it was made for. */
+  demoProspect: ColumnType<string | null, string | null | undefined, string | null>;
   phone: string | null;
   email: string | null;
   addressLine1: string | null;
@@ -1261,8 +1263,19 @@ export interface DemoVisitsTable {
   createdAt: ColumnType<Date, Date | undefined, never>;
 }
 
+export interface DemoAccessLinksTable {
+  id: Generated<string>;
+  organizationId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdBy: string;
+  createdAt: ColumnType<Date, Date | undefined, never>;
+  revokedAt: Date | null;
+}
+
 export interface DB {
   demoVisits: DemoVisitsTable;
+  demoAccessLinks: DemoAccessLinksTable;
   organizations: OrganizationsTable;
   users: UsersTable;
   memberships: MembershipsTable;

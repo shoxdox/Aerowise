@@ -17,6 +17,7 @@ import { adminRoutes } from "./routes/admin.ts";
 import { adminEvidenceRoutes } from "./routes/admin-evidence.ts";
 import { authorityConfirmationRoutes } from "./routes/authority-confirmation.ts";
 import { adminSupportRoutes } from "./routes/admin-support.ts";
+import { adminDemoRoutes } from "./routes/admin-demos.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
@@ -273,6 +274,7 @@ export async function buildApp({
   await app.register(adminEvidenceRoutes, { db, now });
   await app.register(authorityConfirmationRoutes, { db });
   await app.register(adminSupportRoutes, { db, production });
+  await app.register(adminDemoRoutes, { db, store, now, production, appUrl, subscription });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
   await app.register(organizationRoutes, { db, store });
