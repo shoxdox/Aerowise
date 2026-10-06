@@ -6,6 +6,7 @@ import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 const size = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
@@ -59,7 +60,11 @@ function Exports() {
       </div>
 
       <h2>Recent exports</h2>
-      {data && data.items.length === 0 && <p className="muted">No exports yet.</p>}
+      {data && data.items.length === 0 && (
+        <EmptyState title="No exports yet">
+          An export is a zip of all your company&apos;s records, reports and photos. Make one above; it is listed here to download when it is ready.
+        </EmptyState>
+      )}
       {data && data.items.length > 0 && (
         <table className="compact">
           <thead>

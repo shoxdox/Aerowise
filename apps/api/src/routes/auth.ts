@@ -1,6 +1,7 @@
 import { verifyPassword, type Database } from "@aerowise/db";
-import { isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES } from "@aerowise/domain";
+import { INTROS, isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
+import { sql } from "kysely";
 import { z } from "zod";
 import { createSession, revokeSession, SESSION_COOKIE, type AuthContext } from "../auth/sessions.ts";
 import { HttpError } from "../lib/errors.ts";
@@ -17,13 +18,15 @@ export const meResponse = z.object({
   organizations: z.array(z.object({ id: z.uuid(), name: z.string(), role: z.enum(ROLES) })),
   /** Documents this owner must accept before using the office screens (W8.3). Empty for other roles. */
   legalDue: z.array(z.enum(LEGAL_DOCUMENTS)),
+  /** The first-run intros this person has closed (W10.4). */
+  introsDismissed: z.array(z.enum(INTROS)),
   /** Present when a platform admin is looking at the organization read-only for support. */
   support: z.object({ adminName: z.string(), expiresAt: z.iso.datetime() }).optional(),
 });
 
 export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">) {
   if (auth.support) return loadSupportMe(db, auth.organizationId, auth.support);
-  const user = await db.selectFrom("users").select(["id", "name", "email"]).where("id", "=", auth.userId).executeTakeFirstOrThrow();
+  const { introsDismissed, ...user } = await db.selectFrom("users").select(["id", "name", "email", "introsDismissed"]).where("id", "=", auth.userId).executeTakeFirstOrThrow();
   const organizations = await db
     .selectFrom("memberships as m")
     .innerJoin("organizations as o", "o.id", "m.organizationId")
@@ -45,8 +48,11 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
     role: auth.role,
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
     legalDue: (await loadLegalStatus(db, auth)).due,
+    introsDismissed: knownIntros(introsDismissed),
   };
 }
+
+const knownIntros = (keys: string[]) => INTROS.filter((k) => keys.includes(k));
 
 /** Support sees the organization as its owner does, but signed in as themselves. */
 async function loadSupportMe(db: Database, organizationId: string, support: NonNullable<AuthContext["support"]>) {
@@ -66,6 +72,8 @@ async function loadSupportMe(db: Database, organizationId: string, support: NonN
     role: "owner" as const,
     organizations: [{ id: o.id, name: o.name, role: "owner" as const }],
     legalDue: [],
+    // Support is looking, not learning the screens.
+    introsDismissed: [...INTROS],
     support: { adminName: support.adminName, expiresAt: support.expiresAt.toISOString() },
   };
 }
@@ -142,5 +150,35 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
     "/auth/me",
     { config: { permission: "self:read" }, schema: { tags: ["auth"], summary: "Current user and organization", response: { 200: meResponse } } },
     async (req) => loadMe(db, req.requireAuth()),
+  );
+
+  app.put(
+    "/auth/me/intros/:intro",
+    {
+      // Anyone signed in closes or reopens their own intro, also while the plan is read-only.
+      config: { permission: "self:read", allowedWhenReadOnly: true },
+      schema: {
+        tags: ["auth"],
+        summary: "Close or reopen a first-run intro for yourself",
+        params: z.object({ intro: z.enum(INTROS) }),
+        body: z.object({ dismissed: z.boolean() }),
+        response: { 200: z.object({ introsDismissed: z.array(z.enum(INTROS)) }) },
+      },
+    },
+    async (req) => {
+      const { userId } = req.requireAuth();
+      const { intro } = req.params;
+      const row = await db
+        .updateTable("users")
+        .set({
+          introsDismissed: req.body.dismissed
+            ? sql<string[]>`array_append(array_remove(intros_dismissed, ${intro}), ${intro})`
+            : sql<string[]>`array_remove(intros_dismissed, ${intro})`,
+        })
+        .where("id", "=", userId)
+        .returning("introsDismissed")
+        .executeTakeFirstOrThrow();
+      return { introsDismissed: knownIntros(row.introsDismissed) };
+    },
   );
 };

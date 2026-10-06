@@ -8,6 +8,7 @@ import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 const TABS: { key: string; label: string; statuses: RenewalStatus[] | null }[] = [
   { key: "open", label: "In progress", statuses: ["upcoming", "sent", "viewed", "signed", "payment_pending", "paid", "needs_review"] },
@@ -95,7 +96,11 @@ export default function RenewalsPage() {
         ))}
       </div>
 
-      {data && items.length === 0 && <p className="muted">Nothing here.</p>}
+      {data && items.length === 0 && (
+        <EmptyState title="No renewals in this list">
+          Renewals start on their own for contracts ending inside the renewal window, and go to the customer to sign and pay. Change the window under Settings and add-ons, or run the campaign now.
+        </EmptyState>
+      )}
       {items.length > 0 && (
         <table>
           <thead>

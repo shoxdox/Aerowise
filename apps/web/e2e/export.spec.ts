@@ -8,7 +8,7 @@ test("the owner asks for a full data export", async ({ page }) => {
   await page.waitForURL("**/inbox");
 
   await page.goto("/settings/export");
-  await expect(page.getByText("No exports yet.")).toBeVisible();
+  await expect(page.getByText("No exports yet")).toBeVisible();
   await page.getByRole("button", { name: "Prepare an export" }).click();
   // The e2e run has no worker, so the export stays in the queue.
   await expect(page.getByRole("button", { name: "Preparing your export…" })).toBeDisabled();

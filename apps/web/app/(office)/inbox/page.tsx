@@ -4,6 +4,7 @@ import type { Inbox, InboxException, OnboardingChecklist as OnboardingChecklistD
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { IntroCard } from "@/components/Intro";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -203,6 +204,7 @@ export default function InboxPage() {
         <span className="muted">{day(data.today, { weekday: "long", month: "long", day: "numeric" })}</span>
       </div>
 
+      {me.role !== "technician" && <IntroCard intro="office" me={me} />}
       {setup && <OnboardingChecklist data={checklist.data} />}
 
       <div className="tiles">

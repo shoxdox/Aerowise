@@ -7,6 +7,7 @@ import { useState, type ChangeEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 /** The file's bytes as base64, without the data: URL prefix. */
 function readBase64(file: File): Promise<string> {
@@ -69,7 +70,11 @@ export default function ImportPage() {
       </p>
 
       <h2>Recent imports</h2>
-      {data && data.items.length === 0 && <p className="muted">No imports yet.</p>}
+      {data && data.items.length === 0 && (
+        <EmptyState title="No imports yet">
+          Bring customers, sites and contracts in from a spreadsheet above. Each import you run is listed here with what it added and what it skipped.
+        </EmptyState>
+      )}
       {data && data.items.length > 0 && (
         <table className="compact">
           <thead>

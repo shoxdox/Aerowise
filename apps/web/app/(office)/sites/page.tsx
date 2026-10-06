@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { useLoad } from "@/components/useLoad";
+import { EmptyState } from "@/components/EmptyState";
 
 const PAGE = 50;
 
@@ -54,6 +55,12 @@ export default function SitesPage() {
           ))}
         </tbody>
       </table>
+      {data && data.total === 0 && !search && (
+        <EmptyState title="No sites yet">
+          A site is a property with an aerobic system. Its address, permit and county decide which visits are due and where reports are filed. Add one from its{" "}
+          <Link href="/customers">customer</Link>, or <Link href="/import">import</Link> them.
+        </EmptyState>
+      )}
       {data && (
         <div className="row muted">
           {data.total === 0 ? "No sites found" : `${offset + 1}–${Math.min(offset + PAGE, data.total)} of ${data.total}`}

@@ -16,6 +16,8 @@ export interface Me {
   role: "owner" | "office" | "technician" | "read_only";
   /** Documents this owner must accept first (W8.3). Missing from a copy cached on a phone before then. */
   legalDue?: ("terms" | "privacy")[];
+  /** First-run intros this person has closed (W10.4). Missing from a copy cached on a phone before then. */
+  introsDismissed?: ("office" | "technician")[];
   /** Set when Aerowise support is looking at the company read-only. */
   support?: { adminName: string; expiresAt: string };
 }

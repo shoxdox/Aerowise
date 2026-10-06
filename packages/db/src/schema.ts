@@ -84,6 +84,8 @@ export interface UsersTable {
   phone: string | null;
   passwordHash: string | null;
   active: Generated<boolean>;
+  /** The first-run intros (domain INTROS) this person has closed. */
+  introsDismissed: Generated<string[]>;
   createdAt: CreatedAt;
 }
 

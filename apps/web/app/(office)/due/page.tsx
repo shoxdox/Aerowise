@@ -6,6 +6,7 @@ import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { useLoad } from "@/components/useLoad";
 import { day } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 const RANGES = [
   { label: "Next 7 days", days: 7 },
@@ -85,7 +86,11 @@ export default function DuePage() {
           ))}
         </tbody>
       </table>
-      {data?.items.length === 0 && <p className="muted">Nothing due in this range.</p>}
+      {data?.items.length === 0 && (
+        <EmptyState title="Nothing due in this range">
+          Visits come from active contracts and the county&apos;s rules. Widen the range, or start a contract from a <Link href="/sites">site</Link>.
+        </EmptyState>
+      )}
     </div>
   );
 }

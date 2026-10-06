@@ -2,6 +2,7 @@
 
 import type { InspectionTemplate, Stop } from "@aerowise/domain";
 import { useCallback, useEffect, useState } from "react";
+import { IntroCard } from "@/components/Intro";
 import { InspectionForm } from "@/components/tech/InspectionForm";
 import { StopDetail } from "@/components/tech/StopDetail";
 import { StopList } from "@/components/tech/StopList";
@@ -127,6 +128,7 @@ export default function TechApp() {
       </header>
       <SyncBanner state={sync} failures={failures} needsSignIn={needsSignIn} onRetry={() => void syncNow()} />
       <main className="tech-page">
+        {view.name === "list" && me && <IntroCard intro="technician" me={me} />}
         {view.name === "list" && (
           <StopList
             route={route}
