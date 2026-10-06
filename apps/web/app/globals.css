@@ -221,17 +221,17 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 button.danger { background: var(--error); border-color: var(--error); color: #fff; }
 
 /* Office header on a phone: the links fold behind a Menu button (W11). */
-.topbar .menu-toggle, .topbar .current-page { display: none; }
-.topbar .account { display: inline-flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.topbar.office .menu-toggle, .topbar.office .current-page { display: none; }
+.topbar.office .account { display: inline-flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 @media (max-width: 640px) {
-  .topbar { padding: 8px 16px; gap: 8px 12px; }
-  .topbar .current-page { display: inline; flex: 1; color: var(--muted); }
-  .topbar .menu-toggle { display: inline-block; min-height: 44px; }
-  .topbar nav, .topbar .account, .topbar .spacer { display: none; }
-  .topbar.menu-open nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; }
-  .topbar.menu-open nav a { padding: 10px 8px; }
-  .topbar.menu-open .account { display: flex; width: 100%; justify-content: space-between; padding: 8px 8px 4px; border-top: 1px solid var(--border); }
-  .topbar .account button.link { min-height: 44px; }
+  .topbar.office { padding: 8px 16px; gap: 8px 12px; }
+  .topbar.office .current-page { display: inline; flex: 1; color: var(--muted); }
+  .topbar.office .menu-toggle { display: inline-block; min-height: 44px; }
+  .topbar.office nav, .topbar.office .account, .topbar.office .spacer { display: none; }
+  .topbar.office.menu-open nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; }
+  .topbar.office.menu-open nav a { padding: 10px 8px; }
+  .topbar.office.menu-open .account { display: flex; width: 100%; justify-content: space-between; padding: 8px 8px 4px; border-top: 1px solid var(--border); }
+  .topbar.office .account button.link { min-height: 44px; }
   /* Wide tables scroll inside their own box instead of pushing the page sideways. */
   .page table { display: block; overflow-x: auto; max-width: 100%; }
 }

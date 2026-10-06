@@ -50,7 +50,7 @@ function Shell({ children }: { children: ReactNode }) {
   }
   return (
     <>
-      <header className={menuOpen ? "topbar menu-open" : "topbar"}>
+      <header className={menuOpen ? "topbar office menu-open" : "topbar office"}>
         <strong>Aerowise</strong>
         {current && <span className="current-page">{current.label}</span>}
         <button className="secondary menu-toggle" aria-expanded={menuOpen} aria-controls="office-nav" onClick={() => setMenuOpen(!menuOpen)}>
