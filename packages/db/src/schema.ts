@@ -799,6 +799,8 @@ export interface PaymentsTable {
   reference: string | null;
   note: string | null;
   failureReason: string | null;
+  /** Stripe's page where the customer verifies their bank account (microdeposits); null once done. */
+  bankVerificationUrl: Generated<string | null>;
   recordedBy: string | null;
   succeededAt: Timestamp | null;
   failedAt: Timestamp | null;

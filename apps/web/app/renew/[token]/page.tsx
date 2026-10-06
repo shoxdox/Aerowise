@@ -219,7 +219,10 @@ function RenewPage() {
             <>
               <h1>{justPaid ? "Confirming your payment" : "One last step"}</h1>
               {justPaid ? (
-                <p>Thanks! Your payment is being confirmed. This page updates once it is; bank transfers can take a few business days, and there is nothing more to do.</p>
+                <p>
+                  Thanks! Your payment is being confirmed. This page updates once it is; bank transfers can take a few business days. If you paid by bank and are asked to
+                  verify your account, <a href={r.pay.invoiceUrl}>your invoice page</a> shows how.
+                </p>
               ) : (
                 <>
                   <p>Your agreement is signed. Pay to start your new term on {day(r.terms.startOn)}.</p>
