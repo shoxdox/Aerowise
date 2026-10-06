@@ -1,0 +1,112 @@
+{
+  "jurisdiction": {
+    "key": "tx-hill-county",
+    "state": "TX",
+    "authorityName": "Hill County Development Services, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Hill County Development Services' OSSF Permits page (program moved from the Sheriff's Office on 2026-01-01), its 2026 permit application, the legacy Affidavit to the Public, 30 TAC 285.7 and TCEQ's OSSF maintenance page. Hill County publishes no way to submit maintenance reports or contracts. See docs/jurisdictions/tx-hill-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "No Hill County OSSF order was found online, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Hill County Development Services: OSSF Permits & 911 Signage",
+        "url": "https://www.co.hill.tx.us/page/hill.OSSFPermits-911Signage",
+        "retrievedOn": "2026-10-06",
+        "note": "From January 1, 2026 'all OSSF inspections will be coordinated by the Development Services OSSF Designated Representative.' Development Services 254-337-1210, 218 N Waco St, Hillsboro; OSSF Designated Representative 254-283-6846, ksmith@co.hill.tx.us (a general contact, not stated as a report channel). Nothing on maintenance contracts, reports or excluded areas."
+      },
+      {
+        "title": "Hill County OSSF Permit Application (2026)",
+        "url": "https://www.co.hill.tx.us/upload/page/7634/docs/2026/OSSF%20Application.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Permit fee '$600.00 All Septic Systems'. No maintenance or contract text found (poor text layer). Read through a page summarizer."
+      },
+      {
+        "title": "Hill County Affidavit to the Public (legacy, Sheriff's Office era)",
+        "url": "https://newtools.cira.state.tx.us/upload/page/7608/docs/ossfaffidavit.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "'This OSSF must be covered by a continuous maintenance contract' and a signed contract goes to 'the Hill County Sheriff's Office Environmental Compliance Unit within 30 days after the property has been transferred.' Superseded office; whether the rule still applies is unknown. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Hill County publishes no way to submit maintenance inspection reports or contracts. The designated representative's email is a general contact, not a stated report channel, so inspection filings are held for review and contracts are filed by hand.",
+      "The program moved from the Sheriff's Office Environmental Compliance Unit to Development Services on 2026-01-01. Where contracts go now, and whether the legacy 30-days-after-transfer rule still applies, is unknown.",
+      "No Hill County OSSF order was found (the December 2025 court minutes are scans). Any county-specific frequency, deadline, report contents, fees and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+      "Which incorporated cities, if any, run their own program is not published, and no BRA or other program was found around Lake Whitney or Lake Aquilla. Every site needs a reviewed assignment.",
+      "Hill County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Hill"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Hill County Development Services runs OSSF permits in Hill County since 2026-01-01; whether any city runs its own program is not published. If unsure, call the OSSF Designated Representative at 254-283-6846 or Development Services at 254-337-1210. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Hill County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Hill County (read 2026-10-06): aerobic systems need a continuous maintenance contract (legacy affidavit). No current channel or renewal timing is published; timing from 30 TAC 285.7(d)(2), 30 days before the current contract expires. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. No Hill County rule on this was found."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Hill County describes no reply to maintenance reports or contracts."
+  }
+}
