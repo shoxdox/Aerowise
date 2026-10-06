@@ -184,6 +184,14 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
         )}
         {error && <p className="error">{error}</p>}
       </dd>
+      {data.scheduleNotice && (
+        <>
+          <dt>Schedule</dt>
+          <dd>
+            <span className="restriction">{data.scheduleNotice}.</span> Its filings are held for review until then.
+          </dd>
+        </>
+      )}
       {data.identifiers.map((i) => (
         <IdentifierRow key={i.key} identifier={i} editable={editable} onSave={(v) => void saveIdentifier(i.key, v)} />
       ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { SAFETY_FLAGS, type SiteDetail } from "@aerowise/domain";
+import { SAFETY_FLAGS, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, type SiteDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -52,6 +52,7 @@ export default function SitePage() {
       permitIntervalMonths: v.permitIntervalMonths ? Number(v.permitIntervalMonths) : null,
       permitIntervalNote: v.permitIntervalNote ?? null,
       customerType: v.customerType,
+      useCategory: v.useCategory || null,
       gateCode: v.gateCode ?? null,
       accessNotes: v.accessNotes ?? null,
       schedulingNotes: v.schedulingNotes ?? null,
@@ -122,19 +123,32 @@ export default function SitePage() {
             <input name="permitNumber" defaultValue={site.permitNumber ?? ""} />
           </label>
           <label>
-            Permit inspection interval (months)
+            Inspection interval from the permit or contract (months)
             <input name="permitIntervalMonths" type="number" min={1} max={24} defaultValue={site.permitIntervalMonths ?? ""} placeholder="The authority's own" />
           </label>
           <label className="wide">
-            Where the permit says so
+            Where it says so
             <input name="permitIntervalNote" defaultValue={site.permitIntervalNote ?? ""} placeholder="For example: permit 12-3456, page 2" />
-            <span className="muted small">Used only where the authority lets the permit set the interval (Hays County).</span>
+            <span className="muted small">
+              Used only where the authority lets the site&apos;s own permit or contract set the interval (Hays County; Montgomery County food establishments).
+            </span>
           </label>
           <label>
             System use
             <select name="customerType" defaultValue={site.customerType}>
               <option value="residential">Residential</option>
               <option value="commercial">Commercial</option>
+            </select>
+          </label>
+          <label>
+            What the system serves
+            <select name="useCategory" defaultValue={site.useCategory ?? ""}>
+              <option value="">Not recorded</option>
+              {SITE_USE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {SITE_USE_CATEGORY_LABELS[c]}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -177,7 +191,7 @@ export default function SitePage() {
           <dd>{site.permitNumber ?? "Not recorded"}</dd>
           {site.permitIntervalMonths !== null && (
             <>
-              <dt>Permit interval</dt>
+              <dt>Recorded interval</dt>
               <dd>
                 Every {site.permitIntervalMonths} month{site.permitIntervalMonths === 1 ? "" : "s"} ({site.permitIntervalNote})
               </dd>
@@ -186,7 +200,10 @@ export default function SitePage() {
           <dt>County</dt>
           <dd>{site.county ?? "—"}</dd>
           <dt>System use</dt>
-          <dd>{site.customerType === "commercial" ? "Commercial" : "Residential"}</dd>
+          <dd>
+            {site.customerType === "commercial" ? "Commercial" : "Residential"}
+            {site.useCategory && ` (${SITE_USE_CATEGORY_LABELS[site.useCategory]})`}
+          </dd>
           <dt>Gate code</dt>
           <dd>{site.gateCode ?? "—"}</dd>
           <dt>Location</dt>

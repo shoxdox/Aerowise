@@ -26,6 +26,8 @@ export const serviceCounties = z
 export const organizationSettingsFields = z.object({
   name: z.string().trim().min(1).max(200),
   phone: text(40),
+  /** Printed on authority reports where the authority requires an emergency number. */
+  emergencyPhone: text(40),
   email: z.union([z.email().max(320), z.literal("").transform(() => null)]).nullable(),
   addressLine1: text(200),
   addressLine2: text(200),
@@ -41,6 +43,7 @@ export const organizationSettingsPatch = organizationSettingsFields.partial();
 export const organizationSettings = z.object({
   name: z.string(),
   phone: z.string().nullable(),
+  emergencyPhone: z.string().nullable(),
   email: z.string().nullable(),
   addressLine1: z.string().nullable(),
   addressLine2: z.string().nullable(),

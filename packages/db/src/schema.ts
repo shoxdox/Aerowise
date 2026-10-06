@@ -35,6 +35,7 @@ export interface OrganizationsTable {
   /** A prospect demo (W10.6): who it was made for. */
   demoProspect: ColumnType<string | null, string | null | undefined, string | null>;
   phone: string | null;
+  emergencyPhone: ColumnType<string | null, string | null | undefined, string | null>;
   email: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
@@ -132,6 +133,8 @@ export interface CustomersTable {
   updatedAt: Timestamp;
 }
 
+export type SiteUseCategory = "single_family" | "multifamily" | "commercial" | "food_establishment";
+
 export interface SitesTable {
   id: Generated<string>;
   organizationId: string;
@@ -149,6 +152,7 @@ export interface SitesTable {
   permitNumber: string | null;
   permitIntervalMonths: ColumnType<number | null, number | null | undefined, number | null>;
   permitIntervalNote: ColumnType<string | null, string | null | undefined, string | null>;
+  useCategory: ColumnType<SiteUseCategory | null, SiteUseCategory | null | undefined, SiteUseCategory | null>;
   accessNotes: string | null;
   gateCode: string | null;
   safetyFlags: Generated<string[]>;

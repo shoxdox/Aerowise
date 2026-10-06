@@ -4,7 +4,7 @@ import { mayAutoSubmit } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { countyValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 // W6.C20: the San Jacinto River Authority's draft profile (packages/compliance/rulesets/tx-sjra-ossf).
 // The ruleset applies from 2026-10-06, so these visits happen on 2026-10-07.
@@ -15,7 +15,7 @@ const KEY = "tx-sjra-ossf";
 const VISIT_DAY = "2026-10-07";
 const PORTAL = "https://customerportal.sjra.net/";
 
-const sjra = () => bundledRulesets().find((r) => r.jurisdiction.key === KEY)!;
+const sjra = () => bundledRulesets().filter((r) => r.jurisdiction.key === KEY).at(-1)!;
 const AUTODIALER = { method: "autodialer", description: "Acme AD-200 on the control panel", notifies: "The maintenance provider, by phone call", startedOn: "2026-09-01", checkedOn: "2026-09-15" };
 
 /** A Lake Conroe site the office has checked is inside SJRA's 2,075-foot band, under contract, with a visit on 2026-10-07. */
@@ -53,7 +53,11 @@ describe("the San Jacinto River Authority's draft profile", () => {
     const r = sjra();
     expect(r.profile).toMatchObject({ status: "draft", sourcesCheckedOn: "2026-10-06", requirementEffective: { date: null } });
     expect(r.profile!.sources.every((s) => s.url.startsWith("https://") && s.retrievedOn === "2026-10-06")).toBe(true);
-    expect(r.profile!.unresolved.some((u) => u.includes("384053.4"))).toBe(true);
+    expect(r.version).toBe(2);
+    expect(r.profile!.unresolved.some((u) => u.includes("384053.4") && u.includes("'2015-O-04' or '2015-0-04'"))).toBe(true);
+    // Read as page images of the signed order, with the page cited.
+    expect(r.profile!.sources[0]!.note).toContain("PDF p. 6 (printed -4-), Section 7(a)(10)(D)");
+    expect(r.applicability.howToDecide).toContain("within 2,075 feet of Lake Conroe (order Section 5)");
     expect(r.jurisdiction.type).toBe("river_authority");
     expect(mayAutoSubmit(r)).toBe(false);
     expect(r.applicability).toMatchObject({ counties: ["Montgomery"], assignment: "reviewed", howToDecide: expect.stringContaining("936-588-3111") });
@@ -62,7 +66,9 @@ describe("the San Jacinto River Authority's draft profile", () => {
     expect(r.submission.email).toBeUndefined();
     // Every four calendar months, with no monitoring exception (order Section 7(a)(10)(A)).
     expect(r.service).toEqual({ intervalMonths: 4 });
-    expect(r.inspection.requiredFields).toEqual([]);
+    // Section 7(a)(10)(D)(iii)-(iv), for every report (not only single-family systems).
+    expect(r.inspection.requiredFields).toEqual(["unauthorized_alterations", "spray_area"]);
+    expect(r.inspection.scopedRequiredFields).toBeUndefined();
     expect(r.filing.deadlineDays).toBe(14);
     expect(r.contracts).toMatchObject({ filingRequired: true, renewalDaysBeforePreviousEnd: 30 });
     expect(r.labTests).toBeUndefined();
@@ -79,7 +85,7 @@ describe("the San Jacinto River Authority's draft profile", () => {
   it("dates a valid inspection's filing 14 days out with the next visit in 4 months, for the office to upload and record", async () => {
     mail.mode = "ok";
     const { s, complete } = await sjraVisit(ctx);
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
     await runWorker(ctx);
     const [f] = await filingsOf(s);
     expect(f).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07", jurisdiction: { key: KEY }, status: "needs_review" });
@@ -103,7 +109,7 @@ describe("the San Jacinto River Authority's draft profile", () => {
 
   it("keeps an inspection without a chlorine residual as a draft", async () => {
     const { complete } = await sjraVisit(ctx);
-    const values = { ...completeValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
     delete values.chlorine_level;
     const res = (await complete(values)).json();
     expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
@@ -112,8 +118,45 @@ describe("the San Jacinto River Authority's draft profile", () => {
 
   it("keeps four months between visits even where electronic monitoring is on record", async () => {
     const { s, complete } = await sjraVisit(ctx, { monitored: true });
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
     await runWorker(ctx);
     expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07" });
+  });
+});
+
+describe("SJRA report contents (order Section 7(a)(10)(D))", () => {
+  it("asks for unauthorized alterations and the spray area, with details when something is found", async () => {
+    const { complete } = await sjraVisit(ctx);
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    delete values.unauthorized_alterations;
+    delete values.spray_area;
+    const res = (await complete(values)).json();
+    expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect(res.validationProblems.map((p: { key: string }) => p.key).sort()).toEqual(["spray_area", "unauthorized_alterations"]);
+    const found = (await complete({ ...countyValues(), air_pressure: 4.5, unauthorized_alterations: "found", spray_area: "needs_attention" })).json();
+    expect(found.validationProblems.map((p: { key: string }) => p.key).sort()).toEqual(["spray_area_detail", "unauthorized_alterations_detail"]);
+  });
+
+  it("prints the preceding inspection's date, the alterations answer and the provider's emergency phone on the authority copy", async () => {
+    const { s, complete } = await sjraVisit(ctx);
+    expect((await s.api.patch("/organization/settings", { emergencyPhone: "936-555-0199" })).statusCode).toBe(200);
+    const done = (await complete({ ...countyValues(), air_pressure: 4.5, unauthorized_alterations: "found", unauthorized_alterations_detail: "Second spray head added off the main line" })).json();
+    expect(done).toMatchObject({ status: "completed", validationStatus: "valid" });
+    await runWorker(ctx);
+    const rows = await ctx.db.selectFrom("reports").select(["audience", "snapshot"]).where("inspectionId", "=", done.id).execute();
+    const snap = (a: string) => rows.find((r) => r.audience === a)!.snapshot as { provider: { emergencyPhone?: string | null }; inspection: { previousCompletedAt?: string | null }; sections: { rows: { label: string; value: string }[] }[] };
+    const authority = snap("authority");
+    expect(authority.provider.emergencyPhone).toBe("936-555-0199");
+    // The site's first inspection in Aerowise: the report says none is on record.
+    expect(authority.inspection.previousCompletedAt).toBeNull();
+    const answers = authority.sections.flatMap((x) => x.rows);
+    expect(answers).toEqual(expect.arrayContaining([
+      { label: "Unauthorized alterations", value: "Found", failed: false },
+      { label: "Alterations found", value: "Second spray head added off the main line", failed: false },
+      { label: "Spray area condition", value: "Acceptable", failed: false },
+    ]));
+    // The customer copy carries neither.
+    expect(snap("customer").provider.emergencyPhone ?? null).toBeNull();
+    expect(snap("customer").inspection.previousCompletedAt).toBeUndefined();
   });
 });

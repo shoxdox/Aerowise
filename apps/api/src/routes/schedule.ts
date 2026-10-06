@@ -64,6 +64,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "s.permitNumber",
         "s.county",
         "s.jurisdictionId",
+        "s.customerType",
         "c.id as customerId",
         "c.displayName as customerName",
       ])
@@ -229,7 +230,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const catalog = await loadCatalog(db);
       const items = rows.map((r) => {
         const resolved = resolveSite(catalog, { county: r.county, state: r.state, jurisdictionId: r.jurisdictionId }, day);
-        return { ...toStop(r), requirements: resolved ? requirementsOf(resolved) : null };
+        return { ...toStop(r), requirements: resolved ? requirementsOf(resolved, r.customerType) : null };
       });
       return { date: day, items };
     },

@@ -1,0 +1,131 @@
+{
+  "jurisdiction": {
+    "key": "tx-williamson-county",
+    "state": "TX",
+    "authorityName": "Williamson County Engineer's Office, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06. v1's sources plus the approved order with its TCEQ approval, the current homeowner self-maintenance packet and affidavit, from the 2026-10-06 county research packet (docs/jurisdictions/research/2026-10-06) (findings W1 to W5). See docs/jurisdictions/tx-williamson-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": "2021-05-07",
+      "basis": "The county's current copy of its OSSF order carries the TCEQ Executive Director's approval dated 2021-05-07 (PDF pp. 1-2) and the order adopted by the Commissioners Court 2021-01-12 (PDF p. 13). Section 17: effective on TCEQ approval. Aerowise still applies the ruleset only from 2026-10-06; nothing earlier is backdated."
+    },
+    "sources": [
+      {
+        "title": "Williamson County Order 2021 (approved copy)",
+        "url": "https://www.wilcotx.gov/DocumentCenter/View/3109/Williamson-County-Order-2021-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-2: TCEQ approval 2021-05-07; p. 13: adopted 2021-01-12. PDF p. 10, Section 10.E.7(c): 'Report of the sludge levels in the pump tank and the condition of the spray area to be included on each required testing report'. Read from the original text and OCR in the research packet."
+      },
+      {
+        "title": "Williamson County: Homeowner Self-Maintenance Packet",
+        "url": "https://www.wilcotx.gov/DocumentCenter/View/21756/Homeowner-Self-Maintenance-Packet-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "Updated 2026-08-21. PDF p. 4: the form records a sludge test in the pump tank 'yield in inches' and a chlorine grab sample for surface application; reports 'within 14 days of due date'. PDF pp. 4-5: reports to ossfcontracts@wilcotx.gov, with ossf@wilcotx.gov in the header and footer. Written for homeowners who maintain their own system."
+      },
+      {
+        "title": "Williamson County: Aerobic Affidavit and Recording Instructions",
+        "url": "https://www.wilcotx.gov/DocumentCenter/View/21923/Aerobic-Affidavit-and-Recording-Instructions-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-2: reports within 10 days of testing; contracts 30 days before expiration or within 30 days after a transfer. Its footer reads 'Updated 9/9/2028', later than the day it was read."
+      },
+      {
+        "title": "Williamson County: On-Site Sewage Facilities (OSSF)",
+        "url": "https://www.wilcotx.gov/644/On-Site-Sewage-Facilities-OSSF",
+        "retrievedOn": "2026-10-06",
+        "note": "Regulates OSSFs 'located within Williamson County, except for those areas that are located within the City of Austin.' Applications only through MyGovernment Online. Phone 512-943-3330. Nothing about maintenance report submission."
+      },
+      {
+        "title": "Williamson County Engineer's OSSF Program Fees",
+        "url": "https://www.wilcotx.gov/DocumentCenter/View/16737",
+        "retrievedOn": "2026-10-06",
+        "note": "Updated 9/12/25. Aerobic license renewal or transfer $60 (the owner's, every two years). No fee for filing a maintenance report or contract."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Reports to the permitting authority and owner at least once every four months, within 14 days after the test; six months with an electronic monitor that notifies the provider of failures and monitors disinfection. Technicians must be registered maintenance technicians."
+      }
+    ],
+    "unresolved": [
+      "Providers' report and contract address: the current homeowner packet (updated 2026-08-21) sends reports to ossfcontracts@wilcotx.gov and keeps ossf@wilcotx.gov in its header and footer. It is written for homeowners. Aerowise keeps sending to ossf@wilcotx.gov, after the office presses Send, until the county says which address providers use.",
+      "Report deadline: the affidavit says within 10 days of testing; the homeowner packet says within 14 days of the due date; TCEQ says 14 days after the test. Aerowise uses 10 days, the strictest; that does not settle which anchor the county applies.",
+      "The affidavit linked from the county's site is footed 'Updated 9/9/2028', a date after it was read. Ask the county for the current affidavit.",
+      "Contract timing: the affidavit says 30 days before the previous contract expires; the care brochure says 'within 30 days of expiration'. Aerowise uses 30 days before.",
+      "Section 10.E.7(c) asks for the spray area's condition on every report without saying 'if applicable'. Aerowise's form lets the technician answer 'Not a spray system'; whether the county wants that line on non-spray reports is not stated.",
+      "Which addresses inside Williamson County fall under the City of Austin is not published as a list; every site needs a reviewed assignment.",
+      "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here.",
+      "The $60 aerobic license renewal or transfer fee is the owner's operating license, separate from reports and contracts; whether any filing fee applies is not published.",
+      "Williamson County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Williamson"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Williamson County regulates every OSSF in the county except inside the City of Austin. Check whether the address is within Austin's city limits (Austin regulates those). If it is not, assign this office. If unsure, call Williamson County OSSF at 512-943-3330. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Sent by email to ossf@wilcotx.gov, the address the county's maintenance packet gives for reports. The office presses Send; nothing goes automatically while this profile is a draft."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Williamson County's Routine Maintenance Affidavit (updated 6/26/2026): a new maintenance contract goes to the Williamson County Engineer's Office 30 days before the previous contract expires, or within 30 days after the property is transferred."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "Williamson County order Section 10.D.4 and the 2026 affidavit: every 6 months with electronic monitoring. TCEQ: the monitor must notify the provider of failures and monitor disinfection."
+    }
+  },
+  "inspection": {
+    "requiredFields": [
+      "dispersal_field",
+      "pump_tank_sludge",
+      "spray_area"
+    ],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 10,
+    "warningDays": 3,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "ossf@wilcotx.gov",
+      "subject": "OSSF maintenance inspection report, permit {permitNumber}",
+      "contractSubject": "OSSF maintenance contract, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Williamson County describes no reply to submitted reports or contracts. Record any acknowledgment it sends."
+  }
+}

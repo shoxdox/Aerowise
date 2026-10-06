@@ -40,7 +40,11 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
     }
   }
   doc.fillColor(ACCENT).font("Helvetica-Bold").fontSize(18).text(s.provider.name, left, 54, { width: logo ? width - 130 : width });
-  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text([s.provider.address, s.provider.phone, s.provider.email].filter(Boolean).join("  ·  "));
+  doc
+    .fillColor(MUTED)
+    .font("Helvetica")
+    .fontSize(9)
+    .text([s.provider.address, s.provider.phone, s.provider.emergencyPhone ? `Emergency ${s.provider.emergencyPhone}` : null, s.provider.email].filter(Boolean).join("  ·  "));
   doc.moveDown(0.8);
   doc.fillColor("#000").font("Helvetica-Bold").fontSize(14).text(s.layout?.title ?? "Aerobic System Maintenance Inspection");
   doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(s.audience === "customer" ? "Customer copy" : "Copy for the permitting authority");
@@ -83,7 +87,13 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
     pair("System", [s.system.manufacturer, s.system.model].filter(Boolean).join(" ") || null);
     pair("Serial", s.system.serial);
     pair("Disposal", s.system.disposalType);
-    pair("Chlorination", s.system.chlorinationMethod);
+    pair(s.system.conflict ? "Chlorination on record" : "Chlorination", s.system.chlorinationMethod);
+    if (s.system.conflict) {
+      const y = doc.y;
+      doc.font("Helvetica").fontSize(9).fillColor(MUTED).text("Record differs", left, y, { width: 120 });
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(FAIL).text(s.system.conflict, left + 125, y, { width: width - 125 });
+      doc.fillColor("#000").moveDown(0.2);
+    }
   }
 
   heading("Visit");
@@ -96,6 +106,9 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
   if (s.responsibleProvider) pair("Responsible provider", `${s.responsibleProvider.name}, ${s.responsibleProvider.label} ${s.responsibleProvider.number}`);
   pair("Arrived", when(s.inspection.arrivedAt, s.timezone));
   pair("Completed", when(s.inspection.completedAt, s.timezone));
+  if (s.inspection.previousCompletedAt !== undefined) {
+    pair("Previous inspection", s.inspection.previousCompletedAt ? when(s.inspection.previousCompletedAt, s.timezone) : "None on record in Aerowise");
+  }
   if (s.audience === "authority" && s.inspection.completionGps) {
     pair("Location", `${s.inspection.completionGps.lat.toFixed(5)}, ${s.inspection.completionGps.lng.toFixed(5)}`);
   }

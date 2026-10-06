@@ -176,3 +176,25 @@ describe("report tenancy", () => {
     expect((await client(ctx.app).get(`/report-files/${photo.id}?${photo.url.split("?")[1]}`)).statusCode).toBe(404);
   });
 });
+
+describe("reports where the system record and the visit disagree", () => {
+  it("says so beside the record when a system on record without chlorination has a chlorine device", async () => {
+    // W11 walkthrough: "Chlorination: none" printed beside "Chlorine device: Working".
+    const s = await setup(ctx);
+    expect((await s.api.patch(`/systems/${s.system.id}`, { chlorinationMethod: "none" })).statusCode).toBe(200);
+    const insp = await complete(s);
+    await runWorker(ctx);
+    const { customer, authority } = await snapshots(ctx, insp.id);
+    for (const snap of [customer!, authority!]) {
+      expect(snap.system).toMatchObject({ chlorinationMethod: "none", conflict: expect.stringContaining("the technician found a chlorine device (Working)") });
+    }
+  });
+
+  it("says nothing when they agree", async () => {
+    const s = await setup(ctx);
+    expect((await s.api.patch(`/systems/${s.system.id}`, { chlorinationMethod: "tablet" })).statusCode).toBe(200);
+    const insp = await complete(s);
+    await runWorker(ctx);
+    expect((await snapshots(ctx, insp.id)).authority!.system).toMatchObject({ chlorinationMethod: "tablet", conflict: null });
+  });
+});

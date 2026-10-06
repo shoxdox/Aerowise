@@ -87,6 +87,15 @@ export const contact = z.object({
 
 /** Whether a system is residential or commercial: a property of the site, not the plan. */
 export const CUSTOMER_TYPES = ["residential", "commercial"] as const;
+/** What a site's system serves, where an authority's rules differ by it. */
+export const SITE_USE_CATEGORIES = ["single_family", "multifamily", "commercial", "food_establishment"] as const;
+export type SiteUseCategory = (typeof SITE_USE_CATEGORIES)[number];
+export const SITE_USE_CATEGORY_LABELS: Record<SiteUseCategory, string> = {
+  single_family: "Single-family home",
+  multifamily: "Multifamily",
+  commercial: "Commercial",
+  food_establishment: "Food establishment",
+};
 
 const siteFields = z.object({
   addressLine1: z.string().trim().min(1).max(200),
@@ -110,6 +119,8 @@ const siteFields = z.object({
   schedulingNotes: optionalText(2000),
   /** Commercial systems may have a shorter service interval and lab tests (the site's authority decides). */
   customerType: z.enum(CUSTOMER_TYPES),
+  /** Recorded by the office; null when nobody has said. Never inferred from the customer type. */
+  useCategory: z.enum(SITE_USE_CATEGORIES).nullish(),
   active: z.boolean(),
 });
 export const siteInput = siteFields.extend({
@@ -143,6 +154,7 @@ export const site = z.object({
   safetyFlags: z.array(z.enum(SAFETY_FLAGS)),
   schedulingNotes: z.string().nullable(),
   customerType: z.enum(CUSTOMER_TYPES),
+  useCategory: z.enum(SITE_USE_CATEGORIES).nullable(),
   active: z.boolean(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),

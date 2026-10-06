@@ -45,6 +45,7 @@ import {
   type FilingStatus,
   type Jurisdiction,
   type RulesetRules,
+  siteScheduleProblem,
 } from "@aerowise/domain";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -101,7 +102,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   async function siteJurisdictionOf(organizationId: string, siteId: string): Promise<SiteJurisdiction> {
     const site = await db
       .selectFrom("sites")
-      .select(["id", "county", "state", "jurisdictionId", "authorityAssignmentId"])
+      .select(["id", "county", "state", "jurisdictionId", "authorityAssignmentId", "useCategory", "permitIntervalMonths"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", siteId)
       .executeTakeFirst();
@@ -159,6 +160,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         const problem = !value ? (i.required ? "Required for filings with this authority" : null) : i.pattern && !new RegExp(i.pattern).test(value) ? "Not in the authority's format" : null;
         return { key: i.key, label: i.label, required: i.required, value, help: i.help ?? null, problem };
       }),
+      scheduleNotice: resolved ? siteScheduleProblem(resolved.rules, resolved.authorityName, site) : null,
     };
   }
 

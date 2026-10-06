@@ -2,12 +2,14 @@
 
 Status: **draft**. Written 2026-10-06 from the research packet `/mnt/project-files/Septic/pilot-build/county-research/tx-sjra-ossf.md` (Southeast Texas research thread), with the key quotes re-checked as Justin asked. SJRA permits OSSFs within 2,075 feet of Lake Conroe, outside city limits. Inspection reports and contracts go through SJRA's customer portal. The office enters each one by hand and records it in Aerowise. Nothing is sent on its own.
 
+v2 (W12.C3 and C7, same day) is based on the signed order read as page images (physical PDF pages cited below), reconciled with [the 2026-10-06 research packet](research/2026-10-06/ARCHIVE.md). It requires the Section 7(a)(10)(D) report fields and records the order number and scope as read.
+
 ## Questions for Justin
 
 Each of these is open in `profile.unresolved`. SJRA's Lake Conroe Division OSSF program can answer them: 936-588-3111, 1577 Dam Site Road, Conroe, TX 77304.
 
-1. **What is the order's number (the handwritten number appears to read 2015-O-04), when did TCEQ approve it, and has it been amended?**
-2. **Which extra fields must each report carry under Section 7(a)(10)(D)?** Two reads of the scan disagree (see below).
+1. **What is the order's number, when did TCEQ approve it, and has it been amended?** The handwritten number on PDF p. 1 reads "2015-O-04" or "2015-0-04"; the middle character can't be told apart from a zero.
+2. **Does SJRA accept the date of the preceding inspection as "none on record" for a site new to the provider?** Section 7(a)(10)(D)(ii) asks for it; Aerowise only knows inspections it recorded.
 3. **From what line is the 2,075 feet measured, and is the OSSF Data Viewer the authoritative answer?**
 4. **Which counties does the band cover (Montgomery, Walker, San Jacinto), and which areas count as "regulated under any predecessor Rule"?**
 5. **Will SJRA accept two inspections a year for systems with electronic monitoring, or is it always every four calendar months?**
@@ -21,16 +23,16 @@ Each of these is open in `profile.unresolved`. SJRA's Lake Conroe Division OSSF 
 
 ## Evidence gaps and conflicts
 
-- **Order number.** "384053.4" on SJRA's PDFs is a repeating document footer, not the order number (Codex checked the originals for Justin on 2026-10-06). The signed 2015/01 copy cited here has a handwritten number on page 1 that appears to read 2015-O-04. The scan's text layer garbles it, so it isn't recorded until someone confirms it visually or SJRA does. The 2015/03 copy linked elsewhere is unsigned, with blank order-number and signature lines, so it isn't used.
+- **Order number.** "384053.4" on SJRA's PDFs is a repeating document footer, not the order number (Codex checked the originals for Justin; PDF p. 3, read as an image). The signed 2015/01 copy's handwritten number on PDF p. 1 reads "2015-O-04" or "2015-0-04"; the middle character can't be told apart from a zero, so both readings are recorded and neither is chosen. The 2015/03 copy linked elsewhere is unsigned, with blank order-number and signature lines, so it isn't used.
 - **Frequency and deadline confirmed.** Codex confirmed against the original text that secondary treatment is inspected "at least once every four calendar months" and the report is filed within fourteen calendar days. The County thread's re-read returned the same four-month sentence.
-- **Section 7(a)(10)(D) conflicts between reads.** The research packet's summarizer returned a list of nine extra report fields (preceding inspection date, unauthorized alterations, spray area condition, permit number, the provider's TCEQ license number, the site address, the provider's printed name and signature, and its addresses and phones). The County thread's re-read returned (D) as "Inspection and maintenance reports shall address all inspection and testing required by the policies and procedures of the Authority and the State of Texas". It may be that the list belongs to another subsection, or that one read is wrong. `inspection.requiredFields` stays empty until someone reads the PDF (question 2).
-- Every SJRA page and the order were read through a page summarizer. curl to sjra.net is refused by the proxy.
+- **Section 7(a)(10)(D) settled by reading the page.** PDF p. 6 (printed -4-) shows both earlier reads were right: (D) opens with the general sentence and then lists nine items, (i) the inspection date to (ix) the provider's physical address, business address, business phone and emergency phone "if applicable". The list applies to all inspection and maintenance reports, not only single-family systems. (E) lists the contract fields.
+- SJRA's web pages were read through a page summarizer; curl to sjra.net is refused by the proxy. The order itself was read as page images for v2.
 - The OSSF Data Viewer is a script-rendered map and couldn't be read. TCEQ's authorized-agent search was blocked.
 - The fee schedule is dated 08-20-15 and the payments page says rates were adopted 2010-09-01. Both may be stale.
 
 ## Identity
 
-- key: `tx-sjra-ossf`, ruleset v1 (`type: "river_authority"`)
+- key: `tx-sjra-ossf`, ruleset v2 (`type: "river_authority"`; v1 kept as published; v2 applies from the same day, 2026-10-06)
 - state: TX
 - authority: San Jacinto River Authority, Lake Conroe Division, On-Site Sewage Facilities
 - requirement in effect: the order was passed 2015-12-10 and takes effect "as of and after June 1, 2016, subject only to the prior approval of this Order by the TCEQ". The approval date isn't given (question 1), so `requirementEffective.date` is null. Aerowise applies the ruleset from 2026-10-06. SJRA inspections and contracts dated earlier are held for review.
@@ -45,7 +47,7 @@ Each of these is open in `profile.unresolved`. SJRA's Lake Conroe Division OSSF 
 
 ## Applicability
 
-"The Rules shall apply to all the area lying within 2,075 feet of Lake Conroe", except areas under a predecessor rule or inside a municipality's corporate limits (Order Section 5). The order names no counties. `counties: ["Montgomery"]` only triggers review, and Walker isn't listed until SJRA confirms (question 4). `assignment: "reviewed"`: the office looks the address up on SJRA's OSSF Data Viewer or calls SJRA, and records what it checked. A Montgomery site matched by county alone lists both Montgomery County and SJRA.
+"The Rules shall apply to all the area lying within 2,075 feet of Lake Conroe", except areas under a predecessor rule or inside a municipality's corporate limits (Order Section 5, PDF p. 4, printed -2-). v2's assignment text says so. The order names no counties. `counties: ["Montgomery"]` only triggers review, and Walker isn't listed until SJRA confirms (question 4). `assignment: "reviewed"`: the office looks the address up on SJRA's OSSF Data Viewer or calls SJRA, and records what it checked. A Montgomery site matched by county alone lists both Montgomery County and SJRA.
 
 ## Service frequency
 
@@ -61,7 +63,12 @@ Fourteen calendar days after the inspection (Order Section 7(a)(10)(A)), warning
 
 ## Required inspection fields
 
-None beyond the template's own (which include the chlorine residual) until question 2 is settled.
+Section 7(a)(10)(D) (PDF p. 6, printed -4-), on every report:
+- (i) inspection date, (v) permit number, (vi) the provider's TCEQ license number, (vii) the OSSF's address, (viii) printed name and signature: already on every authority copy
+- (ii) date of the preceding inspection: printed on every authority copy as "Previous inspection", the site's last completed inspection in Aerowise or "None on record in Aerowise" (question 2)
+- (iii) unauthorized alterations: `unauthorized_alterations` required (None found, or Found with a description)
+- (iv) spray area condition, if applicable: `spray_area` required (Acceptable, Needs attention with a description, or Not a spray system)
+- (ix) the provider's addresses, business phone and emergency phone: the company's address and phone, and its emergency phone when entered (Settings → Company). Aerowise has one company address.
 
 ## Required attachments/photos
 
@@ -102,7 +109,9 @@ An owner may maintain their own system only for a single-family primary residenc
 - a missing chlorine residual, which keeps the inspection a draft
 - 4 months between visits even with monitoring on record
 - a Montgomery site matched by county alone, which lists both authorities
+- v2: alterations and spray area required, with details when something is found
+- v2: the authority copy's previous-inspection date, alterations answer and emergency phone, none of which the customer copy carries
 
 ## Verification
 
-Draft. To verify, follow TEMPLATE.md once SJRA confirms the order number, the Section 7(a)(10)(D) fields and the portal as its channel.
+Draft. To verify, follow TEMPLATE.md once SJRA confirms the order number, its acceptance of Aerowise's report for the Section 7(a)(10)(D) fields, and the portal as its channel.
