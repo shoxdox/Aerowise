@@ -1,6 +1,16 @@
 "use client";
 
-import { AUTHORITY_EVIDENCE_KINDS, AUTHORITY_EVIDENCE_LABELS, type Jurisdiction, type SiteJurisdiction } from "@aerowise/domain";
+import {
+  AUTHORITY_EVIDENCE_KINDS,
+  AUTHORITY_EVIDENCE_LABELS,
+  QUESTION_STATE_LABELS,
+  REQUIREMENT_TOPICS,
+  type AuthorityConfirmation,
+  type FieldConfirmation,
+  type Jurisdiction,
+  type RequirementKey,
+  type SiteJurisdiction,
+} from "@aerowise/domain";
 import { useState } from "react";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
@@ -18,6 +28,9 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
   const { data, reload } = useLoad<SiteJurisdiction>(`/sites/${siteId}/jurisdiction`);
   const [editing, setEditing] = useState(false);
   const list = useLoad<{ items: Jurisdiction[] }>(editing ? "/jurisdictions" : null);
+  // How far the authority itself has confirmed each line (W12.V4). Example rules have no authority to ask.
+  const authorityId = data?.profile && data.profile.status !== "fictional" ? data.jurisdiction?.id : undefined;
+  const confirmation = useLoad<AuthorityConfirmation>(authorityId ? `/jurisdictions/${authorityId}/confirmation` : null);
   const [error, setError] = useState<string | null>(null);
   const [choice, setChoice] = useState("");
   const [evidenceKind, setEvidenceKind] = useState<EvidenceKind>("authority_map");
@@ -180,9 +193,24 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
           <dd className="muted small" data-testid="requirements-source">
             {data.profile.requirementsSource}
           </dd>
-          {data.profile.requirements.map((r) => (
-            <RequirementRow key={r.key} label={r.label} value={r.value} />
-          ))}
+          {confirmation.data && (
+            <>
+              <dt>With the authority</dt>
+              <dd className="small" data-testid="confirmation-summary">
+                {confirmation.data.summary}.
+              </dd>
+            </>
+          )}
+          {data.profile.requirements.map((r) => {
+            const topic = REQUIREMENT_TOPICS[r.key as RequirementKey];
+            return <RequirementRow key={r.key} label={r.label} value={r.value} confirmation={confirmation.data?.fields.find((f) => f.topic === topic)} />;
+          })}
+          {/* Acceptance questions with no line of their own: the report's layout and its signature. */}
+          {confirmation.data?.fields
+            .filter((f) => !Object.values(REQUIREMENT_TOPICS).includes(f.topic))
+            .map((f) => (
+              <RequirementRow key={f.topic} label={f.label} value={null} confirmation={f} />
+            ))}
         </>
       )}
       {data.profile && data.profile.unresolved.length > 0 && (
@@ -204,11 +232,19 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
   );
 }
 
-function RequirementRow({ label, value }: { label: string; value: string }) {
+function RequirementRow({ label, value, confirmation }: { label: string; value: string | null; confirmation?: FieldConfirmation }) {
   return (
     <>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd data-testid={confirmation ? `confirmation-${confirmation.topic}` : undefined}>
+        {value}
+        {confirmation && (
+          <>
+            {value && " "}
+            <span className={`badge ${confirmation.state === "authority_confirmed" ? "ok" : confirmation.state === "conflict" ? "warn" : "inactive"}`}>{QUESTION_STATE_LABELS[confirmation.state]}</span>
+          </>
+        )}
+      </dd>
     </>
   );
 }

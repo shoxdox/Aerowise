@@ -1,3 +1,4 @@
+import type { QuestionTopic } from "./authority-evidence.ts";
 import { contractFilingRequired, mayAutoSubmit, profileStatus, type RulesetRules } from "./filings.ts";
 
 // What an authority's ruleset asks of a site, in a few plain lines for the site's panel
@@ -7,6 +8,16 @@ import { contractFilingRequired, mayAutoSubmit, profileStatus, type RulesetRules
 
 export const REQUIREMENT_KEYS = ["service", "reportDeadline", "reportChannel", "contracts", "acknowledgment"] as const;
 export type RequirementKey = (typeof REQUIREMENT_KEYS)[number];
+
+/**
+ * The confirmation field (W12.V4) that says how far each line is confirmed by the authority.
+ * The interval and deadline are published rules with no acceptance question of their own.
+ */
+export const REQUIREMENT_TOPICS: Partial<Record<RequirementKey, QuestionTopic>> = {
+  reportChannel: "report_channel",
+  contracts: "contract_destination",
+  acknowledgment: "receipt_acceptance",
+};
 
 export interface RequirementLine {
   key: RequirementKey;
