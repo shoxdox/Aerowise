@@ -312,7 +312,12 @@ class IntuitCompany implements QuickBooksCompany {
 
   async getPayment(id: string) {
     const pay = await this.read("Payment", id);
-    return pay ? { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0"), amountCents: Math.round(Number(pay.TotalAmt ?? 0) * 100) } : null;
+    if (!pay) return null;
+    const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
+    const applied = ((pay.Line ?? []) as Json[]).flatMap((l) =>
+      ((l.LinkedTxn ?? []) as Json[]).filter((t) => t.TxnType === "Invoice").map((t) => ({ invoiceId: String(t.TxnId), amountCents: cents(l.Amount) })),
+    );
+    return { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0"), amountCents: cents(pay.TotalAmt), applied };
   }
 
   /** A full update: QuickBooks clears what a payment update leaves out, so send the rest back as it is. */

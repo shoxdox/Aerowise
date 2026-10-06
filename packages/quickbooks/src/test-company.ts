@@ -190,6 +190,19 @@ export class TestCompanies {
     });
   }
 
+  /** As if someone edited a payment in QuickBooks: its amount, or the invoice it pays. */
+  editPayment(realmId: string, id: string, change: { amountCents?: number; invoiceId?: string }) {
+    return this.update(realmId, (c, at) => {
+      const pay = c.payments[id]!;
+      const next = { ...pay, ...change, syncToken: bump(pay.syncToken) };
+      const was = c.invoices[pay.invoiceId]!;
+      c.invoices[pay.invoiceId] = { ...was, balanceCents: was.balanceCents + pay.amountCents, syncToken: bump(was.syncToken), updatedAt: at };
+      const now = c.invoices[next.invoiceId]!;
+      c.invoices[next.invoiceId] = { ...now, balanceCents: now.balanceCents - next.amountCents, syncToken: bump(now.syncToken), updatedAt: at };
+      c.payments[id] = next;
+    });
+  }
+
   failNext(realmId: string, calls: number, kind: "transient" | "validation" = "transient") {
     return this.update(realmId, (c) => {
       c.failNext = calls;
@@ -341,7 +354,7 @@ class TestCompany implements QuickBooksCompany {
   getPayment(id: string) {
     return this.read((c) => {
       const pay = c.payments[id];
-      return pay ? { id, syncToken: pay.syncToken, amountCents: pay.amountCents } : null;
+      return pay ? { id, syncToken: pay.syncToken, amountCents: pay.amountCents, applied: [{ invoiceId: pay.invoiceId, amountCents: pay.amountCents }] } : null;
     });
   }
 
@@ -350,9 +363,12 @@ class TestCompany implements QuickBooksCompany {
       const pay = c.payments[id];
       if (!pay) throw new QuickBooksError("validation", "Object Not Found", "610");
       if (pay.syncToken !== syncToken) throw new QuickBooksError("stale", "Stale Object Error", "5010");
-      const inv = c.invoices[pay.invoiceId];
-      if (inv) c.invoices[pay.invoiceId] = { ...inv, balanceCents: inv.balanceCents + pay.amountCents - change.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
-      c.payments[id] = { ...pay, amountCents: change.amountCents, syncToken: bump(pay.syncToken) };
+      const was = c.invoices[pay.invoiceId];
+      if (was) c.invoices[pay.invoiceId] = { ...was, balanceCents: was.balanceCents + pay.amountCents, syncToken: bump(was.syncToken), updatedAt: at };
+      const inv = c.invoices[change.invoiceId];
+      if (!inv) throw new QuickBooksError("validation", "Invalid Reference Id: the invoice is missing", "2500");
+      c.invoices[change.invoiceId] = { ...inv, balanceCents: inv.balanceCents - change.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+      c.payments[id] = { ...pay, invoiceId: change.invoiceId, amountCents: change.amountCents, syncToken: bump(pay.syncToken) };
       return { id, syncToken: c.payments[id].syncToken };
     });
   }

@@ -119,7 +119,7 @@ Signed in to staging as the demo owner:
 
    Every link should be `synced` (or a `conflict` from step 5), and the connection's `environment` `sandbox`.
 
-**Refunds.** A refund lowers the payment in QuickBooks to what the customer kept paying, so the QuickBooks invoice shows the same balance due as Aerowise; a payment refunded in full is deleted there. The payment's private note says how much was refunded. A payment refunded before it reached QuickBooks goes over at its net amount, or not at all. Refunds made in Stripe's dashboard count too. Until this change is deployed and re-tested on staging, the INV-1001 mismatch below stays open.
+**Refunds (proposed; Justin's choice pending).** A refund lowers the payment in QuickBooks to what the customer kept paying, so the QuickBooks invoice shows the same balance due as Aerowise; a payment refunded in full is deleted there. The payment's private note says how much was refunded. A payment refunded before it reached QuickBooks goes over at its net amount, or not at all. Refunds made in Stripe's dashboard count too. A payment someone changed or deleted in QuickBooks is never overwritten: it goes to the conflict center for a person to choose. Until this is chosen, deployed and re-tested on staging, the INV-1001 mismatch below stays open.
 
 The nightly reset removes the connection; the sandbox company keeps what was written to it. Intuit lets a sandbox company be reset from the developer dashboard.
 

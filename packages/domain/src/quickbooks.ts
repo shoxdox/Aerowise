@@ -56,7 +56,7 @@ export const QUICKBOOKS_CONFLICT_GUIDE: Record<QuickBooksConflictKind | "failed"
   },
   changed_in_both: {
     title: "Changed in both places",
-    explanation: "This customer was edited in Aerowise and in QuickBooks since the last sync. Choose which version QuickBooks should keep. Aerowise keeps its own details either way.",
+    explanation: "This record was edited in Aerowise and in QuickBooks since the last sync: a customer's details, or a payment refunded in Aerowise and changed in QuickBooks. Choose which version QuickBooks should keep. Aerowise keeps its own details either way.",
     actions: ["keep_quickbooks", "use_aerowise"],
   },
   deleted_in_quickbooks: {

@@ -438,7 +438,7 @@ class SyncRun {
     const label = PAYMENT_METHOD_LABELS[p.method];
     const refunded = p.refundedCents > 0 ? `; ${usd(p.refundedCents)} refunded, ${usd(net)} kept` : "";
     const privateNote = `Aerowise ${label.toLowerCase()} payment on INV-${p.number}${p.providerPaymentId ? ` (Stripe ${p.providerPaymentId})` : ""}${refunded}`;
-    if (link.externalId) return this.refundPayment(link, p.invoiceId, net, privateNote);
+    if (link.externalId) return this.refundPayment(link, { invoiceId: p.invoiceId, number: p.number, amountCents: p.amountCents, refundedCents: p.refundedCents }, privateNote);
     if (net === 0) return this.write.ignored(link, "Refunded in full before it reached QuickBooks");
     const invLink = await this.link("invoice", p.invoiceId);
     if (invLink?.status === "ignored") return this.write.ignored(link, "The invoice is not synced to QuickBooks");
@@ -468,20 +468,46 @@ class SyncRun {
     return this.write.synced(link, { externalId: created.id, syncToken: created.syncToken, pushedHash: String(net) });
   }
 
-  /** A payment already in QuickBooks that was refunded since: lower it to what was kept, or delete it when nothing was. */
-  private async refundPayment(link: Link, invoiceId: string, net: number, privateNote: string) {
+  /**
+   * A payment already in QuickBooks that was refunded since: lower it to what was kept, or
+   * delete it when nothing was. A payment someone changed in QuickBooks is never overwritten
+   * without a person choosing to.
+   */
+  private async refundPayment(link: Link, p: { invoiceId: string; number: number | null; amountCents: number; refundedCents: number }, privateNote: string) {
+    const net = p.amountCents - p.refundedCents;
     const remote = await this.company.getPayment(link.externalId!);
-    if (!remote) return this.write.ignored(link, "The payment was deleted in QuickBooks");
+    if (!remote) return this.write.conflict(link, "deleted_in_quickbooks", {});
+    const invLink = await this.link("invoice", p.invoiceId);
+    if (!invLink?.externalId) return this.write.waiting(link, "Waiting for the invoice to reach QuickBooks");
+    // What Aerowise last left there. Links from before refunds were synced hold the full amount.
+    const sent = link.pushedHash === null ? p.amountCents : Number(link.pushedHash);
+    const asSent =
+      remote.syncToken === link.syncToken &&
+      remote.amountCents === sent &&
+      remote.applied.length === 1 &&
+      remote.applied[0]!.invoiceId === invLink.externalId &&
+      remote.applied[0]!.amountCents === sent;
+    if (!asSent && !link.force) {
+      const applied = remote.applied.map((a) => `${usd(a.amountCents)} to ${a.invoiceId === invLink.externalId ? `INV-${p.number}` : `another invoice (QuickBooks id ${a.invoiceId})`}`).join(", ");
+      return this.write.conflict(link, "changed_in_both", {
+        fields: [
+          { field: "Amount", aerowise: `${usd(net)} (${usd(p.amountCents)} less ${usd(p.refundedCents)} refunded)`, quickbooks: usd(remote.amountCents) },
+          { field: "Applied to", aerowise: `${usd(net)} to INV-${p.number}`, quickbooks: applied || "No invoice" },
+        ],
+        remoteSyncToken: remote.syncToken,
+        remoteUpdatedAt: null,
+        netCents: net,
+      });
+    }
     if (net === 0) {
       await this.company.deletePayment(remote.id, remote.syncToken);
       return this.write.synced(link, { pushedHash: "0", remoteState: "deleted" });
     }
-    if (remote.amountCents === net) return this.write.synced(link, { syncToken: remote.syncToken, pushedHash: String(net) });
-    const invLink = await this.link("invoice", invoiceId);
-    if (!invLink?.externalId) return this.write.waiting(link, "Waiting for the invoice to reach QuickBooks");
+    if (asSent && remote.amountCents === net) return this.write.synced(link, { syncToken: remote.syncToken, pushedHash: String(net) });
     const updated = await this.company.updatePayment(remote.id, remote.syncToken, { invoiceId: invLink.externalId, amountCents: net, privateNote });
     return this.write.synced(link, { syncToken: updated.syncToken, pushedHash: String(net) });
   }
+
 }
 
 /** Both versions of what differs, for the person deciding. */

@@ -71,6 +71,14 @@ export interface PaymentPayload {
   privateNote: string;
 }
 
+export interface QboPayment {
+  id: string;
+  syncToken: string;
+  amountCents: number;
+  /** The invoices it pays, and how much of it goes to each. */
+  applied: { invoiceId: string; amountCents: number }[];
+}
+
 export interface PaymentChange {
   invoiceId: string;
   amountCents: number;
@@ -112,7 +120,7 @@ export interface QuickBooksCompany {
   voidInvoice(id: string, syncToken: string): Promise<QboInvoice>;
   createPayment(payload: PaymentPayload, requestId: string): Promise<{ id: string; syncToken: string }>;
   /** Null when the payment was deleted. */
-  getPayment(id: string): Promise<{ id: string; syncToken: string; amountCents: number } | null>;
+  getPayment(id: string): Promise<QboPayment | null>;
   /** Changes what a payment applies to its invoice, as after a partial refund. */
   updatePayment(id: string, syncToken: string, change: PaymentChange): Promise<{ id: string; syncToken: string }>;
   deletePayment(id: string, syncToken: string): Promise<void>;

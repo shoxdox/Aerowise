@@ -66,6 +66,8 @@ describe("Intuit company API", () => {
       PrivateNote: "refunded",
       Line: [{ Amount: 8, LinkedTxn: [{ TxnId: "41", TxnType: "Invoice" }] }],
     });
+    const read = fakeFetch({ body: { Payment: { Id: "77", SyncToken: "4", TotalAmt: 10, Line: [{ Amount: 6, LinkedTxn: [{ TxnId: "41", TxnType: "Invoice" }] }, { Amount: 4, LinkedTxn: [{ TxnId: "42", TxnType: "Invoice" }] }] } } });
+    expect(await company(read).getPayment("77")).toEqual({ id: "77", syncToken: "4", amountCents: 1000, applied: [{ invoiceId: "41", amountCents: 600 }, { invoiceId: "42", amountCents: 400 }] });
     await c.deletePayment("77", "3");
     expect(f.calls[2]!.url.searchParams.get("operation")).toBe("delete");
     expect(JSON.parse(String(f.calls[2]!.init.body))).toEqual({ Id: "77", SyncToken: "3" });
