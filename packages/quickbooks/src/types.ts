@@ -71,6 +71,12 @@ export interface PaymentPayload {
   privateNote: string;
 }
 
+export interface PaymentChange {
+  invoiceId: string;
+  amountCents: number;
+  privateNote: string;
+}
+
 export interface Changes {
   customers: QboCustomer[];
   /** Invoices changed since, with the ones deleted in QuickBooks marked. */
@@ -105,6 +111,11 @@ export interface QuickBooksCompany {
   createInvoice(payload: InvoicePayload, requestId: string): Promise<QboInvoice>;
   voidInvoice(id: string, syncToken: string): Promise<QboInvoice>;
   createPayment(payload: PaymentPayload, requestId: string): Promise<{ id: string; syncToken: string }>;
+  /** Null when the payment was deleted. */
+  getPayment(id: string): Promise<{ id: string; syncToken: string; amountCents: number } | null>;
+  /** Changes what a payment applies to its invoice, as after a partial refund. */
+  updatePayment(id: string, syncToken: string, change: PaymentChange): Promise<{ id: string; syncToken: string }>;
+  deletePayment(id: string, syncToken: string): Promise<void>;
   /** What changed in QuickBooks since a moment (at most 30 days back). */
   changes(since: Date): Promise<Changes>;
 }

@@ -577,3 +577,9 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Only Stripe links.** The stored URL must be https on stripe.com, even though the event's signature was already checked.
 - **The webhook endpoint needs three more events**: `payment_intent.requires_action`, `payment_intent.processing` and `payment_intent.payment_failed`.
 
+## 2026-10-06 · Refunds in QuickBooks lower the payment
+
+- **Found on the staging QuickBooks run.** INV-1001's $2 Stripe refund never reached QuickBooks, which showed the invoice paid while Aerowise showed $2 due. The sync sent a payment once and never again.
+- **The payment is lowered to its net amount** (Justin's decision card, recommended option): a refund changes the QuickBooks payment to what was kept, so both systems show the same balance due, and a full refund deletes the payment. A refund receipt would record the money going out but leave QuickBooks' invoice paid, which is the mismatch Codex found.
+- **How it's noticed.** The payment's link stores the net amount it sent; each sync re-queues any synced payment whose net amount has changed. Payment links sent before this change hold the full amount, so they re-send only if refunded.
+- **The QuickBooks update is a full update.** QuickBooks clears fields a full update leaves out, so Aerowise reads the payment and sends it back with only the amount, its invoice line and the private note changed.

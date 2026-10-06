@@ -4,6 +4,7 @@ import {
   type Changes,
   type CustomerPayload,
   type InvoicePayload,
+  type PaymentChange,
   type PaymentPayload,
   type QboCustomer,
   type QboInvoice,
@@ -307,6 +308,31 @@ class IntuitCompany implements QuickBooksCompany {
     };
     const pay = (await this.call("POST", "/payment", { requestid: requestId }, body)).Payment as Json;
     return { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0") };
+  }
+
+  async getPayment(id: string) {
+    const pay = await this.read("Payment", id);
+    return pay ? { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0"), amountCents: Math.round(Number(pay.TotalAmt ?? 0) * 100) } : null;
+  }
+
+  /** A full update: QuickBooks clears what a payment update leaves out, so send the rest back as it is. */
+  async updatePayment(id: string, syncToken: string, c: PaymentChange) {
+    const current = await this.read("Payment", id);
+    if (!current) throw new QuickBooksError("validation", "Object Not Found: the payment was deleted in QuickBooks", "610");
+    const body = {
+      ...current,
+      MetaData: undefined,
+      SyncToken: syncToken,
+      TotalAmt: toAmount(c.amountCents),
+      PrivateNote: c.privateNote,
+      Line: [{ Amount: toAmount(c.amountCents), LinkedTxn: [{ TxnId: c.invoiceId, TxnType: "Invoice" }] }],
+    };
+    const pay = (await this.call("POST", "/payment", {}, body)).Payment as Json;
+    return { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0") };
+  }
+
+  async deletePayment(id: string, syncToken: string) {
+    await this.call("POST", "/payment", { operation: "delete" }, { Id: id, SyncToken: syncToken });
   }
 
   async changes(since: Date): Promise<Changes> {

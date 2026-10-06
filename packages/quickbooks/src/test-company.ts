@@ -5,6 +5,7 @@ import {
   type Changes,
   type CustomerPayload,
   type InvoicePayload,
+  type PaymentChange,
   type PaymentPayload,
   type QboCustomer,
   type QboInvoice,
@@ -334,6 +335,36 @@ class TestCompany implements QuickBooksCompany {
       c.invoices[p.invoiceId] = { ...inv, balanceCents: inv.balanceCents - p.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
       c.requests[requestId] = id;
       return { id, syncToken: "0" };
+    });
+  }
+
+  getPayment(id: string) {
+    return this.read((c) => {
+      const pay = c.payments[id];
+      return pay ? { id, syncToken: pay.syncToken, amountCents: pay.amountCents } : null;
+    });
+  }
+
+  updatePayment(id: string, syncToken: string, change: PaymentChange) {
+    return this.write((c, at) => {
+      const pay = c.payments[id];
+      if (!pay) throw new QuickBooksError("validation", "Object Not Found", "610");
+      if (pay.syncToken !== syncToken) throw new QuickBooksError("stale", "Stale Object Error", "5010");
+      const inv = c.invoices[pay.invoiceId];
+      if (inv) c.invoices[pay.invoiceId] = { ...inv, balanceCents: inv.balanceCents + pay.amountCents - change.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+      c.payments[id] = { ...pay, amountCents: change.amountCents, syncToken: bump(pay.syncToken) };
+      return { id, syncToken: c.payments[id].syncToken };
+    });
+  }
+
+  deletePayment(id: string, syncToken: string) {
+    return this.write((c, at) => {
+      const pay = c.payments[id];
+      if (!pay) throw new QuickBooksError("validation", "Object Not Found", "610");
+      if (pay.syncToken !== syncToken) throw new QuickBooksError("stale", "Stale Object Error", "5010");
+      const inv = c.invoices[pay.invoiceId];
+      if (inv) c.invoices[pay.invoiceId] = { ...inv, balanceCents: inv.balanceCents + pay.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+      delete c.payments[id];
     });
   }
 
