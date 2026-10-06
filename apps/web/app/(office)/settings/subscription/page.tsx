@@ -98,7 +98,9 @@ export default function SubscriptionPage() {
             <p data-testid="payment-method">
               {paymentMethod
                 ? `${paymentMethod.label} ending ${paymentMethod.last4}${paymentMethod.expires ? `, expires ${paymentMethod.expires}` : ""}`
-                : "No payment method saved yet. Invoices are charged to it automatically each month."}
+                : data.provider === "test"
+                  ? "No test payment method saved yet. Adding one only simulates monthly billing."
+                  : "No payment method saved yet. Invoices are charged to it automatically each month."}
             </p>
             <div>
               <button disabled={busy} onClick={() => void managePayment()}>

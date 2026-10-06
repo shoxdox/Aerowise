@@ -59,7 +59,10 @@ function Billing() {
         {data.provider !== "none" &&
           (s.chargesEnabled ? (
             <p>
-              <span className="badge ok">Ready</span> Customers can pay invoices by card or bank transfer. Payments go to your Stripe account.
+              <span className="badge ok">Ready</span>{" "}
+              {data.provider === "test"
+                ? "Try a simulated card or bank payment. No payment goes to Stripe or a bank."
+                : "Customers can pay invoices by card or bank transfer. Payments go to your Stripe account."}
             </p>
           ) : s.accountId ? (
             <p>
