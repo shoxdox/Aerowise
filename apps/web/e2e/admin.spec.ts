@@ -40,6 +40,18 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await expect(row.getByRole("cell").nth(6)).toHaveText("Read-only");
   await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $99.00 min (founder)");
 
+  // The company asks for its data to be deleted: the name has to be typed to confirm.
+  await page.getByRole("button", { name: "Delete the data of Brazos Aerobic Co" }).click();
+  const erase = page.getByRole("form", { name: "Delete the data of Brazos Aerobic Co" });
+  await expect(erase.getByText("It cannot be undone")).toBeVisible();
+  await erase.getByLabel(/to confirm/).fill("Brazos");
+  await expect(erase.getByRole("button", { name: "Delete all data" })).toBeDisabled();
+  await erase.getByLabel(/to confirm/).fill("Brazos Aerobic Co");
+  await erase.getByRole("button", { name: "Delete all data" }).click();
+  await expect(page.getByRole("status")).toHaveText(/^Deleted the data of Brazos Aerobic Co: \d+ records, 0 users and 0 files\.$/);
+  await expect(row.getByText(/^Data deleted /)).toBeVisible();
+  await expect(row.getByRole("button", { name: "Edit plan for Brazos Aerobic Co" })).toHaveCount(0);
+
   // Coverage: every authority, its status and open questions, and the sites using it.
   await page.getByRole("link", { name: "Rulesets" }).click();
   await expect(page.getByRole("heading", { name: "Ruleset coverage" })).toBeVisible();
