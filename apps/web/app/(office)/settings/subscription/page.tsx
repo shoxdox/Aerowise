@@ -1,7 +1,7 @@
 "use client";
 
 import { SUBSCRIPTION_STATE_LABELS, type SubscriptionOverview } from "@aerowise/domain";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { day, money } from "@/lib/format";
@@ -29,9 +29,19 @@ function planLine(plan: SubscriptionOverview["plan"]) {
 
 export default function SubscriptionPage() {
   const me = useSession();
-  const { data, error } = useLoad<SubscriptionOverview>(me.role === "owner" ? "/subscription" : null);
+  const { data, error, reload } = useLoad<SubscriptionOverview>(me.role === "owner" ? "/subscription" : null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  // Back from Stripe with a new payment method: check the plan again, which reactivates a
+  // lapsed company. A change of plan reloads the page so the read-only banner goes too.
+  useEffect(() => {
+    if (me.role !== "owner" || !new URLSearchParams(window.location.search).has("payment")) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    void api<{ changed: boolean }>("/subscription/refresh", { method: "POST", body: {} })
+      .then((r) => (r.changed ? window.location.reload() : reload()))
+      .catch(() => undefined);
+  }, [me.role, reload]);
 
   if (me.role !== "owner") return <p className="muted">Only the owner can see the company's Aerowise subscription.</p>;
   if (error) return <p className="error">{error}</p>;

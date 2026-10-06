@@ -42,13 +42,13 @@ Where two streams touch the same file, the dependency column says who goes first
 | W3.5 | Backups and restore runbook | W1.1 | done (PR pending); scripts tested locally, the staging restore run is Justin's |
 | W4.1 | Plan states and read-only mode | W2.1 | done (#35) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
-| W4.3 | Owner subscription page | W4.2 | in progress (PR open); needs the Stripe customer portal turned on |
-| W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | not started |
+| W4.3 | Owner subscription page | W4.2 | done (#41); needs the Stripe customer portal turned on |
+| W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | in progress (PR open) |
 | W4.5 | Platform fee on homeowner payments | W4.1 | not started |
 | W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
 | W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done |
 | W5.3 | Undo a committed import | W5.2 | done |
-| W5.4 | Onboarding summary | W5.2 | not started |
+| W5.4 | Onboarding summary | W5.2 | done |
 | W5.5 | Full data export | W2.1 | not started |
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
 | W6.1 | Per-ruleset service intervals | — | done (#21) |

@@ -64,6 +64,10 @@ export default function ImportPage() {
         {error && <p className="error">{error}</p>}
       </div>
 
+      <p>
+        <Link href="/import/summary">Your book at a glance</Link>: active and expiring contracts, overdue inspections, and sites missing an authority or permit.
+      </p>
+
       <h2>Recent imports</h2>
       {data && data.items.length === 0 && <p className="muted">No imports yet.</p>}
       {data && data.items.length > 0 && (

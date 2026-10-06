@@ -447,6 +447,12 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **What blocks it: any row anywhere that points at what the import created**, found from the database's own foreign keys, so a table added later is checked without anyone listing it. Examples are a scheduled visit, an inspection, a report, an invoice, a filing, a renewal, a portal link, a text message, an authority assignment, a site or contract added later to an imported customer or site. Edits to imported records (a renamed customer, a note) do not block it. The page and the 409 name each blocker with a count. Undo is all or nothing: there is no partial undo of the rows that are free.
 - **Who:** anyone who can import (`crm:write`). The check and the delete run in one transaction holding the import row; work added in between makes the delete fail on its foreign key, which is reported as a 409 instead of a 500.
 
+## 2026-10-05 · W5.4 Onboarding summary
+
+- **Two scopes, one definition.** `GET /onboarding/summary` counts the whole organization, and `?importId=` counts what one saved import created (its sites, and the contracts and visits on them). The import page shows the second right after saving; `/import/summary` shows the first.
+- **Definitions.** An active contract is one in force today (`contractState`). Expiring in 30, 60 or 90 days counts active contracts whose last day falls within that many days, each count including the shorter windows. Overdue inspections are open visits due before today. Due this month are open visits due from today to the month's last day. A site has no authority when the catalog resolves none for it today, whether no ruleset covers its county or several do and nobody has chosen. Missing permit means the site has no permit number. Customers counts customers with at least one service site in scope.
+- **Lists to fix from.** The first ten sites with no authority and the first ten missing a permit are listed with links, sorted by customer name.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -497,6 +503,17 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
 4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
 5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
+
+## 2026-10-05 · W4.4 Expiry reminders and the full plan lifecycle
+
+- **The worker's hourly billing run moves the plan first, then counts the month.** `runPlanLifecycle` (packages/billing) runs before `runMonthlyBilling` in the same task, so a month is counted in the state the company is actually in. It is safe to run any number of times.
+- **Reminders 14, 7 and 1 days before a free period ends**, to every active owner, from `ACCOUNT_EMAIL_FROM`. `plan_reminders` (migration 0031) keeps one row per organization, end date and threshold, so each goes out once; a period that starts inside the window gets one reminder, not several. Extending a trial (a new end date) starts the reminders over. The email says the price that follows and whether a payment method is already saved.
+- **When a free period ends:** active from the next day if a payment method is saved, read-only if not. The rest of that month stays free (it was counted on the 1st during the trial); the first invoice is the next 1st. Design-partner periods end the same way as trials.
+- **A failed payment makes an active company past due** for `AEROWISE_PAST_DUE_GRACE_DAYS` (14). Past due can still work; Stripe's own retry schedule and customer emails keep trying the card. Once the grace period has passed with the invoice still unpaid, the company goes read-only.
+- **Back to active** when a paid invoice leaves nothing failed (Stripe's webhook), or when the owner returns from Stripe with a new card: the subscription page calls `POST /subscription/refresh`, which charges each failed invoice again right away and reactivates once nothing is unpaid. The hourly run does not keep charging a declined card; that is Stripe's retry schedule. A read-only company with a saved card and nothing unpaid is reactivated by the hourly run too, so an admin who wants a company locked should not leave it with a working card (none of the pilot needs that).
+- **Without Stripe Billing keys nothing moves on its own.** Reminders still go out, but a free period past its end stays as it is until an admin changes it in `/admin`, since nothing can be collected.
+- **Every automatic change is in the platform audit log** as `organization.plan_changed` with no admin and a reason; a change the owner triggered from the subscription page is also in the company's own audit log.
+- **A lapsed company's automatic sends keep going**, as Justin decided in W4.3: nothing in the lifecycle pauses queued filings or homeowner reminders.
 
 ## 2026-10-06 · Restore check on a production with no companies yet
 
