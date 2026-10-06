@@ -1,0 +1,176 @@
+{
+  "jurisdiction": {
+    "key": "tx-montgomery-county",
+    "state": "TX",
+    "authorityName": "Montgomery County Environmental Health Services, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06. v1's sources plus the county's approved OSSF order, its live OSSF and forms pages, the current general and food establishment initial contracts and the 2025 fee schedule, from the 2026-10-06 county research packet (docs/jurisdictions/research/2026-10-06, findings M1 to M6). Montgomery County publishes no way to submit maintenance reports. See docs/jurisdictions/tx-montgomery-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": "2021-03-04",
+      "basis": "The county's order packet (linked from its live OSSF page) carries the Commissioners Court's adoption on 2020-12-08 and the TCEQ's final approval on 2021-03-04 (PDF pp. 1-2). Later amendments were not checked. Aerowise applies the ruleset only from 2026-10-06; nothing earlier is backdated."
+    },
+    "sources": [
+      {
+        "title": "Montgomery County OSSF Local Order (approved packet)",
+        "url": "https://cms1files.revize.com/montgomerycountytx/620145.pdf?t=20250424152017615",
+        "retrievedOn": "2026-10-06",
+        "note": "11 pages: adoption 2020-12-08 and TCEQ final approval 2021-03-04 (PDF pp. 1-2). Section 6 (PDF p. 5): excludes areas under existing rules, incorporated cities, and cities that sign an intergovernmental contract with the county. Section 10(a)(1) and 10(j) (PDF pp. 6-8): aerobic maintenance only by a Certified Maintenance Provider; annual BOD and TSS for all commercial and multifamily OSSFs, with no limits or lab format. Most pages are scans, read from OCR in the research packet. The file number 620145 is not the order's number."
+      },
+      {
+        "title": "Montgomery County: On-Site Sewage Facility page",
+        "url": "https://www.mctx.org/departments/departments_d_-_f/environmental_health/on-site_sewer_facility.php",
+        "retrievedOn": "2026-10-06",
+        "note": "Links the local order. Names the OSSF supervisor, Keith Miles, keith.miles@mctx.org, 936-539-7839. Publishes no address for maintenance reports or contracts."
+      },
+      {
+        "title": "Montgomery County: Environmental Health forms page",
+        "url": "https://www.mctx.org/departments/departments_d_-_f/environmental_health/permitting/all_forms.php",
+        "retrievedOn": "2026-10-06",
+        "note": "Links a general initial two-year contract and a separate food establishment initial contract. mc.maint@mctx.org is given for open records requests about septic-connected structures only."
+      },
+      {
+        "title": "Montgomery County: Initial Two Year Maintenance Contract (current form)",
+        "url": "https://www.mctx.org/Two%20Year%20Maintenance.pdf?t=20240419143456737",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF p. 1: three inspections a year, one every four months, during the initial two-year period; report to the owner and the permitting authority within 14 days after the test."
+      },
+      {
+        "title": "Montgomery County: Initial maintenance contract for food establishments",
+        "url": "https://www.mctx.org/Two%20Year%20Maintenance-food.pdf?t=20240419143407309",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF p. 1, revised 2009-11-25 and still linked today: at least twelve inspections a year, one every month, for the initial two years; report within 14 days after testing. Says nothing about later terms."
+      },
+      {
+        "title": "Montgomery County: Permitting fee schedule (2025-06-02)",
+        "url": "https://www.mctx.org/PERMITTING%20FEE%20SCHEDULE%2006.02.2025.pdf?t=20260811114110063",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF p. 2, SEPTIC: permit and reinspection fees and a $200 septic non-compliance administrative fee per incident. No maintenance report or contract filing fee is listed."
+      },
+      {
+        "title": "Montgomery County: Two Year Initial Maintenance Contract (county form)",
+        "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/Initial%202%20yr%20Maintenance%20maintenance.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "'There will be a minimum of three (3) inspections, one every four (4) months, to be made each year for this initial two (2) year period.' 'The report shall be submitted to the permitting authority and the owner within 14 days after the date the test is performed.' 'Non-single family residences, commercial, require one BOD and TSS grab sample per year.' No channel. Read twice through a page summarizer with the same wording."
+      },
+      {
+        "title": "Montgomery County: Residential New Septic System permit packet (rev. April 19, 2024)",
+        "url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20NEW%20SEPTIC%20SYSTEM.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "The two-year initial maintenance contract, signed by owner and installer, is part of the permit packet 'BEFORE FINAL INSPECTION'. Read through a page summarizer."
+      },
+      {
+        "title": "Montgomery County: How to Obtain a Septic, with OSSF fees (rev. March 22, 2023)",
+        "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/How%20to%20Obtain%20a%20Septic.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "501 N. Thompson, Suite 100, Conroe; Permit Department (936) 539-7836; inspections (936) 539-7839. Fees for permits, modifications, variances and reinspections only; none for reports or contracts. Read through a page summarizer."
+      },
+      {
+        "title": "San Jacinto River Authority: Order Adopting Rules for OSSFs Within 2,075 Feet of Lake Conroe",
+        "url": "https://www.sjra.net/wp-content/uploads/2015/03/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-Feet-of-Lake-Conroe-Texas-2015.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Section 5: SJRA's rules apply to 'all the area lying within 2,075 feet of Lake Conroe', except areas under a predecessor rule or inside a municipality's corporate limits. Effective June 1, 2016. This copy is unsigned with a blank order number; '384053.4' on it is a document footer, not the order number. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Montgomery County publishes no way to submit maintenance inspection reports or renewal contracts. The OSSF supervisor (Keith Miles, keith.miles@mctx.org, 936-539-7839) can say; mc.maint@mctx.org is for open records requests and HealthComplaints@mctx.org for complaints, and neither is used for filing. Inspection filings are held for review and contracts are filed by hand.",
+      "Food establishments: the county still links a food establishment initial contract (revised 2009-11-25) asking for a visit every month for the first two years, beside a general form asking for one every four months. Whether that older form still controls is not said. Aerowise applies a monthly schedule only from the site's own current contract or permit, recorded on the site; until one is, the site's filings are held for review.",
+      "After the initial two years: neither initial contract, nor the order's 10(j), sets the interval for later terms, for food establishments or anyone else, or says whether electronic monitoring allows longer. Aerowise keeps four months for everyone without a recorded interval and allows no six-month schedule.",
+      "Annual BOD and TSS (order 10(j)) apply to all commercial and multifamily systems. Aerowise reads a food establishment as commercial. No limits, lab format, due-date anchor or report they go with are published.",
+      "Section 6 excludes incorporated cities and cities that sign an intergovernmental contract with the county, but names none. SJRA permits OSSFs within 2,075 feet of Lake Conroe outside cities; how the distance is measured is not published. Every site needs a reviewed assignment.",
+      "The $200 septic non-compliance administrative fee is listed per incident; whether it applies to a late maintenance report or contract is not said, so Aerowise charges nothing.",
+      "Montgomery County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Montgomery"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Montgomery County Environmental Health Services permits OSSFs in Montgomery County except, under section 6 of its order, areas under earlier rules, incorporated cities, and cities that sign an intergovernmental contract with the county (none are named), and except within 2,075 feet of Lake Conroe outside cities, which is SJRA's (936-588-3111). If unsure, ask the OSSF supervisor, Keith Miles (936-539-7839). Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Montgomery County publishes no way to submit maintenance inspection reports. mc.maint@mctx.org is for open records requests and is not used for filing."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Montgomery County (read 2026-10-06): the two-year initial contract is part of the permit packet. No channel for renewals is published, and no form sets later terms; timing from 30 TAC 285.7(d)(2), 30 days before the current contract expires. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "categoryTerms": [
+      {
+        "useCategories": [
+          "food_establishment"
+        ],
+        "initialTermMonths": 24,
+        "initialIntervalMonths": 1,
+        "renewalIntervalMonths": null,
+        "source": "Montgomery County's initial maintenance contract for food establishments (form revised 2009-11-25, still linked from the county's forms page)",
+        "unconfirmed": "Montgomery County has not said whether that form still controls, or what applies after the first two years"
+      }
+    ]
+  },
+  "labTests": {
+    "analytes": [
+      "bod",
+      "tss"
+    ],
+    "everyMonths": 12,
+    "appliesTo": [
+      "commercial"
+    ],
+    "useCategories": [
+      "multifamily",
+      "commercial",
+      "food_establishment"
+    ],
+    "note": "Montgomery County order 10(j): one BOD and TSS sample a year for all commercial and multifamily OSSFs. No limits are published. Aerowise counts a food establishment as commercial."
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Montgomery County describes no reply to maintenance reports or contracts."
+  }
+}

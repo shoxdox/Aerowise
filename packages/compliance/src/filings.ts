@@ -9,8 +9,10 @@ import {
   lateFeeOwed,
   mayAutoSubmit,
   serviceIntervalMonths,
+  siteScheduleProblem,
   type FilingKind,
   type FilingProof,
+  type SiteUseCategory,
   type FilingStatus,
   type InspectionValues,
   type SubmissionMethod,
@@ -254,16 +256,27 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
  */
 async function siteServiceBasis(db: Executor, organizationId: string, siteId: string, onDate: string) {
   const [site, monitored] = await Promise.all([siteTypeAndPermit(db, organizationId, siteId), siteMonitoredOn(db, organizationId, siteId, onDate)]);
-  return { customerType: site?.customerType ?? "residential", monitored, permitIntervalMonths: site?.permitIntervalMonths ?? null };
+  return { customerType: site?.customerType ?? "residential", monitored, permitIntervalMonths: site?.permitIntervalMonths ?? null, useCategory: site?.useCategory ?? null };
 }
 
 /** The site's own type ("commercial" belongs to the property, not the plan) and permit interval. */
 async function siteTypeAndPermit(db: Executor, organizationId: string, siteId: string) {
-  return db.selectFrom("sites").select(["customerType", "permitIntervalMonths"]).where("organizationId", "=", organizationId).where("id", "=", siteId).executeTakeFirst();
+  return db.selectFrom("sites").select(["customerType", "permitIntervalMonths", "useCategory"]).where("organizationId", "=", organizationId).where("id", "=", siteId).executeTakeFirst();
+}
+
+/**
+ * The hold reason for an inspection filing, with why the site's schedule isn't settled yet
+ * (Montgomery food establishments): the next due date it carries is the general one until
+ * the site's own interval is recorded.
+ */
+function withScheduleProblem(problem: string | null, resolved: ResolvedJurisdiction, basis: { useCategory: SiteUseCategory | null; permitIntervalMonths: number | null }) {
+  const schedule = siteScheduleProblem(resolved.rules, resolved.authorityName, basis);
+  if (!schedule) return problem;
+  return problem ? `${problem} ${schedule}.` : `${schedule}.`;
 }
 
 /** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
-function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { customerType: "residential" | "commercial"; monitored: boolean; permitIntervalMonths: number | null }) {
+function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { customerType: "residential" | "commercial"; monitored: boolean; permitIntervalMonths: number | null; useCategory: SiteUseCategory | null }) {
   const r = resolved.rules;
   return {
     jurisdictionId: resolved.jurisdictionId,
@@ -274,7 +287,7 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { 
     deadlineOn: addDays(completedOn, r.filing.deadlineDays),
     deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
-    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored, basis.permitIntervalMonths)),
+    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored, basis.permitIntervalMonths, basis.useCategory)),
     ...feeColumns(r, "inspection_report"),
   };
 }
@@ -333,9 +346,10 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
   const completedOn = dateInZone(insp.completedAt ?? args.at, insp.timezone);
   const resolution = explainSite(await loadCatalog(trx), insp, completedOn);
   const resolved = resolution.resolved;
-  let terms = resolved ? termsFor(resolved, completedOn, await siteServiceBasis(trx, args.organizationId, insp.siteId, completedOn)) : null;
+  const basis = resolved ? await siteServiceBasis(trx, args.organizationId, insp.siteId, completedOn) : null;
+  let terms = resolved && basis ? termsFor(resolved, completedOn, basis) : null;
   if (terms && resolved?.rules.service.contractVisits) terms = await contractVisitDeadline(trx, args.organizationId, insp.id, resolved, terms);
-  const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : reportsUnknown(resolved);
+  const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : withScheduleProblem(reportsUnknown(resolved), resolved, basis!);
   const inserted = await trx
     .insertInto("filings")
     .values({
@@ -1038,12 +1052,13 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
   const completedOn = dateInZone(insp.completedAt!, insp.timezone);
   const resolution = explainSite(catalog, insp, completedOn);
   const resolved = resolution.resolved;
-  const problem = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !adapterVersion(resolved.key) ? NO_ADAPTER : reportsUnknown(resolved);
+  const basis = await siteServiceBasis(trx, f.organizationId, insp.siteId, completedOn);
+  const problem = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !adapterVersion(resolved.key) ? NO_ADAPTER : withScheduleProblem(reportsUnknown(resolved), resolved, basis);
   if (problem || !resolved) {
     await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
     return;
   }
-  let terms = termsFor(resolved, completedOn, await siteServiceBasis(trx, f.organizationId, insp.siteId, completedOn));
+  let terms = termsFor(resolved, completedOn, basis);
   if (resolved.rules.service.contractVisits) terms = await contractVisitDeadline(trx, f.organizationId, f.inspectionId!, resolved, terms);
   await move(trx, f, "pending", a.at, { ...terms, reviewReason: null }, { type: "filing_rechecked", summary: `Filing checked again for ${resolved.authorityName}` }, a.actorUserId);
   f.rulesetId = terms.rulesetId;

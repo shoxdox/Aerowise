@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOMER_TYPES } from "./crm.ts";
+import { CUSTOMER_TYPES, SITE_USE_CATEGORIES } from "./crm.ts";
 import { id } from "./crm.ts";
 
 // Lab tests some authorities require on a schedule (for example annual BOD and TSS on
@@ -17,6 +17,11 @@ export const labTestRule = z.object({
   analytes: z.array(z.enum(LAB_ANALYTES)).min(1),
   everyMonths: z.number().int().min(1).max(24),
   appliesTo: z.array(z.enum(CUSTOMER_TYPES)).min(1),
+  /**
+   * Where the authority names uses instead (Montgomery 10(j): "all commercial and multifamily"),
+   * a site with a recorded use category is decided by it; one without falls back to `appliesTo`.
+   */
+  useCategories: z.array(z.enum(SITE_USE_CATEGORIES)).min(1).optional(),
   note: z.string().max(1000).optional(),
   /** The most each analyte may measure, in mg/L. A result above it raises an inbox item. */
   limits: z.partialRecord(z.enum(LAB_ANALYTES), z.number().min(0).max(100_000)).optional(),

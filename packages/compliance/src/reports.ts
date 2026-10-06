@@ -298,9 +298,9 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
       : null;
   const layout = filed?.rules.report ? { rule: filed.rules.report, jurisdictionKey: filed.jurisdictionKey, rulesetVersion: filed.rules.version } : null;
   const site = filed?.rules.labTests?.onReport
-    ? await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", insp.siteId).executeTakeFirstOrThrow()
+    ? await db.selectFrom("sites").select(["customerType", "useCategory"]).where("organizationId", "=", organizationId).where("id", "=", insp.siteId).executeTakeFirstOrThrow()
     : null;
-  const labRule = filed && site ? labTestRequirement(filed.rules, site.customerType) : null;
+  const labRule = filed && site ? labTestRequirement(filed.rules, site.customerType, site.useCategory) : null;
   const labSection = labRule ? await labResultsSection(db, organizationId, insp.siteId, labRule, dateInZone(insp.completedAt, insp.timezone)) : null;
   const def = insp.definition as TemplateDefinition;
   const answers: InspectionValues = { ...Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...(opts.amendments ?? {}) };

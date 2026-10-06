@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id } from "./crm.ts";
+import { id, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, type SiteUseCategory } from "./crm.ts";
 import type { TemplateDefinition } from "./inspections.ts";
 import { labTestRule, type LabTestRule } from "./lab-tests.ts";
 import { monitoredServiceRule } from "./monitoring.ts";
@@ -341,6 +341,26 @@ export const rulesetRules = z.object({
      * any monitoring allowance.
      */
     permitOverride: z.object({ note: z.string().max(1000) }).optional(),
+    /**
+     * A different initial-term schedule for some uses, from a source the authority has not
+     * confirmed still controls (Montgomery's food establishment contract form, rev. 2009).
+     * It is never applied by itself: a site in one of these categories uses the interval the
+     * office recorded from its own current contract or permit (`permitIntervalMonths`), and
+     * until one is recorded its filings are held with `unconfirmed` as the reason.
+     * `renewalIntervalMonths` null: the authority publishes nothing for later terms.
+     */
+    categoryTerms: z
+      .array(
+        z.object({
+          useCategories: z.array(z.enum(SITE_USE_CATEGORIES)).min(1),
+          initialTermMonths: z.number().int().min(1).max(60),
+          initialIntervalMonths: z.number().int().min(1).max(24),
+          renewalIntervalMonths: z.number().int().min(1).max(24).nullable(),
+          source: z.string().max(1000),
+          unconfirmed: z.string().max(1000),
+        }),
+      )
+      .optional(),
   }),
   /** Lab tests the authority requires on a schedule, such as annual BOD and TSS. */
   labTests: labTestRule.optional(),
@@ -419,17 +439,59 @@ export function verifiedWith(rules: RulesetRules) {
  * system, and of one with qualifying electronic monitoring on record where the authority
  * allows longer for those, or the site's permit interval where the authority defers to the permit.
  */
-export function serviceIntervalMonths(rules: RulesetRules, customerType: "residential" | "commercial", monitored = false, permitIntervalMonths: number | null = null) {
+export function serviceIntervalMonths(
+  rules: RulesetRules,
+  customerType: "residential" | "commercial",
+  monitored = false,
+  permitIntervalMonths: number | null = null,
+  useCategory: SiteUseCategory | null = null,
+) {
   // Where the authority lets the permit decide, a recorded permit interval is the rule.
   if (rules.service.permitOverride && permitIntervalMonths) return permitIntervalMonths;
+  // A site whose use has its own term uses the interval recorded from its own contract or permit.
+  if (permitIntervalMonths && categoryTermFor(rules, useCategory)) return permitIntervalMonths;
   const base = (customerType === "commercial" ? rules.service.commercialIntervalMonths : undefined) ?? rules.service.intervalMonths;
   const m = rules.service.monitored;
   return monitored && m?.appliesTo.includes(customerType) ? Math.max(base, m.intervalMonths) : base;
 }
 
-/** The lab tests a residential or commercial system needs under these rules, or null. */
-export const labTestRequirement = (rules: RulesetRules, customerType: "residential" | "commercial"): LabTestRule | null =>
-  rules.labTests?.appliesTo.includes(customerType) ? rules.labTests : null;
+/**
+ * The lab tests a site needs under these rules, or null: by its recorded use category where
+ * the rules name categories, otherwise by residential or commercial.
+ */
+export function labTestRequirement(rules: RulesetRules, customerType: "residential" | "commercial", useCategory: SiteUseCategory | null = null): LabTestRule | null {
+  const lab = rules.labTests;
+  if (!lab) return null;
+  if (lab.useCategories && useCategory) return lab.useCategories.includes(useCategory) ? lab : null;
+  return lab.appliesTo.includes(customerType) ? lab : null;
+}
+
+export type CategoryTerm = NonNullable<RulesetRules["service"]["categoryTerms"]>[number];
+
+/** The authority's own term for this use, if it has one. */
+export const categoryTermFor = (rules: RulesetRules, useCategory: SiteUseCategory | null): CategoryTerm | null =>
+  (useCategory && rules.service.categoryTerms?.find((t) => t.useCategories.includes(useCategory))) || null;
+
+/**
+ * Why a site's schedule under these rules can't be settled from the rules alone, or null.
+ * A category with its own term needs the interval from the site's own contract or permit;
+ * rules that differ by use need the site's use category.
+ */
+export function siteScheduleProblem(
+  rules: RulesetRules,
+  authorityName: string,
+  site: { useCategory: SiteUseCategory | null; permitIntervalMonths: number | null },
+): string | null {
+  const term = categoryTermFor(rules, site.useCategory);
+  if (term && !site.permitIntervalMonths) {
+    const every = term.initialIntervalMonths === 1 ? "every month" : `every ${term.initialIntervalMonths} months`;
+    return `${authorityName}: ${term.source} asks for an inspection ${every} during the first ${term.initialTermMonths} months for a ${SITE_USE_CATEGORY_LABELS[site.useCategory!].toLowerCase()}. ${term.unconfirmed}. Record this site's interval from its current contract or permit, and where it says so, on the site page`;
+  }
+  if (!site.useCategory && (rules.service.categoryTerms?.length || rules.labTests?.useCategories)) {
+    return `${authorityName}'s rules differ by what the system serves. Record this site's use (single-family home, multifamily, commercial or food establishment) on the site page`;
+  }
+  return null;
+}
 
 export const contractFilingRequired = (rules: RulesetRules) => rules.contracts?.filingRequired === true;
 
@@ -547,6 +609,8 @@ export const siteJurisdiction = z.object({
     .nullable(),
   profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), howToDecide: z.string().nullable() }).nullable(),
   identifiers: z.array(authorityIdentifierStatus),
+  /** Why the authority's schedule for this site isn't settled yet; its filings are held until it is. */
+  scheduleNotice: z.string().nullable(),
 });
 export type SiteJurisdiction = z.infer<typeof siteJurisdiction>;
 

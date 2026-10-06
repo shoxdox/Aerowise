@@ -19,7 +19,7 @@ export async function labTestStatuses(db: Executor, organizationId: string, toda
   let q = db
     .selectFrom("contracts as k")
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "k.siteId").onRef("s.organizationId", "=", "k.organizationId"))
-    .select(["s.id as siteId", "s.county", "s.state", "s.jurisdictionId", "s.customerType"])
+    .select(["s.id as siteId", "s.county", "s.state", "s.jurisdictionId", "s.customerType", "s.useCategory"])
     .select((eb) =>
       eb
         .selectFrom("contracts as first")
@@ -62,7 +62,7 @@ export async function labTestStatuses(db: Executor, organizationId: string, toda
   const out: (LabTestStatus & { siteId: string })[] = [];
   for (const r of rows) {
     const resolved = explainSite(catalog, r, today).resolved;
-    const rule = resolved ? labTestRequirement(resolved.rules, r.customerType) : null;
+    const rule = resolved ? labTestRequirement(resolved.rules, r.customerType, r.useCategory) : null;
     if (!resolved || !rule) continue;
     const entry = catalog.find((e) => e.jurisdiction.id === resolved.jurisdictionId)!;
     const inForceFrom = rulesetOn(entry, today)!.effectiveFrom;
