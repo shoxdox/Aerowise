@@ -71,7 +71,7 @@ Run log (newest last):
 
 | Date | Who | Onboarding | Card | ACH | Refund | Webhooks | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-06 | Codex, Justin | passed | passed (INV-1001, $10) | not done: microdeposit verification was missing from the pay page (fixed after this run) | passed ($2 partial, net $8 paid) | passed (`livemode` false; checkout and refund events applied) | Stripe sandbox; card, refund and webhooks verified by Codex |
+| 2026-10-06 | Codex, Justin | passed | passed (INV-1001, $10) | passed (INV-1002, $10: pending, then succeeded), but the pay page wrongly said "nothing more to do" while Stripe waited on microdeposit verification; Codex verified by hand. The pay page fix is this PR | passed ($2 partial, net $8 paid) | passed (`livemode` false; checkout, async success and refund events applied) | Stripe sandbox; results verified by Codex |
 
 ### Switching production to live keys
 
@@ -119,13 +119,15 @@ Signed in to staging as the demo owner:
 
    Every link should be `synced` (or a `conflict` from step 5), and the connection's `environment` `sandbox`.
 
+**Known gap: refunds.** The sync sends a payment once it clears and never sends refunds, so an invoice refunded in Aerowise (or in Stripe) stays paid in QuickBooks. How refunds should appear in QuickBooks is Justin's call (2026-10-06); until it ships, the office enters refunds in QuickBooks by hand.
+
 The nightly reset removes the connection; the sandbox company keeps what was written to it. Intuit lets a sandbox company be reset from the developer dashboard.
 
 Run log (newest last):
 
 | Date | Who | Connect | Review | Invoice | Payment | Conflict | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-06 | Codex | passed (Sandbox Company US) | not done | not done | not done | not done | Connection `environment` sandbox, `status` connected; a deploy interrupted the first sync at 20 of 50 customers, recovery to be checked |
+| 2026-10-06 | Codex | passed (Sandbox Company US) | passed (demo customers approved, default item mapped) | passed (INV-1001, INV-1002 match totals) | passed for INV-1002 (balance 0, matches); **not matching for INV-1001**: the $2 Stripe refund never reaches QuickBooks (refunds aren't synced), so QuickBooks shows it paid while Aerowise shows $2 due | passed (`changed_in_both`, resolved by sending the Aerowise version) | A deploy interrupted the first sync at 20 of 50; the normal sync recovered after the 10-minute lease. 50 customers, 2 invoices, 2 payments synced, no sync errors. Disconnect passed; reconnect in progress |
 
 ### Going to production (Intuit's app review)
 
