@@ -32,7 +32,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
 | W2.2 | User invites | W2.1 | done (#25) |
 | W2.3 | Password reset and user deactivation | W2.2 | done (#29) |
-| W2.4 | Organization settings | — | in progress (PR open) |
+| W2.4 | Organization settings | — | done (#48) |
 | W2.5 | First-run checklist | W2.2, W2.4 | in progress (PR open) |
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |
 | W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
