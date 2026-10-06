@@ -249,6 +249,8 @@ export const payment = z.object({
   reference: z.string().nullable(),
   note: z.string().nullable(),
   failureReason: z.string().nullable(),
+  /** A bank payment Stripe holds until the customer verifies their account (microdeposits). */
+  awaitingBankVerification: z.boolean(),
   createdAt: datetime,
   refunds: z.array(refund),
 });
@@ -297,6 +299,8 @@ export const publicInvoice = z.object({
   pendingCents: z.number().int(),
   amountDueCents: z.number().int(),
   canPayOnline: z.boolean(),
+  /** Where the customer verifies their bank account so a bank payment can go ahead (Stripe's page). */
+  bankVerificationUrl: z.string().nullable(),
   pdfReady: z.boolean(),
   /** The built-in test provider is running: checkout is simulated and no money moves. */
   testMode: z.boolean(),

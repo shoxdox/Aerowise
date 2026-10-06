@@ -42,7 +42,7 @@ In the Stripe dashboard, with **Test mode** on:
    - URL `https://staging.deshain.com/api/webhooks/stripe`
    - **Listen to events on Connected accounts**
    - API version `2026-09-30.endive` (the version Aerowise's Stripe library uses), if offered
-   - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `account.updated`
+   - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.requires_action`, `payment_intent.processing`, `payment_intent.payment_failed`, `refund.created`, `refund.updated`, `account.updated`
 4. **Settings file** on the server (`/etc/aerowise/staging.env`), never in chat:
    - `STRIPE_SECRET_KEY=` the test secret key (`sk_test_...`, **Developers > API keys**)
    - `STRIPE_WEBHOOK_SECRET=` the endpoint's signing secret (`whsec_...`)
@@ -55,7 +55,7 @@ Signed in to staging as the demo owner:
 
 1. **Onboarding.** **Settings > Billing > Set up online payments** opens Stripe's onboarding. Use Stripe's test values: phone `000 000 0000` and code `000000`, SSN `000-00-0000`, bank routing `110000000` and account `000123456789`. Back in Aerowise the page says online payments are on.
 2. **Card.** Issue an invoice to a customer, open its pay link and pay with card `4242 4242 4242 4242` (any future date, any CVC). The invoice shows paid.
-3. **Bank (ACH).** On a second invoice, pay by US bank account with routing `110000000` and account `000123456789`. It shows processing, then paid once Stripe clears it (minutes in test mode). Account `000111111116` fails instead, and the inbox flags it.
+3. **Bank (ACH).** On a second invoice, pay by US bank account with routing `110000000` and account `000123456789`, entered by hand. Stripe then waits for the customer to verify the account with microdeposits: the pay page says **Verify your bank account** with a button to Stripe's verification page, and the office's invoice shows the payment waiting on the customer. On that page, use Stripe's test code `SM11AA`. The pay page then shows the payment clearing, and paid once Stripe clears it. Account `000111111116` fails instead, and the inbox flags it.
 4. **Refund.** Refund part of the card payment from its invoice. It shows the refund pending, then done.
 5. **Webhooks.** On the server, the events Aerowise received and what each did:
 
@@ -71,7 +71,7 @@ Run log (newest last):
 
 | Date | Who | Onboarding | Card | ACH | Refund | Webhooks | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | — | — | — | Not run yet: waiting on the test-mode setup above. |
+| 2026-10-06 | Codex, Justin | passed | passed (INV-1001, $10) | not done: microdeposit verification was missing from the pay page (fixed after this run) | passed ($2 partial, net $8 paid) | passed (`livemode` false; checkout and refund events applied) | Stripe sandbox; card, refund and webhooks verified by Codex |
 
 ### Switching production to live keys
 
@@ -84,6 +84,7 @@ Run log (newest last):
 
 - Checkout pages asked Stripe for exactly 24 hours of life, Stripe's maximum counted on its own clock, so a server clock a little ahead got the page refused. They now last 23 hours.
 - A bank payment whose "cleared" event arrived before its "checkout completed" event was recorded as a card payment. Delayed-payment events now always mean a bank payment.
+- Found on the staging run: a bank account entered by hand must be verified with microdeposits before Stripe takes the payment, but the pay page said "there is nothing more to do". Aerowise now listens for `payment_intent.requires_action` and shows the customer Stripe's verification page until `payment_intent.processing` says it's done; `payment_intent.payment_failed` fails a bank payment that never verified.
 
 ## QuickBooks Online
 
@@ -124,7 +125,7 @@ Run log (newest last):
 
 | Date | Who | Connect | Review | Invoice | Payment | Conflict | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | — | — | — | Not run yet: waiting on the Intuit app's staging redirect URI and keys. |
+| 2026-10-06 | Codex | passed (Sandbox Company US) | not done | not done | not done | not done | Connection `environment` sandbox, `status` connected; a deploy interrupted the first sync at 20 of 50 customers, recovery to be checked |
 
 ### Going to production (Intuit's app review)
 

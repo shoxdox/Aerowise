@@ -559,3 +559,10 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Demo mode with unused Twilio keys is fine.** The demo ignores Twilio's keys unless `sms` is listed, so trial keys sitting in staging's settings file don't trip the check.
 - **No paid route yet (Justin, 2026-10-06).** A trial account can't usefully text US numbers. Toll-free verification is the recommended route when it's time; the live test happens before the first design partner turns texting on.
 
+## 2026-10-06 · Bank payments that need microdeposit verification
+
+- **Found on the staging Stripe run.** A bank account entered by hand on Stripe Checkout (rather than through instant bank sign-in) has to be verified with microdeposits before Stripe takes the payment. Checkout still completes, so the pay page said "clearing; nothing more to do" while the payment was really waiting on the customer.
+- **Aerowise follows the PaymentIntent.** `payment_intent.requires_action` with `verify_with_microdeposits` stores Stripe's hosted verification URL on the pending payment (`payments.bank_verification_url`, migration 0035), and the pay page shows a **Verify bank account** button instead of "nothing more to do". The office sees the payment "waiting on customer to verify bank". `payment_intent.processing` clears it. `payment_intent.payment_failed` fails a pending bank payment, so one that's never verified stops showing as clearing; a card declined at checkout, which never became a payment, is ignored.
+- **Only Stripe links.** The stored URL must be https on stripe.com, even though the event's signature was already checked.
+- **The webhook endpoint needs three more events**: `payment_intent.requires_action`, `payment_intent.processing` and `payment_intent.payment_failed`.
+

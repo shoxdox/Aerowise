@@ -269,6 +269,68 @@ describe("paying online", () => {
     expect(inbox.items.find((i: { kind: string }) => i.kind === "payment_failed")).toMatchObject({ severity: "high", target: { type: "invoice", id: b.id } });
   });
 
+  const intent = (inv: { id: string }, orgId: string, opts: { id: string; amount: number; verifyUrl?: string }) => ({
+    id: opts.id,
+    object: "payment_intent",
+    amount: opts.amount,
+    metadata: { organizationId: orgId, invoiceId: inv.id },
+    next_action: opts.verifyUrl ? { type: "verify_with_microdeposits", verify_with_microdeposits: { hosted_verification_url: opts.verifyUrl, microdeposit_type: "descriptor_code" } } : null,
+  });
+  const VERIFY = "https://payments.stripe.com/microdeposit/pacs_test_123";
+
+  it("asks the customer to verify their bank account when Stripe waits on microdeposits, until they do", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    await webhook(ctx, "checkout.session.completed", session(inv, t.org.id, { id: "cs_test_v", paid: false, amount: 32500 }), t.accountId!);
+    const asked = await webhook(ctx, "payment_intent.requires_action", intent(inv, t.org.id, { id: "pi_test_v", amount: 32500, verifyUrl: VERIFY }), t.accountId!);
+    expect(asked.res.json().outcome).toBe("payment waiting on bank verification");
+
+    // The customer is told what to do, not that nothing is left to do.
+    expect((await client(ctx.app).get(`/pay/${inv.token}`)).json()).toMatchObject({ paymentStatus: "processing", bankVerificationUrl: VERIFY, canPayOnline: false });
+    const office = (await t.api.get(`/invoices/${inv.id}`)).json();
+    expect(office.payments[0]).toMatchObject({ method: "ach", status: "pending", awaitingBankVerification: true });
+    expect(office.events.map((e: { eventType: string }) => e.eventType)).toContain("payment_needs_verification");
+    // A replay changes nothing.
+    expect((await webhook(ctx, "payment_intent.requires_action", intent(inv, t.org.id, { id: "pi_test_v", amount: 32500, verifyUrl: VERIFY }), t.accountId!)).res.json().outcome).toMatch(/unchanged/);
+
+    // Verified: the payment is clearing, with nothing left for the customer to do.
+    expect((await webhook(ctx, "payment_intent.processing", intent(inv, t.org.id, { id: "pi_test_v", amount: 32500 }), t.accountId!)).res.json().outcome).toMatch(/verified/);
+    expect((await client(ctx.app).get(`/pay/${inv.token}`)).json()).toMatchObject({ paymentStatus: "processing", bankVerificationUrl: null });
+    expect((await t.api.get(`/invoices/${inv.id}`)).json().payments[0].awaitingBankVerification).toBe(false);
+
+    await webhook(ctx, "checkout.session.async_payment_succeeded", session(inv, t.org.id, { id: "cs_test_v", paid: true, amount: 32500 }), t.accountId!);
+    expect((await t.api.get(`/invoices/${inv.id}`)).json()).toMatchObject({ paymentStatus: "paid", pendingCents: 0 });
+  });
+
+  it("records a bank payment that needs verification even before checkout's own event, and only links to Stripe", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    await webhook(ctx, "payment_intent.requires_action", intent(inv, t.org.id, { id: "pi_test_early", amount: 32500, verifyUrl: VERIFY }), t.accountId!);
+    const late = await webhook(ctx, "checkout.session.completed", session(inv, t.org.id, { id: "cs_test_early", paid: false, amount: 32500 }), t.accountId!);
+    expect(late.res.json().outcome).toMatch(/unchanged: payment already pending/);
+    expect((await client(ctx.app).get(`/pay/${inv.token}`)).json()).toMatchObject({ paymentStatus: "processing", pendingCents: 32500, bankVerificationUrl: VERIFY });
+    const payments = await ctx.db.selectFrom("payments").select(["method", "status"]).where("invoiceId", "=", inv.id).execute();
+    expect(payments).toEqual([{ method: "ach", status: "pending" }]);
+
+    const other = await issued(t);
+    const odd = await webhook(ctx, "payment_intent.requires_action", intent(other, t.org.id, { id: "pi_test_odd", amount: 32500, verifyUrl: "https://example.com/verify" }), t.accountId!);
+    expect(odd.res.json().outcome).toBe("ignored: not a bank account verification");
+    expect((await client(ctx.app).get(`/pay/${other.token}`)).json()).toMatchObject({ bankVerificationUrl: null, canPayOnline: true });
+  });
+
+  it("fails a bank payment whose account was never verified, and ignores a card declined at checkout", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    await webhook(ctx, "payment_intent.requires_action", intent(inv, t.org.id, { id: "pi_test_never", amount: 32500, verifyUrl: VERIFY }), t.accountId!);
+    const failed = await webhook(ctx, "payment_intent.payment_failed", intent(inv, t.org.id, { id: "pi_test_never", amount: 32500 }), t.accountId!);
+    expect(failed.res.json().outcome).toMatch(/payment failed/);
+    expect((await client(ctx.app).get(`/pay/${inv.token}`)).json()).toMatchObject({ paymentStatus: "unpaid", bankVerificationUrl: null, canPayOnline: true });
+    expect((await t.api.get(`/invoices/${inv.id}`)).json().payments[0]).toMatchObject({ status: "failed", awaitingBankVerification: false });
+
+    const declined = await webhook(ctx, "payment_intent.payment_failed", intent(inv, t.org.id, { id: "pi_test_card", amount: 32500 }), t.accountId!);
+    expect(declined.res.json().outcome).toBe("ignored: no payment recorded");
+  });
+
   it("settles to the same result when events arrive out of order", async () => {
     const t = await billingTenant(ctx);
     const inv = await issued(t);

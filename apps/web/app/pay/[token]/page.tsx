@@ -60,10 +60,21 @@ function PayPage() {
               <div className="amount">Paid</div>
               <p>Thank you, {inv.customerName}. This invoice is paid in full.</p>
             </>
+          ) : inv.bankVerificationUrl ? (
+            <>
+              <div className="amount">Verify your bank account</div>
+              <p>
+                Your bank payment of {money(inv.pendingCents)} is waiting for you to confirm your bank account. In a day or two, two small deposits (or one with a
+                code) arrive in it; enter them on the verification page and the payment goes ahead.
+              </p>
+              <a className="button" href={inv.bankVerificationUrl} target="_blank" rel="noopener noreferrer">
+                Verify bank account
+              </a>
+            </>
           ) : inv.paymentStatus === "processing" || (justPaid && inv.pendingCents > 0) ? (
             <>
               <div className="amount">{money(inv.pendingCents)} clearing</div>
-              <p>Your bank payment is on its way. Bank transfers take a few business days to clear; there is nothing more to do.</p>
+              <p>Your bank payment is on its way. Bank transfers take a few business days to clear. If you are asked to verify your bank account, this page shows how.</p>
             </>
           ) : (
             <>
