@@ -46,9 +46,8 @@ export default function LoginPage() {
           Forgot your password?
         </a>
         {demo && (
-          <p className="muted" data-testid="demo-sign-ins">
-            Try it as the owner (owner@example.com), the office (office@example.com) or the technician (tech@example.com). The
-            password for each is aerowise-dev.
+          <p className="muted" data-testid="demo-start">
+            New here? <a href="/demo">Try the demo</a> with a fictional company of your own. No sign-up or password needed.
           </p>
         )}
       </form>

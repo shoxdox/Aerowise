@@ -443,9 +443,9 @@ describe("a demo company's contact details", () => {
   it("shows the banner to anyone signed in to a demo company", async () => {
     const demo = await company("Demo Co", true);
     const real = await company("Real Septic", false);
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false });
-    expect((await demo.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: true });
-    expect((await real.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: false });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false });
+    expect((await demo.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: true, demoVisitor: false });
+    expect((await real.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false });
   });
 });
 

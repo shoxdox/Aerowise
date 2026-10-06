@@ -19,9 +19,11 @@ export interface AuthContext {
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest();
 
-export async function createSession(db: Database, organizationId: string, userId: string) {
+/** `endsAt`: an earlier end than the usual 30 days (a visitor's demo ends with its company). */
+export async function createSession(db: Database, organizationId: string, userId: string, endsAt?: Date) {
   const token = randomBytes(32).toString("base64url");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const usual = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = endsAt && endsAt < usual ? endsAt : usual;
   await db
     .insertInto("sessions")
     .values({ tokenHash: hashToken(token), organizationId, userId, expiresAt })

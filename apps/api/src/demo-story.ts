@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { OutboxTransport } from "@aerowise/compliance";
-import { DEMO_ORG_NAME, DEMO_PASSWORD, DEMO_USERS, type Database } from "@aerowise/db";
+import { DEMO_ORG_NAME, type Database } from "@aerowise/db";
 import { addDays, DEFAULT_TEMPLATE } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
 import { drainTasks } from "@aerowise/tasks";
 import { buildApp, type App } from "./app.ts";
+import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 
 // The demo's five-minute path, played once on top of the seed: what a provider would have
 // done before a prospect opens the demo. Everything goes through the API as the demo users,
@@ -44,21 +45,24 @@ function as(app: App, cookie: string) {
   };
 }
 
-async function signIn(app: App, email: string) {
-  const res = await app.inject({ method: "POST", url: "/auth/login", payload: { email, password: DEMO_PASSWORD } });
-  const cookie = res.cookies.find((c) => c.name === "aw_session");
-  if (res.statusCode !== 200 || !cookie) throw new Error(`demo story: could not sign in as ${email}: ${res.statusCode} ${res.body}`);
-  return as(app, `aw_session=${cookie.value}`);
+/** A session made for the person directly: demo people may have no password (W10.2). */
+async function signIn(app: App, db: Database, organizationId: string, userId: string) {
+  const { token } = await createSession(db, organizationId, userId);
+  return as(app, `${SESSION_COOKIE}=${token}`);
 }
 
 const chicagoDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 /** An afternoon time on a Central date, as UTC (Central is UTC-5 or -6; 20:00Z is mid-afternoon either way). */
 const afternoon = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00Z`).toISOString();
 
-/** Plays the story once. Returns false when there is no demo company or it was already played. */
-export async function playDemoStory(opts: { db: Database; store: ObjectStore; now?: () => Date; log?: (msg: string) => void }): Promise<boolean> {
+/**
+ * Plays the story once, in the shared demo company or the one named. Returns false when
+ * there is no such demo company or the story was already played there.
+ */
+export async function playDemoStory(opts: { db: Database; store: ObjectStore; organizationId?: string; now?: () => Date; log?: (msg: string) => void }): Promise<boolean> {
   const { db, store, now = () => new Date(), log = () => {} } = opts;
-  const org = await db.selectFrom("organizations").select(["id", "demo"]).where("name", "=", DEMO_ORG_NAME).executeTakeFirst();
+  const found = db.selectFrom("organizations").select(["id", "demo"]);
+  const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME)).executeTakeFirst();
   if (!org?.demo) {
     log("demo story: no demo company; nothing to do");
     return false;
@@ -76,12 +80,6 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; no
   // Only the demo company's own tasks: any other company's stay queued for the real worker.
   const worker = () => drainTasks({ db, store, now, mail, appUrl }, "demo-story", org.id);
   try {
-    const [ownerUser, officeUser, techUser] = DEMO_USERS.map((u) => u.email);
-    const owner = await signIn(app, ownerUser!);
-    const office = await signIn(app, officeUser!);
-    const tech = await signIn(app, techUser!);
-    const today = chicagoDate(now());
-    const yesterday = addDays(today, -1);
     const members = await db
       .selectFrom("memberships as m")
       .innerJoin("users as u", "u.id", "m.userId")
@@ -89,7 +87,13 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; no
       .where("m.organizationId", "=", org.id)
       .execute();
     const ownerId = members.find((m) => m.role === "owner")!.id;
+    const officeId = members.find((m) => m.role === "office")!.id;
     const techId = members.find((m) => m.role === "technician")!.id;
+    const owner = await signIn(app, db, org.id, ownerId);
+    const office = await signIn(app, db, org.id, officeId);
+    const tech = await signIn(app, db, org.id, techId);
+    const today = chicagoDate(now());
+    const yesterday = addDays(today, -1);
 
     // ---- Licenses on file ----
     const mp = await owner.post("/credentials", { userId: ownerId, holderName: "Olivia Owner", kind: "tceq_maintenance_provider", number: "MP-DEMO-0001", verifiedOn: addDays(today, -30), verificationSource: "Fictional: demo company" });
@@ -134,6 +138,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; no
       if (done.status !== "completed") throw new Error(`demo story: inspection did not complete: ${JSON.stringify(done.validationProblems ?? done)}`);
       inspections.push(done.id);
     }
+    if (inspections.length === 0) throw new Error("demo story: no visits from yesterday to inspect (was the demo seeded today?)");
     // Reports made, filings emailed to the county's outbox.
     await worker();
     const filings = await db.selectFrom("filings").select(["id", "status", "inspectionId"]).where("organizationId", "=", org.id).where("inspectionId", "in", inspections).execute();
@@ -175,6 +180,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; no
     log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid)`);
     return true;
   } finally {
+    // The story's own sign-ins end with it.
+    await db.deleteFrom("sessions").where("organizationId", "=", org.id).execute();
     await app.close();
   }
 }

@@ -19,6 +19,7 @@ h2 { font-size: 1.15rem; margin: 0; }
 a { color: var(--accent); }
 .muted { color: var(--muted); }
 .demo-banner { background: var(--warn-bg); color: var(--warn-text); text-align: center; font-size: 0.85rem; font-weight: 600; padding: 4px 12px; border-bottom: 1px solid var(--border); }
+.demo-banner .link { color: inherit; text-decoration: underline; font-weight: 600; }
 .error { color: var(--error); margin: 0; }
 .pad { padding: 24px; }
 .spacer { flex: 1; }

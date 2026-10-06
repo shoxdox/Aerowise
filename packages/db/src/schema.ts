@@ -30,6 +30,8 @@ export interface OrganizationsTable {
   name: string;
   /** A fictional demo company: only ever reaches the stand-ins, and holds made-up contact details. Fixed when made. */
   demo: Generated<boolean>;
+  /** A visitor's own demo company ends then (W10.2); null for every other company. */
+  demoExpiresAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
   phone: string | null;
   email: string | null;
   addressLine1: string | null;
@@ -1253,7 +1255,14 @@ export interface PasswordResetTokensTable {
   usedAt: Timestamp | null;
 }
 
+export interface DemoVisitsTable {
+  id: Generated<string>;
+  requesterHash: string;
+  createdAt: ColumnType<Date, Date | undefined, never>;
+}
+
 export interface DB {
+  demoVisits: DemoVisitsTable;
   organizations: OrganizationsTable;
   users: UsersTable;
   memberships: MembershipsTable;
