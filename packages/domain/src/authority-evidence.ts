@@ -81,6 +81,15 @@ export const QUESTION_TOPIC_LABELS: Record<QuestionTopic, string> = {
  */
 export const ACCEPTANCE_TOPICS = ["report_format", "signature", "contract_destination", "receipt_acceptance"] as const satisfies readonly QuestionTopic[];
 
+/**
+ * Questions about what the authority's rules say for everyone. A directly cited, current
+ * published rule can settle these without anyone asking the authority to repeat it. Where
+ * reports go, and everything in ACCEPTANCE_TOPICS, are about what the authority accepts,
+ * which only the authority can confirm.
+ */
+export const PUBLIC_RULE_TOPICS = ["deadline", "schedule", "lab_tests", "required_fields", "assignment", "fees", "effective_date", "registration"] as const satisfies readonly QuestionTopic[];
+const isPublicRuleTopic = (t: QuestionTopic) => (PUBLIC_RULE_TOPICS as readonly QuestionTopic[]).includes(t);
+
 export const ANSWER_OUTCOMES = ["confirms", "partial", "contradicts", "no_answer"] as const;
 export type AnswerOutcome = (typeof ANSWER_OUTCOMES)[number];
 export const ANSWER_OUTCOME_LABELS: Record<AnswerOutcome, string> = {
@@ -135,6 +144,10 @@ export const authorityEvidenceInput = z
     answers: z.array(evidenceAnswerInput).min(1, "Record at least one question and answer").max(50),
   })
   .superRefine((e, ctx) => {
+    // A published rule settles a question only when it is cited where anyone can read it.
+    if (e.kind === "published_rule" && !e.references.some((r) => /^https:\/\/\S+/.test(r))) {
+      ctx.addIssue({ code: "custom", path: ["references"], message: "Cite the published rule's address (https://…), with the page or section" });
+    }
     if (evidenceClass(e.kind) !== "authority") return;
     if (!e.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "Name who at the authority answered" });
     if (!e.contactOrganization) ctx.addIssue({ code: "custom", path: ["contactOrganization"], message: "Name the office they speak for" });
@@ -183,22 +196,37 @@ export type AuthorityEvidence = z.infer<typeof authorityEvidence>;
  *   it until a new version is reviewed)
  * - authority_partial: the authority's latest answer covers part of it
  * - conflict: an answer contradicts the current rule
+ * - public_rule_settled: a cited published rule settles a question about what the rules say
+ *   (never one about what the authority accepts)
  * - provider_evidence: a provider's document supports an answer; the authority has not said
- * - public_rule: a published rule supports an answer; the authority has not said
+ * - public_rule: a published rule supports an answer it cannot settle; the authority has not said
  * - open: nothing recorded
  */
-export const QUESTION_STATES = ["authority_confirmed", "authority_partial", "conflict", "provider_evidence", "public_rule", "open"] as const;
+export const QUESTION_STATES = ["authority_confirmed", "authority_partial", "conflict", "public_rule_settled", "provider_evidence", "public_rule", "open"] as const;
 export type QuestionState = (typeof QUESTION_STATES)[number];
 export const QUESTION_STATE_LABELS: Record<QuestionState, string> = {
   authority_confirmed: "Confirmed by the authority",
   authority_partial: "Partly confirmed by the authority",
   conflict: "Conflicting answer",
+  public_rule_settled: "Settled by a published rule",
   provider_evidence: "Provider evidence only",
   public_rule: "Published rule only",
   open: "Open",
 };
 
-type Answered = Pick<EvidenceAnswer, "outcome" | "evidenceClass" | "obtainedOn">;
+type Answered = Pick<EvidenceAnswer, "outcome" | "evidenceClass" | "obtainedOn" | "topic">;
+
+/**
+ * Whether one answer, on its own, settles the question it answers: the authority's own
+ * settling answer always can; a cited published rule can for a question about what the
+ * rules say. A provider's permit, contract or accepted report never settles a ruleset
+ * question: it shows one site's facts and what worked, not what the authority accepts.
+ */
+export function settles(a: Answered): boolean {
+  if (a.outcome !== "confirms") return false;
+  if (a.evidenceClass === "authority") return true;
+  return a.evidenceClass === "public_rule" && isPublicRuleTopic(a.topic);
+}
 
 export function questionState(answers: Answered[]): QuestionState {
   const authority = answers.filter((a) => a.evidenceClass === "authority" && a.outcome !== "no_answer").sort((a, b) => b.obtainedOn.localeCompare(a.obtainedOn));
@@ -207,6 +235,7 @@ export function questionState(answers: Answered[]): QuestionState {
   if (latest?.outcome === "confirms") return "authority_confirmed";
   if (latest?.outcome === "partial") return "authority_partial";
   if (answers.some((a) => a.outcome === "contradicts")) return "conflict";
+  if (answers.some(settles)) return "public_rule_settled";
   const supports = (c: EvidenceClass) => answers.some((a) => a.evidenceClass === c && (a.outcome === "confirms" || a.outcome === "partial"));
   if (supports("provider")) return "provider_evidence";
   if (supports("public_rule")) return "public_rule";
@@ -234,7 +263,7 @@ export const rulesetEvidencePage = z.object({
 export type RulesetEvidencePage = z.infer<typeof rulesetEvidencePage>;
 
 export const rulesetProposalInput = z.object({
-  /** The answers to apply: only the authority's own answers that settle an open question close it. */
+  /** The answers to apply: see `settles` for which close an open question. */
   answerIds: z.array(z.uuid()).max(200).default([]),
   /** When the new version would start applying. */
   effectiveFrom: isoDate,
@@ -267,8 +296,10 @@ export type RulesetProposal = z.infer<typeof rulesetProposal>;
  * Prepares the next ruleset version from recorded answers, for a reviewed pull request.
  * Nothing here publishes or changes the rules in force.
  *
- * Only the authority's own answer that settles an open question closes it; a provider's
- * document or a published rule is listed as support but leaves the question open. An
+ * An open question closes on the authority's own settling answer, or on a cited published
+ * rule when the question is about what the rules say. A provider's document is listed as
+ * support but never closes one, and nothing but the authority closes an acceptance
+ * question (format, signature, where reports and contracts go, receipt). An
  * answer that contradicts a rule is listed for a person to change by hand. The version is
  * proposed as verified only when nothing is left open, the authority itself has confirmed
  * every acceptance topic, and the full W6.5 record is given; otherwise it stays a draft.
@@ -292,10 +323,12 @@ export function buildRulesetProposal(current: RulesetRules, allAnswers: Evidence
     }
     if (!a.unresolvedItem || !profile.unresolved.includes(a.unresolvedItem)) {
       refusals.push({ answerId: a.id, reason: "It does not answer one of this version's open questions." });
-    } else if (a.evidenceClass !== "authority") {
-      refusals.push({ answerId: a.id, reason: `${EVIDENCE_CLASS_LABELS[a.evidenceClass]} supports an answer but does not close the question; only the authority's own answer does.` });
     } else if (a.outcome !== "confirms") {
       refusals.push({ answerId: a.id, reason: "It does not settle the question, so the question stays open." });
+    } else if (a.evidenceClass === "provider") {
+      refusals.push({ answerId: a.id, reason: "A provider document shows one site's facts and what worked in practice; it does not close a question about the authority's rules or what it accepts." });
+    } else if (!settles(a)) {
+      refusals.push({ answerId: a.id, reason: `A published rule does not close a question about ${QUESTION_TOPIC_LABELS[a.topic].toLowerCase()}; only the authority's own answer does.` });
     } else {
       closing.set(a.unresolvedItem, [...(closing.get(a.unresolvedItem) ?? []), a.id]);
     }
@@ -312,7 +345,7 @@ export function buildRulesetProposal(current: RulesetRules, allAnswers: Evidence
 
   if (input.verification) {
     const reasons: string[] = [];
-    if (stillOpen.length) reasons.push(`${stillOpen.length} open question${stillOpen.length === 1 ? " has" : "s have"} no settling answer from the authority.`);
+    if (stillOpen.length) reasons.push(`${stillOpen.length} open question${stillOpen.length === 1 ? " has" : "s have"} no settling answer.`);
     const confirmed = new Set(allAnswers.filter((a) => a.evidenceClass === "authority" && a.outcome === "confirms").map((a) => a.topic));
     const missing = ACCEPTANCE_TOPICS.filter((t) => !confirmed.has(t));
     if (missing.length) reasons.push(`The authority has not confirmed: ${missing.map((t) => QUESTION_TOPIC_LABELS[t].toLowerCase()).join(", ")}.`);

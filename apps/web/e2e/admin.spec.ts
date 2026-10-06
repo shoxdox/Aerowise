@@ -87,5 +87,5 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await page.getByRole("button", { name: "Prepare v2" }).click();
   const proposal = page.getByRole("region", { name: "Proposed version" });
   await expect(proposal.getByText("Stays a draft")).toBeVisible();
-  await expect(proposal.getByText(/does not close the question/)).toBeVisible();
+  await expect(proposal.getByText(/does not close a question/)).toBeVisible();
 });

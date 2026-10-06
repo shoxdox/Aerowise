@@ -101,6 +101,9 @@ describe("recording evidence", () => {
     // A provider's document or a published rule has no authority contact to name.
     expect(authorityEvidenceInput.safeParse({ ...base, kind: "accepted_report" }).success).toBe(true);
     expect(authorityEvidenceInput.safeParse({ ...base, references: [] }).success).toBe(false);
+    // A published rule is cited by its address.
+    expect(authorityEvidenceInput.safeParse({ ...base, kind: "published_rule" }).success).toBe(false);
+    expect(authorityEvidenceInput.safeParse({ ...base, kind: "published_rule", references: ["https://example.gov/order.pdf, page 4"] }).success).toBe(true);
   });
 
   it("keeps the three kinds of evidence apart", () => {
@@ -124,6 +127,10 @@ describe("question state", () => {
     expect(questionState([answer({ obtainedOn: "2026-02-01", outcome: "partial" }), answer({ obtainedOn: "2026-01-01" })])).toBe("authority_partial");
     expect(questionState([answer({ kind: "permit", outcome: "contradicts" }), answer({ kind: "accepted_report" })])).toBe("conflict");
     expect(questionState([answer({ outcome: "no_answer" })])).toBe("open");
+    // A cited published rule settles what the rules say, never what the authority accepts.
+    expect(questionState([answer({ kind: "published_rule", topic: "deadline" }), answer({ kind: "accepted_report" })])).toBe("public_rule_settled");
+    expect(questionState([answer({ kind: "published_rule", topic: "signature" })])).toBe("public_rule");
+    expect(questionState([answer({ kind: "accepted_report", topic: "deadline" })])).toBe("provider_evidence");
   });
 });
 
@@ -135,7 +142,7 @@ describe("proposing the next version", () => {
     expect(p.stillOpen).toEqual([OPEN]);
     expect(p.closes).toEqual([]);
     expect(p.refusals.map((r) => r.answerId)).toEqual([provider.id, partial.id]);
-    expect(p.refusals[0]!.reason).toMatch(/does not close the question/);
+    expect(p.refusals[0]!.reason).toMatch(/does not close a question/);
     expect(p.verified).toBe(false);
 
     const yes = answer({});
@@ -156,6 +163,22 @@ describe("proposing the next version", () => {
     expect(next.submission).toEqual(draft.submission);
     expect(q.diff).toContain(`-      "${OPEN}"`);
     expect(q.diff).toContain('+  "version": 2,');
+  });
+
+  it("lets a cited published rule close a question about the rules, but not about acceptance", () => {
+    const rule = answer({ kind: "published_rule", topic: "deadline" });
+    const p = buildRulesetProposal(draft, [rule], input({ answerIds: [rule.id] }));
+    expect(p.closes).toEqual([{ item: OPEN, answerIds: [rule.id] }]);
+    expect(p.verified).toBe(false);
+
+    const format = answer({ kind: "published_rule", topic: "report_format" });
+    const provider = answer({ kind: "permit", topic: "deadline" });
+    const q = buildRulesetProposal(draft, [format, provider], input({ answerIds: [format.id, provider.id] }));
+    expect(q.stillOpen).toEqual([OPEN]);
+    expect(q.refusals.map((r) => r.reason)).toEqual([
+      "A published rule does not close a question about report format; only the authority's own answer does.",
+      "A provider document shows one site's facts and what worked in practice; it does not close a question about the authority's rules or what it accepts.",
+    ]);
   });
 
   it("lists contradicting answers as rule changes for a person to make, and never applies them", () => {

@@ -27,6 +27,7 @@ const STATE_BADGE: Record<QuestionState, string> = {
   authority_confirmed: "ok",
   authority_partial: "upcoming",
   conflict: "danger",
+  public_rule_settled: "completed",
   provider_evidence: "inactive",
   public_rule: "inactive",
   open: "warn",
@@ -241,8 +242,8 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
     <form className="card stack" onSubmit={submit} aria-label="Prepare the next version">
       <h2>Prepare the next version</h2>
       <p className="muted small">
-        Builds v{page.version + 1} from the answers ticked above ({selected.length} ticked) and shows the diff. Nothing is published: the file goes into a pull request that Justin reviews. Only the
-        authority&apos;s own answer that settles a question closes it, and the version is proposed as verified only when nothing is left open and the authority has confirmed every acceptance question.
+        Builds v{page.version + 1} from the answers ticked above ({selected.length} ticked) and shows the diff. Nothing is published: the file goes into a pull request that Justin reviews. An
+        open question closes on the authority&apos;s own settling answer, or on a cited published rule for a question about what the rules say (never an acceptance question). The version is proposed as verified only when nothing is left open and the authority has confirmed every acceptance question.
       </p>
       <label>
         Starts applying on
@@ -366,7 +367,7 @@ export default function AuthorityEvidencePage() {
 
       <section className="card stack" aria-label="Acceptance questions">
         <h2>Acceptance questions</h2>
-        <p className="muted small">Only the authority can answer these, whatever its published rules or a provider&apos;s past reports show.</p>
+        <p className="muted small">Only the authority can answer these. A published rule or a provider&apos;s past accepted report is shown as support, never as the authority&apos;s acceptance.</p>
         <table>
           <tbody>
             {data.acceptance.map((x) => (
