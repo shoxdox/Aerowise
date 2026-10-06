@@ -15,9 +15,13 @@ const production = process.env.NODE_ENV === "production";
 // Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
 const store = storeFromEnv(process.env);
 // Email, Stripe, QuickBooks, Twilio and the geocoder: real with keys; without them, test stand-ins outside
-// production (email: the outbox) and off in production. DEMO_MODE=true forces every one to its stand-in.
+// production (email: the outbox) and off in production. DEMO_MODE=true forces every one to its stand-in,
+// except those DEMO_LIVE_SERVICES switches to their real test-mode accounts (staging).
 const providers = providersFromEnv({ db, store, env: process.env, production });
-if (providers.demo) console.log("demo mode: every outside service is a test stand-in; nothing is sent");
+if (providers.demo) {
+  const live = providers.demoLive.length ? `, except ${providers.demoLive.join(", ")} (real account, test mode)` : "";
+  console.log(`demo mode: every outside service is a test stand-in${live}; nothing real is sent or charged`);
+}
 // Unexpected errors go to Sentry when SENTRY_DSN is set (tagged with the organization).
 const reporter = reporterFromEnv(process.env);
 const app = await buildApp({

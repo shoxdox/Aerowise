@@ -275,7 +275,10 @@ describe("paying online", () => {
     await webhook(ctx, "checkout.session.async_payment_succeeded", session(inv, t.org.id, { paid: true, amount: 32500 }), t.accountId!);
     const late = await webhook(ctx, "checkout.session.completed", session(inv, t.org.id, { paid: false, amount: 32500 }), t.accountId!);
     expect(late.res.json().outcome).toMatch(/unchanged: payment already succeeded/);
-    expect((await t.api.get(`/invoices/${inv.id}`)).json()).toMatchObject({ paymentStatus: "paid", pendingCents: 0 });
+    const paid = (await t.api.get(`/invoices/${inv.id}`)).json();
+    expect(paid).toMatchObject({ paymentStatus: "paid", pendingCents: 0 });
+    // Only a bank debit clears late, so it is recorded as one even when its first event is the last.
+    expect(paid.payments[0]).toMatchObject({ method: "ach", status: "succeeded" });
   });
 
   it("rejects unsigned webhooks and ignores accounts it does not know", async () => {
