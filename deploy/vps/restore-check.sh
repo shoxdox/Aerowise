@@ -5,7 +5,8 @@
 #   deploy/vps/restore-check.sh <env>                 the newest backup on this server
 #   deploy/vps/restore-check.sh <env> <db-....dump>   that dump (and its files tarball beside it)
 #   deploy/vps/restore-check.sh <env> r2              the newest copy in R2 (what a lost server leaves)
-# Exits non-zero when the restore fails or the restored database does not match the live one's shape.
+# Exits non-zero when the restore fails, the restored database does not match the live one's
+# shape, or a table that had rows when the backup was taken has none restored.
 set -eu
 umask 077
 env=${1:?usage: restore-check.sh <env> [dump | r2]}
@@ -30,6 +31,7 @@ esac
 stamp=${dump##*/db-}
 stamp=${stamp%.dump}
 files=$(dirname "$dump")/files-$stamp.tar.gz
+recorded=$(dirname "$dump")/db-$stamp.counts
 
 echo "$env: restoring $dump into a scratch database"
 docker rm -f "$scratch" >/dev/null 2>&1 || true
@@ -79,7 +81,27 @@ elif ! cmp -s "$work/restored-tables" "$work/live-tables"; then
 fi
 [ "$tables" -gt 0 ] || { echo "PROBLEM: the backup has no tables"; problems=1; }
 orgs=$(awk '$1 == "organizations" { print $2 }' "$work/restored")
-[ "${orgs:-0}" -gt 0 ] || { echo "PROBLEM: the backup has no organizations"; problems=1; }
+# Data missing from the backup: a table that had rows when the backup was taken (backup.sh
+# records every count just before the dump) but has none restored. Tables empty at backup
+# time, like everything on a production with no companies yet, are fine.
+if [ -r "$recorded" ]; then
+  LC_ALL=C sort "$recorded" > "$work/recorded"
+  emptied=$(LC_ALL=C join -o 0,1.2,2.2 "$work/restored" "$work/recorded" | awk '$2 == 0 && $3 > 0 { print $1 }')
+  lost=$(LC_ALL=C join -v 2 "$work/restored" "$work/recorded" | awk '$2 > 0 { print $1 }')
+  against="at backup time"
+  echo "counted at backup time: $(awk '{ n += $2 } END { print n + 0 }' "$work/recorded") rows ($(basename "$recorded"))"
+else
+  # Older backups have no counts: compare with the live database instead. A table whose first
+  # row was written after the backup also shows here; take a new backup and check that.
+  emptied=$(LC_ALL=C join -o 0,1.2,2.2 "$work/restored" "$work/live" | awk '$2 == 0 && $3 > 0 { print $1 }')
+  lost=
+  against="live"
+  echo "no row counts beside the dump (a backup from before they were recorded): compared with live"
+fi
+if [ -n "$emptied$lost" ]; then
+  echo "PROBLEM: tables with rows $against but none restored: $(echo $emptied $lost)"
+  problems=1
+fi
 
 if [ -r "$files" ]; then
   n=$(tar tzf "$files" | grep -vc '/$' || true)

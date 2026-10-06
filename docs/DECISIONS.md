@@ -497,3 +497,10 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
 4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
 5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
+
+## 2026-10-06 · Restore check on a production with no companies yet
+
+- The first run on the real server failed production's restore check only because it required at least one organization, which a new production cannot have. That rule was a stand-in for "the backup is missing data".
+- **Now:** `backup.sh` records every table's row count just before the dump (`db-<stamp>.counts`, kept and copied to R2 with the dump), and `restore-check.sh` fails when a table that had rows then has none restored. Empty-at-backup tables are fine; a company created after the backup does not fail the check either. Comparing with the live database alone would fail on any table whose first row arrived after the backup.
+- The counts are taken a moment before `pg_dump`'s own snapshot, not in it. A table emptied in that moment (say, its last expired session deleted) would show as missing; that is rare and clears on the next backup, so it was preferred over holding an exported snapshot open across the dump.
+
