@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, filingFees, labTestRequirement, lateFeeOwed, mayAutoSubmit, rulesetRules, serviceIntervalMonths, verifiedWith } from "./filings.ts";
 import { DEFAULT_TEMPLATE, validateInspection } from "./inspections.ts";
+import { labResultsOverLimit } from "./lab-tests.ts";
 
 describe("filing state machine", () => {
   it("only reaches confirmed through sent", () => {
@@ -123,6 +124,15 @@ describe("labTestRequirement", () => {
     expect(() => rules({ analytes: ["cod"], everyMonths: 12, appliesTo: ["residential"] })).toThrow();
     expect(() => rules({ analytes: [], everyMonths: 12, appliesTo: ["residential"] })).toThrow();
     expect(() => rules({ analytes: ["bod"], everyMonths: 12, appliesTo: [] })).toThrow();
+  });
+
+  it("takes limits only for the required analytes, and lists results above them", () => {
+    const limited = rules({ analytes: ["bod", "tss"], everyMonths: 12, appliesTo: ["residential"], limits: { bod: 20 }, onReport: true });
+    const rule = labTestRequirement(limited, "residential")!;
+    expect(rule).toMatchObject({ limits: { bod: 20 }, onReport: true });
+    expect(labResultsOverLimit(rule, [{ analyte: "bod", value: 20 }, { analyte: "tss", value: 500 }])).toEqual([]);
+    expect(labResultsOverLimit(rule, [{ analyte: "bod", value: 20.5 }])).toEqual([{ analyte: "bod", value: 20.5, limit: 20 }]);
+    expect(() => rules({ analytes: ["bod"], everyMonths: 12, appliesTo: ["residential"], limits: { tss: 20 } })).toThrow();
   });
 });
 
