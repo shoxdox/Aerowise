@@ -160,7 +160,7 @@ describe("Montgomery County sites by what they serve", () => {
     await runWorker(ctx);
     const [f] = await filingsOf(s);
     expect(f).toMatchObject({ nextDueOn: "2026-11-07", status: "needs_review" });
-    expect(f.reviewReason).not.toContain("Record this site's interval");
+    expect(f!.reviewReason).not.toContain("Record this site's interval");
   });
 
   it("asks for the use where nobody has recorded it, and leaves other sites at four months", async () => {
