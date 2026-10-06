@@ -1,9 +1,52 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { authorityEvidenceInput, buildRulesetProposal, evidenceClass, ProposalError, questionState, rulesetProposalInput, unifiedDiff, type EvidenceAnswer } from "./authority-evidence.ts";
 import { rulesetRules } from "./filings.ts";
 
-const draft = rulesetRules.parse(JSON.parse(readFileSync(new URL("../../../apps/api/test/fixtures/rulesets/tx-fixture-draft/v1.json", import.meta.url), "utf8")));
+// The API tests' draft fixture (apps/api/test/fixtures/rulesets/tx-fixture-draft).
+const draft = rulesetRules.parse({
+  jurisdiction: {
+    key: "tx-fixture-draft",
+    state: "TX",
+    authorityName: "Draft Fixture County (fictional)",
+    type: "county",
+  },
+  version: 1,
+  effectiveFrom: "2020-01-01",
+  effectiveTo: null,
+  sourceReference: "FICTIONAL test fixture: an authority whose requirements are draft. Not any real county's rules.",
+  applicability: { counties: ["Draft Fixture County"] },
+  service: { intervalMonths: 4 },
+  inspection: {
+    requiredFields: ["air_pressure"],
+    requiredPhotos: [{ key: "overview", minCount: 1 }],
+    technicianLicenseRequired: true,
+  },
+  filing: { deadlineDays: 14, warningDays: 5, autoSubmit: true },
+  submission: {
+    method: "email",
+    email: {
+      to: "filings@tx-fixture-draft.example",
+      subject: "Aerobic maintenance report, permit {permitNumber}",
+    },
+    fallback: "manual_export",
+    portalUrl: null,
+  },
+  customerCopy: { required: true },
+  confirmation: { mode: "manual_reference" },
+  profile: {
+    status: "draft",
+    sourcesCheckedOn: "2026-01-10",
+    requirementEffective: { date: "2020-01-01", basis: "FICTIONAL" },
+    sources: [
+      {
+        title: "FICTIONAL fixture source",
+        url: "https://tx-fixture-draft.example/rules",
+        retrievedOn: "2026-01-10",
+      },
+    ],
+    unresolved: ["FICTIONAL: whether the authority accepts reports by email"],
+  },
+});
 const OPEN = "FICTIONAL: whether the authority accepts reports by email";
 
 let n = 0;
@@ -28,16 +71,33 @@ function answer(over: Partial<EvidenceAnswer>): EvidenceAnswer {
   };
 }
 const acceptance = () => (["report_format", "signature", "contract_destination", "receipt_acceptance"] as const).map((topic) => answer({ topic, unresolvedItem: null }));
-const VERIFICATION = { confirmedWith: "OSSF clerk, Draft Fixture County", confirmedBy: "Justin", confirmedOn: "2026-03-01", method: "email" as const, evidence: "Reply email 2026-03-01" };
+const VERIFICATION = {
+  confirmedWith: "OSSF clerk, Draft Fixture County",
+  confirmedBy: "Justin",
+  confirmedOn: "2026-03-01",
+  method: "email" as const,
+  evidence: "Reply email 2026-03-01",
+};
 const input = (over: Record<string, unknown>) => rulesetProposalInput.parse({ effectiveFrom: "2026-03-02", ...over });
 
 describe("recording evidence", () => {
   it("needs who answered when the authority answered", () => {
-    const base = { kind: "call", obtainedOn: "2026-03-01", references: ["Call notes 2026-03-01"], answers: [{ question: "Q", topic: "deadline", answer: "A", outcome: "partial" }] };
+    const base = {
+      kind: "call",
+      obtainedOn: "2026-03-01",
+      references: ["Call notes 2026-03-01"],
+      answers: [{ question: "Q", topic: "deadline", answer: "A", outcome: "partial" }],
+    };
     const r = authorityEvidenceInput.safeParse(base);
     expect(r.success).toBe(false);
     expect(r.error!.issues.map((i) => i.path.join("."))).toEqual(["contactName", "contactOrganization"]);
-    expect(authorityEvidenceInput.safeParse({ ...base, contactName: "Clerk", contactOrganization: "County" }).success).toBe(true);
+    expect(
+      authorityEvidenceInput.safeParse({
+        ...base,
+        contactName: "Clerk",
+        contactOrganization: "County",
+      }).success,
+    ).toBe(true);
     // A provider's document or a published rule has no authority contact to name.
     expect(authorityEvidenceInput.safeParse({ ...base, kind: "accepted_report" }).success).toBe(true);
     expect(authorityEvidenceInput.safeParse({ ...base, references: [] }).success).toBe(false);
@@ -80,7 +140,13 @@ describe("proposing the next version", () => {
 
     const yes = answer({});
     const q = buildRulesetProposal(draft, [yes], input({ answerIds: [yes.id] }));
-    expect(q).toMatchObject({ fromVersion: 1, version: 2, filePath: "packages/compliance/rulesets/tx-fixture-draft/v2.json", stillOpen: [], verified: false });
+    expect(q).toMatchObject({
+      fromVersion: 1,
+      version: 2,
+      filePath: "packages/compliance/rulesets/tx-fixture-draft/v2.json",
+      stillOpen: [],
+      verified: false,
+    });
     const next = JSON.parse(q.json);
     expect(next.profile.status).toBe("draft");
     expect(next.profile.unresolved).toEqual([]);
@@ -93,9 +159,20 @@ describe("proposing the next version", () => {
   });
 
   it("lists contradicting answers as rule changes for a person to make, and never applies them", () => {
-    const wrong = answer({ outcome: "contradicts", field: "filing.deadlineDays", answer: "Ten days, not fourteen" });
+    const wrong = answer({
+      outcome: "contradicts",
+      field: "filing.deadlineDays",
+      answer: "Ten days, not fourteen",
+    });
     const p = buildRulesetProposal(draft, [wrong], input({ answerIds: [wrong.id], verification: VERIFICATION }));
-    expect(p.ruleChanges).toEqual([{ answerId: wrong.id, field: "filing.deadlineDays", question: wrong.question, answer: "Ten days, not fourteen" }]);
+    expect(p.ruleChanges).toEqual([
+      {
+        answerId: wrong.id,
+        field: "filing.deadlineDays",
+        question: wrong.question,
+        answer: "Ten days, not fourteen",
+      },
+    ]);
     expect(JSON.parse(p.json).filing.deadlineDays).toBe(14);
     expect(p.verified).toBe(false);
   });
@@ -109,7 +186,11 @@ describe("proposing the next version", () => {
     expect(p.refusals.map((r) => r.reason).join(" ")).toMatch(/report format, signature, where contracts go, receipt and acceptance/);
 
     // Provider documents covering every topic still are not the authority's confirmation.
-    const providerTopics = acceptance().map((a) => ({ ...a, kind: "accepted_report" as const, evidenceClass: "provider" as const }));
+    const providerTopics = acceptance().map((a) => ({
+      ...a,
+      kind: "accepted_report" as const,
+      evidenceClass: "provider" as const,
+    }));
     expect(buildRulesetProposal(draft, [yes, ...providerTopics], input({ answerIds: [yes.id], verification: VERIFICATION })).verified).toBe(false);
 
     // Everything confirmed, but no verification record: still a draft.
@@ -119,7 +200,11 @@ describe("proposing the next version", () => {
     const v = buildRulesetProposal(draft, all, input({ answerIds: [yes.id], verification: VERIFICATION }));
     expect(v.verified).toBe(true);
     const next = rulesetRules.parse(JSON.parse(v.json));
-    expect(next.profile).toMatchObject({ status: "verified", unresolved: [], verification: VERIFICATION });
+    expect(next.profile).toMatchObject({
+      status: "verified",
+      unresolved: [],
+      verification: VERIFICATION,
+    });
   });
 
   it("refuses fictional rules, unknown answers and an earlier start", () => {

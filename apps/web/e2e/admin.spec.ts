@@ -61,4 +61,31 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await expect(lcra.getByText("Draft", { exact: true })).toBeVisible();
   await expect(lcra.getByText(/^\d+ open$/)).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "tx-example-county" }).getByText("Example rules")).toBeVisible();
+
+  // Evidence: a provider's accepted report answers an open question, which stays open.
+  await lcra.getByRole("link", { name: /Lower Colorado River Authority/ }).click();
+  const acceptance = page.getByRole("region", { name: "Acceptance questions" });
+  await expect(acceptance.getByRole("row", { name: /Signature/ }).getByText("Open")).toBeVisible();
+  const record = page.getByRole("form", { name: "Record evidence" });
+  await record.getByRole("combobox", { name: "Kind", exact: true }).selectOption("accepted_report");
+  await record.getByRole("textbox", { name: "Date", exact: true }).fill("2026-01-15");
+  await record.getByLabel("Authority or company they speak for").fill("Example Aerobic Services (fictional)");
+  await record.getByLabel(/Where it is kept/).fill("lcra-report-2026-01.pdf and LCRA's reply");
+  await record.getByLabel("Question, exactly as asked or read").fill("Was the emailed cover sheet accepted?");
+  const firstOpen = record.getByRole("combobox", { name: "Open question it answers" }).locator("option").nth(1);
+  await record.getByRole("combobox", { name: "Open question it answers" }).selectOption({ index: 1 });
+  expect(await firstOpen.textContent()).toMatch(/cover sheet/);
+  await record.getByRole("combobox", { name: "Topic", exact: true }).selectOption("receipt_acceptance");
+  await record.getByLabel("Answer", { exact: true }).fill("LCRA replied 'received' to the provider.");
+  await record.getByRole("button", { name: "Save evidence" }).click();
+  const open = page.getByRole("region", { name: "Open questions" }).getByRole("article").first();
+  await expect(open.getByText("Provider evidence only")).toBeVisible();
+  await expect(acceptance.getByRole("row", { name: /Receipt and acceptance/ }).getByText("Provider evidence only")).toBeVisible();
+
+  // Using it in the next version keeps the question open and the profile a draft.
+  await open.getByLabel("Use in the next version").check();
+  await page.getByRole("button", { name: "Prepare v2" }).click();
+  const proposal = page.getByRole("region", { name: "Proposed version" });
+  await expect(proposal.getByText("Stays a draft")).toBeVisible();
+  await expect(proposal.getByText(/does not close the question/)).toBeVisible();
 });

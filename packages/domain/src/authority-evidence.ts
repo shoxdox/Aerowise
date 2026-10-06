@@ -303,7 +303,7 @@ export function buildRulesetProposal(current: RulesetRules, allAnswers: Evidence
   const stillOpen = profile.unresolved.filter((u) => !closing.has(u));
 
   let verified = false;
-  const next: RulesetRules = structuredClone(current);
+  const next = JSON.parse(JSON.stringify(current)) as RulesetRules;
   next.version = current.version + 1;
   next.effectiveFrom = input.effectiveFrom;
   next.effectiveTo = null;
@@ -359,7 +359,10 @@ export function unifiedDiff(a: string, b: string, fromName: string, toName: stri
   let i = 0;
   let j = 0;
   while (i < x.length || j < y.length) {
-    if (i < x.length && j < y.length && x[i] === y[j]) ops.push({ op: " ", line: x[i++]! }), j++;
+    if (i < x.length && j < y.length && x[i] === y[j]) {
+      ops.push({ op: " ", line: x[i++]! });
+      j++;
+    }
     // Removed lines before added ones, as diff tools show them.
     else if (i < x.length && (j === y.length || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) ops.push({ op: "-", line: x[i++]! });
     else ops.push({ op: "+", line: y[j++]! });

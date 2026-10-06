@@ -47,8 +47,7 @@ function Answer({ a, selected, onToggle }: { a: EvidenceAnswer; selected?: boole
       )}
       <strong>{ANSWER_OUTCOME_LABELS[a.outcome]}</strong> · {EVIDENCE_CLASS_LABELS[a.evidenceClass]} ({EVIDENCE_KIND_LABELS[a.kind].toLowerCase()}, {day(a.obtainedOn)}
       {a.contactName ? `, ${a.contactName}` : ""}
-      {a.contactOrganization ? `, ${a.contactOrganization}` : ""})
-      <div className="muted">Asked: {a.question}</div>
+      {a.contactOrganization ? `, ${a.contactOrganization}` : ""})<div className="muted">Asked: {a.question}</div>
       <div>{a.answer}</div>
       {a.field && <div className="muted">Rule field: {a.field}</div>}
     </li>
@@ -143,7 +142,7 @@ function RecordEvidence({ page, onSaved }: { page: RulesetEvidencePage; onSaved:
         </label>
       </div>
       {answers.map((a, i) => (
-        <fieldset key={i} className="stack">
+        <fieldset key={i} className="stack answer-fields">
           <legend>Question {i + 1}</legend>
           <label>
             Question, exactly as asked or read
@@ -228,9 +227,7 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
           body: {
             answerIds: selected,
             effectiveFrom: get("effectiveFrom"),
-            verification: verify
-              ? { confirmedWith: get("confirmedWith"), confirmedBy: get("confirmedBy"), confirmedOn: get("confirmedOn"), method: get("method"), evidence: get("evidence") }
-              : null,
+            verification: verify ? { confirmedWith: get("confirmedWith"), confirmedBy: get("confirmedBy"), confirmedOn: get("confirmedOn"), method: get("method"), evidence: get("evidence") } : null,
           },
         }),
       );
@@ -287,7 +284,7 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
       <button type="submit">Prepare v{page.version + 1}</button>
       {error && <p className="error">{error}</p>}
       {result && (
-        <div className="stack" aria-label="Proposed version">
+        <section className="stack" aria-label="Proposed version">
           <p>
             <strong>{result.filePath}</strong> — {result.verified ? <span className="badge ok">Proposed as verified</span> : <span className="badge warn">Stays a draft</span>}
           </p>
@@ -333,7 +330,7 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
             <summary className="small">The whole v{result.version} file</summary>
             <pre className="file small">{result.json}</pre>
           </details>
-        </div>
+        </section>
       )}
     </form>
   );
@@ -355,7 +352,13 @@ export default function AuthorityEvidencePage() {
       </p>
       <h1>{data.authorityName}</h1>
       <p className="row">
-        {data.verified ? <VerifiedBadge verified={data.verified} /> : data.profileStatus === "draft" ? <span className="badge warn">Draft</span> : <span className="badge inactive">Example rules</span>}
+        {data.verified ? (
+          <VerifiedBadge verified={data.verified} />
+        ) : data.profileStatus === "draft" ? (
+          <span className="badge warn">Draft</span>
+        ) : (
+          <span className="badge inactive">Example rules</span>
+        )}
         <span className="muted small">
           {data.key} · newest v{data.version} from {day(data.effectiveFrom)} · {data.versionInForce ? `v${data.versionInForce} in force today` : "no version in force today"}
         </span>
@@ -428,9 +431,7 @@ export default function AuthorityEvidencePage() {
                 {day(e.obtainedOn)} · recorded by {e.recordedBy} against v{e.rulesetVersion}
               </span>
             </div>
-            {(e.contactName || e.contactOrganization) && (
-              <p className="small">{[e.contactName, e.contactRole, e.contactOrganization, e.contactDetail].filter(Boolean).join(" · ")}</p>
-            )}
+            {(e.contactName || e.contactOrganization) && <p className="small">{[e.contactName, e.contactRole, e.contactOrganization, e.contactDetail].filter(Boolean).join(" · ")}</p>}
             <ul className="small">
               {e.references.map((r) => (
                 <li key={r}>{r}</li>

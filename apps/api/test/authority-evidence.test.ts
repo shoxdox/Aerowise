@@ -119,7 +119,12 @@ describe("authority evidence", () => {
     expect(JSON.parse(p.json).profile.status).toBe("draft");
     expect(p.diff).toContain(`-      "${OPEN}"`);
 
-    const versions = await ctx.db.selectFrom("jurisdictionRulesets as r").innerJoin("jurisdictions as j", "j.id", "r.jurisdictionId").select("r.version").where("j.key", "=", "tx-fixture-draft").execute();
+    const versions = await ctx.db
+      .selectFrom("jurisdictionRulesets as r")
+      .innerJoin("jurisdictions as j", "j.id", "r.jurisdictionId")
+      .select("r.version")
+      .where("j.key", "=", "tx-fixture-draft")
+      .execute();
     expect(versions).toEqual([{ version: 1 }]);
     const audit = await ctx.db.selectFrom("platformAuditEvents").select("action").where("action", "!=", "admin.signed_in").orderBy("id").execute();
     expect(audit.map((a) => a.action)).toEqual(["authority_evidence.recorded", "ruleset.proposal_prepared"]);
