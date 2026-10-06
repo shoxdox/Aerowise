@@ -103,15 +103,24 @@ describe("prospect demos", () => {
 
   it("turn into a real trial company with nothing synthetic in it, and the demo ends", async () => {
     const { admin, demo, token } = await setup();
+    const sendsBefore = await ctx.db.selectFrom("emailSends").select("id").execute();
     const res = await admin.post(`/admin/prospect-demos/${demo.id}/convert`, {});
     expect(res.statusCode).toBe(201);
     const trialId = res.json().organizationId;
     const trial = await ctx.db.selectFrom("organizations").select(["name", "demo", "demoProspect", "demoExpiresAt", "subscriptionState", "serviceCounties"]).where("id", "=", trialId).executeTakeFirstOrThrow();
     expect(trial).toEqual({ name: "Lone Star Aerobic", demo: false, demoProspect: null, demoExpiresAt: null, subscriptionState: "trial", serviceCounties: ["Travis County", "Hays County"] });
-    for (const table of ["customers", "sites", "contacts", "contracts", "jobs", "inspections", "filings", "invoices", "renewals", "memberships", "invitations", "backgroundTasks"] as const) {
+    for (const table of ["customers", "sites", "contacts", "contracts", "jobs", "inspections", "filings", "invoices", "renewals", "memberships", "invitations", "backgroundTasks", "emailSends", "smsMessages", "attachments", "reports"] as const) {
       const rows = await ctx.db.selectFrom(table).select("organizationId").where("organizationId", "=", trialId).execute();
       expect(rows, table).toEqual([]);
     }
+    // The step sends nothing: no invitation, no email, nothing queued, for either company.
+    expect(await ctx.db.selectFrom("emailSends").select("id").where("organizationId", "=", trialId).execute()).toEqual([]);
+    expect(await ctx.db.selectFrom("backgroundTasks").select("id").where("organizationId", "=", demo.id).execute()).toEqual([]);
+    expect(await ctx.db.selectFrom("emailSends").select("id").execute()).toEqual(sendsBefore);
+    // The demo stays a demo company (it can never become real) and has ended and been emptied.
+    const after = await ctx.db.selectFrom("organizations").select(["demo", "demoExpiresAt"]).where("id", "=", demo.id).executeTakeFirstOrThrow();
+    expect(after.demo).toBe(true);
+    expect(after.demoExpiresAt!.getTime()).toBeLessThanOrEqual(Date.now());
     expect(await ctx.db.selectFrom("customers").select("id").where("organizationId", "=", demo.id).execute()).toEqual([]);
     expect((await enter(token)).statusCode).toBe(404);
     expect(await audit(demo.id)).toEqual(["prospect_demo.created", "prospect_demo.converted"]);
