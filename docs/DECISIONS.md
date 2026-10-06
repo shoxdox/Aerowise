@@ -547,3 +547,9 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Now:** `backup.sh` records every table's row count just before the dump (`db-<stamp>.counts`, kept and copied to R2 with the dump), and `restore-check.sh` fails when a table that had rows then has none restored. Empty-at-backup tables are fine; a company created after the backup does not fail the check either. Comparing with the live database alone would fail on any table whose first row arrived after the backup.
 - The counts are taken a moment before `pg_dump`'s own snapshot, not in it. A table emptied in that moment (say, its last expired session deleted) would show as missing; that is rare and clears on the next backup, so it was preferred over holding an exported snapshot open across the dump.
 
+## 2026-10-06 · W7.2 QuickBooks against an Intuit sandbox
+
+- **`quickbooks` joins `DEMO_LIVE_SERVICES`, sandbox only.** The demo uses the real Intuit app only with `QUICKBOOKS_ENVIRONMENT=sandbox`, and staging refuses `production` outright, so staging can never connect a real company's books.
+- **Every QuickBooks failure names Intuit's request id** (`intuit_tid`, shown as "Intuit ref …" in the stored sync error). Intuit support asks for it, and Intuit's app review asks whether apps capture it.
+- **Production waits on Intuit's app review.** Its questionnaire answers and the URLs it asks for are in `docs/engineering/INTEGRATIONS.md`. The privacy and licence URLs depend on W8.3's pages.
+

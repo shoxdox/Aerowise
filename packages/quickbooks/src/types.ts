@@ -139,7 +139,9 @@ export class QuickBooksError extends Error {
     readonly kind: QuickBooksErrorKind,
     message: string,
     readonly code?: string,
+    /** Intuit's id for the request (the intuit_tid header), which Intuit support asks for. */
+    readonly intuitTid?: string,
   ) {
-    super(message);
+    super(intuitTid ? `${message} (Intuit ref ${intuitTid})` : message);
   }
 }

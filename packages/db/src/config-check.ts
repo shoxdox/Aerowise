@@ -58,6 +58,10 @@ export function configProblems(env: Env): string[] {
   if (deploy === "staging" && set("STRIPE_SECRET_KEY") && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY!.trim())) {
     problems.push("STRIPE_SECRET_KEY must be a test-mode key (sk_test_ or rk_test_) on staging");
   }
+  // Staging's QuickBooks connects only to Intuit's sandbox companies, never a real company's books.
+  if (deploy === "staging" && set("QUICKBOOKS_CLIENT_ID") && env.QUICKBOOKS_ENVIRONMENT?.trim() === "production") {
+    problems.push('QUICKBOOKS_ENVIRONMENT must be "sandbox" on staging');
+  }
   if (deploy === "production" && set("DEMO_LIVE_SERVICES")) problems.push("DEMO_LIVE_SERVICES is for the staging demo only; leave it empty in production");
   if (deploy === "staging" && set("RESEND_API_KEY")) missing(["EMAIL_REDIRECT_TO"], "on staging when Resend is configured, so test email never reaches a real authority or customer");
   return problems;

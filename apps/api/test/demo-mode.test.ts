@@ -75,6 +75,25 @@ describe("demo mode providers", () => {
     expect([...demoLiveServicesFromEnv({ DEMO_LIVE_SERVICES: "" })]).toEqual([]);
   });
 
+  it("uses real QuickBooks in demo mode only when DEMO_LIVE_SERVICES names it and it points at Intuit's sandbox", () => {
+    const sandbox = { ...realKeys, QUICKBOOKS_ENVIRONMENT: "sandbox", DEMO_MODE: "true" };
+    const p = providersFromEnv({ db: ctx.db, store, env: { ...sandbox, DEMO_LIVE_SERVICES: "quickbooks" }, production: true });
+    expect(p.demoLive).toEqual(["quickbooks"]);
+    expect(p.quickbooks?.provider).toBeInstanceOf(IntuitQuickBooksProvider);
+    expect((p.quickbooks?.provider as IntuitQuickBooksProvider).environment).toBe("sandbox");
+    expect(p.payments).toBeInstanceOf(TestPaymentProvider);
+    expect(p.sms?.provider).toBeInstanceOf(TestSmsProvider);
+    // Not listed: the stand-in.
+    expect(providersFromEnv({ db: ctx.db, store, env: sandbox, production: true }).quickbooks?.provider).toBeInstanceOf(TestQuickBooksProvider);
+    // A real company's books, or no Intuit app, refuses to start.
+    expect(() => demoLiveServicesFromEnv({ ...realKeys, DEMO_LIVE_SERVICES: "quickbooks" })).toThrow(/QUICKBOOKS_ENVIRONMENT must be "sandbox"/);
+    expect(() => demoLiveServicesFromEnv({ DEMO_LIVE_SERVICES: "quickbooks", QUICKBOOKS_ENVIRONMENT: "sandbox" })).toThrow(/QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET/);
+    // Both together.
+    const both = providersFromEnv({ db: ctx.db, store, env: { ...sandbox, STRIPE_SECRET_KEY: "sk_test_x", DEMO_LIVE_SERVICES: "stripe,quickbooks" }, production: true });
+    expect(both.demoLive).toEqual(["stripe", "quickbooks"]);
+    expect(both.payments).toBeInstanceOf(StripeProvider);
+  });
+
   it("uses the real services when demo mode is off", () => {
     const p = providersFromEnv({ db: ctx.db, store, env: realKeys, production: true });
     expect(p.demo).toBe(false);
