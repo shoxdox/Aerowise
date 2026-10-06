@@ -1,0 +1,118 @@
+{
+  "jurisdiction": {
+    "key": "tx-kaufman-county",
+    "state": "TX",
+    "authorityName": "Kaufman County Development Services, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Kaufman County Development Services' OSSF page and FAQs, 30 TAC 285.7 and TCEQ's OSSF maintenance page. kaufmancounty.net timed out on most fetches that day, so the permit application and county order were not read. Kaufman County publishes no way to submit maintenance reports or contracts. See docs/jurisdictions/tx-kaufman-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "No Kaufman County OSSF order could be read, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Kaufman County: On-Site Sewage Facilities",
+        "url": "https://www.kaufmancounty.net/355/On-Site-Sewage-Facilities",
+        "retrievedOn": "2026-10-06",
+        "note": "Phone (469) 376-4127; 101 N. Houston Street, Kaufman, TX 75142. Nothing on coverage, contracts, reports, frequency, deadlines or fees. Read through a page summarizer."
+      },
+      {
+        "title": "Kaufman County FAQ: Is a maintenance contract required on my septic system?",
+        "url": "https://www.kaufmancounty.net/Faq.aspx?QID=173",
+        "retrievedOn": "2026-10-06",
+        "note": "'Kaufman County requires a maintenance contract be kept on all aerobic systems. These are usually annual and must be submitted to Development Services 30 days prior to the expiration of previous contract to avoid any lapse in coverage.' No channel. Read through a page summarizer."
+      },
+      {
+        "title": "Kaufman County FAQ: What is OSSF in Kaufman County?",
+        "url": "https://www.kaufmancounty.net/FAQ.aspx?QID=169",
+        "retrievedOn": "2026-10-06",
+        "note": "Questions on permitting, inspections or licensing go to Publicworks@kaufmancounty.net (a general contact; nothing says it takes maintenance reports). Oak Ridge and Terrell city limits are their own Authorized Agents. Read through a page summarizer."
+      },
+      {
+        "title": "Kaufman County: Certificate of OSSF Requiring Maintenance",
+        "url": "https://www.kaufmancounty.net/404/Certificate-of-OSSF-Requiring-Maintenanc",
+        "retrievedOn": "2026-10-06",
+        "note": "A notarized certificate filed in the County Clerk's deed records, then emailed with its cover page to publicworks@kaufmancounty.net. A one-time property filing, not a maintenance report or contract channel."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Kaufman County publishes no way to submit maintenance inspection reports or contracts. Publicworks@kaufmancounty.net is published for general OSSF questions and the deed-record certificate, not as a report or contract channel, so inspection filings are held for review and contracts are filed by hand.",
+      "kaufmancounty.net timed out on most fetches on 2026-10-06; the OSSF permit application, contact page and any county OSSF order were not read. Any county-specific frequency, deadline, report contents, fees and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+      "Oak Ridge and Terrell run their own programs inside their city limits; whether any other city does is not published. Every site needs a reviewed assignment.",
+      "The county pages read for this profile came through a page summarizer; their quotes have not been compared with the pages in a browser.",
+      "Kaufman County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Kaufman"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Kaufman County Development Services covers the county outside Oak Ridge and Terrell city limits, which are their own authorized agents; whether other cities run their own program is not published. Check city limits; if unsure, call Development Services at (469) 376-4127. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Kaufman County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Kaufman County's FAQ (read 2026-10-06): contracts on aerobic systems, usually annual, 'must be submitted to Development Services 30 days prior to the expiration of previous contract'. No channel is published. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. No Kaufman County rule on this could be read."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Kaufman County describes no reply to maintenance reports or contracts."
+  }
+}

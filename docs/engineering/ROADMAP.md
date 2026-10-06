@@ -318,8 +318,8 @@ Priority 1 is whatever the first design partner works in; it jumps the queue whe
 | W6.C6 | Johnson County | 3 | draft (#73); held for review until the county names how reports are submitted; its OSSF rules could not be found; 3 questions in docs/jurisdictions/tx-johnson-county.md |
 | W6.C7 | Ellis County | 3 | draft (#75); held for review until the county names how reports are submitted; its regulations were unreadable (host timed out); 7 questions in docs/jurisdictions/tx-ellis-county.md |
 | W6.C8 | Collin County | 3 | draft (#74); filed by hand through the county's report portal; every 4 months; 4 questions in docs/jurisdictions/tx-collin-county.md |
-| W6.C9 | Denton County (and the City of Denton) | 3 | draft profiles (this PR): Denton County reports go to ossfinspections@dentoncounty.gov when the office presses Send (the county form names it); its contracts and all City of Denton filings are held for review, no channel published; questions in docs/jurisdictions/tx-denton-county.md and tx-city-of-denton.md |
-| W6.C10 | Kaufman County | 3 | not started |
+| W6.C9 | Denton County (and the City of Denton) | 3 | draft (#76): Denton County reports go to ossfinspections@dentoncounty.gov when the office presses Send (the county form names it); its contracts and all City of Denton filings are held for review, no channel published; questions in docs/jurisdictions/tx-denton-county.md and tx-city-of-denton.md |
+| W6.C10 | Kaufman County | 3 | draft profile (this PR); held for review, no report or contract channel published; most county pages timed out; 6 questions in docs/jurisdictions/tx-kaufman-county.md |
 | W6.C11 | Bell County | 4 | not started |
 | W6.C12 | McLennan County | 4 | not started |
 | W6.C13 | Hill County | 4 | not started |
