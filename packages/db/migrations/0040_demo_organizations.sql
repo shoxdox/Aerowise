@@ -5,6 +5,16 @@
 -- company's records can never become demo data or the other way around.
 alter table organizations add column demo boolean not null default false;
 
+-- The demo company seeded before this migration (pnpm db:seed, nightly db:reseed-demo) is
+-- recognized from its own records: the seed's company name with the seed's owner login.
+-- Done before the flag is locked below.
+update organizations o set demo = true
+where o.name = 'Hill Country Aerobic Services (demo)'
+  and exists (
+    select 1 from memberships m join users u on u.id = m.user_id
+    where m.organization_id = o.id and m.role = 'owner' and lower(u.email) = 'owner@example.com'
+  );
+
 create function organizations_demo_fixed() returns trigger language plpgsql as $$
 begin
   if new.demo is distinct from old.demo then
@@ -26,6 +36,11 @@ create function fictional_phone(phone text) returns boolean language sql immutab
   select phone is null or btrim(phone) = ''
     or regexp_replace(phone, '[^0-9]', '', 'g') ~ '^1?[2-9][0-9]{2}55501[0-9]{2}$'
 $$;
+
+-- The demo company seeded before this migration gave contacts phones outside the fictional
+-- range; they move into it, so the checks below hold for its existing records too.
+update contacts c set phone = '(512) 555-01' || lpad((abs(hashtext(c.id::text)) % 100)::text, 2, '0')
+where not fictional_phone(c.phone) and exists (select 1 from organizations o where o.id = c.organization_id and o.demo);
 
 create function demo_contact_fictional() returns trigger language plpgsql as $$
 declare
