@@ -5,7 +5,7 @@
 
 export const HERO = {
   title: "Aerobic septic maintenance, run in one place.",
-  body: "Aerowise schedules your Texas aerobic maintenance visits, walks technicians through each inspection on their phone, and prepares each county report so nothing is filed late.",
+  body: "Aerowise schedules your Texas aerobic maintenance visits, walks technicians through each inspection on their phone, and keeps each county report and its deadline in view until the authority acknowledges it.",
 };
 
 export const PROBLEM = {
@@ -22,7 +22,7 @@ export const STEPS = {
   items: [
     { title: "Bring your customers", body: "Import your spreadsheet of customers, sites and contracts. Aerowise works out who is due and when." },
     { title: "Run the route", body: "Technicians get the day's stops on their phone and fill in each inspection, offline if they need to." },
-    { title: "File on time", body: "Aerowise prepares the report in the authority's own format. Your licensed maintenance provider reviews and signs every report before it is sent." },
+    { title: "File on time", body: "Aerowise prepares each report with the fields the authority's rules ask for, and fills in the official form where an authority has one (LCRA's cover sheet so far). Your licensed maintenance provider reviews and signs every report before it is sent." },
     { title: "Get paid and renew", body: "Invoices, renewals and a customer portal follow from the same records." },
   ],
 };
