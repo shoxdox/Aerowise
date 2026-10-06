@@ -32,9 +32,11 @@ test("a new company is created in /admin, its owner joins and invites a technici
   await page.getByRole("button", { name: "Send owner invitation" }).click();
   const ownerLink = await page.getByLabel("Invitation link").inputValue();
 
-  // The owner joins and lands on the office home, with the first-run checklist.
+  // The owner joins, accepts the terms (W8.3), and lands on the office home, with the first-run checklist.
   const owner = await accept(browser, ownerLink, "paula-secret-1");
   await owner.waitForURL("**/inbox");
+  await owner.getByLabel("I have read and accept them").check();
+  await owner.getByRole("button", { name: "Accept and continue" }).click();
   await expect(owner.getByRole("heading", { name: "Get set up" })).toBeVisible();
   await expect(owner.getByTestId("onboarding-technicians")).toContainText("Invite a technician");
 
