@@ -194,3 +194,15 @@ export const subscriptionOverview = z.object({
   ),
 });
 export type SubscriptionOverview = z.infer<typeof subscriptionOverview>;
+
+/** The highest platform fee an admin can set: 10% of each homeowner payment. */
+export const PLATFORM_FEE_MAX_BPS = 1000;
+
+/** Aerowise's fee on a homeowner payment, rounded down to the cent; 0 when no fee is set. */
+export function platformFeeCents(amountCents: number, feeBps: number): number {
+  if (feeBps <= 0 || amountCents <= 0) return 0;
+  return Math.floor((amountCents * feeBps) / 10_000);
+}
+
+export const platformFeeInput = z.object({ platformFeeBps: z.number().int().min(0).max(PLATFORM_FEE_MAX_BPS) });
+export type PlatformFeeInput = z.infer<typeof platformFeeInput>;
