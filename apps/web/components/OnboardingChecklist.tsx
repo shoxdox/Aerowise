@@ -2,11 +2,12 @@
 
 import type { OnboardingChecklist as Checklist } from "@aerowise/domain";
 import Link from "next/link";
-import { useLoad } from "@/components/useLoad";
 
-/** The first-run checklist on the office home. Hidden once every required step is done. */
-export function OnboardingChecklist() {
-  const { data } = useLoad<Checklist>("/onboarding");
+/**
+ * The first-run checklist on the office home. Hidden once every required step is done. The
+ * inbox loads it with its own data so the page appears whole instead of jumping down.
+ */
+export function OnboardingChecklist({ data }: { data: Checklist | null }) {
   if (!data || data.complete) return null;
   const required = data.items.filter((i) => !i.optional);
   const done = required.filter((i) => i.done).length;

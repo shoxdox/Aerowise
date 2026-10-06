@@ -1,14 +1,21 @@
 "use client";
 
-import type { DataExport } from "@aerowise/domain";
+import { roleHasPermission, type DataExport } from "@aerowise/domain";
 import { useEffect, useState } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
+import { useSession } from "@/lib/session";
 
 const size = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
 export default function ExportPage() {
+  const me = useSession();
+  if (!roleHasPermission(me.role, "data:export")) return <p className="muted">Only the owner can export the company&apos;s data.</p>;
+  return <Exports />;
+}
+
+function Exports() {
   const { data, reload } = useLoad<{ items: DataExport[] }>("/exports");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

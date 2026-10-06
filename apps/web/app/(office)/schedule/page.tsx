@@ -110,7 +110,7 @@ export default function SchedulePage() {
         <button className="secondary" onClick={() => setPicked(addDays(selected, -7))}>
           ← Week
         </button>
-        <input type="date" value={selected} onChange={(e) => e.target.value && setPicked(e.target.value)} />
+        <input type="date" aria-label="Day" value={selected} onChange={(e) => e.target.value && setPicked(e.target.value)} />
         <button className="secondary" onClick={() => setPicked(addDays(selected, 7))}>
           Week →
         </button>

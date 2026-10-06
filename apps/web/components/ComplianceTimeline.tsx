@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
+import { when } from "@/lib/format";
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 
 /** The site's compliance ledger, newest first. Report links are signed and short-lived, so they are fetched fresh with the list. */
 export function ComplianceTimeline({ siteId, editable = false }: { siteId: string; editable?: boolean }) {
