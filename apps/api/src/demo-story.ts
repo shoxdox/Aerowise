@@ -73,7 +73,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; no
   const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3000";
   // Not production: every outside service is a stand-in and the fictional rules are loaded.
   const app = await buildApp({ db, store, now, mail, appUrl, production: false, loginRateLimit: 1000, logger: false });
-  const worker = () => drainTasks({ db, store, now, mail, appUrl });
+  // Only the demo company's own tasks: any other company's stay queued for the real worker.
+  const worker = () => drainTasks({ db, store, now, mail, appUrl }, "demo-story", org.id);
   try {
     const [ownerUser, officeUser, techUser] = DEMO_USERS.map((u) => u.email);
     const owner = await signIn(app, ownerUser!);

@@ -217,7 +217,17 @@ describe("demo reseed", () => {
     const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
     await reseedDemo(ctx.db, { filesDir: files });
     const store = new LocalDiskStore(files);
+    // Another company on the same server, with work queued for the real worker.
+    const other = await createOrg(ctx.db, "Real company on the demo server");
+    const queued = await ctx.db
+      .insertInto("backgroundTasks")
+      .values({ organizationId: other.id, kind: "email.send", payload: "{}", dedupeKey: null, runAt: new Date(0), lockedAt: null, lockedBy: null, lastError: null, completedAt: null, failedAt: null })
+      .returning("id")
+      .executeTakeFirstOrThrow();
     expect(await playDemoStory({ db: ctx.db, store })).toBe(true);
+    // The story ran only the demo company's tasks.
+    const untouched = await ctx.db.selectFrom("backgroundTasks").select(["attempts", "completedAt", "lockedBy"]).where("id", "=", queued.id).executeTakeFirstOrThrow();
+    expect(untouched).toEqual({ attempts: 0, completedAt: null, lockedBy: null });
     expect(await playDemoStory({ db: ctx.db, store })).toBe(false); // already played
 
     const filings = await ctx.db.selectFrom("filings").select(["status", "confirmationReference"]).where("inspectionId", "is not", null).execute();
@@ -230,7 +240,7 @@ describe("demo reseed", () => {
     const payments = await ctx.db.selectFrom("payments").select("status").execute();
     expect(payments.map((p) => p.status)).toContain("succeeded");
     // Everything went to the stand-ins: the outbox, never a real provider.
-    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).executeTakeFirstOrThrow();
+    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).executeTakeFirstOrThrow();
     expect(org.stripeAccountId).toMatch(/^acct_test_/);
   });
 
