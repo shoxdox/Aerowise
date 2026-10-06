@@ -240,7 +240,7 @@ describe("jurisdiction requirements", () => {
     expect((await s.api.post(`/filings/${f.id}/confirm`, { reference: "x" })).statusCode).toBe(409);
 
     const list = (await s.api.get("/jurisdictions")).json().items;
-    expect(list.map((j: { key: string }) => j.key).sort()).toEqual(["tx-example-county", "tx-harris-county-oce", "tx-lcra-ossf"]);
+    expect(list.map((j: { key: string }) => j.key).sort()).toEqual(["tx-example-county", "tx-harris-county-oce", "tx-lcra-ossf", "tx-williamson-county"]);
     const example = list.find((j: { key: string }) => j.key === "tx-example-county");
     expect(example).toMatchObject({ rulesetVersion: 1, counties: ["Example County"], assignment: "county", profileStatus: "fictional" });
     // An office override has to say what it rests on.
@@ -285,8 +285,9 @@ describe("rulesets", () => {
     }
     // The real authorities are drafts with their open questions listed, so none files on its own.
     const real = bundledRulesets().filter((r) => r.profile);
-    expect(real.map((r) => r.profile!.status)).toEqual(["draft", "draft"]);
+    expect(real.map((r) => r.jurisdiction.key).sort()).toEqual(["tx-harris-county-oce", "tx-lcra-ossf", "tx-williamson-county"]);
     for (const r of real) {
+      expect(r.profile!.status).toBe("draft");
       expect(r.profile!.unresolved.length).toBeGreaterThan(0);
       expect(r.filing.autoSubmit).toBe(false);
     }
