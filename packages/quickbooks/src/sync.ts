@@ -20,7 +20,6 @@ export function candidateOf(c: QboCustomer, score = 1, reasons: MatchReason[] = 
 }
 export type StoredCandidate = ReturnType<typeof candidateOf>;
 
-const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dateIn = (d: Date, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
 /** Writes a link's outcome. Every outcome clears what the previous one left. */
@@ -183,13 +182,6 @@ class SyncRun {
       where p.organization_id = ${org} and p.status = 'succeeded'
         and not exists (select 1 from quickbooks_links l where l.organization_id = p.organization_id and l.entity_type = 'payment' and l.entity_id = p.id)
       on conflict do nothing`.execute(db);
-    // Payments refunded in Aerowise after they were sent (links from before this check hold the full amount).
-    await sql`
-      update quickbooks_links l set status = 'queued', updated_at = ${this.ctx.now()}
-      from payments p
-      where l.organization_id = ${org} and l.entity_type = 'payment' and l.status = 'synced' and l.external_id is not null
-        and p.organization_id = l.organization_id and p.id = l.entity_id
-        and coalesce(l.pushed_hash, p.amount_cents::text) <> (p.amount_cents - p.refunded_cents)::text`.execute(db);
     // Invoices voided in Aerowise after they were sent.
     await sql`
       update quickbooks_links l set status = 'queued', updated_at = ${this.ctx.now()}
@@ -428,18 +420,11 @@ class SyncRun {
     const p = await db
       .selectFrom("payments as p")
       .innerJoin("invoices as i", (j) => j.onRef("i.id", "=", "p.invoiceId").onRef("i.organizationId", "=", "p.organizationId"))
-      .select(["p.id", "p.status", "p.amountCents", "p.refundedCents", "p.method", "p.reference", "p.providerPaymentId", "p.receivedOn", "p.succeededAt", "p.invoiceId", "i.customerId", "i.number"])
+      .select(["p.id", "p.status", "p.amountCents", "p.method", "p.reference", "p.providerPaymentId", "p.receivedOn", "p.succeededAt", "p.invoiceId", "i.customerId", "i.number"])
       .where("p.organizationId", "=", this.org)
       .where("p.id", "=", link.entityId)
       .executeTakeFirst();
     if (!p || p.status !== "succeeded") return this.write.ignored(link, "Only cleared payments are sent to QuickBooks");
-    // What the customer kept paying: refunds come off the payment, so QuickBooks shows the balance Aerowise does.
-    const net = p.amountCents - p.refundedCents;
-    const label = PAYMENT_METHOD_LABELS[p.method];
-    const refunded = p.refundedCents > 0 ? `; ${usd(p.refundedCents)} refunded, ${usd(net)} kept` : "";
-    const privateNote = `Aerowise ${label.toLowerCase()} payment on INV-${p.number}${p.providerPaymentId ? ` (Stripe ${p.providerPaymentId})` : ""}${refunded}`;
-    if (link.externalId) return this.refundPayment(link, p.invoiceId, net, privateNote);
-    if (net === 0) return this.write.ignored(link, "Refunded in full before it reached QuickBooks");
     const invLink = await this.link("invoice", p.invoiceId);
     if (invLink?.status === "ignored") return this.write.ignored(link, "The invoice is not synced to QuickBooks");
     if (invLink?.status !== "synced" || !invLink.externalId) return this.write.waiting(link, "Waiting for the invoice to reach QuickBooks");
@@ -451,36 +436,22 @@ class SyncRun {
       await this.write.conflict(invLink, "deleted_in_quickbooks", {});
       return this.write.waiting(link, "The invoice was deleted in QuickBooks");
     }
-    if (net > remote.balanceCents && !link.force) {
-      return this.write.conflict(link, "payment_mismatch", { paymentCents: net, balanceCents: remote.balanceCents, docNumber: remote.docNumber });
+    if (p.amountCents > remote.balanceCents && !link.force) {
+      return this.write.conflict(link, "payment_mismatch", { paymentCents: p.amountCents, balanceCents: remote.balanceCents, docNumber: remote.docNumber });
     }
+    const label = PAYMENT_METHOD_LABELS[p.method];
     const created = await this.company.createPayment(
       {
         customerId: custLink.externalId,
         invoiceId: invLink.externalId,
-        amountCents: net,
+        amountCents: p.amountCents,
         txnDate: p.receivedOn ?? dateIn(p.succeededAt ?? this.ctx.now(), this.timezone),
         reference: p.reference ?? (p.providerPaymentId ? p.providerPaymentId.slice(-21) : null),
-        privateNote,
+        privateNote: `Aerowise ${label.toLowerCase()} payment on INV-${p.number}${p.providerPaymentId ? ` (Stripe ${p.providerPaymentId})` : ""}`,
       },
       `aw-${link.id}-${link.generation}`,
     );
-    return this.write.synced(link, { externalId: created.id, syncToken: created.syncToken, pushedHash: String(net) });
-  }
-
-  /** A payment already in QuickBooks that was refunded since: lower it to what was kept, or delete it when nothing was. */
-  private async refundPayment(link: Link, invoiceId: string, net: number, privateNote: string) {
-    const remote = await this.company.getPayment(link.externalId!);
-    if (!remote) return this.write.ignored(link, "The payment was deleted in QuickBooks");
-    if (net === 0) {
-      await this.company.deletePayment(remote.id, remote.syncToken);
-      return this.write.synced(link, { pushedHash: "0", remoteState: "deleted" });
-    }
-    if (remote.amountCents === net) return this.write.synced(link, { syncToken: remote.syncToken, pushedHash: String(net) });
-    const invLink = await this.link("invoice", invoiceId);
-    if (!invLink?.externalId) return this.write.waiting(link, "Waiting for the invoice to reach QuickBooks");
-    const updated = await this.company.updatePayment(remote.id, remote.syncToken, { invoiceId: invLink.externalId, amountCents: net, privateNote });
-    return this.write.synced(link, { syncToken: updated.syncToken, pushedHash: String(net) });
+    return this.write.synced(link, { externalId: created.id, syncToken: created.syncToken });
   }
 }
 

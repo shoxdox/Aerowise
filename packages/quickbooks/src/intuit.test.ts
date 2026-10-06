@@ -50,27 +50,6 @@ describe("Intuit OAuth", () => {
 describe("Intuit company API", () => {
   const company = (f: ReturnType<typeof fakeFetch>) => new IntuitQuickBooksProvider(config, f.fn).company("123", "token");
 
-  it("lowers a payment with a full update that keeps its other fields, and deletes one", async () => {
-    const current = { Id: "77", SyncToken: "2", TxnDate: "2026-03-01", PaymentRefNum: "1042", CustomerRef: { value: "9" }, TotalAmt: 10, MetaData: { CreateTime: "x" }, Line: [] };
-    const f = fakeFetch({ body: { Payment: current } }, { body: { Payment: { ...current, SyncToken: "3", TotalAmt: 8 } } }, { body: { Payment: { Id: "77", status: "Deleted" } } });
-    const c = company(f);
-    expect(await c.updatePayment("77", "2", { invoiceId: "41", amountCents: 800, privateNote: "refunded" })).toEqual({ id: "77", syncToken: "3" });
-    const sent = JSON.parse(String(f.calls[1]!.init.body));
-    expect(sent).toEqual({
-      Id: "77",
-      SyncToken: "2",
-      TxnDate: "2026-03-01",
-      PaymentRefNum: "1042",
-      CustomerRef: { value: "9" },
-      TotalAmt: 8,
-      PrivateNote: "refunded",
-      Line: [{ Amount: 8, LinkedTxn: [{ TxnId: "41", TxnType: "Invoice" }] }],
-    });
-    await c.deletePayment("77", "3");
-    expect(f.calls[2]!.url.searchParams.get("operation")).toBe("delete");
-    expect(JSON.parse(String(f.calls[2]!.init.body))).toEqual({ Id: "77", SyncToken: "3" });
-  });
-
   it("queries with escaped quotes and pages through results", async () => {
     const page = Array.from({ length: 1000 }, (_, i) => ({ Id: String(i), DisplayName: `C${i}`, SyncToken: "0" }));
     const f = fakeFetch({ body: { QueryResponse: { Customer: page } } }, { body: { QueryResponse: { Customer: [{ Id: "1000", DisplayName: "O'Brien", Active: true }] } } });

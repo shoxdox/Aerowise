@@ -172,65 +172,6 @@ describe("sending invoices and payments", () => {
     expect(s.connection.lastSyncError).toBeNull();
   });
 
-  it("lowers a refunded payment in QuickBooks, and deletes it once nothing is kept", async () => {
-    const t = await createTenant(ctx, "Org A");
-    const { cs, realm } = await synced(t);
-    const inv = await issue(t, cs.nora.id);
-    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", reference: "1042", receivedOn: "2026-03-01" })).json();
-    await runWorker(ctx);
-    const remoteInvoice = async () => Object.values((await companies().get(realm)).invoices)[0]!;
-    expect((await remoteInvoice()).balanceCents).toBe(20000);
-
-    // A partial refund: QuickBooks keeps the payment at what the customer kept paying.
-    expect((await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 200, reason: "Overcharged" })).statusCode).toBe(200);
-    await runWorker(ctx);
-    expect(Object.values((await companies().get(realm)).payments)).toEqual([expect.objectContaining({ amountCents: 9800 })]);
-    expect((await remoteInvoice()).balanceCents).toBe(20200);
-    expect((await t.api.get(`/invoices/${inv.id}`)).json()).toMatchObject({ paidCents: 9800 });
-    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced", pushedHash: "9800" });
-
-    // Nothing more to send until the next refund.
-    await runWorker(ctx);
-    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(1);
-
-    // The rest refunded: the payment comes off the QuickBooks invoice entirely.
-    expect((await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 9800, reason: "Job cancelled" })).statusCode).toBe(200);
-    await runWorker(ctx);
-    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(0);
-    expect((await remoteInvoice()).balanceCents).toBe(30000);
-    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced", remoteState: "deleted" });
-  });
-
-  it("leaves alone a refunded payment that was deleted in QuickBooks", async () => {
-    const t = await createTenant(ctx, "Org A");
-    const { cs, realm } = await synced(t);
-    const inv = await issue(t, cs.nora.id);
-    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", receivedOn: "2026-03-01" })).json();
-    await runWorker(ctx);
-    const sent = (await link("payment", paid.payments[0].id))!;
-    await new TestQuickBooksProvider(ctx.db, () => ctx.now).company(realm).deletePayment(sent.externalId!, sent.syncToken!);
-    await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 200, reason: "Overcharged" });
-    await runWorker(ctx);
-    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "ignored", syncError: "The payment was deleted in QuickBooks" });
-    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(0);
-    expect(Object.values((await companies().get(realm)).invoices)[0]!.balanceCents).toBe(30000);
-  });
-
-  it("sends a payment refunded before it reached QuickBooks at what was kept, or not at all", async () => {
-    const t = await createTenant(ctx, "Org A");
-    const { cs, realm } = await synced(t);
-    const a = await issue(t, cs.nora.id);
-    const b = await issue(t, cs.dana.id);
-    const pa = (await t.api.post(`/invoices/${a.id}/payments`, { amountCents: 10000, method: "cash", receivedOn: "2026-03-01" })).json();
-    const pb = (await t.api.post(`/invoices/${b.id}/payments`, { amountCents: 5000, method: "cash", receivedOn: "2026-03-01" })).json();
-    await t.api.post(`/payments/${pa.payments[0].id}/refund`, { amountCents: 2500, reason: "Overcharged" });
-    await t.api.post(`/payments/${pb.payments[0].id}/refund`, { amountCents: 5000, reason: "Paid twice" });
-    await runWorker(ctx);
-    await runWorker(ctx);
-    expect(Object.values((await companies().get(realm)).payments)).toEqual([expect.objectContaining({ amountCents: 7500 })]);
-    expect(await link("payment", pb.payments[0].id)).toMatchObject({ status: "ignored", syncError: "Refunded in full before it reached QuickBooks" });
-  });
-
   it("voids in QuickBooks what was voided here", async () => {
     const t = await createTenant(ctx, "Org A");
     const { cs, realm } = await synced(t);

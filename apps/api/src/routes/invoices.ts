@@ -599,8 +599,6 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
               : `Refund of ${dollars(req.body.amountCents)} failed: ${refund.failureReason ?? "declined"}`;
         await invoiceEvent(trx, { organizationId, invoiceId: p.invoiceId, eventType: `refund_${refund.status}`, summary, actorUserId: userId, paymentId: p.id, at });
         await audit(trx, req, { action: "payment.refunded", entityType: "invoice", entityId: p.invoiceId, changes: { paymentId: p.id, ...req.body, status: refund.status } });
-        // A refund lowers the payment QuickBooks has.
-        if (refund.status === "succeeded") await queueQuickBooksSync(trx, organizationId, at);
         return p.invoiceId;
       });
       return detail(organizationId, invoiceId);
