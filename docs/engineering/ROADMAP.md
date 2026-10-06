@@ -57,7 +57,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W6.4 | Per-authority report templates and fees | W6.1 | done (#33) |
 | W6.5 | Ruleset verification workflow and badge | — | done (#36) |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | done (#42) |
-| W6.7 | Justin's answers on the county rules (DECISIONS.md, 2026-10-05) | W6.1–W6.4 | in progress: site type (#52), visit warning (#57), lab limits and report (this PR); invoice fees next |
+| W6.7 | Justin's answers on the county rules (DECISIONS.md, 2026-10-05) | W6.1–W6.4 | in progress: site type (#52), visit warning (#57), lab limits and report (#64), filing fees on invoices (built, waiting to open its PR) |
 | W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | not started |
 | W7.1 | Stripe Connect live readiness | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=stripe` runs real Stripe test mode on the staging demo, two fixes, `INTEGRATIONS.md`; the recorded staging run waits on Justin's Stripe test-mode setup |
 | W7.2 | QuickBooks against an Intuit sandbox | W1.3 | not started |

@@ -34,6 +34,7 @@ export default function CompanySettingsPage() {
           state: v.state ?? "",
           postalCode: v.postalCode ?? "",
           serviceCounties: (v.serviceCounties ?? "").split(/[\n,]/).map((c) => c.trim()).filter(Boolean),
+          billFilingFees: v.billFilingFees === "on",
         },
       });
       setSaved(true);
@@ -107,6 +108,13 @@ export default function CompanySettingsPage() {
           <textarea name="serviceCounties" rows={3} defaultValue={data.serviceCounties.join("\n")} disabled={!owner} placeholder={"Travis County\nHays County"} />
           <span className="muted small">One per line. These are the counties you work in.</span>
         </label>
+        <label className="wide row">
+          <input type="checkbox" name="billFilingFees" defaultChecked={data.billFilingFees} disabled={!owner} />
+          Add the county&apos;s filing fees to the homeowner&apos;s contract invoices
+        </label>
+        <p className="wide muted small">
+          Off by default. When on, each new contract invoice also bills the filing fees the county charged for that site&apos;s reports, each once. Late fees are never passed on.
+        </p>
         {error && <p className="error wide">{error}</p>}
         {saved && <p className="wide" role="status">Saved.</p>}
         {owner && (

@@ -33,6 +33,8 @@ export const organizationSettingsFields = z.object({
   state: text(40),
   postalCode: text(20),
   serviceCounties,
+  /** Put the authority's filing fees on the homeowner's contract invoices. Off by default. */
+  billFilingFees: z.boolean(),
 });
 export const organizationSettingsPatch = organizationSettingsFields.partial();
 
@@ -46,6 +48,7 @@ export const organizationSettings = z.object({
   state: z.string().nullable(),
   postalCode: z.string().nullable(),
   serviceCounties: z.array(z.string()),
+  billFilingFees: z.boolean(),
   timezone: z.string(),
   hasLogo: z.boolean(),
   /** The TCEQ maintenance provider license reports are filed under, chosen on the licenses page. */
