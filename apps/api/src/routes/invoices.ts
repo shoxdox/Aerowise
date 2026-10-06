@@ -437,7 +437,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const org = await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
       if (payments.provider && org.stripeAccountId) {
         for (const s of openSessions) {
-          await payments.provider.expireCheckout({ accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => req.log.warn({ err }, "could not expire checkout"));
+          await payments.provider.expireCheckout({ organizationId, accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => req.log.warn({ err }, "could not expire checkout"));
         }
       }
       return detail(organizationId, req.params.id);
@@ -562,6 +562,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           const org = await trx.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
           if (!payments.provider || !org.stripeAccountId) throw unprocessable("Online payments are not set up, so this payment cannot be refunded from here");
           const r = await payments.provider.createRefund({
+            organizationId,
             accountId: org.stripeAccountId,
             // The same refund request always gets the same key, so a retry cannot refund twice.
             idempotencyKey: `refund-${p.id}-${prior.n + 1}`,

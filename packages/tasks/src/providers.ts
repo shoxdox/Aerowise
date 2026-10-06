@@ -100,7 +100,7 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
   };
   return {
     ...chosen,
-    mail: chosen.mail instanceof OutboxTransport ? chosen.mail : new DemoGatedTransport(chosen.mail, outbox, isDemo),
+    mail: chosen.mail instanceof OutboxTransport ? chosen.mail : new DemoGatedTransport(chosen.mail, outbox, isDemo, db),
     payments: chosen.payments && chosen.payments.kind !== "test" ? new DemoGatedPayments(chosen.payments, standIns.payments, isDemo) : chosen.payments,
     quickbooks:
       chosen.quickbooks && chosen.quickbooks.provider.kind !== "test"

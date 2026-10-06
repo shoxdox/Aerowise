@@ -89,7 +89,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         accountId = (await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow()).stripeAccountId!;
       }
       const back = `${appUrl.replace(/\/$/, "")}/settings/billing`;
-      return provider.accountLink({ accountId, refreshUrl: `${back}?stripe=retry`, returnUrl: `${back}?stripe=done` });
+      return provider.accountLink({ organizationId, accountId, refreshUrl: `${back}?stripe=retry`, returnUrl: `${back}?stripe=done` });
     },
   );
 
@@ -103,7 +103,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId } = req.requireAuth();
       const org = await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
       if (provider && org.stripeAccountId) {
-        const a = await provider.getAccount(org.stripeAccountId);
+        const a = await provider.getAccount(org.stripeAccountId, organizationId);
         await db.updateTable("organizations").set({ stripeChargesEnabled: a.chargesEnabled, stripeDetailsSubmitted: a.detailsSubmitted }).where("id", "=", organizationId).execute();
       }
       return settings(organizationId);

@@ -82,7 +82,7 @@ export async function runPlanLifecycle(ctx: PlanLifecycleContext, organizationId
   const org = await db.selectFrom("organizations").select(PLAN_COLUMNS).where("id", "=", organizationId).executeTakeFirstOrThrow();
   const today = dateInZone(ctx.now, org.timezone);
   const result: PlanLifecycleResult = { state: org.subscriptionState, changedFrom: null, reminded: [] };
-  const hasPaymentMethod = async () => !!(provider && org.billingCustomerId && (await provider.paymentMethod(org.billingCustomerId)));
+  const hasPaymentMethod = async () => !!(provider && org.billingCustomerId && (await provider.paymentMethod(org.billingCustomerId, organizationId)));
 
   if (FREE_STATES.includes(org.subscriptionState) && org.subscriptionEndsOn) {
     const left = daysLeft({ endsOn: org.subscriptionEndsOn }, today)!;
@@ -192,7 +192,7 @@ async function retryFailedInvoices(db: Database, provider: BillingProvider, orga
     .where("providerInvoiceId", "is not", null)
     .execute();
   for (const period of failed) {
-    const { status } = await provider.retryInvoice(period.providerInvoiceId!);
+    const { status } = await provider.retryInvoice(period.providerInvoiceId!, organizationId);
     if (status === "paid") {
       await db.updateTable("billingPeriods").set({ status: "paid", updatedAt: now }).where("id", "=", period.id).where("status", "=", "failed").execute();
     }

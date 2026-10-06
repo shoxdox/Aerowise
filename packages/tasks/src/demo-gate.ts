@@ -12,83 +12,111 @@ import type { SmsProvider, SmsSendInput } from "@aerowise/sms";
 // API's routes and the worker's queued jobs all reach outside services through these, so there
 // is no screen to get around: the decision is made here, on the server, for every call.
 //
-// A call is a demo company's when it names that company, or when it names something only a
-// stand-in hands out (a test account, customer, QuickBooks company or token): a demo company is
-// only ever given stand-in ones, because the calls that hand them out all name the company.
+// Every call names the company it is for, taken by the caller from the record that owns the
+// work (the signed-in session's company, the invoice, the connection, the queued task), and the
+// gate looks that company's demo flag up in the database. Nothing a visitor sends, and nothing
+// about how an id looks, decides it. A call for no company, or for a company that is not on
+// record, fails closed: it goes to the stand-in.
 
-/** Whether a company is a demo company. The flag never changes, so answers are kept. */
-export type DemoCheck = (organizationId: string | null | undefined) => Promise<boolean>;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Whether a company must stay on the stand-ins: a demo company, no company, or one not on record. */
+export interface DemoCheck {
+  (organizationId: string | null | undefined): Promise<boolean>;
+  /** What is already known without asking the database: false only for a company looked up as real. */
+  known(organizationId: string): boolean | undefined;
+}
+
+/** Looks the demo flag up on the company's record. Answers are kept: the flag never changes. */
 export function demoCheck(db: Database): DemoCheck {
   const known = new Map<string, boolean>();
-  return async (organizationId) => {
-    if (!organizationId) return false;
+  const check = async (organizationId: string | null | undefined) => {
+    if (!organizationId || !UUID.test(organizationId)) return true;
     const hit = known.get(organizationId);
     if (hit !== undefined) return hit;
     const row = await db.selectFrom("organizations").select("demo").where("id", "=", organizationId).executeTakeFirst();
-    // An unknown company is not cached: it may be one being made in this same transaction.
-    if (!row) return false;
+    // Not on record (or not yet committed): not kept, and kept off the real services.
+    if (!row) return true;
     known.set(organizationId, row.demo);
     return row.demo;
   };
+  return Object.assign(check, { known: (organizationId: string) => known.get(organizationId) });
 }
 
-/** Ids the Stripe stand-ins hand out (acct_test_…, cus_test_…, in_test_…); real Stripe ids never contain `_test_`. */
-export const isStandInStripeId = (id: string | null | undefined) => /^[a-z]+_test_[0-9a-f]{24}$/.test(id ?? "");
-/** The QuickBooks stand-in's companies are `test-…`, its tokens `qbt_…`. */
-const isStandInRealm = (realmId: string) => realmId.startsWith("test-");
-const isStandInToken = (token: string) => token.startsWith("qbt_");
-
-/** Email: a demo company's mail, and mail to made-up addresses, goes to the outbox. */
-export class DemoGatedTransport implements EmailTransport {
+/** A gate's choice for one company: the stand-in unless the company is on record as real. */
+abstract class Gate<T> {
   constructor(
-    readonly live: EmailTransport,
-    readonly standIn: EmailTransport,
-    private readonly isDemo: DemoCheck,
+    readonly live: T,
+    readonly standIn: T,
+    protected readonly isDemo: DemoCheck,
   ) {}
+  /** Which one a company uses (also for screens that say test mode or live). */
+  async forOrganization(organizationId: string | null | undefined): Promise<T> {
+    return (await this.isDemo(organizationId)) ? this.standIn : this.live;
+  }
+  /** The same, for calls that must answer at once: the real one only for a company already looked up as real. */
+  protected knownFor(organizationId: string): T {
+    return this.isDemo.known(organizationId) === false ? this.live : this.standIn;
+  }
+}
+
+/**
+ * Email. Mail for a company follows that company. Mail for no company (a password reset, an
+ * alert to Aerowise) goes out for real unless it is to a made-up address or to someone who
+ * belongs to a demo company.
+ */
+export class DemoGatedTransport extends Gate<EmailTransport> implements EmailTransport {
+  constructor(
+    live: EmailTransport,
+    standIn: EmailTransport,
+    isDemo: DemoCheck,
+    private readonly db: Database,
+  ) {
+    super(live, standIn, isDemo);
+  }
   get name() {
     return this.live.name;
   }
   async send(m: EmailMessage) {
-    // Mail with no company (a password reset, say) to a made-up address is a demo person's.
-    const fictional = (await this.isDemo(m.organizationId)) || isFictionalEmail(m.to);
-    return (fictional ? this.standIn : this.live).send(m);
+    const transport = m.organizationId ? await this.forOrganization(m.organizationId) : (await this.demoPerson(m.to)) ? this.standIn : this.live;
+    return transport.send(m);
+  }
+  private async demoPerson(to: string) {
+    if (isFictionalEmail(to)) return true;
+    const member = await this.db
+      .selectFrom("users as u")
+      .innerJoin("memberships as m", "m.userId", "u.id")
+      .innerJoin("organizations as o", "o.id", "m.organizationId")
+      .select("o.id")
+      .where((eb) => eb(eb.fn("lower", ["u.email"]), "=", to.trim().toLowerCase()))
+      .where("o.demo", "=", true)
+      .executeTakeFirst();
+    return !!member;
   }
 }
 
 /** Stripe Connect (homeowner payments). Webhooks are only ever the real service's. */
-export class DemoGatedPayments implements PaymentProvider {
-  constructor(
-    readonly live: PaymentProvider,
-    readonly standIn: PaymentProvider,
-    private readonly isDemo: DemoCheck,
-  ) {}
+export class DemoGatedPayments extends Gate<PaymentProvider> implements PaymentProvider {
   get kind() {
     return this.live.kind;
   }
-  /** Which one a company uses (for screens that say test mode or live). */
-  async forOrganization(organizationId: string) {
-    return (await this.isDemo(organizationId)) ? this.standIn : this.live;
-  }
-  private byAccount = (accountId: string) => (isStandInStripeId(accountId) ? this.standIn : this.live);
   async createAccount(input: { organizationId: string; name: string; email: string | null }) {
-    return ((await this.isDemo(input.organizationId)) ? this.standIn : this.live).createAccount(input);
+    return (await this.forOrganization(input.organizationId)).createAccount(input);
   }
-  accountLink(input: { accountId: string; refreshUrl: string; returnUrl: string }) {
-    return this.byAccount(input.accountId).accountLink(input);
+  async accountLink(input: { organizationId: string; accountId: string; refreshUrl: string; returnUrl: string }) {
+    return (await this.forOrganization(input.organizationId)).accountLink(input);
   }
-  getAccount(accountId: string) {
-    return this.byAccount(accountId).getAccount(accountId);
+  async getAccount(accountId: string, organizationId: string) {
+    return (await this.forOrganization(organizationId)).getAccount(accountId, organizationId);
   }
   async createCheckout(input: CheckoutInput) {
-    const demo = (await this.isDemo(input.metadata.organizationId)) || isStandInStripeId(input.accountId);
-    return (demo ? this.standIn : this.live).createCheckout(input);
+    return (await this.forOrganization(input.metadata.organizationId)).createCheckout(input);
   }
-  expireCheckout(input: { accountId: string; sessionId: string }) {
-    return this.byAccount(input.accountId).expireCheckout(input);
+  async expireCheckout(input: { organizationId: string; accountId: string; sessionId: string }) {
+    return (await this.forOrganization(input.organizationId)).expireCheckout(input);
   }
-  createRefund(input: RefundInput) {
-    return this.byAccount(input.accountId).createRefund(input);
+  async createRefund(input: RefundInput) {
+    return (await this.forOrganization(input.organizationId)).createRefund(input);
   }
   parseWebhook(rawBody: Buffer | string, signature: string) {
     return this.live.parseWebhook(rawBody, signature);
@@ -96,35 +124,24 @@ export class DemoGatedPayments implements PaymentProvider {
 }
 
 /** Stripe Billing (what companies pay Aerowise). Webhooks are only ever the real service's. */
-export class DemoGatedBilling implements BillingProvider {
-  constructor(
-    readonly live: BillingProvider,
-    readonly standIn: BillingProvider,
-    private readonly isDemo: DemoCheck,
-  ) {}
+export class DemoGatedBilling extends Gate<BillingProvider> implements BillingProvider {
   get kind() {
     return this.live.kind;
   }
-  /** Which one a company uses (for screens that say test mode or live). */
-  async forOrganization(organizationId: string) {
-    return (await this.isDemo(organizationId)) ? this.standIn : this.live;
-  }
-  private byId = (id: string) => (isStandInStripeId(id) ? this.standIn : this.live);
   async createCustomer(input: { organizationId: string; name: string; email: string | null }) {
-    return ((await this.isDemo(input.organizationId)) ? this.standIn : this.live).createCustomer(input);
+    return (await this.forOrganization(input.organizationId)).createCustomer(input);
   }
   async createInvoice(input: BillingInvoiceInput) {
-    const demo = (await this.isDemo(input.metadata.organizationId)) || isStandInStripeId(input.customerId);
-    return (demo ? this.standIn : this.live).createInvoice(input);
+    return (await this.forOrganization(input.metadata.organizationId)).createInvoice(input);
   }
-  paymentMethod(customerId: string) {
-    return this.byId(customerId).paymentMethod(customerId);
+  async paymentMethod(customerId: string, organizationId: string) {
+    return (await this.forOrganization(organizationId)).paymentMethod(customerId, organizationId);
   }
-  retryInvoice(invoiceId: string) {
-    return this.byId(invoiceId).retryInvoice(invoiceId);
+  async retryInvoice(invoiceId: string, organizationId: string) {
+    return (await this.forOrganization(organizationId)).retryInvoice(invoiceId, organizationId);
   }
-  managePaymentMethod(input: { customerId: string; returnUrl: string }) {
-    return this.byId(input.customerId).managePaymentMethod(input);
+  async managePaymentMethod(input: { organizationId: string; customerId: string; returnUrl: string }) {
+    return (await this.forOrganization(input.organizationId)).managePaymentMethod(input);
   }
   parseWebhook(rawBody: Buffer | string, signature: string) {
     return this.live.parseWebhook(rawBody, signature);
@@ -132,59 +149,40 @@ export class DemoGatedBilling implements BillingProvider {
 }
 
 /** QuickBooks Online. A demo company connects to the stand-in company, and only to it. */
-export class DemoGatedQuickBooks implements QuickBooksProvider {
-  constructor(
-    readonly live: QuickBooksProvider,
-    readonly standIn: QuickBooksProvider,
-    private readonly isDemo: DemoCheck,
-  ) {}
+export class DemoGatedQuickBooks extends Gate<QuickBooksProvider> implements QuickBooksProvider {
   get kind() {
     return this.live.kind;
   }
   get environment() {
     return this.live.environment;
   }
-  /** Which one a company uses, for screens that say which QuickBooks is connected. */
-  async forOrganization(organizationId: string) {
-    return (await this.isDemo(organizationId)) ? this.standIn : this.live;
-  }
-  // authorizeUrl must answer at once, so the route asks forOrganization first (see quickbooks.ts);
-  // called directly, it can only go by the stand-in's own companies.
+  // Routes and openCompany ask forOrganization first; called directly, these answer at once
+  // with what is known, so an unknown company gets the stand-in.
   authorizeUrl(input: { state: string; redirectUri: string; organizationId: string }) {
-    return this.live.authorizeUrl(input);
+    return this.knownFor(input.organizationId).authorizeUrl(input);
+  }
+  company(realmId: string, accessToken: string, organizationId: string) {
+    return this.knownFor(organizationId).company(realmId, accessToken, organizationId);
   }
   async exchangeCode(input: { code: string; realmId: string; redirectUri: string; organizationId: string }) {
     // The company comes from the signed state, so a demo company cannot swap in a real code.
-    const demo = (await this.isDemo(input.organizationId)) || isStandInRealm(input.realmId);
-    return (demo ? this.standIn : this.live).exchangeCode(input);
+    return (await this.forOrganization(input.organizationId)).exchangeCode(input);
   }
-  refresh(refreshToken: string) {
-    return (isStandInToken(refreshToken) ? this.standIn : this.live).refresh(refreshToken);
+  async refresh(refreshToken: string, organizationId: string) {
+    return (await this.forOrganization(organizationId)).refresh(refreshToken, organizationId);
   }
-  revoke(refreshToken: string) {
-    return (isStandInToken(refreshToken) ? this.standIn : this.live).revoke(refreshToken);
-  }
-  company(realmId: string, accessToken: string) {
-    return (isStandInRealm(realmId) || isStandInToken(accessToken) ? this.standIn : this.live).company(realmId, accessToken);
+  async revoke(refreshToken: string, organizationId: string) {
+    return (await this.forOrganization(organizationId)).revoke(refreshToken, organizationId);
   }
 }
 
 /** Texts. Replies and receipts are only ever the real service's. */
-export class DemoGatedSms implements SmsProvider {
-  constructor(
-    readonly live: SmsProvider,
-    readonly standIn: SmsProvider,
-    private readonly isDemo: DemoCheck,
-  ) {}
+export class DemoGatedSms extends Gate<SmsProvider> implements SmsProvider {
   get kind() {
     return this.live.kind;
   }
-  /** Which one a company uses (for screens that say test mode or live). */
-  async forOrganization(organizationId: string) {
-    return (await this.isDemo(organizationId)) ? this.standIn : this.live;
-  }
   async send(input: SmsSendInput) {
-    return ((await this.isDemo(input.organizationId)) ? this.standIn : this.live).send(input);
+    return (await this.forOrganization(input.organizationId)).send(input);
   }
   verifyWebhook(url: string, params: Record<string, string>, signature: string) {
     return this.live.verifyWebhook(url, params, signature);
@@ -192,8 +190,8 @@ export class DemoGatedSms implements SmsProvider {
 }
 
 /**
- * The service a company actually uses: behind a gate, the stand-in for a demo company and the
- * real one otherwise; without a gate, the one configured. For screens that say "test mode".
+ * The service a company actually uses: behind a gate, the stand-in unless the company is on
+ * record as real; without a gate, the one configured. For screens that say "test mode".
  */
 export async function providerFor<T extends object>(provider: T, organizationId: string): Promise<T> {
   const gate = provider as { forOrganization?: (organizationId: string) => Promise<T> };

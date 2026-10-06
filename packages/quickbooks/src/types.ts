@@ -165,9 +165,12 @@ export interface QuickBooksProvider {
   /** `organizationId` is the company from the signed state: who is connecting. */
   exchangeCode(input: { code: string; realmId: string; redirectUri: string; organizationId: string }): Promise<Tokens>;
   /** QuickBooks rotates the refresh token: always store the new one. */
-  refresh(refreshToken: string): Promise<Tokens>;
-  revoke(refreshToken: string): Promise<void>;
-  company(realmId: string, accessToken: string): QuickBooksCompany;
+  // `organizationId` on each call is the company whose connection it is: a demo company only ever reaches the stand-in.
+  refresh(refreshToken: string, organizationId: string): Promise<Tokens>;
+  revoke(refreshToken: string, organizationId: string): Promise<void>;
+  company(realmId: string, accessToken: string, organizationId: string): QuickBooksCompany;
+  /** Set on a gate in front of several providers (demo companies): the one this company actually uses. */
+  forOrganization?(organizationId: string): Promise<QuickBooksProvider>;
 }
 
 export type QuickBooksErrorKind =

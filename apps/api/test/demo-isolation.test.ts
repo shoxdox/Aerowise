@@ -1,5 +1,5 @@
 import { inflateSync } from "node:zlib";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { OutboxTransport, type EmailMessage, type EmailResult, type EmailTransport } from "@aerowise/compliance";
 import { TestPaymentProvider, WebhookSignatureError, type CheckoutInput, type PaymentProvider, type RefundInput } from "@aerowise/payments";
 import { QuickBooksError, TestQuickBooksProvider, TokenCipher, type QuickBooksCompany, type QuickBooksProvider } from "@aerowise/quickbooks";
@@ -13,7 +13,7 @@ import {
   DemoGatedSms,
   DemoGatedTransport,
   drainTasks,
-  isStandInStripeId,
+  queueQuickBooksSync,
   queueSms,
   type TaskContext,
 } from "@aerowise/tasks";
@@ -21,6 +21,7 @@ import { unzipSync } from "fflate";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
 import { client, createUser, login, setupTestApp } from "./helpers.ts";
+import { completeValues, JPEG } from "./inspection-helpers.ts";
 
 // A deployment with every real service configured (as production, or staging with
 // DEMO_LIVE_SERVICES), holding a demo company next to a real one. The "real" services here
@@ -123,7 +124,7 @@ let worker: TaskContext;
 beforeAll(async () => {
   const isDemo = demoCheck(ctx.db);
   gated = {
-    mail: new DemoGatedTransport(live.mail, standIn.mail, isDemo),
+    mail: new DemoGatedTransport(live.mail, standIn.mail, isDemo, ctx.db),
     payments: new DemoGatedPayments(live.stripe, standIn.stripe, isDemo),
     quickbooks: new DemoGatedQuickBooks(live.qbo, new TestQuickBooksProvider(ctx.db, () => ctx.now), isDemo),
     sms: new DemoGatedSms(live.sms, standIn.sms, isDemo),
@@ -205,7 +206,7 @@ describe("a demo company next to a real one, with real services configured", () 
     expect((await demo.api.post("/billing/stripe/connect", {})).statusCode).toBe(200);
     expect((await demo.api.post("/billing/stripe/refresh", {})).json().stripe.chargesEnabled).toBe(true);
     const org = await ctx.db.selectFrom("organizations").select("stripeAccountId").where("id", "=", demo.org.id).executeTakeFirstOrThrow();
-    expect(isStandInStripeId(org.stripeAccountId)).toBe(true);
+    expect(org.stripeAccountId).toMatch(/^acct_test_/);
     expect((await demo.api.get("/billing/settings")).json().provider).toBe("test");
 
     const inv = await invoiceFor(demo);
@@ -322,6 +323,89 @@ describe("a demo company next to a real one, with real services configured", () 
   });
 });
 
+describe("queued and follow-on work of a demo company", () => {
+  /** A demo company with online payments on, and one invoice paid by card on the test checkout. */
+  async function paidInvoice() {
+    const demo = await company("Demo Co", true);
+    await demo.api.post("/billing/stripe/connect", {});
+    await demo.api.post("/billing/stripe/refresh", {});
+    const inv = await invoiceFor(demo, false);
+    const anon = client(app);
+    const checkout = (await anon.post(`/pay/${inv.token}/checkout`, {})).json();
+    const sessionId = new URL(checkout.url).searchParams.get("session")!;
+    expect((await anon.post(`/pay/${inv.token}/test-checkout`, { sessionId, outcome: "card" })).json().ok).toBe(true);
+    return { demo, inv };
+  }
+
+  it("decides by the company on record, never by how an id looks", async () => {
+    const demo = await company("Demo Co", true);
+    const real = await company("Real Septic", false);
+    // A demo company holding a real-looking account id still only reaches the stand-in...
+    await ctx.db.updateTable("organizations").set({ stripeAccountId: "acct_1RealLooking" }).where("id", "=", demo.org.id).execute();
+    expect((await demo.api.post("/billing/stripe/refresh", {})).statusCode).toBe(200);
+    expect(live.stripe.calls).toEqual([]);
+    // ...and a real company holding a stand-in-looking one still reaches the real service.
+    await ctx.db.updateTable("organizations").set({ stripeAccountId: "acct_test_000000000000000000000000" }).where("id", "=", real.org.id).execute();
+    expect((await real.api.post("/billing/stripe/refresh", {})).statusCode).toBe(200);
+    expect(live.stripe.calls).toEqual(["getAccount"]);
+  });
+
+  it("refunds a demo company's card payment on the stand-in", async () => {
+    const { demo, inv } = await paidInvoice();
+    const payment = (await demo.api.get(`/invoices/${inv.id}`)).json().payments[0];
+    const refunded = await demo.api.post(`/payments/${payment.id}/refund`, { amountCents: 1000, reason: "Goodwill" });
+    expect(refunded.statusCode, refunded.body).toBe(200);
+    expect(live.stripe.calls).toEqual([]);
+  });
+
+  it("syncs a demo company's books from the queued job with the stand-in company only", async () => {
+    const { demo } = await paidInvoice();
+    const start = new URL((await demo.api.post("/quickbooks/connect", {})).json().url as string);
+    const cookie = await login(app, demo.owner.email);
+    expect((await app.inject({ method: "GET", url: `${start.pathname.replace(/^\/api/, "")}?${start.searchParams}`, headers: { cookie } })).headers.location).toContain("connected=1");
+    // Past the first review: syncing is on (the review itself is the QuickBooks tests' business).
+    await ctx.db.updateTable("quickbooksConnections").set({ setupState: "active" }).where("organizationId", "=", demo.org.id).execute();
+    await queueQuickBooksSync(ctx.db, demo.org.id, ctx.now);
+    await drainTasks(worker);
+    // A token past its time is refreshed, again on the stand-in.
+    await ctx.db.updateTable("quickbooksConnections").set({ accessExpiresAt: new Date(0) }).where("organizationId", "=", demo.org.id).execute();
+    await queueQuickBooksSync(ctx.db, demo.org.id, new Date(ctx.now.getTime() + 60_000));
+    ctx.now = new Date(ctx.now.getTime() + 120_000);
+    await drainTasks(worker);
+    expect(live.qbo.calls).toEqual([]);
+    const conn = await ctx.db.selectFrom("quickbooksConnections").select(["status", "environment", "lastSyncError", "lastSyncFinishedAt", "accessExpiresAt"]).where("organizationId", "=", demo.org.id).executeTakeFirstOrThrow();
+    expect(conn).toMatchObject({ status: "connected", environment: "test", lastSyncError: null });
+    expect(conn.lastSyncFinishedAt).not.toBeNull();
+    expect(conn.accessExpiresAt!.getTime()).toBeGreaterThan(0);
+  });
+
+  it("files a demo company's inspection report with the county through the outbox only", async () => {
+    const demo = await company("Demo Co", true);
+    expect((await demo.api.patch(`/sites/${demo.site.id}`, { county: "Example County" })).statusCode).toBe(200);
+    const tech = await createUser(ctx.db, demo.org.id, "technician");
+    await ctx.db.updateTable("memberships").set({ technicianLicense: "MT-DEMO-0002" }).where("userId", "=", tech.id).execute();
+    const techApi = client(app, await login(app, tech.email));
+    const plan = (await demo.api.post("/plans", { name: "Annual", termMonths: 12, visitsPerTerm: 3, priceCents: 27500 })).json();
+    const contract = (await demo.api.post(`/sites/${demo.site.id}/contracts`, { planId: plan.id, startOn: "2025-12-01" })).json();
+    const job = (await demo.api.post("/jobs", { obligationId: contract.obligations[0].id, technicianId: tech.id, scheduledDate: "2026-03-01" })).json();
+    const template = (await techApi.get("/inspection-template")).json();
+    const clientId = randomUUID();
+    const base = { clientId, jobId: job.jobId, templateId: template.id, arrivedAt: "2026-03-01T15:00:00Z", arrivalGps: { lat: 30.27, lng: -97.74, accuracyM: 8 } };
+    await techApi.put("/inspections/sync", { ...base, status: "draft", values: { aerator: "pass" } });
+    for (const [n, key] of [[1, "overview"], [2, "chlorinator"]] as const) {
+      const res = await techApi.putImage(`/inspections/${clientId}/photos/00000000-0000-4000-8000-00000000000${n}`, JPEG, { "x-photo-key": key, "x-captured-at": "2026-03-01T15:10:00Z" });
+      expect(res.statusCode).toBe(201);
+    }
+    const done = await techApi.put("/inspections/sync", { ...base, status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } });
+    expect(done.json().status).toBe("completed");
+    await drainTasks(worker);
+    const filing = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", demo.org.id).executeTakeFirstOrThrow();
+    expect(filing.status).toBe("sent");
+    expect(live.mail.sent).toEqual([]);
+    expect(standIn.mail.sent.map((m) => m.to)).toContain("filings@tx-example-county.example");
+  });
+});
+
 describe("a demo company's contact details", () => {
   it("must be made up, whichever way they arrive", async () => {
     const demo = await company("Demo Co", true);
@@ -368,11 +452,29 @@ describe("a demo company's contact details", () => {
 describe("the gates", () => {
   it("send mail with no company to a made-up address to the outbox", async () => {
     const isDemo = demoCheck(ctx.db);
-    const mail = new DemoGatedTransport(live.mail, standIn.mail, isDemo);
+    const mail = new DemoGatedTransport(live.mail, standIn.mail, isDemo, ctx.db);
     const msg = (to: string): EmailMessage => ({ organizationId: null, idempotencyKey: `k-${to}`, from: "a@aerowise.test", to, subject: "Reset", text: "x", attachments: [] });
     await mail.send(msg("owner@example.com"));
     await mail.send(msg("someone@gmail.com"));
     expect(live.mail.sent.map((m) => m.to)).toEqual(["someone@gmail.com"]);
+  });
+
+  it("fail closed: no company, or one not on record, gets the stand-in", async () => {
+    const isDemo = demoCheck(ctx.db);
+    const nobody = [null, undefined, "", "not-a-uuid", randomUUID()];
+    for (const id of nobody) expect(await isDemo(id), String(id)).toBe(true);
+    const payments = new DemoGatedPayments(live.stripe, standIn.stripe, isDemo);
+    const sms = new DemoGatedSms(live.sms, standIn.sms, isDemo);
+    const qbo = new DemoGatedQuickBooks(live.qbo, new TestQuickBooksProvider(ctx.db, () => ctx.now), isDemo);
+    const mail = new DemoGatedTransport(live.mail, standIn.mail, isDemo, ctx.db);
+    const unknown = randomUUID();
+    await payments.createAccount({ organizationId: unknown, name: "x", email: null });
+    await payments.getAccount("acct_1RealLooking", unknown);
+    await sms.send({ organizationId: unknown, from: "+15125550100", to: "+15125550123", body: "x", statusCallback: null });
+    await qbo.refresh("live-refresh-token", unknown).catch(() => {});
+    expect(qbo.authorizeUrl({ state: "s", redirectUri: "https://app.example.test/api/quickbooks/callback", organizationId: unknown })).toContain("realmId=test-");
+    await mail.send({ organizationId: unknown, idempotencyKey: "k-unknown", from: "a@aerowise.test", to: "someone@gmail.com", subject: "x", text: "x", attachments: [] });
+    expect([live.stripe.calls, live.sms.sent, live.qbo.calls, live.mail.sent]).toEqual([[], [], [], []]);
   });
 
   it("keep Aerowise's own billing of a demo company on the stand-in", async () => {

@@ -165,8 +165,8 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
           );
         }
         const tokens = await c.provider.exchangeCode({ code: req.query.code, realmId, redirectUri, organizationId });
-        const companyName = await c.provider.company(realmId, tokens.accessToken).companyName().catch(() => null);
-        await saveConnection({ ...c, provider }, { organizationId, userId, realmId, companyName, tokens, syncFrom: await organizationToday(db, organizationId, now()) });
+        const companyName = await c.provider.company(realmId, tokens.accessToken, organizationId).companyName().catch(() => null);
+        await saveConnection(c, { organizationId, userId, realmId, companyName, tokens, syncFrom: await organizationToday(db, organizationId, now()) });
         await audit(db, req, { action: "quickbooks.connected", entityType: "organization", entityId: organizationId, changes: { realmId, companyName, environment: provider.environment } });
       } catch (err) {
         req.log.warn({ err }, "quickbooks connect failed");
