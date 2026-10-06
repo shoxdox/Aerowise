@@ -53,4 +53,4 @@ Which tests, how often and for which systems; the limit for each (mg/L); whether
 
 ## Verification
 
-Draft until someone confirms the requirements with the authority itself. To verify, add a new ruleset version with `profile.status: "verified"`, no `unresolved` items, and `profile.verification`: who at the authority confirmed it (`confirmedWith`), who asked (`confirmedBy`), `confirmedOn`, `method` (email, phone, meeting or letter) and where the evidence is kept (`evidence`). Only Justin marks a ruleset verified (PILOT-BUILD-BRIEF.md). Record the confirmation here too.
+Draft until someone confirms the requirements with the authority itself. To verify, add a new ruleset version with `profile.status: "verified"`, no `unresolved` items, and `profile.verification`: who at the authority confirmed it (`confirmedWith`), who asked (`confirmedBy`), `confirmedOn`, `method` (email, phone, meeting or letter) and where the evidence is kept (`evidence`). Only Justin approves marking a ruleset verified; see [the current pilot worksheet](../PILOT-CALL-SHEET.md). Record the confirmation here too.

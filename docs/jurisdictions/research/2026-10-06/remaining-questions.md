@@ -1,5 +1,7 @@
 # Remaining confirmation queue
 
+> Historical pre-build research snapshot at `3929897`. Supported corrections subsequently landed in #84/#87; original findings/dispositions and source bytes remain unchanged. For current status and the pilot confirmation queue, read [the current handoff](../../../DEMO-PILOT-BRIEF.md) and [pilot worksheet](../../../PILOT-CALL-SHEET.md). Earlier proposed coding tasks are superseded.
+
 These questions are prepared for a later authorized contact. Nothing was sent. Prioritize the chosen pilot authority; eight research reviews do not mean Justin needs eight calls before a demo.
 
 ## Evidence we should obtain from the pilot provider first

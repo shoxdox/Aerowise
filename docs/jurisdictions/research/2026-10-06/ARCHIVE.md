@@ -1,6 +1,6 @@
 # County evidence packet, 2026-10-06 (repository copy)
 
-This folder is the October 6, 2026 original-source research pass on eight authorities: Williamson, Denton County, Comal, Hays, Travis, Brazoria, Grimes and Montgomery. It is research, not rules. Every finding in `findings.json` is marked `implemented: false` and `authority_confirmation: false`, and nothing here changes a ruleset. Corrections land through the W12 tasks in [the roadmap](../../../engineering/ROADMAP.md#w12-county-evidence-and-verification).
+This folder is the October 6, 2026 original-source research pass on eight authorities: Williamson, Denton County, Comal, Hays, Travis, Brazoria, Grimes and Montgomery. It is research, not rules. `findings.json` retains its original pre-build `implemented: false` and `authority_confirmation: false` flags. Supported corrections subsequently landed in #84/#87. See [the current handoff](../../../DEMO-PILOT-BRIEF.md); the packet is historical evidence, not a pending coding queue.
 
 Start with [README.md](README.md), [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md) and [remaining-questions.md](remaining-questions.md), then the eight files in `authorities/`.
 
@@ -15,7 +15,7 @@ Both zips are in the Septic project's shared files, next to `Aerowise-Claude-Upl
 
 ## What is in git and what is not
 
-Every file in this folder is a byte-for-byte copy from the research zip, except this file and `prior-source-pdfs-download-manifest.json` (copied unchanged from the prior-source zip). The text files the packet produced are here: the markdown reviews, `source-manifest.json`, `findings.json`, `question-dispositions.json`, `baseline.json`, the download-attempt logs, the extracted text and OCR in `extracted/`, the small HTML pages and browser excerpts in `sources/`, the two build scripts, and the packet's inputs.
+Original source files, extracted text, inputs and machine-readable research records are byte-for-byte copies from the research zip. This archive index and the README/handoff/question/validation documents have post-build context notices; `prior-source-pdfs-download-manifest.json` was copied unchanged from the prior-source zip. The text files the packet produced are here: the markdown reviews, `source-manifest.json`, `findings.json`, `question-dispositions.json`, `baseline.json`, the download-attempt logs, the extracted text and OCR in `extracted/`, the small HTML pages and browser excerpts in `sources/`, the two build scripts, and the packet's inputs.
 
 Left out of git:
 

@@ -1,5 +1,7 @@
 # Aerowise research handoff for Claude Projects
 
+> Historical pre-build research snapshot at `3929897`. Supported corrections subsequently landed in #84/#87; original findings/dispositions and source bytes remain unchanged. For current status and the pilot confirmation queue, read [the current handoff](../../../DEMO-PILOT-BRIEF.md) and [pilot worksheet](../../../PILOT-CALL-SHEET.md). Earlier proposed coding tasks are superseded.
+
 We did another public-source research pass before starting more implementation. Read this packet alongside the current repo, not as an instruction to overwrite existing rules blindly.
 
 ## Baseline

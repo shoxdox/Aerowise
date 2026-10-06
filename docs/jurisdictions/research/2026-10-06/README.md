@@ -1,5 +1,7 @@
 # Aerowise county evidence packet — October 6, 2026
 
+> Historical pre-build research snapshot at `3929897`. Supported corrections subsequently landed in #84/#87; original findings/dispositions and source bytes remain unchanged. For current status and the pilot confirmation queue, read [the current handoff](../../../DEMO-PILOT-BRIEF.md) and [pilot worksheet](../../../PILOT-CALL-SHEET.md). Earlier proposed coding tasks are superseded.
+
 **Promising: AI can do substantially more of this research before Justin calls anyone.** Original downloads, browser navigation, OCR, court attachments and page-by-page checks recovered information the earlier pass treated as unavailable. Some remaining questions are product implementation gaps, not research blockers.
 
 This packet is a research handoff, not an approved compliance configuration. No county was contacted, no report was filed, and no application code or published ruleset was changed.

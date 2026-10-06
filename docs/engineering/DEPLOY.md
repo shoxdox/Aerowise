@@ -1,5 +1,7 @@
 # Deploying Aerowise
 
+> Runbook, not deployment evidence. The October 6 build is merged through #90 (application baseline `d646512`, migrations through `0046`). This documentation handoff does not deploy it or confirm the host is current. Hosted Actions are blocked by account minutes/billing; use the documented manual deploy procedure and recorded local checks where applicable. Read [the current handoff](../DEMO-PILOT-BRIEF.md) before acting.
+
 Staging and production both run on Justin's own server (Chicago, 4 GB RAM, 2 vCPUs) with Docker Compose, until Aerowise moves to a managed host such as Render ([DEPLOY-RENDER.md](DEPLOY-RENDER.md), with `render.yaml` kept ready). Why, and what that costs in risk, is in [DECISIONS.md](../DECISIONS.md) (2026-10-05, Hosting on our own server). Everything the server runs is in [`deploy/vps/`](../../deploy/vps).
 
 ## What runs where
@@ -71,15 +73,13 @@ The repository secrets CI uses, all printed by `setup.sh` (**Settings > Secrets 
 
 To roll back, deploy the earlier commit. Migrations are forward-only and are not rolled back; a fix goes in a new migration.
 
-## Staging is the demo
+## Demo deployment and controlled staging
 
-Staging runs with `DEMO_MODE=true`: every outside service is its test stand-in whatever keys are set, the fictional example county rules load, and every screen shows "Fictional demo company. Nothing is emailed, texted, filed or charged, and the data is reset regularly." (also shown to anyone signed in to a demo company on any deployment, W10.1) The sign-in page lists the demo users: `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`. Every night at 09:00 UTC cron runs `pnpm db:reseed-demo`, which empties everything except the authority rules and platform admins, removes stored files and seeds again. To reset it now:
+Public access belongs on a dedicated demo deployment with `DEMO_MODE=true`. `/demo` creates a visitor's fictional company, signs in without a shared password, supports role switching and expires after 24 hours. Creation limits and cleanup are scoped to the demo company. No public platform-admin credentials are exposed. The marketing "Try the demo" link appears only on a demo deployment.
 
-```sh
-docker exec aerowise-staging-api-1 pnpm db:reseed-demo
-```
+`DEMO_MODE` selects test stand-ins. `DEMO_LIVE_SERVICES` may allow selected providers for separately controlled staging integration checks; it never bypasses a demo organization's API/worker service gates. Keep these checks separate from public visitor access. Do not describe either configuration as a verified live environment until its actual host and health have been checked.
 
-`seed` and `reseed-demo` refuse to run unless `DEMO_MODE=true`, so they cannot touch production.
+The installed cron template schedules a demo reseed at 09:00 UTC. `pnpm db:reseed-demo` clears tenant data and stored files, preserves the documented exclusions and reloads the seed/story. This is a deployment-wide destructive reset, distinct from per-visitor expiry cleanup. Use only on a disposable, isolated demo database; never alongside real pilot-company data. Inspect the actual cron/database configuration before running it. Development permits seeding; production refuses unless explicitly in demo mode.
 
 ## Keeping it up
 
