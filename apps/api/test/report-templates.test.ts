@@ -34,15 +34,7 @@ afterAll(async () => {
 
 async function inspected(c: TestContext, county: string, name = "Org A") {
   const s = await setup(c, name);
-  expect((await s.api.patch(`/sites/${s.site.id}`, { county })).statusCode).toBe(200);
-  await c.db.updateTable("memberships").set({ technicianLicense: "MT-0001" }).where("userId", "=", s.tech.id).execute();
-  const p = payload(s);
-  await s.techApi.put("/inspections/sync", p);
-  await uploadRequiredPhotos(s, p.clientId);
-  const values = { ...completeValues(), air_pressure: 4.5, repairs_made: "Replaced the air filter", ph: 7.1 };
-  const done = await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values }));
-  expect(done.json().status).toBe("completed");
-  return { ...s, inspectionId: done.json().id as string };
+  return { ...s, inspectionId: await inspectedAt(s, county) };
 }
 
 const filingOf = async (s: Setup) => (await s.api.get("/filings?view=all")).json().items[0];
@@ -196,3 +188,56 @@ describe("filing fees", () => {
     expect(res.json().items[0]).toMatchObject({ kind: "contract", fees: { filingFeeCents: 500, lateFeeIfLateCents: 0, lateFeeCents: null, totalCents: 500 } });
   });
 });
+
+describe("lab results on the authority report", () => {
+  const LAB = "Annual Lab Fixture County";
+
+  it("adds the latest sample by the inspection day, against the limits, where the ruleset asks for it", async () => {
+    const s = await setup(ctx);
+    const lab = (body: Record<string, unknown>) => s.api.post(`/sites/${s.site.id}/lab-tests`, { labName: "Hill Country Labs", ...body });
+    expect((await lab({ sampledOn: "2025-02-10", results: [{ analyte: "bod", value: 5 }, { analyte: "tss", value: 6 }] })).statusCode).toBe(201);
+    expect((await lab({ sampledOn: "2026-02-20", labReference: "HCL-2291", results: [{ analyte: "bod", value: 34 }, { analyte: "tss", value: 12 }] })).statusCode).toBe(201);
+    const done = await inspectedAt(s, LAB);
+    await runWorker(ctx);
+    const { authority, customer } = await snapshots(ctx, done);
+    expect(authority!.sections.at(-1)).toEqual({
+      title: "Lab results",
+      rows: [
+        { label: "Sampled on", value: "2026-02-20", failed: false },
+        { label: "Lab", value: "Hill Country Labs, HCL-2291", failed: false },
+        { label: "BOD (mg/L)", value: "34 (limit 20)", failed: true },
+        { label: "TSS (mg/L)", value: "12 (limit 20)", failed: false },
+      ],
+    });
+    // The homeowner's copy is unchanged.
+    expect(customer!.sections.map((x) => x.title)).not.toContain("Lab results");
+  });
+
+  it("says so when no sample is on record", async () => {
+    const s = await setup(ctx);
+    const done = await inspectedAt(s, LAB);
+    await runWorker(ctx);
+    expect((await snapshots(ctx, done)).authority!.sections.at(-1)).toEqual({ title: "Lab results", rows: [{ label: "Latest sample", value: "None on record", failed: true }] });
+  });
+
+  it("leaves them off where the ruleset does not ask for them", async () => {
+    const s = await setup(ctx);
+    expect((await s.api.post(`/sites/${s.site.id}/lab-tests`, { sampledOn: "2026-02-20", labName: "L", results: [{ analyte: "bod", value: 34 }] })).statusCode).toBe(201);
+    const done = await inspectedAt(s, FEES);
+    await runWorker(ctx);
+    expect(JSON.stringify((await snapshots(ctx, done)).authority!.sections)).not.toContain("Lab results");
+  });
+});
+
+/** Completes an inspection at `s`'s site after moving the site to `county`. */
+async function inspectedAt(s: Setup, county: string) {
+  expect((await s.api.patch(`/sites/${s.site.id}`, { county })).statusCode).toBe(200);
+  await ctx.db.updateTable("memberships").set({ technicianLicense: "MT-0001" }).where("userId", "=", s.tech.id).execute();
+  const p = payload(s);
+  await s.techApi.put("/inspections/sync", p);
+  await uploadRequiredPhotos(s, p.clientId);
+  const values = { ...completeValues(), air_pressure: 4.5, repairs_made: "Replaced the air filter", ph: 7.1 };
+  const done = await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values }));
+  expect(done.json().status).toBe("completed");
+  return done.json().id as string;
+}

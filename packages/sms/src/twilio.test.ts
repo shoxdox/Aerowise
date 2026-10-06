@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { SmsSendError, webhookSignature } from "./provider.ts";
 import { TestSmsProvider } from "./test-provider.ts";
 import { TwilioSmsProvider } from "./twilio.ts";
+import { RedirectingSmsProvider } from "./redirect.ts";
+import { smsFromEnv } from "./env.ts";
 
 describe("Twilio request signatures", () => {
   it("match the example Twilio publishes", () => {
@@ -50,5 +52,31 @@ describe("TwilioSmsProvider", () => {
       throw new Error("ECONNRESET");
     });
     expect(await err(down)).toMatchObject({ code: "network", permanent: false });
+  });
+});
+
+describe("RedirectingSmsProvider (staging)", () => {
+  it("sends every text to the one test phone, saying who it was for", async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const twilio = new TwilioSmsProvider({ accountSid: "AC123", authToken: "secret" }, async (url, init) => {
+      calls.push({ url: String(url), init: init! });
+      return new Response(JSON.stringify({ sid: "SM1", status: "queued" }), { status: 201 });
+    });
+    const sms = new RedirectingSmsProvider(twilio, "+15125550199");
+    expect(sms.kind).toBe("twilio");
+    await sms.send({ from: "+15125550100", to: "+15125550123", body: "Your service is tomorrow.", statusCallback: null });
+    const sent = Object.fromEntries(new URLSearchParams(String(calls[0]!.init.body)));
+    expect(sent).toMatchObject({ To: "+15125550199", From: "+15125550100", Body: "[Test, for +15125550123] Your service is tomorrow." });
+  });
+
+  it("refuses anything but one phone number", () => {
+    const inner = new TestSmsProvider();
+    for (const bad of ["5125550199", "+1 512 555 0199", "+15125550199,+15125550198", ""]) expect(() => new RedirectingSmsProvider(inner, bad)).toThrow(/SMS_REDIRECT_TO/);
+  });
+
+  it("is used whenever SMS_REDIRECT_TO is set with Twilio", () => {
+    const keys = { TWILIO_ACCOUNT_SID: "AC1", TWILIO_AUTH_TOKEN: "t" };
+    expect(smsFromEnv({ ...keys, SMS_REDIRECT_TO: "+15125550199" }, true)?.provider).toBeInstanceOf(RedirectingSmsProvider);
+    expect(smsFromEnv(keys, true)?.provider).toBeInstanceOf(TwilioSmsProvider);
   });
 });

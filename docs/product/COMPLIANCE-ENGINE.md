@@ -59,6 +59,8 @@ The office records each result from the lab's report on the site page: sample da
 
 A site has a lab test requirement while it has a contract in force and its authority's rules apply to that contract's type. The next test is due `everyMonths` after the latest sample. With none on record, it counts from the later of the site's first contract and the date the authority's rules took effect, so renewing a contract does not restart the clock. The site page shows "due soon" 30 days ahead. A late test is a high-severity inbox item until a result is recorded.
 
+Two optional parts follow Justin's answer of 2026-10-05. `limits` gives the most each analyte may measure (mg/L, only for required analytes). While the latest sample has a result above its limit, the site page says so and the inbox has a high-severity item; a correction or newer sample within limits clears it. A result equal to the limit is within it. `onReport: true` puts a "Lab results" section on the authority copy of each inspection report: the latest sample on or before the inspection day, each result against its limit, or "None on record". It uses the ruleset version the filing recorded. Without `onReport`, lab results stay off the report; the homeowner's copy never has them.
+
 Fixture tests: `apps/api/test/lab-tests.test.ts`, with a fictional annual BOD/TSS ruleset in `apps/api/test/fixtures/rulesets/`.
 
 ### Report layout and fees

@@ -18,7 +18,11 @@ export const labTestRule = z.object({
   everyMonths: z.number().int().min(1).max(24),
   appliesTo: z.array(z.enum(CUSTOMER_TYPES)).min(1),
   note: z.string().max(1000).optional(),
-});
+  /** The most each analyte may measure, in mg/L. A result above it raises an inbox item. */
+  limits: z.partialRecord(z.enum(LAB_ANALYTES), z.number().min(0).max(100_000)).optional(),
+  /** The authority wants the latest results on its copy of each inspection report. Off unless the ruleset says so. */
+  onReport: z.boolean().optional(),
+}).refine((r) => Object.keys(r.limits ?? {}).every((a) => r.analytes.includes(a as LabAnalyte)), { message: "Limits only for the analytes the authority requires", path: ["limits"] });
 export type LabTestRule = z.infer<typeof labTestRule>;
 
 const date = z.iso.date();
@@ -66,6 +70,8 @@ export const labTestStatus = z.object({
   /** What the due date counts from, in words. */
   dueBasis: z.string(),
   state: z.enum(LAB_TEST_STATES),
+  /** Results in the latest sample above the authority's limits. */
+  overLimit: z.array(z.object({ analyte: z.enum(LAB_ANALYTES), value: z.number(), limit: z.number() })),
 });
 export type LabTestStatus = z.infer<typeof labTestStatus>;
 
@@ -74,3 +80,11 @@ export const siteLabTests = z.object({
   requirement: labTestStatus.nullable(),
   items: z.array(labTest),
 });
+
+/** Results above the rule's limits, in the rule's analyte order. */
+export function labResultsOverLimit(rule: Pick<LabTestRule, "limits">, results: { analyte: LabAnalyte; value: number }[]) {
+  return results.flatMap((r) => {
+    const limit = rule.limits?.[r.analyte];
+    return limit !== undefined && r.value > limit ? [{ analyte: r.analyte, value: r.value, limit }] : [];
+  });
+}

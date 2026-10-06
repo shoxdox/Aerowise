@@ -37,6 +37,8 @@ const BOTH = [
 const record = (t: { api: ReturnType<typeof client>; site: { id: string } }, body: Record<string, unknown>) =>
   t.api.post(`/sites/${t.site.id}/lab-tests`, { sampledOn: "2026-02-20", labName: "Hill Country Labs", labReference: "HCL-2291", results: BOTH, ...body });
 const labTestsOf = async (t: { api: ReturnType<typeof client>; site: { id: string } }) => (await t.api.get(`/sites/${t.site.id}/lab-tests`)).json();
+const overItems = async (t: { api: ReturnType<typeof client> }) =>
+  ((await t.api.get("/inbox")).json().items as { kind: string; key: string; title: string; detail: string }[]).filter((i) => i.kind === "lab_result_over_limit");
 const lateItems = async (t: { api: ReturnType<typeof client> }) =>
   ((await t.api.get("/inbox")).json().items as { kind: string; key: string; title: string; detail: string }[]).filter((i) => i.kind === "lab_test_late");
 
@@ -53,6 +55,7 @@ describe("lab tests a ruleset requires", () => {
         dueOn: "2026-06-01",
         dueBasis: "12 months after the first contract started on 2025-06-01, with no test on record",
         state: "ok",
+        overLimit: [],
       },
       items: [],
     });
@@ -109,6 +112,31 @@ describe("lab tests a ruleset requires", () => {
     // Records are never changed in place.
     await expect(sql`update lab_tests set lab_name = 'x'`.execute(ctx.db)).rejects.toThrow();
     await expect(sql`delete from lab_tests`.execute(ctx.db)).rejects.toThrow();
+  });
+
+  it("raise an inbox item while the latest sample is above the authority's limits", async () => {
+    const t = await labSite(ctx);
+    const high = (await record(t, { results: [{ analyte: "bod", value: 34 }, { analyte: "tss", value: 20 }] })).json();
+    expect((await labTestsOf(t)).requirement.overLimit).toEqual([{ analyte: "bod", value: 34, limit: 20 }]);
+    expect(await overItems(t)).toEqual([
+      expect.objectContaining({
+        key: `lab_result_over_limit:${t.site.id}`,
+        title: "BOD above Annual Lab Fixture County (fictional)'s limit",
+        detail: "Sample of 2026-02-20: BOD 34 mg/L (limit 20)",
+      }),
+    ]);
+    // A result at the limit is within it; a correction or a newer sample within limits clears it.
+    await record(t, { replacesId: high.id, results: [{ analyte: "bod", value: 20 }, { analyte: "tss", value: 20 }] });
+    expect((await labTestsOf(t)).requirement.overLimit).toEqual([]);
+    expect(await overItems(t)).toEqual([]);
+    await record(t, { sampledOn: "2026-02-25", results: [{ analyte: "bod", value: 8 }, { analyte: "tss", value: 41 }] });
+    expect((await overItems(t)).map((i) => i.title)).toEqual(["TSS above Annual Lab Fixture County (fictional)'s limit"]);
+  });
+
+  it("raise no limit item where the authority sets no limits", async () => {
+    const example = await labSite(ctx, "Org A", { county: "Example County" });
+    await record(example, { results: [{ analyte: "bod", value: 900 }, { analyte: "tss", value: 900 }] });
+    expect(await overItems(example)).toEqual([]);
   });
 
   it("are not required where the authority does not ask, or without a contract in force", async () => {

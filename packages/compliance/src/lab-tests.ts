@@ -1,5 +1,5 @@
 import type { Database, DB } from "@aerowise/db";
-import { addDays, addMonths, labTestRequirement, LAB_TEST_DUE_SOON_DAYS, type LabTestStatus } from "@aerowise/domain";
+import { addDays, addMonths, labResultsOverLimit, labTestRequirement, LAB_TEST_DUE_SOON_DAYS, type LabAnalyte, type LabTestStatus } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
 import { explainSite, loadCatalog, rulesetOn, type CatalogEntry } from "./rulesets.ts";
 
@@ -13,6 +13,7 @@ type Executor = Database | Transaction<DB>;
  * The next test is due `everyMonths` after the latest sample that has not been replaced
  * by a correction. With none on record, it counts from the later of the site's first
  * contract with this organization and the day the authority's rules took effect.
+ * `overLimit` lists the latest sample's results above the limits in force today.
  */
 export async function labTestStatuses(db: Executor, organizationId: string, today: string, opts: { siteId?: string; catalog?: CatalogEntry[] } = {}) {
   let q = db
@@ -36,6 +37,18 @@ export async function labTestStatuses(db: Executor, organizationId: string, toda
         .whereRef("t.siteId", "=", "k.siteId")
         .where((w) => w.not(w.exists(w.selectFrom("labTests as r").select("r.id").whereRef("r.organizationId", "=", "t.organizationId").whereRef("r.replacesId", "=", "t.id"))))
         .as("lastSampledOn"),
+    )
+    .select((eb) =>
+      eb
+        .selectFrom("labTests as t")
+        .select("t.results")
+        .whereRef("t.organizationId", "=", "k.organizationId")
+        .whereRef("t.siteId", "=", "k.siteId")
+        .where((w) => w.not(w.exists(w.selectFrom("labTests as r").select("r.id").whereRef("r.organizationId", "=", "t.organizationId").whereRef("r.replacesId", "=", "t.id"))))
+        .orderBy("t.sampledOn", "desc")
+        .orderBy("t.recordedAt", "desc")
+        .limit(1)
+        .as("lastResults"),
     )
     .where("k.organizationId", "=", organizationId)
     .where("k.status", "=", "active")
@@ -71,6 +84,7 @@ export async function labTestStatuses(db: Executor, organizationId: string, toda
       dueOn,
       dueBasis,
       state: today > dueOn ? "late" : today >= addDays(dueOn, -LAB_TEST_DUE_SOON_DAYS) ? "due_soon" : "ok",
+      overLimit: labResultsOverLimit(rule, (r.lastResults ?? []) as { analyte: LabAnalyte; value: number }[]),
     });
   }
   return out;
