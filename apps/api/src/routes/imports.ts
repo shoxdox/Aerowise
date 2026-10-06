@@ -30,6 +30,7 @@ import { audit } from "../lib/audit.ts";
 import { insertContract, type Terms } from "../lib/contracts.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { parseSpreadsheet } from "../lib/import-parse.ts";
+import { organizationToday } from "../lib/today.ts";
 import { jsonRow } from "../lib/json.ts";
 
 const params = z.object({ id });
@@ -122,7 +123,8 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     return {
       customers: customers.map((c) => ({ ...c, ...(byCustomer.get(c.id) ?? { phones: [], emails: [] }) })),
       sites,
-      plans: [...plans.keys()],
+      plans: [...plans.values()].map((p) => ({ name: p.planName, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm })),
+      today: await organizationToday(db, organizationId, now()),
     };
   }
 
@@ -147,7 +149,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     rows.forEach((r, i) => {
       if (r.customerId && r.siteId) analyzed[i]!.result = { customerId: r.customerId, siteId: r.siteId, contractId: r.contractId };
     });
-    return { rows: analyzed, plans };
+    return { rows: analyzed, plans, today: existing.today };
   }
 
   async function detail(organizationId: string, importId: string) {
@@ -378,12 +380,12 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const { organizationId } = req.requireAuth();
       const imp = await findImport(organizationId, req.params.id);
       requirePreview(imp, true);
-      const { rows, plans } = await analyze(organizationId, imp);
+      const { rows, plans, today } = await analyze(organizationId, imp);
       const included = rows.filter((r) => r.include);
       if (included.length === 0) throw unprocessable("No rows are included");
       try {
         await db.transaction().execute(async (trx) => {
-          const result = await saveRows(trx, organizationId, imp.id, imp.sheetIndex, included, plans);
+          const result = await saveRows(trx, organizationId, imp.id, imp.sheetIndex, included, plans, today);
           const done = await trx
             .updateTable("imports")
             .set({ status: "committed", committedAt: new Date(), error: null, result: JSON.stringify(result) })
@@ -450,7 +452,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 };
 
 /** Inserts everything the included rows describe, in the caller's transaction. */
-async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, Terms>) {
+async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, Terms>, today: string) {
   const customerIds = new Map<string, string>();
   const customers: Insertable<DB["customers"]>[] = [];
   const contacts: Insertable<DB["contacts"]>[] = [];
@@ -509,14 +511,28 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
   for (const part of chunks(sites)) await trx.insertInto("sites").values(part).execute();
   for (const part of chunks(systems)) await trx.insertInto("wastewaterSystems").values(part).execute();
 
+  // Contracts, with the visits the provider already did before Aerowise marked done.
   let contracts = 0;
-  // Each contract's visits follow its site's authority; load the authorities once.
   const catalog = await loadCatalog(trx);
   for (const [i, row] of rows.entries()) {
-    const terms = row.record.planName ? plans.get(row.record.planName) : undefined;
-    if (!terms || !row.record.contractStart) continue;
-    results[i]!.contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: row.record.contractStart, terms, autoRenew: false }, { catalog });
+    const r = row.record;
+    const terms = r.planName ? plans.get(r.planName) : undefined;
+    if (!terms || !r.contractStart) continue;
+    const contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: r.contractStart, terms, autoRenew: false }, { catalog });
+    results[i]!.contractId = contractId;
     contracts++;
+    const visits = trx.updateTable("serviceObligations").where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("status", "=", "open");
+    if (r.lastInspection) {
+      // The window holding the last inspection, and every window before it, was covered.
+      await visits
+        .set({ status: "completed", completedAt: new Date(`${r.lastInspection}T12:00:00Z`), completedByImport: importId, updatedAt: new Date() })
+        .where("windowStart", "<=", r.lastInspection)
+        .execute();
+    }
+    // A contract that already ended is kept for renewal, not for visits nobody can make.
+    if (r.contractEnd && r.contractEnd < today) {
+      await visits.set({ status: "cancelled", completedByImport: importId, updatedAt: new Date() }).execute();
+    }
   }
 
   for (const part of chunks(results)) {
