@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { LegalGate } from "@/components/legal/LegalGate";
 import { api } from "@/lib/api";
 import { canEdit, isReadOnlyAccount, isSupportView, SessionProvider, useSession } from "@/lib/session";
 
@@ -76,7 +77,7 @@ function Shell({ children }: { children: ReactNode }) {
           {me.role === "owner" ? <Link href="/settings/subscription">Add a payment method to reactivate it.</Link> : "Ask your company's owner to reactivate it."}
         </p>
       )}
-      <main className="page">{children}</main>
+      <main className="page">{me.legalDue?.length ? <LegalGate due={me.legalDue} companyName={me.organization.name} /> : children}</main>
     </>
   );
 }
