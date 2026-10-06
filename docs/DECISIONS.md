@@ -291,6 +291,14 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **A reset spends every open link of that person and ends all their sessions** in every organization. They sign in again with the new password rather than being signed in by the link, so a leaked link cannot become a session silently.
 - **Deactivation is per organization.** An owner deactivates a person's membership; their sessions in that organization are revoked and `findSession` already refuses inactive memberships, so the next request fails. Their other organizations are untouched. Owners cannot deactivate themselves, and a deactivated person comes back by reactivation, not by a new invitation (which office staff could otherwise use to undo an owner's decision).
 
+## 2026-10-05 · W2.4 Organization settings
+
+- **The MP license is the existing credential.** The settings page shows the responsible TCEQ maintenance provider chosen on the licenses page (`organizations.responsible_credential_id`, from #17) and links there, instead of a second license field that could disagree with what reports are signed and filed under.
+- **The logo is content-addressed.** It is stored at `<org>/logos/<sha256>.png|jpg`, and each report snapshot records that key (`provider.logoKey`). A report made before the logo changed redraws with its own logo, and removing the logo never deletes the file. PNG and JPEG only (checked by their first bytes), up to 1 MB. It is drawn at the top right of customer and authority inspection reports. When a signed copy is redrawn, the logo and, on the customer copy, the photos are now loaded too; before this, a signed customer copy was drawn without its photos.
+- **Invoices and renewal agreements do not show the logo yet.** Their PDFs are separate renderers; adding the logo there is a small follow-up if Justin wants it.
+- **Service counties are free text**, one per line, trimmed and de-duplicated without regard to case. Sites already store their county as typed, so a fixed list would not match imported data. W2.5's checklist only needs at least one.
+- **Who can change what:** everyone signed in can read the company settings (they appear on the documents everyone sends); only owners (`org:manage`) can change them or the logo.
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
@@ -409,6 +417,15 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
 - **The price after the free period is shown publicly** (Justin, 2026-10-05): it builds trust and filters out poor fits. It is read from the billing config, never typed into the copy.
 
+## 2026-10-05 · W5.2 Import: contracts, last inspection, permits, make and model
+
+- **New columns:** contract end and last inspection. Permit number, unit make and model were already read. A contract needs an active plan and either date. The missing date comes from the plan's term.
+- **The end date wins.** When both dates are given and don't fit the plan's term, the contract keeps the spreadsheet's end date and its start is moved to fit. Renewals run on the end date, and that is the date a provider's records are most likely to have right. The preview says so on the row.
+- **Visits before Aerowise.** The last inspection counts for the visit window it falls in and for every earlier window of the contract. Those visits are marked completed by the import (`service_obligations.completed_by_import`), dated the last inspection, with no inspection record. Later windows stay open, so a missed visit shows as overdue at once. Without a last inspection date, every window that has already closed shows as overdue. Aerowise does not assume a visit happened, and the preview notes this.
+- **A contract that already ended** is imported so it shows in the customer's history and can be renewed by hand, but its visits are cancelled by the import. Nobody can make those visits, and they would only fill the overdue list. The renewal pipeline only counts contracts that have not ended yet, as before.
+- **Today-dependent remarks are notes, not warnings** (`notes` on a preview row). A row stays "ready" when the only remark is that its contract has ended or has no last inspection. Otherwise a typical file with no last-inspection column would mark every contract row as a warning.
+- **A last inspection without a contract** is not stored. With no contract there are no visits to schedule from it. W5.4's summary counts those sites as having no contract.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -441,10 +458,19 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **"Today" is the UTC date** for the platform view. Organizations' own time zones only matter within a day of a version change.
 - **The coverage table scrolls inside its box on a phone,** using the `.table-scroll` wrapper W8.2 added for the organizations table, so the page stays screen-wide.
 
+## 2026-10-05 · W3.5 Backups and restore runbook
+
+- **Off the server, to R2, checked.** The nightly `pg_dump` and files tarball (W1's `backup.sh`) are copied to `backups/<env>/` in the R2 bucket by `deploy/vps/offsite.sh`, which runs rclone in a container (nothing installed on the server) and then downloads each copy and compares it byte for byte. A failed or mismatched copy fails the backup. Copies are kept 35 days in R2 (14 on the server). Old copies are deleted only after a new one checked out, so the newest is never pruned.
+- **Same bucket by default, separate credentials possible.** Backups use the app's `R2_*` unless `BACKUP_R2_BUCKET` / `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` are set. Open: with the app's token, a compromised app could delete its own backups; a second bucket with a token the app never holds would prevent that (Justin's call, a few minutes in Cloudflare).
+- **Restores are tested every week, not once.** `restore-check.sh` restores a dump into a throwaway Postgres (data in memory) and compares every table's row count with the live database; cron runs it on production's newest copy in R2 every Sunday. The first record in `docs/engineering/RUNBOOK.md` is a local run of the scripts against synthetic data; the run on the real staging server is listed for Justin.
+- **A missed backup alerts** through an optional dead man's switch (`BACKUP_HEARTBEAT_URL`, e.g. Healthchecks.io), pinged only when the dump, tarball and checked off-server copy all succeeded. The worker's alerts (W3.4) cannot see the host's cron, and an uptime check does not notice a backup that silently stopped.
+- **Dumps are not encrypted beyond R2's own encryption at rest.** The bucket is private and the token is scoped to it. Client-side encryption (age or gpg) would add a key Justin must not lose; left for later.
+- **Open:** photos and signed PDFs in R2 have no second copy (R2 has no object versioning here). A nightly copy of the bucket to the server's disk, keeping deleted objects for 35 days, would cover a bug or a leaked token deleting them.
+
 ## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
 
 - **Versions live in code** (`CURRENT_LEGAL_VERSIONS` in `packages/domain/src/legal.ts`), next to the placeholder text in `apps/web/components/legal/text.ts`. Changing the text means bumping the version in the same pull request, so the version on the page and the version owners accept can never disagree.
-- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0029) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
+- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0030) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
 - **When it is asked:** `/auth/me` returns `legalDue`, and the office screens show only the acceptance prompt until the owner accepts. The prompt links to the public `/terms` and `/privacy` pages and sends the versions it showed; if either changed meanwhile, the API answers 409 and records nothing.
 - **The API does not refuse other requests until acceptance.** The prompt is the gate. Blocking every API call would also block the technician app and the worker's own calls, and a forgotten click should never stop a county filing. Revisit if the lawyer requires a hard block.
 - **A read-only (lapsed) company can still accept** (`config.allowedWhenReadOnly`), or its owner could never get past the prompt to export their data.

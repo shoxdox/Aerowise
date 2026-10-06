@@ -63,6 +63,9 @@ export interface OrganizationsTable {
   routeDayMinutes: Generated<number>;
   routeSpeedMph: Generated<number>;
   responsibleCredentialId: ColumnType<string | null, string | null | undefined, string | null>;
+  logoStorageKey: ColumnType<string | null, string | null | undefined, string | null>;
+  logoContentType: ColumnType<"image/png" | "image/jpeg" | null, "image/png" | "image/jpeg" | null | undefined, "image/png" | "image/jpeg" | null>;
+  serviceCounties: ColumnType<string[], string[] | undefined, string[]>;
   createdAt: CreatedAt;
 }
 
@@ -251,6 +254,7 @@ export interface ServiceObligationsTable {
   dueOn: string;
   status: Generated<"open" | "completed" | "cancelled">;
   completedAt: Timestamp | null;
+  completedByImport: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }

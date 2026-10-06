@@ -16,6 +16,20 @@ const AUDIENCES: Audience[] = ["customer", "authority"];
 const joinAddress = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join(", ") || null;
 const sha256Hex = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
+/**
+ * The images a stored snapshot draws: the company logo it names, and on the customer copy
+ * its photos. Used to redraw a stored report (the signed copy) exactly as it was made.
+ */
+export async function snapshotImages(store: ObjectStore, s: ReportSnapshot): Promise<Map<string, Buffer>> {
+  const keys = [s.provider.logoKey, ...(s.audience === "customer" ? s.photos.map((p) => p.storageKey) : [])].filter((k): k is string => !!k);
+  const images = new Map<string, Buffer>();
+  for (const key of keys) {
+    const data = await store.get(key);
+    if (data) images.set(key, data);
+  }
+  return images;
+}
+
 /** A report problem the office has to fix, as opposed to a crash. */
 export class ReportCorrectionError extends Error {}
 
@@ -51,6 +65,7 @@ async function loadInspection(db: Executor, organizationId: string, inspectionId
       "org.postalCode as orgPostal",
       "org.timezone",
       "org.responsibleCredentialId",
+      "org.logoStorageKey",
       "s.addressLine1",
       "s.addressLine2",
       "s.city",
@@ -234,6 +249,10 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
   const answers: InspectionValues = { ...Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...(opts.amendments ?? {}) };
   const photoLabel = (key: string) => def.photos.find((p) => p.key === key)?.label ?? key;
   const images = new Map<string, Buffer>();
+  if (insp.logoStorageKey) {
+    const logo = await store.get(insp.logoStorageKey);
+    if (logo) images.set(insp.logoStorageKey, logo);
+  }
   if (audience === "customer") {
     for (const p of photos) {
       const data = await store.get(p.storageKey);
@@ -250,6 +269,7 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
       phone: insp.orgPhone,
       email: insp.orgEmail,
       address: joinAddress([insp.orgAddress1, insp.orgCity, [insp.orgState, insp.orgPostal].filter(Boolean).join(" ")]),
+      logoKey: insp.logoStorageKey,
     },
     customer: { name: insp.customerName },
     site: {

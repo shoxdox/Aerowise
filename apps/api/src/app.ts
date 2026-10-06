@@ -40,6 +40,7 @@ import { smsRoutes } from "./routes/sms.ts";
 import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
 import { passwordResetRoutes } from "./routes/password-reset.ts";
+import { organizationRoutes } from "./routes/organization.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { legalRoutes } from "./routes/legal.ts";
@@ -252,6 +253,7 @@ export async function buildApp({
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
+  await app.register(organizationRoutes, { db, store });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });

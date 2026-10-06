@@ -30,8 +30,16 @@ export function renderReport(s: ReportSnapshot, images: Map<string, Buffer> = ne
   const width = doc.page.width - 108;
   const left = 54;
 
-  // Header
-  doc.fillColor(ACCENT).font("Helvetica-Bold").fontSize(18).text(s.provider.name, left, 54);
+  // Header, with the company logo at the top right when it has one.
+  const logo = s.provider.logoKey ? images.get(s.provider.logoKey) : undefined;
+  if (logo) {
+    try {
+      doc.image(logo, left + width - 120, 40, { fit: [120, 48], align: "right" });
+    } catch {
+      // An image pdfkit cannot read is left out rather than failing the report.
+    }
+  }
+  doc.fillColor(ACCENT).font("Helvetica-Bold").fontSize(18).text(s.provider.name, left, 54, { width: logo ? width - 130 : width });
   doc.fillColor(MUTED).font("Helvetica").fontSize(9).text([s.provider.address, s.provider.phone, s.provider.email].filter(Boolean).join("  ·  "));
   doc.moveDown(0.8);
   doc.fillColor("#000").font("Helvetica-Bold").fontSize(14).text(s.layout?.title ?? "Aerobic System Maintenance Inspection");

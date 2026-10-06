@@ -19,6 +19,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, invite an organization's first owner, platform audit log | Done |
 | User invitations: owner and office invite by email with a role (office cannot invite an owner); single-use links that expire after 7 days; accepting sets a password and signs in | Done |
 | Password reset by email (single-use, one-hour links, rate-limited, never says whether an email exists) and deactivating a user (signed out at once) | Done |
+| Company settings: name, contact, address, service counties, logo on inspection reports, and the responsible MP license | Done |
 | Aerowise plans: plan state (design partner, trial, active, past due, read-only), dates and founder price per organization, set in `/admin`; read-only companies can view and export everything but change nothing | Done |
 | Aerowise billing: monthly count of active contracts per organization, stored with each month; Stripe Billing invoices (per-contract price, monthly minimum, founder price) collected automatically; test stand-in in development | Code done; **needs Stripe Billing keys** |
 | Owner subscription page (`/settings/subscription`): plan, days left, estimate at today's count, saved payment method (Stripe customer portal), past invoices | Done |
@@ -31,7 +32,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Compliance engine: jurisdictions, versioned rulesets, filing by email or by hand, with proof and confirmation | Done |
 | Filing readiness: draft LCRA and Harris County profiles (never auto-send), reviewed site-to-authority assignment with evidence, licenses and registrations checked before release, immutable submission packages with the LCRA cover sheet, contract filings, complaint and monitoring-notice review, corrected report versions, customer delivery records, licensed provider signature on each authority report (30 TAC 285.7(b)(3)), contract deadlines by kind and the notice owed when a contract ends | Built and tested locally; **not used for a real filing yet** |
 | Exception inbox as the office home screen (overdue visits, unfinished inspections, filing problems, late next visits, open issues, contracts ending) | Done |
-| CSV/XLSX customer import with column detection, sheet choice, saved column choices, preview, duplicate flags and all-or-nothing commit | Done |
+| CSV/XLSX customer import with column detection, sheet choice, saved column choices, contract dates and last inspection, preview, duplicate flags and all-or-nothing commit | Done |
 | Invoices (drafts, contract installments, tax, discounts, PDF, email), manual payments, refunds | Done |
 | Online card and bank (ACH) payments through Stripe Connect, with signed, idempotent webhooks | Done |
 | QuickBooks Online sync (customers, invoices, payments) with a first-sync match review, item mapping, retries and a conflict center | Done |

@@ -8,6 +8,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Nightly backups of both environments.
 30 8 * * * root /opt/aerowise/production/deploy/vps/backup.sh production >> /var/log/aerowise-backup.log 2>&1
 45 8 * * * root /opt/aerowise/staging/deploy/vps/backup.sh staging >> /var/log/aerowise-backup.log 2>&1
+# Every Sunday, restore production's newest copy in R2 into a scratch database and compare it
+# with the live one (docs/engineering/RUNBOOK.md). Nothing in the running app changes.
+30 9 * * 0 root /opt/aerowise/production/deploy/vps/restore-check.sh production r2 >> /var/log/aerowise-restore-check.log 2>&1
 
 # The demo starts each day fresh.
 0 9 * * * root docker exec aerowise-staging-api-1 pnpm db:reseed-demo >> /var/log/aerowise-reseed.log 2>&1

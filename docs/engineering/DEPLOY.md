@@ -91,15 +91,9 @@ docker exec aerowise-staging-api-1 pnpm db:reseed-demo
 
 ## Backups and restore
 
-[`backup.sh`](../../deploy/vps/backup.sh) runs nightly for each environment (08:30 UTC production, 08:45 UTC staging). It writes a `pg_dump` and a tarball of stored files to `/var/backups/aerowise/<env>/`, readable by root only, and keeps 14 days. With R2 configured, files live in R2 and the tarball is close to empty.
+[`backup.sh`](../../deploy/vps/backup.sh) runs nightly for each environment (08:30 UTC production, 08:45 UTC staging). It writes a `pg_dump` and a tarball of stored files to `/var/backups/aerowise/<env>/` (root only, 14 days), then copies both to `backups/<env>/` in the R2 bucket and reads them back (35 days). Every Sunday, [`restore-check.sh`](../../deploy/vps/restore-check.sh) restores production's newest copy from R2 into a scratch database and compares it with the live one.
 
-These copies are on the same server, so they protect against mistakes, not against losing the server. W3.5 copies them off the server and writes the restore runbook. Until then, to restore:
-
-```sh
-sudo /opt/aerowise/<env>/deploy/vps/restore.sh <env> /var/backups/aerowise/<env>/db-<stamp>.dump [/var/backups/aerowise/<env>/files-<stamp>.tar.gz]
-```
-
-It stops the app, replaces the database (and the files, if given) and starts the app again.
+How to restore, check a backup, and recover from a lost server: [RUNBOOK.md](RUNBOOK.md).
 
 ## Moving to Render later
 

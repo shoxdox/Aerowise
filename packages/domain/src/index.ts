@@ -22,4 +22,5 @@ export * from "./subscription.ts";
 export * from "./users.ts";
 export * from "./marketing.ts";
 export * from "./demo-requests.ts";
+export * from "./organization.ts";
 export * from "./legal.ts";

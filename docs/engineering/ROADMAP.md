@@ -31,22 +31,22 @@ Where two streams touch the same file, the dependency column says who goes first
 | W1.3 | Deploy from main through CI | W1.1 | done: staging on every green push to main, production by hand, nightly reseed; waiting on the server's GitHub secrets |
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
 | W2.2 | User invites | W2.1 | done (#25) |
-| W2.3 | Password reset and user deactivation | W2.2 | in progress (PR open) |
-| W2.4 | Organization settings | — | not started |
+| W2.3 | Password reset and user deactivation | W2.2 | done (#29) |
+| W2.4 | Organization settings | — | in progress (PR open) |
 | W2.5 | First-run checklist | W2.2, W2.4 | not started |
 | W2.6 | Read-only support impersonation and the onboarding e2e | W2.1–W2.3 | not started |
 | W3.1 | Real email transport with idempotency and bounces | — | done (#24); sending for real needs Justin's Resend account, key and DNS |
 | W3.2 | Cloudflare R2 object store | — | done (#30); using R2 needs Justin's Cloudflare account, bucket and token |
 | W3.3 | Production secrets check and hardening | — | done (#32); Render's TRUST_PROXY value to be read off staging |
-| W3.4 | Observability: logs, error tracking, alerts | — | done (PR pending); needs a Sentry DSN and an uptime monitor from Justin |
-| W3.5 | Backups and restore runbook | W1.1 | not started |
+| W3.4 | Observability: logs, error tracking, alerts | — | done (#34); needs a Sentry DSN and an uptime monitor from Justin |
+| W3.5 | Backups and restore runbook | W1.1 | done (PR pending); scripts tested locally, the staging restore run is Justin's |
 | W4.1 | Plan states and read-only mode | W2.1 | done (#35) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
 | W4.3 | Owner subscription page | W4.2 | in progress (PR open); needs the Stripe customer portal turned on |
 | W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | not started |
 | W4.5 | Platform fee on homeowner payments | W4.1 | not started |
 | W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
-| W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | not started |
+| W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done |
 | W5.3 | Undo a committed import | W5.2 | not started |
 | W5.4 | Onboarding summary | W5.2 | not started |
 | W5.5 | Full data export | W2.1 | not started |
