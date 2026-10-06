@@ -44,7 +44,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
 | W4.3 | Owner subscription page | W4.2 | done (#41); needs the Stripe customer portal turned on |
 | W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | done (#45) |
-| W4.5 | Platform fee on homeowner payments | W4.1 | in progress (PR open) |
+| W4.5 | Platform fee on homeowner payments | W4.1 | done (#59) |
 | W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
 | W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done |
 | W5.3 | Undo a committed import | W5.2 | done |
