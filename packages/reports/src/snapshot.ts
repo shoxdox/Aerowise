@@ -12,7 +12,14 @@ export interface ReportSnapshot {
   reportId: string;
   generatedAt: string;
   timezone: string;
-  provider: { name: string; phone: string | null; email: string | null; address: string | null };
+  provider: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    /** Storage key of the company logo when the report was made (content-addressed, so it never changes). */
+    logoKey?: string | null;
+  };
   customer: { name: string };
   site: { address: string; county: string | null; permitNumber: string | null };
   system: { manufacturer: string | null; model: string | null; serial: string | null; disposalType: string | null; chlorinationMethod: string | null } | null;
