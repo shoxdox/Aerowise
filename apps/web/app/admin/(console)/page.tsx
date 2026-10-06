@@ -186,6 +186,27 @@ export default function AdminOrganizationsPage() {
     null,
   );
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [supportFor, setSupportFor] = useState<AdminOrganization | null>(null);
+  const [supportError, setSupportError] = useState<string | null>(null);
+
+  // Opens the company as its owner sees it, read-only, then goes there.
+  async function onSupport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supportFor) return;
+    setSupportError(null);
+    const v = formValues(event.currentTarget);
+    try {
+      await api(`/admin/organizations/${supportFor.id}/support`, {
+        method: "POST",
+        body: { reason: v.reason },
+      });
+      window.location.assign("/inbox");
+    } catch (err) {
+      setSupportError(
+        err instanceof ApiError ? err.message : "Could not open the company",
+      );
+    }
+  }
   const [sent, setSent] = useState<{
     org: string;
     result: InvitationSent;
@@ -297,6 +318,36 @@ export default function AdminOrganizationsPage() {
         </form>
       )}
 
+      {supportFor && (
+        <form className="card grid" onSubmit={onSupport}>
+          <p className="wide">
+            View <strong>{supportFor.name}</strong> as its owner sees it, for
+            up to an hour. Nothing can be changed, and the company&apos;s
+            audit log records the visit and your reason.
+          </p>
+          <label className="wide">
+            Reason
+            <input
+              name="reason"
+              required
+              minLength={3}
+              placeholder="Owner asked why a filing is late"
+            />
+          </label>
+          {supportError && <p className="error wide">{supportError}</p>}
+          <div className="wide row">
+            <button type="submit">Open read-only</button>
+            <button
+              type="button"
+              className="link"
+              onClick={() => setSupportFor(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
       {creating && data && (
         <form className="card grid" onSubmit={onCreate}>
           <label className="wide">
@@ -392,6 +443,21 @@ export default function AdminOrganizationsPage() {
                   >
                     Invite owner
                   </button>
+                  {o.users > 0 && (
+                    <>
+                      {" "}
+                      <button
+                        className="link"
+                        onClick={() => {
+                          setSupportFor(o);
+                          setSupportError(null);
+                        }}
+                        aria-label={`View ${o.name} read-only`}
+                      >
+                        View read-only
+                      </button>
+                    </>
+                  )}
                 </td>
                 <td>{planSummary(o)}</td>
                 <td>{priceSummary(o, data.defaults)}</td>
