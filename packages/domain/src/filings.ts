@@ -237,6 +237,11 @@ export const rulesetRules = z.object({
       filingRequired: z.boolean(),
       /** Deadline for a renewal: this many days before the previous contract ends. */
       renewalDaysBeforePreviousEnd: z.number().int().min(0).max(365).nullable(),
+      /**
+       * Whether the authority has said how contracts reach it. `unknown` holds every contract
+       * filing in review, even where reports have a published email: nothing is sent to it.
+       */
+      submission: z.enum(["supported", "unknown"]).optional(),
       note: z.string().max(1000).optional(),
     })
     .optional(),

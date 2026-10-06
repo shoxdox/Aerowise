@@ -1,0 +1,118 @@
+{
+  "jurisdiction": {
+    "key": "tx-city-of-denton",
+    "state": "TX",
+    "authorityName": "City of Denton Environmental Services, On-Site Sewage Facilities",
+    "type": "city"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from the City of Denton's On-Site Sewage Facility page, its OSSF permit procedure outlines, its 2019 permit application, 30 TAC 285.7 and TCEQ's OSSF maintenance page. The city's OSSF ordinance (Code Ch. 26, Art. IX) could not be read. The city publishes no way to submit maintenance reports. See docs/jurisdictions/tx-city-of-denton.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "The City of Denton's OSSF ordinance (Code of Ordinances Ch. 26, Art. IX) could not be read, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "City of Denton: On-Site Sewage Facility",
+        "url": "https://www.cityofdenton.com/664/On-Site-Sewage-Facility",
+        "retrievedOn": "2026-10-06",
+        "note": "Permit fees ($500 new aerobic, $300 non-aerobic, $200 repair). Nothing on maintenance contracts or reports."
+      },
+      {
+        "title": "City of Denton: Outline of On-Site Sewage Facility Permit Procedures",
+        "url": "https://www.cityofdenton.com/DocumentCenter/View/3672/Outline-of-City-of-Denton-On-Site-Sewage-Facility-Permit-Procedures-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "Undated. 'For all OSSF systems that utilize aerobic treatment, a maintenance contract is required. The initial contract must be valid for at least two years'. Environmental Services, 1100 S. Mayhill Rd, Denton, TX 76208, (940) 349-8619. Read through a page summarizer."
+      },
+      {
+        "title": "City of Denton: Outline of OSSF Permit Procedures (2019)",
+        "url": "https://lfpubweb.cityofdenton.com/publicweblink/4/edoc/42522/OUTLINE-OF-CITY-OF-DENTON-OSSF-PERMIT_-PROCEDURES_2019.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "The owner must 'continuously maintain the maintenance contract at his or her own expense.' Read through a page summarizer."
+      },
+      {
+        "title": "City of Denton Code of Ordinances, Ch. 26, Art. IX On-Site Sewage Facilities (Municode)",
+        "url": "https://library.municode.com/tx/denton/codes/code_of_ordinances?nodeId=SPACOOR_CH26UT",
+        "retrievedOn": "2026-10-06",
+        "note": "Could not be read: the page renders by script and returned no text."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "The City of Denton publishes no way to submit maintenance inspection reports or contracts, so inspection filings are held for review and contracts are filed by hand.",
+      "The city's OSSF ordinance (Code Ch. 26, Art. IX) could not be read, so any city-specific frequency, deadline, report contents, fees and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+      "Whether the city covers only its limits or also its ETJ is not published; every site needs a reviewed assignment.",
+      "The current OSSF designated representative and contact email are not published on the city site (a 2019 application names one).",
+      "The City of Denton publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Denton"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "The City of Denton permits OSSFs inside Denton; whether that includes its ETJ is not published. Sites in unincorporated Denton County belong to Denton County instead. Check city limits; if unsure, call City of Denton Environmental Services at (940) 349-8619. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "The City of Denton publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "The city requires a maintenance contract (initial term at least two years) but publishes no renewal filing channel or timing. Timing from 30 TAC 285.7(d)(2): 30 days before the current contract expires. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page. The city's ordinance could not be read."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "The City of Denton describes no reply to maintenance reports or contracts."
+  }
+}

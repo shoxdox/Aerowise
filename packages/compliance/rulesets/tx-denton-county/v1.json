@@ -1,0 +1,112 @@
+{
+  "jurisdiction": {
+    "key": "tx-denton-county",
+    "state": "TX",
+    "authorityName": "Denton County Public Health, Environmental Health Division, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Denton County's Environmental Health Division page, its 'What You Must Know' OSSF sheet (Rev 9/14/20), its Testing and Reporting Form (Rev 3/9/2021), its permit application packet, 30 TAC 285.7 and TCEQ's OSSF maintenance page. The Denton County OSSF order is referenced but not published. See docs/jurisdictions/tx-denton-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "The Denton County OSSF order is referenced but not published on the county site, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Denton County: Environmental Health Division",
+        "url": "https://www.dentoncounty.gov/657/Environmental-Health-Division",
+        "retrievedOn": "2026-10-06",
+        "note": "'administers the Denton County on-site sewage facility (OSSF) order per the Texas Administrative Code and Texas Water Code throughout the unincorporated portions of Denton County'. Phone 940-349-2920; 3900 Morse Street, Denton, TX 76208."
+      },
+      {
+        "title": "Denton County: What You Must Know, On-Site Sewage Facilities (Rev 9/14/20)",
+        "url": "https://www.dentoncounty.gov/DocumentCenter/View/1441/What-You-Must-Know-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "Owners of aerobic systems 'must continuously maintain a signed written contract with a valid maintenance company and submit a copy of the contract to the Denton County Environmental Health Division at least thirty (30) days prior to expiration of the previous contract or have written approval from this department showing approved homeowner training.' Covers 'the unincorporated (outside of city limits) portions of Denton County'. Read through a page summarizer."
+      },
+      {
+        "title": "Denton County: Testing and Reporting Form (Rev 3/9/2021)",
+        "url": "https://www.dentoncounty.gov/DocumentCenter/View/1439/Homeowners-Inspection-Form-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "'Required frequency of maintenance check and test: Every 4 months'. 'After inspection, please mail, fax or email this form to: Denton County Environmental, 3900 Morse St, Denton, TX 76208 ... Fax: (940) 349-2588 Email: ossfinspections@dentoncounty.gov'. One copy to the homeowner and one to the permitting authority. Fields: permit number, checklist (aerators, filters, irrigation pumps, recirculation pumps, disinfection device, chlorine supply, electrical circuits, distribution system, sprayfield vegetation), repairs, CL2 grab result, complaint response dates, lid security. No deadline. Read through a page summarizer."
+      },
+      {
+        "title": "Denton County: Septic Permit Application Packet (Rev 11/26/24)",
+        "url": "https://www.dentoncounty.gov/DocumentCenter/View/1440/Septic-Permit-Application-Packet-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "'All maintenance on this OSSF must be performed by an approved maintenance company or per Denton County OSSF order.' Permit fees only. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      }
+    ],
+    "unresolved": [
+      "Denton County's form says to email it to ossfinspections@dentoncounty.gov. Whether providers may send their own report format there instead of the county form is not stated; the office checks each report before pressing Send.",
+      "No channel is published for maintenance contracts, and nothing says the ossfinspections address takes them. Contract filings are held for review and filed by hand until the county says otherwise.",
+      "No report deadline is published; Aerowise uses TCEQ's 14 days after the test.",
+      "Whether electronic monitoring allows 6 months between visits is not addressed (the county form says every 4 months), so Aerowise allows no 6-month schedule here.",
+      "The Denton County OSSF order is not published, so its number, dates, and any commercial schedule, lab tests or fees are unknown.",
+      "The county's form asks for the CL2 grab result, complaint response dates and lid security, which Aerowise's report does not lay out the same way.",
+      "Denton County covers unincorporated Denton County only; the City of Denton runs its own program and other cities are not listed. Every site needs a reviewed assignment.",
+      "Denton County publishes no acknowledgment of an emailed report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Denton"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Denton County covers unincorporated Denton County (outside city limits). Inside the City of Denton, the city is the authority; other cities may run their own programs. Check city limits first; if unsure, call Denton County Environmental Health at 940-349-2920. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Denton County's Testing and Reporting Form says to mail, fax or email it to ossfinspections@dentoncounty.gov."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "submission": "unknown",
+    "note": "Denton County (read 2026-10-06): a copy of the contract goes to the Environmental Health Division at least 30 days before the previous contract expires. No channel is published for contracts, and nothing says the ossfinspections address takes them, so contract filings are held for review and filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "ossfinspections@dentoncounty.gov",
+      "subject": "OSSF maintenance inspection report, permit {permitNumber}, {address}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Denton County describes no reply to emailed reports. Record any acknowledgment it sends."
+  }
+}
