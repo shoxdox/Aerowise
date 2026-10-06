@@ -1,0 +1,19 @@
+DERIVED BROWSER EXCERPT — not the original HTML response.
+Observed 2026-10-06 in the internal browser.
+URL: https://www.mctx.org/departments/departments_d_-_f/environmental_health/on-site_sewer_facility.php
+Title: On-Site Sewage Facility
+
+Environmental Health Services
+501 N Thompson Street, Suite 101, Conroe, Texas 77301
+Phone: 936-539-7839
+Keith Miles, OSSF Supervisor
+keith.miles@mctx.org
+
+Local Order link: 620145.pdf?t=20250424152017615
+Browser navigation resolved this link to:
+https://cms1files.revize.com/montgomerycountytx/620145.pdf?t=20250424152017615
+
+URL: https://www.mctx.org/departments/departments_d_-_f/environmental_health/permitting/all_forms.php
+The All Forms page lists initial maintenance contracts and an Open Records Request.
+The latter is followed by: "if the structure is attached to a septic system, send request to mc.maint@mctx.org."
+This establishes an open-records contact, not explicit permission to send recurring maintenance reports or renewal contracts there.

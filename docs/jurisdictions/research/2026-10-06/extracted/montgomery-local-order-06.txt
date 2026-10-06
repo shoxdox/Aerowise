@@ -1,0 +1,43 @@
+SECTION 10. | AMENDMENTS
+
+The County of Montgomery, Texas wishing to adopt more stringent Rules for its On-site
+Sewage Facility Order understands that the more stringent conflicting local Rule shall take
+precedence over the corresponding Texas Commission on Environmental Quality requirements if
+local rules provide greater public health and safety protection. Listed below are the more stringent
+Rules adopted by Montgomery County, Texas.
+
+(a) Definitions. Words and phrases in this Order have the same meaning as provided
+in Chapter 366 of the Texas Health and Safety Code and Chapter 285 of Title 30 of
+the Texas Administrative Code. The following words and terms in this Order shall
+be defined as follows:
+
+(1) Certified Maintenance Provider shall mean a person that is licensed or
+registered with the TCEQ and Montgomery County, Texas as an authorized
+OSSF maintenance provider.
+
+(2)  Graywater shall mean wastewater from showers, bathtubs, handwashing
+lavatories, sinks that are not used for disposal of toxic or hazardous
+substances, sinks that are not used for food preparation or disposal, and
+clothes-washing machines.
+
+(3) Organized Disposal System shall mean a public or private sewerage system
+for the collection and conveyance of sewage to a treatment and disposal
+system that is regulated by the rules of the TCEQ and Chapter 26 of the
+Texas Water Code.
+
+(4) OSSF(s) shall mean On-Site Sewage Facility(ies) as defined in
+30 TAC § 285 and that does not dispose of more than 5,000 gallons of
+sewage per day.
+
+(5) TAC shall mean Texas Administrative Code.
+(b) All subsurface OSSFs will be sized based off use of non-water saving devices.
+
+(c) Pump tanks shall be sized to contain two-thirds (2/3) of a day’s flow in the reserve.
+An override switch may be installed as long as it is positioned above the high water
+alarm to activate after the reserve is full and prior to the pump tank reaching
+capacity.
+
+(d) All subsurface disposal fields must be a closed loop system and have an inspection
+port at the furthest point of the disposal area from the tanks.
+
+Page 10 of 15

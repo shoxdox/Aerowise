@@ -1,0 +1,13 @@
+DERIVED BROWSER EXCERPT — not the original HTML response.
+Observed 2026-10-06 in the internal browser.
+URL: https://www.hayscountytx.gov/863/Contact-Us
+Title: Contact Us | Hays County, TX
+
+Permit Administration:
+Application Questions, General Inquiries, On-Site Sewage Facility (OSSF) Maintenance Inquiries:
+(P) 512-393-2150 (Option 0)
+(E) permits@hayscountytx.gov
+(E) ossfmaintenance@hayscountytx.gov
+
+The rendered page exposes mailto:ossfmaintenance@hayscountytx.gov.
+This is an inquiry contact; the page does not explicitly authorize report/contract submission at that address.

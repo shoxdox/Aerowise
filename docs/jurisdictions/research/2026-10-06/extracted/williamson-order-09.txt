@@ -1,0 +1,49 @@
+2. Field monitoring: For monitoring purposes in gravity flow systems, a threaded
+capped riser with cleanout equal to the size of the outlet pipe shall be provided on
+the outlet of the tank between the tank and the drainfield(s). Additional capped
+pipes shall be provided in the drainfield(s) to allow for easy monitoring of liquid
+depths.
+
+3. Pump Tank: In order to provide reserve capacity in the pump tank in the event of
+a pump failure, pump tanks shall be sized for one-day flow reserve above the
+alarm on fevel.
+
+4. Electronic Monitoring: Surface irrigation systems, systems that use special treatment
+technologies for high strength waste and other systems that are required to meet
+secondary treatment shall have the option of utilizing electronic monitoring, Systems
+equipped with electronic monitoring systems that will notify the maintenance
+company of systems or components failure and will monitor the amount of
+disinfection will not be required to undergo routine inspections by the maintenance
+company more often than every 6 months. Systems not currently equipped with
+electronic monitoring systems shall be required to submit maintenance inspection
+reports at least once every 4 months.
+
+5. Secondary Treatment Requirements: In addition to 30 TAC Chapter 285
+requirements, surface irrigation systems and any other systems that are required to
+meet secondary quality effluent standards must comply with the requirements of
+these Rules.
+
+a, All surface application systems shall be required to have a secure audible and
+visible alarm for aeration malfunction or lack of disinfection.
+
+b. Surface irrigation shall be limited to spray application only.
+
+¢. Irrigation shall not spray closer than twenty (20) feet to any property line.
+Irrigation shall not spray closer than ten (10) feet to any part of a residence or
+occupied place of business.
+
+d. Spray irrigation shall be conducted during nighttime hours (after midnight and
+before 5:00 AM), preferably just before sunrise.
+
+e. Surface application systems shall not be equipped with an automatic override
+below the alarm level.
+
+6. Maintenance Requirements: In order to provide greater public health and safety
+protection, the maintenance for all aerobic treatment units shall be performed by a
+TCEQ registered maintenance company unless:
+
+a. The homeowner is a TCEQ registered maintenance provider for his/her
+aerobic treatment unit; or
+
+Page 5 of9
+

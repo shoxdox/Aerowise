@@ -1,0 +1,16 @@
+DERIVED BROWSER EXCERPT — not the original HTML response.
+Observed 2026-10-06 in the internal browser.
+URL: https://www.brazoriacountytx.gov/departments/environmental-health/contact-us
+Title: Contact Us | Brazoria County, TX
+
+Brazoria County Environmental Health Department
+Physical Address: 451 N Velasco Suite 270, Angleton, TX 77515
+Mailing Address: 111 E. Locust Bldg. A-29, Suite 270, Angleton, TX 77515
+Phone number 979-864-1600
+
+OSSF Maintenance
+Please send maintenance contracts & reports to ehmaintenance@brazoriacountytx.gov
+Ana Cardona - Health Inspector-Maintenance
+Cindy Bergen- Clerk OSSF Maintenance
+
+The visible address is explicit; its link href is only "mailto:". Copy the visible address, rather than relying on that malformed link.

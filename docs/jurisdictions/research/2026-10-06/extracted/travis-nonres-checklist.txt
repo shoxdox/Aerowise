@@ -1,0 +1,562 @@
+                                     Non-Residential Development Checklist
+
+
+
+Development permit applicants are expected to comply with Travis County code and other applicable public health,
+safety, and environmental quality laws and regulations prior to approval. Please complete and sign the checklist below to
+determine which additional requirements are applicable to your non-residential project. This list is not all inclusive, and
+Transportation and Natural Resources (TNR) reserves the right to request additional information if necessary. All
+permits from other jurisdictions must be obtained prior to the issuance of a Travis County development permit.
+
+Address ______________________________________________________________________________________
+
+Legal Description (TCAD) ______________________________________________________________________
+
+
+Please answer each of the following questions by writing yes, no or the number in the space provided.
+
+Environmental Quality
+
+     1. Will the construction project disturb one or more acres, or is it part of a common or                __________
+        phased plan of development? (Ex: a small lot in a residential subdivision)
+
+         If yes, a Stormwater Pollution Prevention Plan (SWP3) administered by the Texas Commission
+         of Environmental Quality (TCEQ) and Travis County must be implemented onsite, and an
+         Erosion and Sediment Control (ESC) Plan with specified temporary and permanent erosion
+         and sediment controls to prevent off-site stormwater runoff impacts and permanently stabilize
+         the site is required. In lieu of submitting the entire SWP3 for review, please submit a completed
+         SWP3 Summary.
+
+         If no, construction sites less than an acre are still required to provide an Erosion and Sediment
+         Control (ESC) Plan with specified temporary and permanent erosion and sediment controls to
+         prevent off-site stormwater runoff impacts and permanently stabilize the site.
+
+         Reference: Travis County Code Section 482.936
+                   TCEQ General Permit TXR150000
+                   SWP3 Summary
+                   SWP3 Summary Instructions
+
+     2. Will the project add more than 10,000 sqft of new impervious cover?                                  __________
+
+         If yes, permanent water quality controls (PWQC) may be required to be designed and included
+         in permanent platted or recorded easements.
+
+         A PWQC Maintenance Permit will be issued by the County or applicable jurisdiction at the
+         completion of construction. The PWQCs must be maintained by the owner and will be
+         inspected for compliance with an approved Maintenance Plan that is recorded with the County
+         Clerk Office.
+
+         Reference: Travis County Code Section 482.917, Section 482.931 & Section 482.944
+
+     3. Does the site plan exhibit one of the following traits?                                              __________
+           a. Slope greater than 10%
+           b. Slope between 5 - 10% with a slope length greater than 50 feet
+           c. Slope between 2 - 5% with a slope length greater than 100 feet
+           d. Stormwater outfall
+
+         If yes, your site possesses a critical site improvement and an enhanced stabilization plan is
+         required for these areas.
+
+         Reference: Travis County Code Section 482.935(g)
+
+     4. Does your site plan include an erosion and sedimentation control (ESC) plan?                         __________
+
+         If no, provide a detailed submission describing the reason for not including an ESC plan.
+
+
+
+                                                                                                 Rev. 05/11/2023          1
+        The owner/owner’s agent must identify the erosion and sediment controls to prevent water
+        pollution and off-site stormwater impacts in the site plan, and a Travis County reviewer will
+        verify the correct level of erosion and sedimentation controls are proposed.
+
+        Reference: Travis County Code Section 482.935(g)
+
+    5. Will your project have driveway access on a state road?                                              __________
+
+        If yes, there are no impervious cover limits, but if not, there is a 45% impervious cover limit.
+
+        Contact: TxDOT: 512-416-3108
+
+    6. Will the project disturb or cross a platted waterway or critical environmental feature               __________
+       (CEF) setback area?
+
+        If yes, a variance or an exception to code will be required prior to permit issuance.
+
+        Reference: Travis County Code Section 482.941
+
+    7. Is the project disturbing more than 10,000 sqft of land?                                             __________
+
+        If yes, an Environmental Resource Inventory (ERI) is required to establish whether
+        development will disturb or cross a waterway, CEF, or a setback area.
+
+        Reference: Travis County Code Section 482.941 & Section 482.942
+
+Municipal Extraterritorial Jurisdiction (ETJ)
+
+    8. Is the project within a city extra-territorial jurisdiction (ETJ) or limited purpose
+        jurisdiction, such as Austin, Bee Cave, Manor, etc?                                                 __________
+
+        If yes, permits in ETJs or limited purpose jurisdictions require a signature approval or permit
+        from the municipal jurisdiction prior to final issuance of a County Permit. It is the applicant’s
+        responsibility to contact the municipality and any utility providers to find out what additional
+        permits are required.
+        Reference: Travis County Code Section 482.916
+
+    9. Is the project located in the Edwards Aquifer Recharge Zone or Contributing Zone?
+        If yes, an applicant must provide a copy of the applicable plan or documentation showing they       __________
+
+        are exempt from the regulations found in TCEQ Regulatory Guidance - 348 prior to County
+        permit issuance.Please refer to the TCEQ Edwards Aquifer Map Viewer if you need help finding out
+        if you are in one of those areas.
+        Contact: TCEQ Edwards Program at EAPP@tceq.texas.gov or 512-339-2929
+        Reference: TCEQ's Edward Aquifer Rules Title 30 TAC Chapter 213
+                   Travis County Code Section 482.916
+                   Edwards Aquifer Map
+    10. Is the project located in the Highland Lakes Watershed Ordinance (HLWO) area west of                __________
+        the Austin ETJ?
+
+        If yes, a Lower Colorado River Authority (LCRA) HLWO permit or permit exemption letter will
+        be required prior to County permit issuance.
+
+        Contact: LCRA HLWO Administrative Office: 512-578-2838
+        Reference: Travis County Code Section 482.916
+
+Floodplain
+
+    11. Will the project be located on a tract(s) or lot(s) that has regulatory floodplain on it?           __________
+
+        If yes, Will the project permanently alter a Travis County Regulatory Floodplain?
+
+                 If yes, a Conditional Letter of Map Revision (CLOMR) from FEMA must be obtained
+                 prior to issuance of a County permit, if a project will alter the FEMA 1% & 0.2%
+                 annual chance floodplain as shown on the Flood Insurance Rate Map for Travis
+                 County.
+
+                                                                                                 Rev. 05/11/2023         2
+        Contact: FEMA’s Map Assistance Center: 1- 877-FEMA-Map or MSC Help
+        Reference: FEMA Flood Maps
+                  Travis County Code Chapter 464
+
+    12. Will the project include a new dam (water impoundment) or alteration of an existing               __________
+        dam?
+
+        If yes, new dam construction or alteration of an existing water impoundment dam structure of 6
+        or more feet with a maximum storage capacity of 50 or more acres feet are subject to dam
+        safety regulations of the state TCEQ. New impoundments of any size cannot be built on natural
+        stream tributaries without compliance with the Clean Water Act Section 404, enforced by the
+        U.S. Army Corps of Engineers (USACE).
+
+        NOTE: See Question 11
+
+        Contact: TCEQ Dam Safety Program: 512-239-1510
+        Reference: Title 30 TAC Chapter 299
+                  Clean Water Act Section 404
+                  Travis County Code Section 482.916
+
+    13. Is the project near a lake, river, or other body of water?                                        __________
+
+        If yes, waterway setbacks may apply, which are based on drainage area and vary depending on
+        watershed.
+
+        Reference: Travis County Code Section 482.941
+
+    14. If the project is located on a lake or river, is a boat dock or pier proposed?                    __________
+
+        If yes, you may be subject to the Clean Water Act Section 404, enforced by the U.S. Army Corps
+        of Engineers (USACE).
+
+        Applicants must provide one of the following:
+           ● Pre-construction Notification (PCN) Letter to the Corps
+           ● Authorization Letter (response to the PCN Letter) from the Corps
+           ● Texas Registered Professional Engineer's Letter stating the project is not applicable
+
+        Boat docks on the Pedernales River or Lake Travis outside the Austin ETJ follow LCRA
+        standards, and boat docks in the Austin ETJ follow City of Austin standards and permitting.
+
+        Contact: USACE Ft. Worth District Regulatory Branch: 817-886-1731
+                LCRA Marina Program: 512-473-3200
+                City of Austin Planning & Development Review Department: 512- 974-6369 or
+                http://www.austintexas.gov/department/permits
+        Reference: Clean Water Act Section 404
+                  Travis County Code Section 482.916
+
+Driveways, Public Right-of-Way, & Sidewalks
+
+    15. Will the project require a new or improved driveway access onto a Travis County                   __________
+        roadway?
+
+        If yes, a Traffic Impact Analysis Determination Worksheet is required, and a Travis County
+        Driveway in Right of Way Permit application must be submitted and approved prior to
+        issuance of a County development permit.
+
+    16. Will the project require cutting into the pavement or the roadside of a Travis County             __________
+        roadway, such as for the installation of utility lines (gas, telephone, cable, electric, etc.)?
+
+        If yes, any construction in a Travis County right-of-way, in addition to driveway approaches,
+        must provide a Traffic Control Plans, and will require a Travis County Utility Installation
+        Permit. The contractor who will be doing the work within the Right of Way must obtain this
+        permit prior to any construction in a County right-of-way.
+
+    17. Will the project clear or disturb any trees greater than 8” in diameter within the County         __________
+        Right-of-way?
+
+
+
+                                                                                               Rev. 05/11/2023         3
+        If yes, tree protection design measures and tree replacement for significant trees removed is
+        required. Replacement trees should be outside the County right-of-way.
+
+        Reference: Travis County Code Section 482.973
+
+    18. Will the project require a new or improved driveway access onto a state roadway?                  __________
+
+        If yes, a Traffic Impact Analysis Determination Worksheet is required, and a Texas Department
+        of Transportation (TxDOT) driveway permit will be required prior to issuance of a County
+        development permit.
+
+        Contact: TxDOT: 512-416-3108
+
+    19. Does the project include construction of new or remodeled facilities for pedestrian use in        __________
+        the County right-of-way, such as sidewalks or trails greater than 1:20 slope, parking
+        areas, or buildings with associated appurtenances?
+
+        If yes, the project does include sidewalks and/or trails in the Travis County right-of-way, the
+        project must comply with Americans with Disabilities Act (ADA) accessibility standards, such
+        as handicapped parking, curb ramps, accessible pedestrian routes, and building standards for
+        doors, stairs, bathrooms, signage, etc.
+
+        NOTE: Any project doing work within the County right-of-way must have a permit.
+
+        Contact: Texas Department of Licensing and Regulation: 512-463-3211
+
+Endangered Species/Balcones Canyonlands Conservation Plan (Western Travis County only)
+
+    20. For projects located west of Mo-Pac Expressway, have the potential endangered species             __________
+        impacts been addressed in compliance with the federal Endangered Species Act (ESA)?
+
+        If no, it is the responsibility of landowners to comply with the federal Endangered Species Act
+        (ESA) if there is an endangered species habitat on the property. Landowners who plan to
+        develop property in these areas can address ESA compliance by applying for a permit through
+        the U.S. Fish and Wildlife Service.
+
+        For a faster and less expensive alternative to obtaining a federal permit, Landowners may
+        choose the option to comply with the ESA through participation in the local Balcones
+        Canyonlands Conservation Plan (BCCP).
+
+        Contact: U.S. Fish and Wildlife Service, Austin District Office: 512-490-0057
+                BCCP: 512-854-7213 or BCCP@traviscountytx.gov
+
+Wastewater/On-Site Sewage Facilities (OSSF)
+
+    21. Is there an existing OSSF septic system, or will a new septic system be required?                 __________
+
+        If yes, an OSSF construction permit is required prior to issuance of a County development
+        permit. An exception may be made if the permit applicant agrees in writing to take full
+        responsibility for the OSSF placement on a case by case basis. Also, projects located in the
+        areas described below must obtain OSSF approval from the other jurisdictions listed instead of
+        Travis County:
+             ● OSSF projects within Travis County and within 2,000 feet of Lake Travis (2000 feet
+                 from the 691foot contour) are subject to the Lower Colorado River Authority's (LCRA)
+                 review instead of Travis County.
+             ● OSSF projects within any City of Austin’s Limited Purpose City Limits areas or with
+                 frontage on Lake Austin are subject to Austin’s OSSF review.
+
+        Proof of application to the appropriate jurisdiction is required prior to the issuance of a
+        County Development Permit.
+
+        Contact: LCRA OSSF Program: 512-473-3216
+                Austin Water Utility Development Services Section: 512-972-0296 or
+                ossf@austintexas.gov
+
+    22. Will the project generate 5,000 gallons or more of wastewater per day?                            __________
+
+
+
+                                                                                                Rev. 05/11/2023        4
+        If yes, the project is too large to qualify for an OSSF permit and is subject to TCEQ's Design
+        Criteria for Sewerage Systems, Title 30 TAC Chapter 217. It is the responsibility of the
+        Applicant to design and obtain permits for wastewater treatment facilities or obtain
+        wastewater utility service for any project requiring a development permit from Travis County.
+
+        Contact: TCEQ Wastewater Permits Section: 512-239-4671
+        Reference: TCEQ's Design Criteria for Sewerage Systems, Title 30 TAC Chapter 217
+
+    23. Is the project over 20 acres and outside an ETJ?                                                       __________
+
+        If yes, a signed letter of intent for wastewater utility service is required prior to final approval
+        of a Travis County Development Permit.
+
+        Contact: TCEQ Wastewater Permits Section: 512-239-4671
+        Reference: TCEQ's Design Criteria for Sewerage Systems, Title 30 TAC Chapter 217
+
+Water Wells & Water Supply
+
+    24. Will the project require drilling a well for drinking water supply?                                    __________
+
+        If yes, all water wells must be completed by a state-licensed drilling contractor, and if you are
+        located within the Barton Springs Edwards Aquifer Conservation District (BSEACD) in
+        southern Travis County, you must receive approval from the District prior to drilling and
+        utilizing water wells or public water supplies.
+
+        Contact: BSEACD: 512-282-8441
+        Reference: Travis County Code Section 482.103
+                  Edwards Aquifer Map
+
+    25. Will the project require a drinking water supply of 15 or more connections or serve 25 or __________
+        more people for at least 60 days per year?
+
+        If yes, the Applicant must provide a signed letter of intent for water utility service, and any
+        proposed groundwater supplies must prove adequate capacity.
+
+        Contact: TCEQ Utility and District Section: 512-239-6947
+        Reference: Title 30 TAC Chapter 230 & Chapter 290
+
+Quarry & Pit Safety
+
+    26. Will the project disturb five or more acres of land surface?                                           __________
+
+        If yes, a pre-proposal meeting with County Staff is required to discuss potential disturbed
+        areas, slopes, setbacks, water diversions, and water quality management practices. The
+        applicant may be requested to modify the proposal before it is submitted as an application, in
+        order to reduce pollutant discharges to the maximum extent practicable
+
+        Reference: Travis County Code Section 482.982
+
+
+    27. Will the project or parcel of land include an open pit or quarry 5 feet or deeper within               __________
+        200 feet of a public roadway?
+
+        If yes, a Safety Certificate approved by the Texas Department of Transportation (TxDOT) is
+        required at least 60 days before the use of the pit and before final issuance of a County
+        Development Permit.
+
+        Contact: TxDOT Maintenance Division: 512-416-3076
+        Reference: Title 16 TAC Chapter 11
+
+Commercial Development
+
+    28. Is the project a non-residential development?                                                          __________
+
+        If yes, the permit applicant must send notice to all homeowners and neighborhood associations
+        within 1,000 feet of the property where the project is to be constructed, Travis County Fire
+        Marshal, and the local Emergency Service District prior to permit issuance. The applicant is
+
+                                                                                                   Rev. 05/11/2023          5
+        responsible for providing proof that the notice was sent to the appropriate parties and for
+        informing the TNR case manager of any comments received due to the notice.
+
+        The notice and mailing list must be pre-approved by TNR staff and must be sent by certified
+        mail-return receipt requested. It must include the type of development, contact information for
+        the permit applicant/representative and TNR case manager, proposed use, and a site location
+        map. In no case, will the Development Permit be issued prior to 10 working days after the date
+        the notice was sent.
+
+     29. Will the project include a commercial building, apartments, or condominiums?                     __________
+
+        If yes, building plans shall be submitted for review, and building permits obtained from the
+        Travis County Fire Marshal's Office before construction begins. Construction will require
+        inspection by the Travis County Fire Marshal’s Office.
+
+        NOTE: All site plans require site plan approval from the Travis County Fire Marshal's Office,
+        and the permit document or signature on the cover sheet will be required prior to issuance of
+        the TNR development permit.
+
+        Contact: Fire Marshal's Office: 512-854-4621
+
+     30. Will the project include construction and use of a non-residential pool or spa?                  __________
+
+        If yes, non-residential pools and spas are regulated by the Austin/Travis County Health and
+        Human Services Department (ATCHHSD), and require permits prior to construction.
+
+        Contact: ATCHHSD: 512-974-3325 or www.austintexas.gov/ehsd
+        Reference: Title 25 TAC Chapter 265
+                  Travis County Code Chapter 260
+
+     31. Will the commercial operations include a new or remodeled food establishment?                    __________
+
+        If yes, food establishment projects are regulated by the Austin/Travis County Health and
+        Human Services Department (ATCHHSD), and require permits prior to construction.
+
+        Contact: ATCHHSD: 512-978-0300 or www.austintexas.gov/ehsd
+        Reference: Travis County Code Chapter 247
+
+     32. Will the commercial business serve alcohol?                                                      __________
+
+        If yes, alcohol/liquor sales and businesses must comply with the Texas Alcoholic Beverage
+        Code and be reviewed and licensed by the Texas Alcoholic Beverage Commission (TABC), as
+        well as several Travis County departments, including the County Clerk, Austin/Travis County
+        Health and Human Services Department (ATCHHSD), County Judge, and Tax Assessor.
+
+        Contact: Austin District of the TABC: 512-451-0231
+        Reference: Texas Alcoholic Beverage Code
+
+     33. Will the commercial business be a sexually oriented business?                                    __________
+
+        If yes, sexually oriented businesses must secure permits from the Travis County Sheriff’s
+        Department before the issuance of a county development permit.
+
+        Contact: Travis County Sheriff's Department: 512-854-9770
+        Reference: Travis County Code Chapter 250 & Chapter 251
+
+Industrial Operations (Only commercial projects with industrial operations must answer items 42-49)
+
+     34. Will planned commercial operations fall into one of the Standard Industrial                      __________
+         Classification (SIC) Codes that require a TCEQ permit for discharge of stormwater?
+
+        If yes, you may be subject to TCEQ's TPDES General Permit TXR050000 for industrial sites
+        that discharge stormwater associated with industrial activities.
+
+        Applicable industrial operations must provide the following prior to issuance of a County
+        development permit:
+            ● TCEQ NOI and SWP3 in compliance with the Industrial General Permit
+            ● TCEQ “No Exposure” Certificate, with a letter from Texas Registered Professional
+
+
+                                                                                               Rev. 05/11/2023         6
+            Engineer stating the project will not have a discharge ("no exposure") from site
+            industrial activities.
+
+    Contact: TCEQ Water Quality Division, Stormwater & General Permits Program:
+    512-239-4671
+
+    Reference: TCEQ's General Permit TXR050000
+               SIC Codes
+
+35. Will the planned commercial operations include solid or liquid waste management,                __________
+    processing, or disposal, including waste transfer, recycling and land application of waste
+    for beneficial use?
+
+    If yes, a Solid Waste Notification, Registration, or Permit must be issued by TCEQ and all
+    requirements found in County Code Chapters 462 and 464.070-071 must be met prior to the
+    issuance of a County development permit.
+
+    Contact: TCEQ Municipal Solid Waste Permitting: 512-239-6671 or 512-239-2334
+    Reference: TCEQ Municipal Solid Waste Rules Title 30 TAC Chapter 330
+               TCEQ Industrial Solid Waste & Municipal Hazardous Waste Rules Chapter 312,
+               Chapter 332, & Chapter 335
+               Travis County Code Chapter 312 & Section 464.070-071
+
+36. Does this project propose a new facility or a modification of an existing facility, which       __________
+    emits air contaminants into the atmosphere?
+
+    If yes, a TCEQ Permit By Rule (PBR) Approval Letter or TCEQ Air Quality Permit is required
+    prior to final issuance of a County development permit.
+
+    Contact: TCEQ Air Quality Permit Section: 512-239-1250
+    Reference: TCEQ Air Quality Rules Title 30 TAC Chapters 101-122
+
+37. Will the project be an auto salvage yard or operate auto salvage operations?                    __________
+
+    If yes, auto salvage yards are enforced by the Austin/Travis County Health and Human
+    Services Department (ATCHHSD).
+
+    Contact: ATCHHSD: 512-972-5000 or Austin 311
+    Reference: Travis County Code Chapter 249
+
+38. Will the project/site operations include permanent underground storage of any amount            __________
+    or temporary/permanent aboveground storage of more than 1,100 gallons of fuel or
+    hazardous chemicals?
+
+    If yes, prior to issuance of a County development permit, one of the following are required:
+         ● TCEQ Petroleum Storage Tank (PST) Construction Notification
+         ● TCEQ letter of receipt
+
+    PST construction in the Edwards Aquifer Recharge Zone will also require a TCEQ UST or
+    AST Facility Plan.
+
+    NOTE: Temporary fuel/oil tanks over 250 gallons used during site construction do not require
+    a TCEQ permit if used less than 12 months, but these tanks must be addressed in the site's
+    SWP3 Plan.
+
+    Contact: TCEQ PST Division: 512-239-2200
+            Travis County Fire Marshall: 512-854-4621
+    Reference: TCEQ's Underground and Aboveground Storage Tank Rules, Title 30 TAC Chapter
+               334
+
+39. Will the site operations include aboveground storage of more than 1,320 gallons of a            __________
+    petroleum product?
+
+    If yes, the applicant must prepare a Spill Prevention Control and Countermeasures (SPCC)
+    Plan. Travis County will not delay final issuance of a development permit, but an SPCC Plan
+    must be prepared by a Registered Professional Engineer within six months of beginning
+    operations.
+
+    Contact: EPA Region 6: 214-665-2273
+
+                                                                                          Rev. 05/11/2023        7
+       Reference: 40 CFR, Part 112
+
+   40. Will the site operations include storage of greater than 10,000 lbs of hazardous materials           __________
+       or greater than 500 lbs of the EPA’s extremely hazardous substances list?
+
+       If yes, compliance with the Tier II reporting of the Federal Emergency Planning and
+       Right-to-Know Act (EPCRA) is required. Travis County will not delay final issuance of a
+       development permit, but it is the responsibility of the applicant to submit a Tier II Annual
+       Report to the Texas Department of Health (TDH) by March 1st of the calendar year for the
+       previous year.
+
+       This information is copied to the Travis County Local Emergency Planning Committee (LEPC)
+       for public information and emergency response purposes.
+
+       Contact: TDH Hazardous Communication Branch: 800-452-2791 or 512-834-6603
+       Reference: CFR Title 40 Chapter 1 Appendix A to Part 355 EPA Extremely Hazardous
+                  Substance List
+
+   41. Will the site operations generate over 220 lbs/month of hazardous waste or Class 1                   __________
+       non-hazardous waste?
+
+       If yes, the site qualifies as a small quantity generator. The County will not delay final issuance
+       of a development permit, but it is the operator's responsibility to register with TCEQ at least 90
+       days prior to commencing these site activities.
+
+       Contact: TCEQ Industrial & Hazardous Waste Registration & Reporting Division:
+       512-239-6413
+       Reference: TCEQ Industrial & Hazardous Wastes Rules, Title 30 TAC Chapter 335
+
+
+
+
+Applicant Signature: ________________________________________________________                      Date: _____________
+
+
+
+
+                                                                                               Rev. 05/11/2023           8
+                                                   Definitions
+
+          Term                                                     Definition
+
+                           Any man-made changes to improved or unimproved real estate, including but not
+Development                limited to structures or other buildings, mining, dredging, filling, grading, paving,
+                           excavation or drilling operations
+
+Nonresidential             Construction of subdivisions, streets, and drainage
+Construction
+
+                           Construction for a single family residence or mobile home (including septic installation,
+Residential Construction   additions, decks, pools, garages, fences, small storage buildings, barns, etc.)
+
+                           Common plan of developments are projects completed in separate stages, separate
+Common Plan of             phases and are identified by documentation for the construction project that outlines the
+Development                scope of the project that may include plats, blueprints, marketing plans, contracts,
+                           building permits, a public notice or hearing, zoning requests, or other similar
+                           documentation and activities
+
+Impervious Cover           The total area of any surface that prevents the infiltration of water into the ground,
+                           such as roads, parking areas, concrete, and buildings
+
+Critical Environmental     A feature class that includes a bluff, canyon rimrock, cave, point recharge
+Feature                    feature, sinkhole, spring, and wetland
+
+Total Disturbed Area       The total amount of area affected by construction activities that include clearing,
+                           grading, excavating, or anything else that results in land disturbance
+
+A Driveway vs an           A “driveway permit” is required when an access roadway connects to County ROW.
+Accessway Permit           An accessway is an internal roadway and requires a nonresidential development permit.
+
+
+
+
+                                                                                             Rev. 05/11/2023           9
+

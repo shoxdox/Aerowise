@@ -1,0 +1,504 @@
+{
+  "retrieved_utc": "2026-10-06T04:42:41.269280+00:00",
+  "note": "Archival copies only. Downloaded is not legally verified or confirmed current. Legacy and conflicting documents retained as cited in original packets.",
+  "documents": [
+    {
+      "url": "http://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/GC_Environmental_OSSF_Commercial_Application.pdf",
+      "packets": [
+        "tx-grimes-county.md"
+      ],
+      "resolved_url": "http://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/GC_Environmental_OSSF_Commercial_Application.pdf",
+      "status": "downloaded",
+      "file": "38ae195b-GC_Environmental_OSSF_Commercial_Application.pdf",
+      "bytes": 278131,
+      "sha256": "39f0ac6da807af18c9c243209e727cb7d6bd158656d4f42eed916107582161ce"
+    },
+    {
+      "url": "https://a0f18068.rocketcdn.me/wp-content/uploads/2015/01/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-feet-of-Lake-Conroe-Texas_121015.pdf.pdf",
+      "packets": [
+        "tx-sjra-ossf.md"
+      ],
+      "status": "unavailable",
+      "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'a0f18068.rocketcdn.me'. (_ssl.c:1000)>"
+    },
+    {
+      "url": "https://brazos.org/Portals/0/Documents/Forms/OSSF-Application-Form-PK-2024.pdf",
+      "packets": [
+        "tx-hill-county.md"
+      ],
+      "resolved_url": "https://brazos.org/Portals/0/Documents/Forms/OSSF-Application-Form-PK-2024.pdf",
+      "status": "downloaded",
+      "file": "05bacdec-OSSF-Application-Form-PK-2024.pdf",
+      "bytes": 158669,
+      "sha256": "2507ba5863b0fbee5ef644cbd2cd63d441938d8d7f8ab99e591cc2121af02f58"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/Complaint%20Form%20Revised.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/Complaint%20Form%20Revised.pdf",
+      "status": "downloaded",
+      "file": "bafac02a-Complaint-Form-Revised.pdf",
+      "bytes": 103228,
+      "sha256": "2ea2d2aecabe7dad716d18f3ae587bfa3d7b12d0817e865f8b7b74dbfb78a3fc"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20EXISTING%20CONVENTIONAL.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20EXISTING%20CONVENTIONAL.pdf",
+      "status": "downloaded",
+      "file": "f5f80e33-PACKET-RESIDENTIAL-EXISTING-CONVENTIONAL.pdf",
+      "bytes": 937515,
+      "sha256": "68a190073cb3168e7707526bd429f1ad597f2548a505e30c073d36f6b30d363b"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20NEW%20SEPTIC%20SYSTEM.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20NEW%20SEPTIC%20SYSTEM.pdf",
+      "status": "downloaded",
+      "file": "700ae022-PACKET-RESIDENTIAL-NEW-SEPTIC-SYSTEM.pdf",
+      "bytes": 1024310,
+      "sha256": "d6212d7a66e844b04a869deb613369c8341db26ddf4736be337532bba9f7b9b5"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/How%20to%20Obtain%20a%20Septic.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/How%20to%20Obtain%20a%20Septic.pdf",
+      "status": "downloaded",
+      "file": "53e76448-How-to-Obtain-a-Septic.pdf",
+      "bytes": 495397,
+      "sha256": "1068042d3a7f8dfaaa251ceba814574bfaceaad457735d9d149c7bbd5bf8bc55"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/Initial%202%20yr%20Maintenance%20maintenance.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/Initial%202%20yr%20Maintenance%20maintenance.pdf",
+      "status": "downloaded",
+      "file": "f57dddb2-Initial-2-yr-Maintenance-maintenance.pdf",
+      "bytes": 28420,
+      "sha256": "6e6636f390e56a5282b8c40adc17a763b9363590359449579a175bda3a03fd20"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/tablet.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/tablet.pdf",
+      "status": "downloaded",
+      "file": "d77d143e-tablet.pdf",
+      "bytes": 89357,
+      "sha256": "b5b8f5af599701d64378fc2d28e17b29f0f7333a6ba76e3da9c38d60df79329e"
+    },
+    {
+      "url": "https://cms1files.revize.com/montgomerycountytx/document_center/2009%20Commissioner%20Court%20Minutes/08102009.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://cms1files.revize.com/montgomerycountytx/document_center/2009%20Commissioner%20Court%20Minutes/08102009.pdf",
+      "status": "downloaded",
+      "file": "364c06b1-08102009.pdf",
+      "bytes": 91232,
+      "sha256": "5c8e3ad1e2ab3d1cb5e01f3de62258d8bcf2fb00021bd6d2100bb7e4a1cdf6e5"
+    },
+    {
+      "url": "https://cms3.revize.com/revize/bellcountyhealthtx/Documents/Environmental%20Health/On%20Site%20Sewage%20Facilities/local%20order%202018.pdf",
+      "packets": [
+        "tx-bell-county.md"
+      ],
+      "resolved_url": "https://cms3.revize.com/revize/bellcountyhealthtx/Documents/Environmental%20Health/On%20Site%20Sewage%20Facilities/local%20order%202018.pdf",
+      "status": "downloaded",
+      "file": "179e5966-local-order-2018.pdf",
+      "bytes": 187628,
+      "sha256": "f06514e67893a1e76943f7f19937e7ed054f3a6d50cf0a75e05ea9875ae50a49"
+    },
+    {
+      "url": "https://elliscountytx.gov/DocumentCenter/View/6592/",
+      "packets": [
+        "tx-ellis-county.md"
+      ],
+      "resolved_url": "https://elliscountytx.gov/DocumentCenter/View/6592/Septic-Order-2024---Min-Order-13424?bidId=",
+      "status": "downloaded",
+      "file": "d30c5166-document.pdf",
+      "bytes": 5191073,
+      "sha256": "d6d07ff7be5db7cd3bdf2ba5f989737d175ddd15aa8993b50ce55751aa5d0087"
+    },
+    {
+      "url": "https://elliscountytx.gov/DocumentCenter/View/7503/DoD-Master-Fee-Schedule-effective-09012023",
+      "packets": [
+        "tx-ellis-county.md"
+      ],
+      "resolved_url": "https://elliscountytx.gov/DocumentCenter/View/7503/DoD-Master-Fee-Schedule-effective-09012023",
+      "status": "downloaded",
+      "file": "daa550bb-DoD-Master-Fee-Schedule-effective-09012023.pdf",
+      "bytes": 202222,
+      "sha256": "1f6218d462a077a281ab9db9440f199e7ffc7a006b494c531b6442042fca9048"
+    },
+    {
+      "url": "https://grimescountytexas.gov/vertical/Sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/GRIMES_COUNTY_INFRASTRUCTURE_REGULATIONS.pdf",
+      "packets": [
+        "tx-grimes-county.md"
+      ],
+      "resolved_url": "https://grimescountytexas.gov/vertical/Sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/GRIMES_COUNTY_INFRASTRUCTURE_REGULATIONS.pdf",
+      "status": "downloaded",
+      "file": "5e2f3a0e-GRIMES_COUNTY_INFRASTRUCTURE_REGULATIONS.pdf",
+      "bytes": 3587519,
+      "sha256": "0aab3896acf7fcf9a1e7e8104a036c2f683aa5b6db6e881055fdfce3b09ce878"
+    },
+    {
+      "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/GC_Environmental_OSSF_Residential_Application.pdf",
+      "packets": [
+        "tx-grimes-county.md"
+      ],
+      "resolved_url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/GC_Environmental_OSSF_Residential_Application.pdf",
+      "status": "downloaded",
+      "file": "e1acfd63-GC_Environmental_OSSF_Residential_Application.pdf",
+      "bytes": 278746,
+      "sha256": "9d20ce7eb3cf4b18d9dd051bb8d11371cedc9ade35d0d0af0dce2a5387a6979f"
+    },
+    {
+      "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/OSSF_Affidavit_(2024).pdf",
+      "packets": [
+        "tx-grimes-county.md"
+      ],
+      "resolved_url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/OSSF_Affidavit_(2024).pdf",
+      "status": "downloaded",
+      "file": "d7c8fe25-OSSF_Affidavit_-2024-.pdf",
+      "bytes": 103346,
+      "sha256": "7a33858e2425817223dca79748378b75a6f752cd4aa2cd45ab4de136c21088b8"
+    },
+    {
+      "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/REGULAR_MEETING_JULY_5_2023.pdf",
+      "packets": [
+        "tx-grimes-county.md"
+      ],
+      "resolved_url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/REGULAR_MEETING_JULY_5_2023.pdf",
+      "status": "downloaded",
+      "file": "5fafa2f8-REGULAR_MEETING_JULY_5_2023.pdf",
+      "bytes": 618601,
+      "sha256": "b50970cd25527ee377d7089d16a00d986b883c019eaa918e72992dabe9f282e1"
+    },
+    {
+      "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/Seven_Steps_to_Obtaining_a_Permit.pdf",
+      "packets": [
+        "tx-grimes-county.md"
+      ],
+      "resolved_url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/Seven_Steps_to_Obtaining_a_Permit.pdf",
+      "status": "downloaded",
+      "file": "89fb9839-Seven_Steps_to_Obtaining_a_Permit.pdf",
+      "bytes": 238122,
+      "sha256": "9d4be5d0036e61a0f892f1811367241b4bda08a7cd281273c5b9fa1e1a80554a"
+    },
+    {
+      "url": "https://lfpubweb.cityofdenton.com/publicweblink/4/edoc/42521/OSSF-permit-application_Revised_October-2019_contactinfo.pdf",
+      "packets": [
+        "tx-city-of-denton.md"
+      ],
+      "resolved_url": "https://lfpubweb.cityofdenton.com/publicweblink/4/edoc/42521/OSSF-permit-application_Revised_October-2019_contactinfo.pdf",
+      "status": "downloaded",
+      "file": "22fbc582-OSSF-permit-application_Revised_October-2019_contactinfo.pdf",
+      "bytes": 88752,
+      "sha256": "a06360e73a3e6aac2a44f25cb174c9fcddd037d03345052668fc1203ff6d30ab"
+    },
+    {
+      "url": "https://lfpubweb.cityofdenton.com/publicweblink/4/edoc/42522/OUTLINE-OF-CITY-OF-DENTON-OSSF-PERMIT_-PROCEDURES_2019.pdf",
+      "packets": [
+        "tx-city-of-denton.md"
+      ],
+      "resolved_url": "https://lfpubweb.cityofdenton.com/publicweblink/4/edoc/42522/OUTLINE-OF-CITY-OF-DENTON-OSSF-PERMIT_-PROCEDURES_2019.pdf",
+      "status": "downloaded",
+      "file": "6385c1f9-OUTLINE-OF-CITY-OF-DENTON-OSSF-PERMIT_-PROCEDURES_2019.pdf",
+      "bytes": 85543,
+      "sha256": "fec4bc5cbf7ef9df9aa67a3dad01c7d379fac560561b25c01451a4bde3573b2d"
+    },
+    {
+      "url": "https://newtools.cira.state.tx.us/upload/page/7608/docs/ossfaffidavit.pdf",
+      "packets": [
+        "tx-hill-county.md"
+      ],
+      "resolved_url": "https://newtools.cira.state.tx.us/upload/page/7608/docs/ossfaffidavit.pdf",
+      "status": "downloaded",
+      "file": "b7543392-ossfaffidavit.pdf",
+      "bytes": 11707,
+      "sha256": "d1cbbcb5a9be65577c2f65c638ef18d6c17b97202b5e618bf07e86e78f1d9a08"
+    },
+    {
+      "url": "https://newtools.cira.state.tx.us/upload/page/7608/docs/ossfcklist.pdf",
+      "packets": [
+        "tx-hill-county.md"
+      ],
+      "resolved_url": "https://newtools.cira.state.tx.us/upload/page/7608/docs/ossfcklist.pdf",
+      "status": "downloaded",
+      "file": "1cbb0125-ossfcklist.pdf",
+      "bytes": 129374,
+      "sha256": "b12ec90f90669d23ce749856aa9909068453de177e6968bacc9176ea054cd453"
+    },
+    {
+      "url": "https://newtools.cira.state.tx.us/upload/page/7634/docs/04012024100611.pdf",
+      "packets": [
+        "tx-hill-county.md"
+      ],
+      "resolved_url": "https://newtools.cira.state.tx.us/upload/page/7634/docs/04012024100611.pdf",
+      "status": "downloaded",
+      "file": "fe52f5dc-04012024100611.pdf",
+      "bytes": 379715,
+      "sha256": "62df1567d9bb44fcd7d0e18446f63bf2bc1647ce3901c27b9cf364ba127ed06a"
+    },
+    {
+      "url": "https://www.bastropcounty.gov/page/open/5009/0/Bastrop%20County%20Commissioners%20Court%20August%2024%202026.pdf",
+      "packets": [
+        "tx-bastrop-county.md"
+      ],
+      "resolved_url": "https://www.bastropcounty.gov/page/open/5009/0/Bastrop%20County%20Commissioners%20Court%20August%2024%202026.pdf",
+      "status": "unavailable",
+      "error": "Response is not a PDF; not saved as evidence"
+    },
+    {
+      "url": "https://www.bastropcounty.gov/upload/page/0148/docs/TCEQAppdOSSFOrder.pdf",
+      "packets": [
+        "tx-bastrop-county.md"
+      ],
+      "resolved_url": "https://www.bastropcounty.gov/upload/page/0148/docs/TCEQAppdOSSFOrder.pdf",
+      "status": "downloaded",
+      "file": "a527cb1e-TCEQAppdOSSFOrder.pdf",
+      "bytes": 1304462,
+      "sha256": "72df43c6eaf5e88cace293419d1229793794510023e451f49dfcb1376b203a7a"
+    },
+    {
+      "url": "https://www.bastropcounty.gov/upload/shared/DevServices/2019.02.12%20Affidavit%20-%20Aerobic%20OSSFs.pdf",
+      "packets": [
+        "tx-bastrop-county.md"
+      ],
+      "resolved_url": "https://www.bastropcounty.gov/upload/shared/DevServices/2019.02.12%20Affidavit%20-%20Aerobic%20OSSFs.pdf",
+      "status": "downloaded",
+      "file": "e8ea4684-2019.02.12-Affidavit---Aerobic-OSSFs.pdf",
+      "bytes": 79833,
+      "sha256": "ba6c1d38deb1656b9a0ce81ac9e6a497de475a634b9ed57a92af536de707f121"
+    },
+    {
+      "url": "https://www.bastropcounty.gov/upload/shared/DevServices/BASTROP%20COUNTY%20ON-SITE%20SEWAGE%20FACILITY.pdf",
+      "packets": [
+        "tx-bastrop-county.md"
+      ],
+      "resolved_url": "https://www.bastropcounty.gov/upload/shared/DevServices/BASTROP%20COUNTY%20ON-SITE%20SEWAGE%20FACILITY.pdf",
+      "status": "downloaded",
+      "file": "283fd490-BASTROP-COUNTY-ON-SITE-SEWAGE-FACILITY.pdf",
+      "bytes": 536613,
+      "sha256": "ace433c21061497c0d3a95e94b1f533bf052def8512e2ecffd3452868572cd80"
+    },
+    {
+      "url": "https://www.cityofbastrop.org/upload/page/0509/docs/Checklist%20-%20OSSF.pdf",
+      "packets": [
+        "tx-bastrop-county.md"
+      ],
+      "resolved_url": "https://www.cityofbastrop.org/upload/page/0509/docs/Checklist%20-%20OSSF.pdf",
+      "status": "downloaded",
+      "file": "9bfa31fb-Checklist---OSSF.pdf",
+      "bytes": 265012,
+      "sha256": "0c3cdabab819c61ca6ed228a689c147a04a8e89e2840fa813c5a6bc2697fc385"
+    },
+    {
+      "url": "https://www.cityofdenton.com/DocumentCenter/View/3672/Outline-of-City-of-Denton-On-Site-Sewage-Facility-Permit-Procedures-PDF",
+      "packets": [
+        "tx-city-of-denton.md"
+      ],
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "url": "https://www.cityofmanvel.com/DocumentCenter/View/67/Septic-System-Packet-PDF",
+      "packets": [
+        "tx-brazoria-county.md"
+      ],
+      "resolved_url": "https://www.cityofmanvel.com/DocumentCenter/View/67/Septic-System-Packet-PDF",
+      "status": "downloaded",
+      "file": "83905f65-Septic-System-Packet-PDF.pdf",
+      "bytes": 273219,
+      "sha256": "35a6248a26626333964fdc4a811fa9229f1588aea6a06f28d24ff2b2ebf07ce1"
+    },
+    {
+      "url": "https://www.co.ellis.tx.us/DocumentCenter/View/6592",
+      "packets": [
+        "tx-ellis-county.md"
+      ],
+      "resolved_url": "http://www.elliscountytx.gov/DocumentCenter/View/6592/Septic-Order-2024---Min-Order-13424?bidId=",
+      "status": "downloaded",
+      "file": "b919e562-6592.pdf",
+      "bytes": 5191073,
+      "sha256": "d6d07ff7be5db7cd3bdf2ba5f989737d175ddd15aa8993b50ce55751aa5d0087"
+    },
+    {
+      "url": "https://www.dentoncounty.gov/DocumentCenter/View/1439/Homeowners-Inspection-Form-PDF",
+      "packets": [
+        "tx-denton-county.md"
+      ],
+      "resolved_url": "https://www.dentoncounty.gov/DocumentCenter/View/1439/Homeowners-Inspection-Form-PDF",
+      "status": "downloaded",
+      "file": "4eafacc1-Homeowners-Inspection-Form-PDF.pdf",
+      "bytes": 139603,
+      "sha256": "7f32068bd5a8c0f201cb915fce9570eb461e8671badc2ad313f0ec499408983e"
+    },
+    {
+      "url": "https://www.dentoncounty.gov/DocumentCenter/View/1440/Septic-Permit-Application-Packet-PDF",
+      "packets": [
+        "tx-denton-county.md"
+      ],
+      "resolved_url": "https://www.dentoncounty.gov/DocumentCenter/View/1440/Septic-Permit-Application-Packet-PDF",
+      "status": "downloaded",
+      "file": "3883b1bd-Septic-Permit-Application-Packet-PDF.pdf",
+      "bytes": 221369,
+      "sha256": "489f438c049d3b8db5c001113fd8da954234e1678b0c4c888f1d3abe064a2b42"
+    },
+    {
+      "url": "https://www.dentoncounty.gov/DocumentCenter/View/1441/What-You-Must-Know-PDF",
+      "packets": [
+        "tx-denton-county.md"
+      ],
+      "resolved_url": "https://www.dentoncounty.gov/DocumentCenter/View/1441/What-You-Must-Know-PDF",
+      "status": "downloaded",
+      "file": "0d346c13-What-You-Must-Know-PDF.pdf",
+      "bytes": 135801,
+      "sha256": "fba0a4ddb54a35a73b4e465710a17d5fa639c19e60342ac31abe3ee7ce71a868"
+    },
+    {
+      "url": "https://www.elliscountytx.gov/DocumentCenter/View/24166/Ellis-County-OSSF-Affidavit-App",
+      "packets": [
+        "tx-ellis-county.md"
+      ],
+      "resolved_url": "https://www.elliscountytx.gov/DocumentCenter/View/24166/Ellis-County-OSSF-Affidavit-App",
+      "status": "downloaded",
+      "file": "e88d8009-Ellis-County-OSSF-Affidavit-App.pdf",
+      "bytes": 166845,
+      "sha256": "9651d2ec85d6f9ced0b4da82a6e37b7660ae5617871887b1194da5c0baaa6b59"
+    },
+    {
+      "url": "https://www.kaufmancounty.net/DocumentCenter/View/4772/OSSF-Permit-Application",
+      "packets": [
+        "tx-kaufman-county.md"
+      ],
+      "resolved_url": "https://www.kaufmancounty.net/DocumentCenter/View/4772/OSSF-Permit-Application",
+      "status": "downloaded",
+      "file": "4206d309-OSSF-Permit-Application.pdf",
+      "bytes": 999406,
+      "sha256": "65b965e0eb4e07f5797d7d652bc4f549f4d734eb03ff532f4dad312057bb744b"
+    },
+    {
+      "url": "https://www.mclennan.gov/DocumentCenter/View/591/2009-OSSF-Order-PDF",
+      "packets": [
+        "tx-mclennan-county.md"
+      ],
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "url": "https://www.sjra.net/wp-content/uploads/2015/01/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-feet-of-Lake-Conroe-Texas_121015.pdf.pdf",
+      "packets": [
+        "tx-sjra-ossf.md"
+      ],
+      "resolved_url": "https://www.sjra.net/wp-content/uploads/2015/01/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-feet-of-Lake-Conroe-Texas_121015.pdf.pdf",
+      "status": "downloaded",
+      "file": "c76e2b40-Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-feet-of-Lake-Conroe-Texas_121015.pdf..pdf",
+      "bytes": 5573969,
+      "sha256": "9d92200f395ce26e527a989ca4c68eb886d30c0bfc8f5d641a05ae8e2b46ad4a"
+    },
+    {
+      "url": "https://www.sjra.net/wp-content/uploads/2015/03/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-Feet-of-Lake-Conroe-Texas-2015.pdf",
+      "packets": [
+        "tx-montgomery-county.md"
+      ],
+      "resolved_url": "https://www.sjra.net/wp-content/uploads/2015/03/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-Feet-of-Lake-Conroe-Texas-2015.pdf",
+      "status": "downloaded",
+      "file": "34237bf1-Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-Feet-of-Lake-Conroe-Texas-2015.pdf",
+      "bytes": 50880,
+      "sha256": "6243891da0f3457ff65c371daae1a1e409879ea19362d8ddf05d44c60e77e891"
+    },
+    {
+      "url": "https://www.sjra.net/wp-content/uploads/2015/03/Updated-Fee-Schedule-8_20_15.pdf",
+      "packets": [
+        "tx-sjra-ossf.md"
+      ],
+      "resolved_url": "https://www.sjra.net/wp-content/uploads/2015/03/Updated-Fee-Schedule-8_20_15.pdf",
+      "status": "downloaded",
+      "file": "40757a13-Updated-Fee-Schedule-8_20_15.pdf",
+      "bytes": 178569,
+      "sha256": "2dfb96e5628c8735f839b56c0f524c21daf690bb1656b8a892b9666fb488d57a"
+    },
+    {
+      "url": "https://www.sjra.net/wp-content/uploads/2017/10/Contract-for-Maintenance-by-Homeowner.pdf",
+      "packets": [
+        "tx-sjra-ossf.md"
+      ],
+      "resolved_url": "https://www.sjra.net/wp-content/uploads/2017/10/Contract-for-Maintenance-by-Homeowner.pdf",
+      "status": "downloaded",
+      "file": "3aee4acd-Contract-for-Maintenance-by-Homeowner.pdf",
+      "bytes": 1132430,
+      "sha256": "98793061fcbb39287bee3b8778afc3cc0d89033c2b7acfa769631f40594e5e2a"
+    },
+    {
+      "url": "https://www.sjra.net/wp-content/uploads/2017/10/Homeowner-Reporting-and-Testing-Record.pdf",
+      "packets": [
+        "tx-sjra-ossf.md"
+      ],
+      "resolved_url": "https://www.sjra.net/wp-content/uploads/2017/10/Homeowner-Reporting-and-Testing-Record.pdf",
+      "status": "downloaded",
+      "file": "9b8227a9-Homeowner-Reporting-and-Testing-Record.pdf",
+      "bytes": 1141104,
+      "sha256": "5248784eb66fb4730354fcd99dd15b05ab883614c7616f05e4e0288ce0ba0d92"
+    },
+    {
+      "url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2023-aa-atcs.pdf",
+      "packets": [
+        "tx-brazoria-county.md"
+      ],
+      "resolved_url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2023-aa-atcs.pdf",
+      "status": "downloaded",
+      "file": "a4de0f45-2023-aa-atcs.pdf",
+      "bytes": 1695614,
+      "sha256": "d7a480951ffe80b444f775b84e02dd6c623a8c419902676e4767c1ff52a5ceef"
+    },
+    {
+      "url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2024-aa-atcs.pdf",
+      "packets": [
+        "tx-brazoria-county.md",
+        "tx-mclennan-county.md"
+      ],
+      "resolved_url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2024-aa-atcs.pdf",
+      "status": "downloaded",
+      "file": "4ff4cf5f-2024-aa-atcs.pdf",
+      "bytes": 1742145,
+      "sha256": "9f6e84b4c0935d180eeb26aaf1ea7425da86630205a94a8a5ab7bd61b51b1dfd"
+    },
+    {
+      "url": "https://www.waco-texas.com/files/sharedassets/public/v/1/departments/health-district/documents/2025-annual-report-ada-version.pdf",
+      "packets": [
+        "tx-mclennan-county.md"
+      ],
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "url": "https://www.waco-texas.com/files/sharedassets/public/v/2/departments/health-district/documents/minimum-separation-distances-table.pdf",
+      "packets": [
+        "tx-mclennan-county.md"
+      ],
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "url": "https://www.waco-texas.com/files/sharedassets/public/v/7/departments/health-district/documents/enviro-health/ossf-permit-app.pdf",
+      "packets": [
+        "tx-mclennan-county.md"
+      ],
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    }
+  ]
+}

@@ -1,0 +1,562 @@
+[
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "The county publishes a reporting address (ossf@wilcotx.gov) only in its packet for homeowners who maintain their own system. Whether maintenance providers send reports to the same address, or through MyGovernment Online, is not stated.",
+    "status": "partial",
+    "finding_ids": [
+      "W3"
+    ],
+    "disposition": "Current dedicated inbox found in homeowner packet; provider channel still unconfirmed."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "Report deadline: the 2026 affidavit says within 10 days of testing; the homeowner packet says within 14 days of the due date; TCEQ says 14 days after the test. Aerowise uses 10 days, the strictest.",
+    "status": "conflict",
+    "finding_ids": [
+      "W4"
+    ],
+    "disposition": "Both different anchors remain; current affidavit also has a future-dated footer."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "Contract timing: the affidavit says 30 days before the previous contract expires; the care brochure says 'within 30 days of expiration'. Aerowise uses 30 days before.",
+    "status": "conflict",
+    "finding_ids": [
+      "W4"
+    ],
+    "disposition": "Affidavit supports pre-expiration target; brochure wording does not resolve all timing."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "The order requires sludge levels in the pump tank on each report (Section 10.E.7). Aerowise's built-in inspection form has no sludge-level field, so this is not checked; record it in the notes until the form has one.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "W2"
+    ],
+    "disposition": "Already required by the approved order; adding the field is a product task."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "The county's form asks for a chlorine grab sample for surface application systems. Aerowise does not record whether a system disperses on the surface, so the chlorine reading is not required here.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "W2"
+    ],
+    "disposition": "Current form confirms surface-application applicability and sludge units."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "Which addresses inside Williamson County fall under the City of Austin (and so not this office) is not published as a list; every site needs a reviewed assignment.",
+    "status": "partial",
+    "finding_ids": [
+      "W1"
+    ],
+    "disposition": "Order establishes exclusions, but actual Austin/site assignment still needs permit evidence."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 7,
+    "baseline_text": "The order's effective date (its TCEQ approval) is not shown on the copy read, which was also read through a page summarizer; Williamson inspections and contracts dated before 2026-10-06 are held for review.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "W1"
+    ],
+    "disposition": "Final TCEQ approval recovered; prior scan/summarizer barrier removed."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 8,
+    "baseline_text": "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "W2"
+    ],
+    "disposition": "Commercial lab/schedule applicability still requires state/permit-specific review."
+  },
+  {
+    "authority": "tx-williamson-county",
+    "baseline_unresolved_index": 9,
+    "baseline_text": "Williamson County publishes no acknowledgment of a received report or contract.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "W5"
+    ],
+    "disposition": "A received/accepted report acknowledgment was not established."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Denton County's form says to email it to ossfinspections@dentoncounty.gov. Whether providers may send their own report format there instead of the county form is not stated; the office checks each report before pressing Send.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "No channel is published for maintenance contracts, and nothing says the ossfinspections address takes them. Contract filings are held for review and filed by hand until the county says otherwise.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "No report deadline is published; Aerowise uses TCEQ's 14 days after the test.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "Whether electronic monitoring allows 6 months between visits is not addressed (the county form says every 4 months), so Aerowise allows no 6-month schedule here.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "The Denton County OSSF order is not published, so its number, dates, and any commercial schedule, lab tests or fees are unknown.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "The county's form asks for the CL2 grab result, complaint response dates and lid security, which Aerowise's report does not lay out the same way.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 7,
+    "baseline_text": "Denton County covers unincorporated Denton County only; the City of Denton runs its own program and other cities are not listed. Every site needs a reviewed assignment.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-denton-county",
+    "baseline_unresolved_index": 8,
+    "baseline_text": "Denton County publishes no acknowledgment of an emailed report or contract.",
+    "status": "access_blocked",
+    "finding_ids": [
+      "D1"
+    ],
+    "disposition": "Fresh original verification was blocked; retain the baseline as unverified."
+  },
+  {
+    "authority": "tx-comal-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Comal County's Rules for OSSF could not be read (a scanned PDF with no text), so any county-specific frequency, deadline, report contents or lab testing is unknown. Aerowise follows TCEQ's 30 TAC 285.7 until they are read.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "C1"
+    ],
+    "disposition": "Scanned order recovered/read; no different recurring maintenance rule found in its local amendments."
+  },
+  {
+    "authority": "tx-comal-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "Which addresses Comal County covers is not published outside those rules (cities with their own OSSF programs are unknown); every site needs a reviewed assignment.",
+    "status": "partial",
+    "finding_ids": [
+      "C2"
+    ],
+    "disposition": "Five published agreements recovered; current status and actual site assignment remain reviewable."
+  },
+  {
+    "authority": "tx-comal-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "Reports and contracts are uploaded to two separate county portals, which Aerowise cannot use for the office. The office downloads the report, uploads it and records it as sent. File naming or format rules for the portal are not published.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "C3"
+    ],
+    "disposition": "Exact upload format/signature/name conventions remain unconfirmed."
+  },
+  {
+    "authority": "tx-comal-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "The adoption and effective dates of Comal County's rules are unknown.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "C1"
+    ],
+    "disposition": "County adoption and final TCEQ approval dates recovered."
+  },
+  {
+    "authority": "tx-comal-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "Comal County publishes no acknowledgment of an uploaded report or contract.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "C3"
+    ],
+    "disposition": "Upload receipt and county acceptance semantics remain unconfirmed."
+  },
+  {
+    "authority": "tx-comal-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "No lab testing (BOD, TSS) or commercial-specific schedule is published in the readable sources, so none is required here.",
+    "status": "partial",
+    "finding_ids": [
+      "C1"
+    ],
+    "disposition": "No additional maintenance lab schedule found in this order; state and permit conditions still require applicability review."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Hays County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+    "status": "partial",
+    "finding_ids": [
+      "H5"
+    ],
+    "disposition": "Dedicated maintenance inquiry address found; explicit report/contract filing authorization still needed."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "Which addresses Hays County covers is set by other entities' orders, ordinances or resolutions, which the county does not list; every site needs a reviewed assignment.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "H1"
+    ],
+    "disposition": "Actual address/city authority still requires permit and assignment evidence."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "Hays County counts report due dates from the contract's start (first report within 14 days of it) and allows a permit to set another schedule. Aerowise counts 4 months from the last visit and 14 days from the inspection.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "H2"
+    ],
+    "disposition": "Contract-start timing is documented; existing generic scheduling needs review."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "A report showing low chlorine needs a re-test and a new report within ten days. Aerowise does not schedule that re-test; the office books it.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "H4"
+    ],
+    "disposition": "Ten-day corrective report/retest obligation read, separate from the regular schedule."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "Hays County's order does not say whether electronic monitoring allows six months between visits; Aerowise follows TCEQ's 30 TAC 285.7(e).",
+    "status": "partial",
+    "finding_ids": [
+      "H2"
+    ],
+    "disposition": "Local text says four months unless permit specifies otherwise; blanket six-month fallback is unsupported."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "The order's approval and effective dates were read through a summarizer and are not confirmed.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "H1"
+    ],
+    "disposition": "Final TCEQ approval recovered."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 7,
+    "baseline_text": "Hays County publishes no list of what a maintenance report must contain beyond 30 TAC 285.91(12), no acknowledgment of a received report, and no report or contract filing fee here (the fee schedule was not read).",
+    "status": "partial",
+    "finding_ids": [
+      "H6"
+    ],
+    "disposition": "2026 schedule confirms a $50 maintenance-contract late fee; exact trigger, report format and receipt remain open."
+  },
+  {
+    "authority": "tx-hays-county",
+    "baseline_unresolved_index": 8,
+    "baseline_text": "No lab testing (BOD, TSS) is published, so none is required here. Commercial systems need flow meters, which Aerowise does not record.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "H6"
+    ],
+    "disposition": "Commercial flow-meter obligation documented; lab/permit conditions remain a separate review."
+  },
+  {
+    "authority": "tx-travis-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Travis County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "T3"
+    ],
+    "disposition": "No explicit recurring maintenance filing channel established in reviewed material."
+  },
+  {
+    "authority": "tx-travis-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "Which addresses Travis County covers is set by city limits, the City of Austin's limited-purpose annexations, LCRA's area within 1,000 feet of Lake Travis and other entities' orders; every site needs a reviewed assignment.",
+    "status": "conflict",
+    "finding_ids": [
+      "T2"
+    ],
+    "disposition": "1,000-foot claim contradicted by county checklist and LCRA primary sources; review actual permit/map."
+  },
+  {
+    "authority": "tx-travis-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "Chapter 448 requires every report to list unauthorized alterations and the provider's emergency phone number. Aerowise's report has neither field; the office must add them by hand until it does.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "T1"
+    ],
+    "disposition": "Chapter already requires alterations and emergency contact in the scoped reports/contracts."
+  },
+  {
+    "authority": "tx-travis-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "Chapter 448 was read through a page summarizer; confirm the quoted lists against the county's copy.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "T1"
+    ],
+    "disposition": "Quoted field lists compared with original PDF text and visually checked on physical pages 13\u201314."
+  },
+  {
+    "authority": "tx-travis-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "Travis County publishes no acknowledgment of a received report or contract.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "T3"
+    ],
+    "disposition": "Acknowledgment of a received maintenance filing was not established."
+  },
+  {
+    "authority": "tx-travis-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "T3"
+    ],
+    "disposition": "Commercial lab/testing was not settled by this pass."
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Brazoria County publishes no confirmed way to submit maintenance inspection reports or contracts. An ehmaintenance@brazoriacountytx.gov address is reported elsewhere but was not read on any official page (the Contact Us page returned 403), so it is not used: inspection filings are held for review and contracts are filed by hand.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "B1"
+    ],
+    "disposition": "County expressly publishes email for maintenance contracts and reports."
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "The county's regulations, fee schedule, contact page and OSSF brochure returned 403. Any county-specific frequency, deadline, report contents, lab tests, fees and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+    "status": "partial",
+    "finding_ids": [
+      "B2"
+    ],
+    "disposition": "Approved local order and fee schedule recovered; exact report/lab practices and fee triggers remain open."
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "Maintenance providers 'must be registered with the County'; what registration involves is not published, and Aerowise does not track it.",
+    "status": "implementation_gap",
+    "finding_ids": [
+      "B3"
+    ],
+    "disposition": "County registration process and no registration fee are documented; current operational procedure still needs confirmation."
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "Brookside Village, Manvel and Surfside Beach are separate TCEQ authorized agents, and Pearland's procedure points to TCEQ Region 12. Other cities and ETJs are not published. Every site needs a reviewed assignment.",
+    "status": "partial",
+    "finding_ids": [
+      "B2"
+    ],
+    "disposition": "Order supplies city exclusion; actual authority assignment still needs site permit/evidence."
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "No phone number for Brazoria County Environmental Health was read.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "B1"
+    ],
+    "disposition": "Official contact page establishes Environmental Health phone 979-864-1600."
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "Brazoria County publishes no acknowledgment of a received report or contract.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "B1"
+    ],
+    "disposition": "County acknowledgment/accepted receipt not established."
+  },
+  {
+    "authority": "tx-grimes-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Grimes County publishes no way to submit maintenance inspection reports or contracts in anything readable; its main OSSF page is blocked to automated fetching. Inspection filings are held for review and contracts are filed by hand.",
+    "status": "partial",
+    "finding_ids": [
+      "G4"
+    ],
+    "disposition": "County OSSF page now readable, but report/contract destination still not established."
+  },
+  {
+    "authority": "tx-grimes-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "Grimes County's OSSF order was not found. A local newspaper (not an official source) reports an update approved 2023-08-16 that changed aerobic reporting; until the order is read, Aerowise follows TCEQ's 30 TAC 285.7.",
+    "status": "partial",
+    "finding_ids": [
+      "G1"
+    ],
+    "disposition": "2024 adopted order recovered; final TCEQ approval/effective date still missing."
+  },
+  {
+    "authority": "tx-grimes-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "The affidavit requires a contract with 'an approved maintenance company'; whether homeowners may maintain their own systems, and what makes a company approved, is not published.",
+    "status": "partial",
+    "finding_ids": [
+      "G3"
+    ],
+    "disposition": "Adopted order supplies qualifications; final approval and approval workflow remain open."
+  },
+  {
+    "authority": "tx-grimes-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "The City of Todd Mission requires its own septic permit on top of the county's; who receives maintenance reports for Todd Mission sites, and whether other cities run their own program, is not published. Every site needs a reviewed assignment.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "G1"
+    ],
+    "disposition": "Todd Mission/city receiving authority still requires site-specific confirmation."
+  },
+  {
+    "authority": "tx-grimes-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "The county pages and PDFs were read through a page summarizer; quotes haven't been compared with the PDFs in a browser.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "G4"
+    ],
+    "disposition": "Original affidavit and order read; summarizer truncation/scan barriers removed."
+  },
+  {
+    "authority": "tx-grimes-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "Grimes County publishes no acknowledgment of a received report or contract.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "G4"
+    ],
+    "disposition": "Acknowledgment of maintenance filings not established."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 1,
+    "baseline_text": "Montgomery County publishes no way to submit maintenance inspection reports or renewal contracts in anything readable; its mctx.org OSSF pages are blocked by robots.txt. HealthComplaints@mctx.org is for complaints only. Inspection filings are held for review and contracts are filed by hand.",
+    "status": "partial",
+    "finding_ids": [
+      "M4"
+    ],
+    "disposition": "Live pages accessible; better contacts found, but explicit recurring filing channel still absent."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 2,
+    "baseline_text": "The county form says three inspections a year, one every four months, and doesn't mention electronic monitoring, so Aerowise allows no 6-month schedule here (TCEQ would allow two a year).",
+    "status": "partial",
+    "finding_ids": [
+      "M3"
+    ],
+    "disposition": "Initial-term wording confirmed; renewal/monitoring treatment not established."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 3,
+    "baseline_text": "Commercial and non-single-family systems need one BOD and TSS grab sample a year; no limits, lab format or report it goes with are published.",
+    "status": "partial",
+    "finding_ids": [
+      "M2"
+    ],
+    "disposition": "Annual commercial/multifamily BOD/TSS confirmed in order; limits/lab format still unknown."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 4,
+    "baseline_text": "No Montgomery County OSSF order was found; its number, dates and any other county rules are unknown.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "M1"
+    ],
+    "disposition": "Approved local order and approval dates recovered."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 5,
+    "baseline_text": "SJRA permits OSSFs within 2,075 feet of Lake Conroe outside city limits; how the distance is measured, and who permits inside city limits near the lake, is not published. Which cities run their own program is also not published. Every site needs a reviewed assignment.",
+    "status": "partial",
+    "finding_ids": [
+      "M5"
+    ],
+    "disposition": "County exclusions established; city/SJRA actual assignments still need permit/boundary evidence."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 6,
+    "baseline_text": "The county pages and PDFs were read through a page summarizer; quotes haven't been compared with the PDFs in a browser.",
+    "status": "public_evidence",
+    "finding_ids": [
+      "M1"
+    ],
+    "disposition": "Original documents read, scanned local provisions OCRed and key pages visually checked."
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "baseline_unresolved_index": 7,
+    "baseline_text": "Montgomery County publishes no acknowledgment of a received report or contract.",
+    "status": "not_resolved",
+    "finding_ids": [
+      "M4"
+    ],
+    "disposition": "Acknowledgment of reports/contracts not established."
+  }
+]

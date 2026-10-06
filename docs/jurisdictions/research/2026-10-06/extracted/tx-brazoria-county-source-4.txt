@@ -1,0 +1,1453 @@
+                                                  Types of Systems Installed by Time Period
+                                                                           3/25/2025
+
+
+
+
+From Date:       1/1/2024
+To Date:         12/31/2024
+
+
+                                                                                                       LOW                                 STANDARD
+                              AR             ABSORPTIVE DRIP   EVAP               GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                                PUMPED
+ AUTHORIZED AGENT             NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW      LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                                EFFLUENT
+
+ ANDERSON COUNTY              620216   120   0           1     0      7            6        4          0          2        0    0          0          100
+ (ANDERSON)
+
+ ANDREWS COUNTY               620002   47    0           0     0      0            0        47         0          0        0    0          0          0
+ (ANDREWS)
+
+ ANGELINA AND NECHES RIVER AUTHORITY
+                             620004    303   0           1     0      0            0        0          0          0        0    0          0          302
+ (ANGELINA)
+
+ ANGELINA AND NECHES RIVER AUTHORITY
+                             620004    8     0           0     0      0            0        0          0          0        0    0          0          8
+ (JASPER)
+
+ ANGELINA AND NECHES RIVER AUTHORITY
+                             620004    21    0           0     0      0            0        0          0          0        0    0          0          21
+ (NACOGDOCHES)
+
+ ANGELINA AND NECHES RIVER AUTHORITY
+                             620004    9     0           0     0      0            0        0          0          0        0    0          0          9
+ (SABINE)
+
+ ANGELINA AND NECHES RIVER AUTHORITY
+                             620004    59    0           0     0      0            0        0          0          0        0    0          0          59
+ (SAN AUGUSTINE)
+
+ ARANSAS COUNTY               620005   177   37          32    0      75           0        0          7          7        0    0          0          19
+ (ARANSAS)
+
+ ARCHER COUNTY                620006   42    1           0     0      3            0        0          24         0        0    1          13         0
+ (ARCHER)
+
+
+
+             1
+                                                                                                    LOW                                 STANDARD
+                             AR              ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                             PUMPED
+AUTHORIZED AGENT             NUM      ATC    MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                             EFFLUENT
+
+
+ATASCOSA COUNTY              620007   305    0           0     2      0        7         59         0          0        0    0          229        33
+(ATASCOSA)
+
+AUSTIN COUNTY                620008   148    0           2     0      0        5         2          13         0        0    0          55         71
+(AUSTIN)
+
+BANDERA COUNTY               620009   255    0           7     1      0        1         141        0          1        0    0          9          95
+(BANDERA)
+
+BASTROP COUNTY               620010   1033   0           133   23     0        2         121        77         49       0    0          35         593
+(BASTROP)
+
+BAYLOR COUNTY                620011   16     0           0     0      2        0         1          1          0        0    0          12         0
+(BAYLOR)
+
+BEE COUNTY                   620012   47     0           1     0      12       0         23         0          2        0    0          0          9
+(BEE)
+
+BELL COUNTY PUBLIC HEALTH DISTRICT
+                             620013   597    1           15    10     0        0         24         3          1        0    0          27         516
+(BELL)
+
+BEXAR COUNTY                 620015   816    0           109   1      0        3         99         0          0        0    0          173        431
+(BEXAR)
+
+BLANCO COUNTY                620016   150    0           13    0      0        0         62         0          0        0    0          11         64
+(BLANCO)
+
+BOSQUE COUNTY                620017   80     0           0     4      0        0         14         2          0        0    0          16         44
+(BOSQUE)
+
+BOWIE COUNTY                 620018   75     0           0     0      0        0         0          0          0        0    0          0          75
+(BOWIE)
+
+
+
+
+           2
+                                                                                                   LOW                                 STANDARD
+                             AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                            PUMPED
+AUTHORIZED AGENT             NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                            EFFLUENT
+
+BRAZORIA COUNTY              620020   541   0           140   0      0        0         6          0          0        0    0          0          395
+(BRAZORIA)
+
+BRAZOS COUNTY                620027   274   0           14    1      0        4         0          8          0        0    0          4          243
+(BRAZOS)
+
+BRAZOS RIVER AUTHORITY BILLING
+                             620133   115   0           35    0      2        0         0          6          13       0    0          36         23
+(LIMESTONE)
+
+BROOKS COUNTY                620387   3     0           0     0      3        0         0          0          0        0    0          0          0
+(BROOKS)
+
+BROWN COUNTY                 620031   115   0           6     0      0        0         65         3          1        0    0          1          39
+(BROWN)
+
+BURLESON COUNTY              620346   222   0           7     2      4        17        2          7          0        0    0          30         153
+(BURLESON)
+
+BURNET COUNTY                620032   306   0           29    0      0        0         81         24         0        0    0          61         111
+(BURNET)
+
+CALDWELL COUNTY              620034   261   0           10    29     0        0         12         18         1        0    0          3          188
+(CALDWELL)
+
+CALHOUN COUNTY               620035   75    0           4     0      0        0         0          0          1        0    0          0          70
+(CALHOUN)
+
+CALLAHAN COUNTY              620036   84    0           1     0      0        0         63         0          0        0    0          5          15
+(CALLAHAN)
+
+CAMERON COUNTY               620037   462   0           0     2      0        352       52         0          1        0    0          55         0
+(CAMERON)
+
+CAMP COUNTY                  620307   125   0           0     0      0        0         0          0          0        0    0          0          125
+(CAMP)
+
+
+
+         3
+                                                                                             LOW                                 STANDARD
+                       AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                      PUMPED
+AUTHORIZED AGENT       NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                      EFFLUENT
+
+
+CASS COUNTY            620039   37    0           0     0      0        0         0          0          0        0    0          0          37
+(CASS)
+
+CHAMBERS COUNTY        620040   103   0           8     0      0        0         0          0          0        0    0          0          95
+(CHAMBERS)
+
+CHEROKEE COUNTY        620043   193   0          11     0      24       0         0          0          0        0    0          0          158
+(CHEROKEE)
+
+CITY OF ABILENE        620212   5     0           0     0      0        0         0          0          0        0    0          0          5
+(JONES)
+
+CITY OF ABILENE        620212   8     0           0     0      0        0         5          0          0        0    0          1          2
+(TAYLOR)
+
+CITY OF ARANSAS PASS   620386   1     0           0     0      0        0         0          0          0        0    0          0          1
+(SAN PATRICIO)
+
+CITY OF ARLINGTON      620174   0     0           0     0      0        0         0          0          0        0    0          0          0
+(TARRANT)
+
+CITY OF ATHENS         620260   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HENDERSON)
+
+CITY OF AURORA         620455   11    0           0     0      0        0         0          0          0        0    3          6          2
+(WISE)
+
+CITY OF AUSTIN         620184   29    0           20    0      0        0         3          5          0        0    1          0          0
+(TRAVIS)
+
+CITY OF BASTROP        620249   3     0           0     0      0        0         0          0          0        0    0          0          3
+(BASTROP)
+
+
+
+
+           4
+                                                                                                  LOW                                 STANDARD
+                            AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                           PUMPED
+AUTHORIZED AGENT            NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                           EFFLUENT
+
+CITY OF BEACH CITY          620041   13    0           0     0      0        0         0          0          0        0    0          0          13
+(CHAMBERS)
+
+CITY OF BRADY               620131   1     0           0     0      0        0         1          0          0        0    0          0          0
+(MCCULLOCH)
+
+CITY OF BRIDGEPORT          620359   1     0           0     0      0        0         0          0          0        0    0          0          1
+(WISE)
+
+CITY OF BROOKSIDE VILLAGE   620024   6     0           2     0      0        0         0          0          0        0    0          0          4
+(BRAZORIA)
+
+CITY OF BURKBURNETT         620308   4     0           0     0      0        0         0          2          0        0    0          2          0
+(WICHITA)
+
+CITY OF BURLESON            620114   11    0           1     0      0        0         0          0          0        0    0          0          10
+(JOHNSON)
+
+CITY OF BURLESON            620114   0     0           0     0      0        0         0          0          0        0    0          0          0
+(TARRANT)
+
+CITY OF BURNET              620348   3     0           0     0      0        0         0          0          0        0    0          0          3
+(BURNET)
+
+CITY OF CADDO MILLS         620388   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HUNT)
+
+CITY OF CASHION             620334   6     0           0     0      2        0         0          1          0        0    2          1          0
+(WICHITA)
+
+CITY OF CEDAR HILL          620055   7     0           0     0      0        0         0          0          0        0    0          0          7
+(DALLAS)
+
+CITY OF CEDAR HILL          620055   0     0           0     0      0        0         0          0          0        0    0          0          0
+(ELLIS)
+
+
+
+          5
+                                                                                                 LOW                                 STANDARD
+                           AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                          PUMPED
+AUTHORIZED AGENT           NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                          EFFLUENT
+
+
+CITY OF CLARKSVILLE CITY   620084   0     0           0     0      0        0         0          0          0        0    0          0          0
+(GREGG)
+
+CITY OF CLEBURNE           620113   2     0           0     0      0        0         0          0          2        0    0          0          0
+(JOHNSON)
+
+CITY OF DEL RIO            620361   2     0           0     0      0        0         1          0          1        0    0          0          0
+(VAL VERDE)
+
+CITY OF DENTON             620063   8     0           0     0      0        0         0          0          0        0    0          0          8
+(DENTON)
+
+CITY OF DONNA              620314   1     0           0     0      0        1         0          0          0        0    0          0          0
+(HIDALGO)
+
+CITY OF DRIPPING SPRINGS   620379   24    0           9     0      0        0         3          0          0        0    0          0          12
+(HAYS)
+
+CITY OF ELECTRA            620320   0     0           0     0      0        0         0          0          0        0    0          0          0
+(WICHITA)
+
+CITY OF ELMENDORF          620261   6     0           0     0      0        0         3          0          0        0    1          1          1
+(BEXAR)
+
+CITY OF ENNIS              620234   5     0           0     0      0        0         0          0          0        0    0          0          5
+(ELLIS)
+
+CITY OF FARMERSVILLE       620279   1     0           0     0      0        0         0          0          0        0    0          0          1
+(COLLIN)
+
+CITY OF FORT WORTH         620173   0     0           0     0      0        0         0          0          0        0    0          0          0
+(TARRANT)
+
+
+
+
+           6
+                                                                                                     LOW                                 STANDARD
+                               AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                              PUMPED
+AUTHORIZED AGENT               NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                              EFFLUENT
+
+CITY OF FRISCO                 620262   3     0           0     0      0        0         0          0          0        0    3          0          0
+(COLLIN)
+
+CITY OF FRISCO                 620262   0     0           0     0      0        0         0          0          0        0    0          0          0
+(DENTON)
+
+CITY OF GAINESVILLE            620362   0     0           0     0      0        0         0          0          0        0    0          0          0
+(COOKE)
+
+CITY OF GRANBURY               620280   3     0           2     0      0        0         0          0          0        0    0          0          1
+(HOOD)
+
+CITY OF GRAND PRAIRIE          620056   1     0           1     0      0        0         0          0          0        0    0          0          0
+(DALLAS)
+
+CITY OF GRANITE SHOALS         620363   73    0           19    0      0        0         22         8          0        0    0          23         1
+(BURNET)
+
+CITY OF HARLINGEN              620364   17    0           0     0      0        8         8          0          0        0    0          1          0
+(CAMERON)
+
+CITY OF HEATH                  620235   0     0           0     0      0        0         0          0          0        0    0          0          0
+(KAUFMAN)
+
+CITY OF HEATH                  620235   3     0           0     0      0        0         0          0          3        0    0          0          0
+(ROCKWALL)
+
+CITY OF HILL COUNTRY VILLAGE   620236   5     0           0     0      0        0         0          0          0        0    0          5          0
+(BEXAR)
+
+CITY OF HOLLIDAY               620324   0     0           0     0      0        0         0          0          0        0    0          0          0
+(ARCHER)
+
+CITY OF HUDSON OAKS            620219   4     0           0     0      0        0         0          0          4        0    0          0          0
+(PARKER)
+
+
+
+           7
+                                                                                            LOW                                 STANDARD
+                      AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                     PUMPED
+AUTHORIZED AGENT      NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                     EFFLUENT
+
+
+CITY OF INGLESIDE     620349   1     1           0     0      0        0         0          0          0        0    0          0          0
+(SAN PATRICIO)
+
+CITY OF IOLA          620448   0     0           0     0      0        0         0          0          0        0    0          0          0
+(GRIMES)
+
+CITY OF IOWA PARK     620382   2     0           0     0      0        0         0          0          0        0    0          0          2
+(WICHITA)
+
+CITY OF IVANHOE       620443   33    0           0     0      0        0         0          0          26       0    0          0          0
+(TYLER)
+
+CITY OF JOSHUA        620264   14    0           0     0      0        0         0          0          0        0    0          0          14
+(JOHNSON)
+
+CITY OF KERRVILLE     620366   1     0           0     0      0        0         1          0          0        0    0          0          0
+(KERR)
+
+CITY OF KOSSE         620456   0     0           0     0      0        0         0          0          0        0    0          0          0
+(LIMESTONE)
+
+CITY OF KRUGERVILLE   620253   26    0           4     4      0        0         0          0          0        0    0          0          18
+(DENTON)
+
+CITY OF KRUM          620254   0     0           0     0      0        0         0          0          0        0    0          0          0
+(DENTON)
+
+CITY OF LA FERIA      620367   2     0           0     0      0        2         0          0          0        0    0          0          0
+(CAMERON)
+
+CITY OF LAREDO        620390   5     0           0     1      0        0         3          0          0        0    0          1          0
+(WEBB)
+
+
+
+
+          8
+                                                                                                  LOW                                 STANDARD
+                            AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                           PUMPED
+AUTHORIZED AGENT            NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                           EFFLUENT
+
+CITY OF LAVON               620315   1     0           0     0      0        0         0          1          0        0    0          0          0
+(COLLIN)
+
+CITY OF LONGVIEW            620085   0     0           0     0      0        0         0          0          0        0    0          0          0
+(GREGG)
+
+CITY OF LOS FRESNOS         620297   22    0           0     0      0        22        0          0          0        0    0          0          0
+(CAMERON)
+
+CITY OF LUBBOCK             620369   68    0           1     0      0        5         62         0          0        0    0          0          0
+(LUBBOCK)
+
+CITY OF LUCAS               620047   44    0           4     0      0        0         0          1          0        0    0          0          39
+(COLLIN)
+
+CITY OF MANVEL              620022   18    0           0     0      0        0         0          0          0        0    0          0          18
+(BRAZORIA)
+
+CITY OF MCALLEN             620340   6     0           0     0      0        3         3          0          0        0    0          0          0
+(HIDALGO)
+
+CITY OF MCLENDON-CHISHOLM   620239   29    0           1     0      0        0         0          0          0        0    0          0          28
+(ROCKWALL)
+
+CITY OF MEGARGEL            620331   0     0           0     0      0        0         0          0          0        0    0          0          0
+(ARCHER)
+
+CITY OF MERCEDES            620370   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HIDALGO)
+
+CITY OF MILLSAP             620275   1     0           0     0      0        0         0          0          0        0    0          0          1
+(PARKER)
+
+CITY OF MINERAL WELLS       620152   0     0           0     0      0        0         0          0          0        0    0          0          0
+(PALO PINTO)
+
+
+
+           9
+                                                                                              LOW                                 STANDARD
+                        AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                       PUMPED
+AUTHORIZED AGENT        NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                       EFFLUENT
+
+
+CITY OF MINERAL WELLS   620152   0     0           0     0      0        0         0          0          0        0    0          0          0
+(PARKER)
+
+CITY OF MISSION         620371   3     0           0     0      0        2         1          0          0        0    0          0          0
+(HIDALGO)
+
+CITY OF NEVADA          620350   16    0           7     0      0        0         0          0          3        0    0          0          6
+(COLLIN)
+
+CITY OF NEW BRAUNFELS   620343   5     0           0     1      0        0         0          1          0        0    0          0          3
+(COMAL)
+
+CITY OF NEW BRAUNFELS   620343   0     0           0     0      0        0         0          0          0        0    0          0          0
+(GUADALUPE)
+
+CITY OF NEW FAIRVIEW    620344   26    0           0     0      0        0         0          0          0        0    0          0          26
+(WISE)
+
+CITY OF NIEDERWALD      620454   6     0           0     1      0        0         0          0          0        0    0          2          3
+(CALDWELL)
+
+CITY OF NIEDERWALD      620454   5     0           0     0      0        0         0          2          0        0    0          1          2
+(HAYS)
+
+CITY OF NOONDAY         620211   0     0           0     0      0        0         0          0          0        0    0          0          0
+(SMITH)
+
+CITY OF OAK POINT       620273   42    0           0     0      0        0         0          0          0        0    0          0          42
+(DENTON)
+
+CITY OF OAK RIDGE       620471   43    0           1     0      0        0         0          0          0        0    0          0          42
+(KAUFMAN)
+
+
+
+
+          10
+                                                                                                  LOW                                 STANDARD
+                            AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                           PUMPED
+AUTHORIZED AGENT            NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                           EFFLUENT
+
+CITY OF ODEM                620372   0     0           0     0      0        0         0          0          0        0    0          0          0
+(SAN PATRICIO)
+
+CITY OF OLD RIVER-WINFREE   620316   21    0           16    0      0        0         0          0          0        0    0          0          5
+(CHAMBERS)
+
+CITY OF OVILLA              620070   2     0           0     0      0        0         0          0          0        0    0          0          2
+(DALLAS)
+
+CITY OF OVILLA              620070   8     0           0     0      0        0         0          0          0        0    0          0          8
+(ELLIS)
+
+CITY OF PALESTINE           620450   1     0           0     0      0        0         0          0          0        0    0          0          1
+(ANDERSON)
+
+CITY OF PALMHURST           620247   5     0           0     0      0        0         0          0          0        0    0          5          0
+(HIDALGO)
+
+CITY OF PARADISE            620383   19    0           0     0      0        0         0          0          0        0    0          7          12
+(WISE)
+
+CITY OF PINELAND            620267   0     0           0     0      0        0         0          0          0        0    0          0          0
+(SABINE)
+
+CITY OF PORTLAND            620351   3     0           0     0      0        0         0          0          0        0    0          0          3
+(SAN PATRICIO)
+
+CITY OF PRIMERA             620374   0     0           0     0      0        0         0          0          0        0    0          0          0
+(CAMERON)
+
+CITY OF RED OAK             620458   34    0           0     0      0        0         0          0          0        0    0          0          34
+(ELLIS)
+
+CITY OF RENO                620220   50    0           0     0      0        0         1          0          1        0    0          5          43
+(PARKER)
+
+
+
+          11
+                                                                                            LOW                                 STANDARD
+                      AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                     PUMPED
+AUTHORIZED AGENT      NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                     EFFLUENT
+
+
+CITY OF RENO          620220   0     0           0     0      0        0         0          0          0        0    0          0          0
+(TARRANT)
+
+CITY OF ROLLINGWOOD   620292   0     0           0     0      0        0         0          0          0        0    0          0          0
+(TRAVIS)
+
+CITY OF ROMA          620268   0     0           0     0      0        0         0          0          0        0    0          0          0
+(STARR)
+
+CITY OF ROYSE CITY    620337   0     0           0     0      0        0         0          0          0        0    0          0          0
+(COLLIN)
+
+CITY OF ROYSE CITY    620337   23    0           2     0      0        0         0          0          0        0    0          0          21
+(HUNT)
+
+CITY OF ROYSE CITY    620337   0     0           0     0      0        0         0          0          0        0    0          0          0
+(ROCKWALL)
+
+CITY OF SAN BENITO    620375   1     0           0     0      0        0         0          0          0        0    0          1          0
+(CAMERON)
+
+CITY OF SAN JUAN      620376   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HIDALGO)
+
+CITY OF SAN MARCOS    620289   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HAYS)
+
+CITY OF SANTA ROSA    620352   0     0           0     0      0        0         0          0          0        0    0          0          0
+(CAMERON)
+
+CITY OF SCOTLAND      620330   0     0           0     0      0        0         0          0          0        0    0          0          0
+(ARCHER)
+
+
+
+
+         12
+                                                                                                LOW                                 STANDARD
+                          AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                         PUMPED
+AUTHORIZED AGENT          NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                         EFFLUENT
+
+CITY OF SEGUIN            620311   14    0           1     0      0        0         5          1          0        0    0          1          6
+(GUADALUPE)
+
+CITY OF SHAVANO PARK      620128   13    0           0     0      0        0         0          0          0        0    0          0          13
+(BEXAR)
+
+CITY OF SOUTH FRYDEK      620467   5     0           0     0      0        0         0          0          0        0    0          0          5
+(AUSTIN)
+
+CITY OF UHLAND            620298   0     0           0     0      0        0         0          0          0        0    0          0          0
+(CALDWELL)
+
+CITY OF UHLAND            620298   3     0           0     0      0        0         0          0          0        0    0          0          3
+(HAYS)
+
+CITY OF WAXAHACHIE        620069   52    0           0     0      0        0         0          0          0        0    0          0          52
+(ELLIS)
+
+CITY OF WEATHERFORD       620305   13    0           0     0      0        0         1          0          0        0    0          0          12
+(PARKER)
+
+CITY OF WEST LAKE HILLS   620187   9     0           7     0      0        0         0          0          0        0    2          0          0
+(TRAVIS)
+
+CITY OF WICHITA FALLS     620321   12    0           1     0      1        0         0          3          0        0    0          4          3
+(WICHITA)
+
+CITY OF WILLOW PARK       620255   11    0           0     0      0        0         0          0          0        0    0          0          11
+(PARKER)
+
+CITY OF WIMBERLEY         620398   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HAYS)
+
+CITY OF WINDTHORST        620332   0     0           0     0      0        0         0          0          0        0    0          0          0
+(ARCHER)
+
+
+
+          13
+                                                                                         LOW                                 STANDARD
+                   AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                  PUMPED
+AUTHORIZED AGENT   NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                  EFFLUENT
+
+
+CLAY COUNTY        620044   55    0           0     0      7        0         0          10         0        0    0          37         1
+(CLAY)
+
+COKE COUNTY        620045   6     0           0     0      0        0         6          0          0        0    0          0          0
+(COKE)
+
+COLEMAN COUNTY     620399   13    0           0     0      0        0         13         0          0        0    0          0          0
+(COLEMAN)
+
+COLLIN COUNTY      620046   665   0           76    1      0        0         0          87         2        0    0          0          499
+(COLLIN)
+
+COLORADO COUNTY    620048   194   1           1     0      0        4         15         15         0        0    0          53         105
+(COLORADO)
+
+COMAL COUNTY       620049   785   0           223   0      0        0         33         3          1        0    0          4          521
+(COMAL)
+
+COMANCHE COUNTY    620050   115   0           0     0      0        0         105        0          0        0    0          0          10
+(COMANCHE)
+
+CONCHO COUNTY      620345   12    0           0     0      0        0         12         0          0        0    0          0          0
+(CONCHO)
+
+COOKE COUNTY       620052   356   0           15    3      0        0         0          1          1        0    0          44         292
+(COOKE)
+
+CORYELL COUNTY     620053   159   0           0     0      0        3         80         1          6        0    0          6          63
+(CORYELL)
+
+CROSBY COUNTY      620325   4     0           0     0      0        0         3          0          0        0    0          1          0
+(CROSBY)
+
+
+
+
+         14
+                                                                                            LOW                                 STANDARD
+                      AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                     PUMPED
+AUTHORIZED AGENT      NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                     EFFLUENT
+
+DALLAM COUNTY         620240   5     0           0     0      0        0         5          0          0        0    0          0          0
+(DALLAM)
+
+DALLAS COUNTY         620054   63    0           21    0      0        0         0          0          0        0    0          0          42
+(DALLAS)
+
+DAWSON COUNTY         620060   14    0           0     0      0        1         13         0          0        0    0          0          0
+(DAWSON)
+
+DELTA COUNTY          620447   19    0           0     0      0        0         0          0          0        0    0          0          19
+(DELTA)
+
+DENTON COUNTY         620061   331   1           24    3      0        0         0          1          3        0    0          3          296
+(DENTON)
+
+DEWITT COUNTY         620065   24    0           1     0      0        0         5          0          0        0    0          0          18
+(DEWITT)
+
+DIMMIT COUNTY         620229   10    0           0     0      0        10        0          0          0        0    0          0          0
+(DIMMIT)
+
+DUVAL COUNTY          620312   21    0           0     0      11       6         4          0          0        0    0          0          0
+(DUVAL)
+
+EASTLAND COUNTY WSD   620256   8     0           0     0      0        0         1          0          0        0    0          0          7
+(EASTLAND)
+
+ECTOR COUNTY          620067   522   0           1     0      0        8         507        0          3        0    0          0          3
+(ECTOR)
+
+EDWARDS COUNTY        620285   43    0           0     0      0        0         43         0          0        0    0          0          0
+(EDWARDS)
+
+EL PASO COUNTY        620071   196   0           0     0      0        0         18         0          0        0    0          178        0
+(EL PASO)
+
+
+
+          15
+                                                                                                  LOW                                 STANDARD
+                            AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                           PUMPED
+AUTHORIZED AGENT            NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                           EFFLUENT
+
+
+ELLIS COUNTY                620068   692   0           12    1      0        0         0          11         0        0    0          2          666
+(ELLIS)
+
+ERATH COUNTY                620073   259   0           0     0      1        0         141        0          0        0    0          15         102
+(ERATH)
+
+FALLS COUNTY                620299   84    0           1     5      0        0         3          1          0        0    0          11         63
+(FALLS)
+
+FANNIN COUNTY               620074   247   0           1     0      0        0         0          5          0        0    0          2          239
+(FANNIN)
+
+FAYETTE COUNTY              620075   311   0           5     3      0        0         10         32         12       0    0          99         150
+(FAYETTE)
+
+FORT BEND COUNTY            620076   487   0           78    0      0        0         0          0          0        0    0          0          409
+(FORT BEND)
+
+FRANKLIN COUNTY             620078   81    0           2     0      1        3         3          0          1        0    1          2          68
+(FRANKLIN)
+
+FREESTONE COUNTY            620358   71    0           9     0      0        0         1          1          0        0    3          3          54
+(FREESTONE)
+
+FRIO COUNTY                 620290   75    0           0     0      0        2         14         0          1        0    0          55         3
+(FRIO)
+
+GAINES COUNTY               620079   386   0           0     0      0        2         383        0          0        0    0          1          0
+(GAINES)
+
+GALVESTON COUNTY HEALTH DISTRICT
+                            620080   281   0           152   0      0        1         5          0          0        0    0          11         112
+(GALVESTON)
+
+
+
+
+          16
+                                                                                         LOW                                 STANDARD
+                   AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                  PUMPED
+AUTHORIZED AGENT   NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                  EFFLUENT
+
+GARZA COUNTY       620322   14    0           0     0      0        1         13         0          0        0    0          0          0
+(GARZA)
+
+GILLESPIE COUNTY   620081   266   0           12    0      0        0         101        6          0        0    0          48         99
+(GILLESPIE)
+
+GLASSCOCK COUNTY   620338   14    0           0     0      0        0         14         0          0        0    0          0          0
+(GLASSCOCK)
+
+GOLIAD COUNTY      620286   41    0           0     0      41       0         0          0          0        0    0          0          0
+(GOLIAD)
+
+GONZALES COUNTY    620300   121   0           0     2      1        1         19         2          0        0    0          12         84
+(GONZALES)
+
+GRAYSON COUNTY     620082   774   0          111    1      0        0         0          4          0        0    0          26         632
+(GRAYSON)
+
+GREGG COUNTY       620215   171   0           13    0      0        4         1          2          0        0    0          0          151
+(GREGG)
+
+GRIMES COUNTY      620086   384   0           44    4      0        10        3          1          0        0    0          27         295
+(GRIMES)
+
+GUADALUPE COUNTY   620087   393   0           21    30     0        5         49         2          0        0    0          46         240
+(GUADALUPE)
+
+HALE COUNTY        620276   32    0           0     0      0        2         30         0          0        0    0          0          0
+(HALE)
+
+HAMILTON COUNTY    620323   54    1           0     0      0        0         19         0          0        0    0          18         16
+(HAMILTON)
+
+HARRIS COUNTY      620091   720   46          281   0      0        0         0          3          42       0    0          0          297
+(HARRIS)
+
+
+
+         17
+                                                                                          LOW                                 STANDARD
+                   AR              ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                   PUMPED
+AUTHORIZED AGENT   NUM      ATC    MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                   EFFLUENT
+
+
+HARRISON COUNTY    620097   258    0           16    0      0        1         0          0          0        0    0          1          220
+(HARRISON)
+
+HARTLEY COUNTY     620257   7      0           0     0      0        0         7          0          0        0    0          0          0
+(HARTLEY)
+
+HAYS COUNTY        620098   390    0           76    8      0        0         48         48         1        0    0          2          207
+(HAYS)
+
+HENDERSON COUNTY   620291   280    1           37    0      31       4         0          1          1        0    0          6          199
+(HENDERSON)
+
+HIDALGO COUNTY     620100   1333   0           0     1      3        1262      58         1          0        0    0          8          0
+(HIDALGO)
+
+HILL COUNTY        620385   271    0           1     0      0        1         11         2          10       0    0          34         212
+(HILL)
+
+HOCKLEY COUNTY     620101   97     0           0     0      0        17        80         0          0        0    0          0          0
+(HOCKLEY)
+
+HOOD COUNTY        620102   618    1           300   1      0        1         27         3          1        0    0          35         249
+(HOOD)
+
+HOPKINS COUNTY     620104   236    0           0     0      0        0         0          0          0        0    0          0          236
+(HOPKINS)
+
+HOUSTON COUNTY     620105   60     0           0     0      0        1         5          0          0        0    0          0          54
+(HOUSTON)
+
+HOWARD COUNTY      620106   64     0           0     0      0        0         64         0          0        0    0          0          0
+(HOWARD)
+
+
+
+
+         18
+                                                                                                  LOW                                 STANDARD
+                            AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                           PUMPED
+AUTHORIZED AGENT            NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                           EFFLUENT
+
+HUDSPETH COUNTY             620241   5      0          0     0      0        0         1          0          0        0    0          4          0
+(HUDSPETH)
+
+HUNT COUNTY                 620107   645    0          1     0      0        0         0          8          0        0    0          0          636
+(HUNT)
+
+HUTCHINSON COUNTY           620108   44     0          0     0      0        0         44         0          0        0    0          0          0
+(HUTCHINSON)
+
+JACK COUNTY                 620470   15     0          0     0      1        0         0          0          0        0    0          5          9
+(JACK)
+
+JACKSON COUNTY              620109   77     0          16    0      0        1         0          0          1        0    0          0          59
+(JACKSON)
+
+JASPER NEWTON COUNTY PUBLIC 620110
+                            HEALTH DISTRICT
+                                     17     0         0      0      0        0         0          0          0        0    1          0          16
+(NEWTON)
+
+JEFFERSON COUNTY            620111   118    0          4     0      0        0         0          0          0        0    0          0          114
+(JEFFERSON)
+
+JIM HOGG COUNTY             620294   1      0          0     0      1        0         0          0          0        0    0          0          0
+(JIM HOGG)
+
+JIM WELLS COUNTY            620326   171    0          0     0      92       51        13         3          0        0    1          6          5
+(JIM WELLS)
+
+JOHNSON COUNTY              620112   702    0          7     0      0        0         2          1          0        0    0          28         664
+(JOHNSON)
+
+JONES COUNTY                620115   89     0          0     0      0        0         72         0          5        0    0          12         0
+(JONES)
+
+KARNES COUNTY               620281   49     0          0     1      0        1         10         0          0        0    0          20         17
+(KARNES)
+
+
+
+         19
+                                                                                         LOW                                 STANDARD
+                   AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                  PUMPED
+AUTHORIZED AGENT   NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                  EFFLUENT
+
+
+KAUFMAN COUNTY     620116   514   0           14    0      0        0         0          5          7        0    0          0          488
+(KAUFMAN)
+
+KENDALL COUNTY     620117   256   65          8     0      0        0         4          0          0        0    0          2          177
+(KENDALL)
+
+KENEDY COUNTY      620377   0     0           0     0      0        0         0          0          0        0    0          0          0
+(KENEDY)
+
+KERR COUNTY        620118   199   0           6     0      0        2         77         2          1        0    0          0          111
+(KERR)
+
+KIMBLE COUNTY      620119   18    0           1     0      0        0         12         0          0        0    0          0          5
+(KIMBLE)
+
+KINNEY COUNTY      620354   1     0           0     0      0        0         1          0          0        0    0          0          0
+(KINNEY)
+
+KLEBERG COUNTY     620269   43    0           0     1      38       3         0          0          0        0    0          0          1
+(KLEBERG)
+
+LAMAR COUNTY       620120   176   0           1     0      0        0         0          0          0        0    0          0          175
+(LAMAR)
+
+LAMPASAS COUNTY    620121   148   0           0     0      0        0         0          0          0        0    0          117        31
+(LAMPASAS)
+
+LAVACA COUNTY      620122   145   0           0     0      0        0         0          2          0        0    0          33         97
+(LAVACA)
+
+LEE COUNTY         620123   136   0           0     1      0        2         1          4          0        0    0          30         98
+(LEE)
+
+
+
+
+         20
+                                                                                                LOW                                 STANDARD
+                          AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                         PUMPED
+AUTHORIZED AGENT          NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                         EFFLUENT
+
+LEON COUNTY               620353   157   0           4     0      15       10        31         1          0        0    0          3          93
+(LEON)
+
+LIBERTY COUNTY            620125   689   0           3     0      0        0         0          0          0        0    0          0          638
+(LIBERTY)
+
+LIMESTONE COUNTY          620306   98    0           4     0      0        1         4          1          0        0    0          5          83
+(LIMESTONE)
+
+LIVE OAK COUNTY           620126   76    0           0     0      15       2         43         0          3        0    0          5          8
+(LIVE OAK)
+
+LLANO COUNTY              620127   105   0           2     0      0        0         22         9          0        0    0          65         7
+(LLANO)
+
+LOVING COUNTY             620296   8     0           0     0      0        0         8          0          0        0    0          0          0
+(LOVING)
+
+LOWER COLORADO RIVER AUTHORITY
+                          620185   115   0           55    0      0        0         21         14         1        0    0          22         2
+(BURNET)
+
+LOWER COLORADO RIVER AUTHORITY
+                          620185   0     0           0     0      0        0         0          0          0        0    0          0          0
+(LAMPASAS)
+
+LOWER COLORADO RIVER AUTHORITY
+                          620185   67    3           19    0      0        0         23         10         2        0    0          9          1
+(LLANO)
+
+LOWER COLORADO RIVER AUTHORITY
+                          620185   0     0           0     0      0        0         0          0          0        0    0          0          0
+(SAN SABA)
+
+LOWER COLORADO RIVER AUTHORITY
+                          620185   175   0          115    0      0        0         21         17         1        0    0          6          15
+(TRAVIS)
+
+LUBBOCK COUNTY            620129   362   0           1     0      0        79        276        0          0        0    0          6          0
+(LUBBOCK)
+
+
+
+         21
+                                                                                         LOW                                 STANDARD
+                   AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                  PUMPED
+AUTHORIZED AGENT   NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                  EFFLUENT
+
+
+LYNN COUNTY        620461   34    0           0     0      0        4         29         0          0        0    0          1          0
+(LYNN)
+
+MADISON COUNTY     620135   89    0           0     0      0        1         0          1          0        0    0          4          83
+(MADISON)
+
+MARION COUNTY      620136   38    0           0     0      0        0         0          0          0        0    0          0          38
+(MARION)
+
+MARTIN COUNTY      620214   75    0           0     0      0        0         75         0          0        0    0          0          0
+(MARTIN)
+
+MASON COUNTY       620218   67    1           0     0      0        0         33         5          0        0    1          21         3
+(MASON)
+
+MATAGORDA COUNTY   620137   127   0           27    0      0        1         4          2          1        0    0          0          92
+(MATAGORDA)
+
+MAVERICK COUNTY    620138   17    0           0     0      0        15        2          0          0        0    0          0          0
+(MAVERICK)
+
+MCCULLOCH COUNTY   620460   8     0           0     0      0        0         5          1          0        0    0          0          2
+(MCCULLOCH)
+
+MCLENNAN COUNTY    620132   420   0           24    6      0        1         4          26         3        0    0          18         338
+(MCLENNAN)
+
+MCMULLEN COUNTY    620242   0     0           0     0      0        0         0          0          0        0    0          0          0
+(MCMULLEN)
+
+MEDINA COUNTY      620139   504   0           0     0      0        4         59         0          22       0    0          231        188
+(MEDINA)
+
+
+
+
+         22
+                                                                                            LOW                                 STANDARD
+                     AR              ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                     PUMPED
+AUTHORIZED AGENT     NUM      ATC    MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                     EFFLUENT
+
+MENARD COUNTY        620341   23     0           0     0      0        0         13         0          0        0    0          2          8
+(MENARD)
+
+MIDLAND COUNTY       620140   339    0           2     0      0        0         330        0          6        0    0          0          1
+(MIDLAND)
+
+MILAM COUNTY         620141   138    0           0     4      0        6         17         13         0        0    0          28         70
+(MILAM)
+
+MILLS COUNTY         620142   31     0           0     0      0        0         29         0          0        0    0          0          2
+(MILLS)
+
+MITCHELL COUNTY      620143   5      0           0     0      0        0         5          0          0        0    0          0          0
+(MITCHELL)
+
+MONTAGUE COUNTY      620243   194    0           0     0      4        5         3          0          0        0    0          117        65
+(MONTAGUE)
+
+MONTGOMERY COUNTY    620145   1837   0           381   0      0        6         1          0          0        0    0          14         1435
+(MONTGOMERY)
+
+MORRIS COUNTY        620329   19     0           0     0      0        0         0          0          0        0    0          0          19
+(MORRIS)
+
+NACOGDOCHES COUNTY   620147   166    0           0     0      0        8         0          0          0        0    0          0          158
+(NACOGDOCHES)
+
+NAVARRO COUNTY       620148   257    0           16    0      0        0         0          17         0        0    0          0          224
+(NAVARRO)
+
+NORTH CENTRAL MWA    620393   0      0           0     0      0        0         0          0          0        0    0          0          0
+(BAYLOR)
+
+NORTH CENTRAL MWA    620393   0      0           0     0      0        0         0          0          0        0    0          0          0
+(THROCKMORTON)
+
+
+
+          23
+                                                                                              LOW                                 STANDARD
+                       AR              ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                       PUMPED
+AUTHORIZED AGENT       NUM      ATC    MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                       EFFLUENT
+
+
+NUECES COUNTY          620149   223    0           4     0      25       0         1          26         15       0    4          22         126
+(NUECES)
+
+NUECES COUNTY WCID 4   620378   0      0           0     0      0        0         0          0          0        0    0          0          0
+(NUECES)
+
+ORANGE COUNTY          620226   126    0           12    0      0        0         0          0          0        0    0          0          114
+(ORANGE)
+
+PALO PINTO COUNTY      620153   153    0           1     0      2        1         11         0          0        0    0          53         85
+(PALO PINTO)
+
+PARKER COUNTY          620154   1300   0           9     0      38       1         71         1          3        0    0          79         1098
+(PARKER)
+
+POLK COUNTY            620224   205    0           9     0      0        1         35         0          0        0    0          0          160
+(POLK)
+
+POTTER COUNTY          620389   174    0           1     0      0        0         173        0          0        0    0          0          0
+(POTTER)
+
+PRESIDIO COUNTY        620301   5      0           0     0      0        0         5          0          0        0    0          0          0
+(PRESIDIO)
+
+RAINS COUNTY           620335   123    0           0     0      0        2         0          0          0        0    0          1          120
+(RAINS)
+
+RANDALL COUNTY         620157   357    0           1     0      0        0         356        0          0        0    0          0          0
+(RANDALL)
+
+REAL COUNTY            620158   43     0           0     0      0        38        8          0          0        0    0          0          2
+(REAL)
+
+
+
+
+          24
+                                                                                                    LOW                                 STANDARD
+                              AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                             PUMPED
+AUTHORIZED AGENT              NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                             EFFLUENT
+
+RED RIVER COUNTY              620258   44    0           0     0      0        0         0          0          0        0    0          0          44
+(RED RIVER)
+
+REEVES COUNTY                 620159   65    0           0     0      0        0         65         0          0        0    0          0          0
+(REEVES)
+
+REFUGIO COUNTY                620244   19    0           0     0      0        0         0          1          0        0    0          4          14
+(REFUGIO)
+
+ROBERTSON COUNTY              620356   114   0           3     0      0        29        4          0          0        0    0          0          78
+(ROBERTSON)
+
+ROCKWALL COUNTY               620161   91    0           5     0      0        0         0          0          2        0    0          0          84
+(ROCKWALL)
+
+RUSK COUNTY                   620163   115   0           0     0      6        0         0          0          0        0    0          1          108
+(RUSK)
+
+SABINE RIVER AUTHORITY BILLING620150   0     0           0     0      0        0         0          0          0        0    0          0          0
+(HOPKINS)
+
+SABINE RIVER AUTHORITY BILLING620150   65    0           14    0      0        0         0          0          0        0    0          0          51
+(HUNT)
+
+SABINE RIVER AUTHORITY BILLING620150   12    0           0     0      0        0         1          0          0        0    0          0          11
+(NEWTON)
+
+SABINE RIVER AUTHORITY BILLING620150   11    0           1     0      0        0         0          0          0        0    0          0          10
+(RAINS)
+
+SABINE RIVER AUTHORITY BILLING620150   59    0           0     0      0        0         0          0          0        0    0          0          59
+(SABINE)
+
+SABINE RIVER AUTHORITY BILLING620150   5     0           2     0      0        0         0          0          0        0    0          0          3
+(VAN ZANDT)
+
+
+
+          25
+                                                                                                    LOW                                 STANDARD
+                              AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                             PUMPED
+AUTHORIZED AGENT              NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                             EFFLUENT
+
+
+SABINE RIVER AUTHORITY BILLING620150   53    0           0     0      0        0         0          0          9        0    0          0          44
+(WOOD)
+
+SAN JACINTO COUNTY            620165   188   0           9     0      0        2         21         0          0        0    0          1          155
+(SAN JACINTO)
+
+SAN JACINTO RIVER AUTHORITY   620146   27    0           13    0      0        0         0          0          0        0    0          0          14
+(MONTGOMERY)
+
+SAN JACINTO RIVER AUTHORITY   620146   0     0           0     0      0        0         0          0          0        0    0          0          0
+(WALKER)
+
+SAN PATRICIO COUNTY           620167   87    1           1     0      23       0         3          15         5        0    0          10         29
+(SAN PATRICIO)
+
+SAN SABA COUNTY               620336   13    0           0     0      0        0         11         0          0        0    0          0          2
+(SAN SABA)
+
+SCHLEICHER COUNTY             620392   10    0           0     0      0        0         10         0          0        0    0          0          0
+(SCHLEICHER)
+
+SCURRY COUNTY                 620270   9     0           1     0      0        0         8          0          0        0    0          0          0
+(SCURRY)
+
+SMITH COUNTY                  620169   714   0           35    0      88       1         0          0          3        0    0          13         574
+(SMITH)
+
+SOMERVELL COUNTY              620230   104   0           0     0      0        1         16         0          1        0    0          5          81
+(SOMERVELL)
+
+STARR COUNTY                  620282   120   0           0     0      0        120       0          0          0        0    0          0          0
+(STARR)
+
+
+
+
+          26
+                                                                                                    LOW                                 STANDARD
+                             AR              ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                             PUMPED
+AUTHORIZED AGENT             NUM      ATC    MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                             EFFLUENT
+
+SUTTON COUNTY                620357    12    0           0     0      0        0         12         0          0        0    0          0          0
+(SUTTON)
+
+TARRANT COUNTY               620171    363   60          18    2      3        0         10         1          0        0    0          9          202
+(TARRANT)
+
+TARRANT REGIONAL WATER DISTRICT
+                            620172
+                                BILLING17    0           15    0      0        0         0          0          1        0    0          1          0
+(FREESTONE)
+
+TARRANT REGIONAL WATER DISTRICT
+                            620172
+                                BILLING70    0           69    0      0        0         0          0          1        0    0          0          0
+(HENDERSON)
+
+TARRANT REGIONAL WATER DISTRICT
+                            620172
+                                BILLING3     0           3     0      0        0         0          0          0        0    0          0          0
+(KAUFMAN)
+
+TARRANT REGIONAL WATER DISTRICT
+                            620172
+                                BILLING104   0           100   0      1        0         0          3          0        0    0          0          0
+(NAVARRO)
+
+TARRANT REGIONAL WATER DISTRICT
+                            620172
+                                BILLING40    0           10    0      3        0         12         6          1        0    0          7          1
+(TARRANT)
+
+TARRANT REGIONAL WATER DISTRICT
+                            620172
+                                BILLING27    2           10    0      2        0         1          1          5        0    0          6          0
+(WISE)
+
+TAYLOR COUNTY                620178    256   0           8     0      0        0         120        2          1        0    2          21         102
+(TAYLOR)
+
+TERRY COUNTY                 620179    36    0           0     0      0        1         35         0          0        0    0          0          0
+(TERRY)
+
+THROCKMORTON COUNTY          620180    2     0           0     0      0        1         0          0          0        0    0          1          0
+(THROCKMORTON)
+
+TITUS COUNTY                 620182    17    0           0     0      0        0         0          0          0        0    0          2          15
+(TITUS)
+
+
+
+          27
+                                                                                              LOW                                 STANDARD
+                        AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                       PUMPED
+AUTHORIZED AGENT        NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                       EFFLUENT
+
+
+TOM GREEN COUNTY        620183   262   0           1     0      0        0         242        0          2        0    0          7          10
+(TOM GREEN)
+
+TOWN OF ARGYLE          620217   23    0           18    0      1        0         0          0          0        0    0          0          4
+(DENTON)
+
+TOWN OF BARTONVILLE     620228   31    0           0     0      0        0         0          0          0        0    0          0          31
+(DENTON)
+
+TOWN OF BAYVIEW         620446   3     0           0     0      0        3         0          0          0        0    0          0          0
+(CAMERON)
+
+TOWN OF COMBES          620302   1     0           0     0      0        1         0          0          0        0    0          0          0
+(CAMERON)
+
+TOWN OF COPPER CANYON   620462   23    0           3     0      0        0         0          0          0        0    0          0          20
+(DENTON)
+
+TOWN OF CROSS ROADS     620266   6     0           0     0      0        0         0          0          1        0    0          0          5
+(DENTON)
+
+TOWN OF DISH            620360   24    0           0     0      0        0         0          0          0        0    0          0          24
+(DENTON)
+
+TOWN OF DOUBLE OAK      620259   8     0           1     0      0        0         0          0          0        0    0          0          7
+(DENTON)
+
+TOWN OF FAIRVIEW        620278   39    0           9     0      0        0         0          0          0        0    0          0          30
+(COLLIN)
+
+TOWN OF FLOWER MOUND    620064   50    0           15    0      0        0         0          0          0        0    0          1          34
+(DENTON)
+
+
+
+
+       28
+                                                                                                LOW                                 STANDARD
+                          AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                         PUMPED
+AUTHORIZED AGENT          NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                         EFFLUENT
+
+TOWN OF HICKORY CREEK     620245   3     0           2     0      0        0         0          0          0        0    0          0          1
+(DENTON)
+
+TOWN OF HOLLYWOOD PARK    620232   23    0           7     0      0        0         0          0          10       0    1          0          5
+(BEXAR)
+
+TOWN OF NORTHLAKE         620342   55    0           1     0      0        0         0          0          0        0    0          0          54
+(DENTON)
+
+TOWN OF OAK VALLEY        620283   0     0           0     0      0        0         0          0          0        0    0          0          0
+(NAVARRO)
+
+TOWN OF PLEASANT VALLEY   620328   1     0           0     0      0        0         0          0          0        0    0          0          1
+(WICHITA)
+
+TOWN OF ROAD RUNNER       620469   7     0           2     0      0        0         0          0          0        0    0          0          5
+(COOKE)
+
+TOWN OF SHADY SHORES      620246   4     0           0     0      0        0         0          0          0        0    0          0          4
+(DENTON)
+
+TRAVIS COUNTY             620186   442   0           240   12     0        0         37         50         4        0    0          7          92
+(TRAVIS)
+
+TRINITY COUNTY            620333   52    0           5     0      0        0         3          0          0        0    0          1          43
+(TRINITY)
+
+TRINITY RIVER AUTHORITY   620156   80    0           40    0      0        0         7          1          0        0    0          1          31
+(POLK)
+
+TRINITY RIVER AUTHORITY   620156   52    0           22    0      0        0         1          0          0        0    0          1          28
+(SAN JACINTO)
+
+TRINITY RIVER AUTHORITY   620156   22    0           7     0      0        0         0          0          0        0    0          3          12
+(TRINITY)
+
+
+
+         29
+                                                                                                   LOW                                 STANDARD
+                            AR              ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                            PUMPED
+AUTHORIZED AGENT            NUM      ATC    MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                            EFFLUENT
+
+
+TRINITY RIVER AUTHORITY     620156   11     0           2     0      0        0         0          0          0        0    0          1          8
+(WALKER)
+
+UPPER NECHES RIVER MWA LAKE PALESTINE
+                            620000    2     0           1     0      0        1         0          0          0        0    0          0          0
+(ANDERSON)
+
+UPPER NECHES RIVER MWA LAKE PALESTINE
+                            620000    6     0           0     0      4        0         0          0          0        0    0          0          2
+(CHEROKEE)
+
+UPPER NECHES RIVER MWA LAKE PALESTINE
+                            620000    33    0           7     0      2        3         0          2          0        0    0          0          19
+(HENDERSON)
+
+UPPER NECHES RIVER MWA LAKE PALESTINE
+                            620000    18    0           4     0      0        0         0          0          0        0    0          0          14
+(SMITH)
+
+UPSHUR COUNTY               620304    193   0           0     0      0        0         0          0          0        0    0          0          193
+(UPSHUR)
+
+UPTON COUNTY                620391    4     0           0     0      0        0         4          0          0        0    0          0          0
+(UPTON)
+
+UVALDE COUNTY               620189    101   0           0     0      0        69        19         0          0        0    0          13         0
+(UVALDE)
+
+VAL VERDE COUNTY            620192    63    0           1     0      0        0         23         0          6        0    0          0          33
+(VAL VERDE)
+
+VAN ZANDT COUNTY            620193    461   0           14    0      15       5         0          1          0        0    0          4          392
+(VAN ZANDT)
+
+VICTORIA COUNTY             620194   118    0           6     0      0        0         2          0          3        0    0          0          107
+(VICTORIA)
+
+
+
+
+          30
+                                                                                                  LOW                                 STANDARD
+                            AR             ABSORPTIVE DRIP   EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                           PUMPED
+AUTHORIZED AGENT            NUM      ATC   MOUNDS     IRR.   BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                           EFFLUENT
+
+VILLAGE OF SURFSIDE BEACH   620274   9     0           2     0      0        0         7          0          0        0    0          0          0
+(BRAZORIA)
+
+WALKER COUNTY               620195   281   0           8     0      0        4         1          0          0        0    0          1          267
+(WALKER)
+
+WALLER COUNTY               620196   318   0           43    0      0        4         1          1          0        0    0          6          297
+(WALLER)
+
+WARD COUNTY                 620317   25    0           0     0      0        0         25         0          0        0    0          0          0
+(WARD)
+
+WASHINGTON COUNTY           620197   254   0           1     1      0        0         7          8          0        0    0          217        20
+(WASHINGTON)
+
+WEBB COUNTY                 620198   65    0           0     23     0        0         42         0          0        0    0          0          0
+(WEBB)
+
+WEST CENTRAL TEXAS MWD HUBBARD
+                           620251
+                                CREEK
+                                    11RESERVOIR
+                                           0           0     0      0        0         0          0          0        0    0          3          8
+(STEPHENS)
+
+WHARTON COUNTY              620199   111   0           0     0      0        0         2          0          0        0    0          0          109
+(WHARTON)
+
+WICHITA COUNTY              620200   55    0           0     0      5        0         0          16         0        0    1          9          24
+(WICHITA)
+
+WILLACY COUNTY              620227   30    0           0     0      0        29        0          0          1        0    0          0          0
+(WILLACY)
+
+WILLIAMSON COUNTY           620459   498   21          141   11     0        0         57         50         2        0    0          11         205
+(WILLIAMSON)
+
+WILSON COUNTY               620204   418   0           3     1      0        0         44         0          0        0    0          217        153
+(WILSON)
+
+
+
+         31
+                                                                                                 LOW                                 STANDARD
+                        AR               ABSORPTIVE DRIP    EVAP            GRAVEL-   LEACHING   PRESSURE                            TRENCH/    SURFACE
+                                                                                                                          PUMPED
+ AUTHORIZED AGENT       NUM      ATC     MOUNDS     IRR.    BEDS   EZFLOW   LESS      CHAMBER    DOSING     OTHER   PTI              BED        IRR.
+                                                                                                                          EFFLUENT
+
+
+ WINKLER COUNTY         620327    8      0           0      0      0        0         8          0          0        0    0          0          0
+ (WINKLER)
+
+ WISE COUNTY            620205    628    0           6      0      12       3         6          2          0        0    0          206        393
+ (WISE)
+
+ WOOD COUNTY            620313    318    0           0      0      20       8         29         0          0        0    0          5          256
+ (WOOD)
+
+ YOAKUM COUNTY          620206    15     0           0      0      0        0         15         0          0        0    0          0          0
+ (YOAKUM)
+
+ YOUNG COUNTY           620248    38     0           0      0      6        0         2          0          0        0    0          20         10
+ (YOUNG)
+
+ ZAPATA COUNTY          620207    0      0           0      0      0        0         0          0          0        0    0          0          0
+ (ZAPATA)
+
+ ZAVALA COUNTY          620208    3      0           0      0      0        3         0          0          0        0    0          0          0
+ (ZAVALA)
+
+
+
+Grant Total:     4096            42097   244         3889   208    653      2324      5841       790        333      0    28         3416       24205
+
+
+
+
+          32
+

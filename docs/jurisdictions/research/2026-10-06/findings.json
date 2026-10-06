@@ -1,0 +1,684 @@
+{
+  "researched_on": "2026-10-06",
+  "baseline_head": "39298979ebd8cc89d9027f78b1f51fc6a313b5c2",
+  "scope": "Eight authorities; no application/ruleset edits or authority contact",
+  "findings": [
+    {
+      "id": "W1",
+      "authority": "tx-williamson-county",
+      "title": "The approved order is available",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The current county copy includes final TCEQ approval issued May 7, 2021 and the adopted order. County adoption was January 12, 2021. The earlier agenda PDF omitted the approval pages.",
+      "proposed_action": "Replace the missing-approval research claim. Distinguish the order effective date from when a new Aerowise ruleset is activated; do not backdate records automatically.",
+      "sources": [
+        {
+          "id": "williamson-order",
+          "location": "PDF pp. 1\u20132, 13"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "W2",
+      "authority": "tx-williamson-county",
+      "title": "Sludge and spray-area reporting are already required",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10.E.7 requires pump-tank sludge levels and the condition of the spray area on each required testing report. The homeowner form also supplies a sludge measurement in inches and a surface-application chlorine test.",
+      "proposed_action": "Treat sludge capture/reporting as a documented implementation gap. Keep units and system applicability explicit; notes are an interim manual workaround, not proof the generated template meets the requirement.",
+      "sources": [
+        {
+          "id": "williamson-order",
+          "location": "PDF p. 10, \u00a710.E.7"
+        },
+        {
+          "id": "williamson-homeowner",
+          "location": "PDF p. 4"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "W3",
+      "authority": "tx-williamson-county",
+      "title": "Current homeowner filing instructions differ from the draft",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The homeowner self-maintenance packet linked by the live site, updated August 21, 2026, directs reports to ossfcontracts@wilcotx.gov. It retains ossf@wilcotx.gov in the header/footer. This is specifically a homeowner packet, not express provider submission guidance.",
+      "proposed_action": "Refresh the source reference. Ask whether providers use the dedicated inbox for reports and contracts; do not infer provider authorization solely from the homeowner form.",
+      "sources": [
+        {
+          "id": "williamson-homeowner",
+          "location": "PDF pp. 4\u20135"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "W4",
+      "authority": "tx-williamson-county",
+      "title": "Deadline conflict and a future-dated footer remain",
+      "status": "conflict",
+      "confidence_in_source_reading": "high",
+      "evidence": "The linked affidavit says reports within 10 days of testing; the homeowner packet says within 14 days of the due date. The affidavit visibly prints Updated 9/9/2028, later than this research date. Its body also says contracts 30 days before expiration or within 30 days after transfer.",
+      "proposed_action": "Preserve both scoped deadlines and the date anomaly. Keeping an earlier internal target is reasonable but does not settle the legal anchor. Ask the county for current provider timing and a corrected/current affidavit.",
+      "sources": [
+        {
+          "id": "williamson-affidavit",
+          "location": "PDF pp. 1\u20132"
+        },
+        {
+          "id": "williamson-homeowner",
+          "location": "PDF p. 4"
+        },
+        {
+          "id": "williamson-care",
+          "location": "brochure contract timing"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "W5",
+      "authority": "tx-williamson-county",
+      "title": "License fee is distinct from report filing",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The posted fee schedule lists $60 for aerobic license renewal or transfer. The affidavit describes a two-year operating license and current report/contract requirements on transfer. Absence of a report fee on this schedule does not establish universal free filing.",
+      "proposed_action": "Keep owner operating-license renewal, maintenance-contract renewal, and report submission as separate events. Confirm any filing fee and receipt practice for the pilot.",
+      "sources": [
+        {
+          "id": "williamson-fees",
+          "location": "PDF p. 1"
+        },
+        {
+          "id": "williamson-affidavit",
+          "location": "PDF p. 2"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "D1",
+      "authority": "tx-denton-county",
+      "title": "Fresh document retrieval was blocked",
+      "status": "access_blocked",
+      "confidence_in_source_reading": "not established",
+      "evidence": "Direct county document requests returned HTTP 429; the browser then presented a Cloudflare verification screen on the document and maintenance pages. Further Denton retrieval stopped. No CAPTCHA was solved and no original maintenance form/order was obtained in this pass.",
+      "proposed_action": "Retain previous Denton statements as baseline claims awaiting original-source verification. Use an existing provider copy or request the current order, form, contract channel and acceptance requirements from the county.",
+      "sources": [],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "C1",
+      "authority": "tx-comal-county",
+      "title": "The scanned rules are readable and approval is established",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The 13-page official scan includes county adoption October 24, 2013 and final TCEQ approval November 26, 2013. Sections 8\u20139 incorporate TCEQ rules and future amendments. The local additions in \u00a710 concern construction/siting; this order does not add a different recurring maintenance interval, report deadline, report template or lab schedule.",
+      "proposed_action": "Remove the scan-is-unreadable blocker. Keep permit-specific requirements and later amendments as a separate check; do not turn absence in this order into proof no other requirement exists.",
+      "sources": [
+        {
+          "id": "comal-rules",
+          "location": "PDF pp. 6\u20137, 10\u201313"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "C2",
+      "authority": "tx-comal-county",
+      "title": "County role inside five cities has documentary support",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The county publishes intergovernmental agreements for Bulverde, Fair Oaks Ranch, Garden Ridge, Schertz and Spring Branch. They describe county OSSF permitting/inspection/enforcement functions. The agreements for multi-county cities limit exclusive county service to the Comal portion. Termination/renewal provisions mean publication alone is not proof of current coverage for every address.",
+      "proposed_action": "Use these agreements as assignment evidence alongside the actual site permit. Confirm any termination or superseding agreement; never assign solely by city name or county.",
+      "sources": [
+        {
+          "id": "comal-bulverde",
+          "location": "PDF pp. 1\u20132"
+        },
+        {
+          "id": "comal-fair-oaks",
+          "location": "PDF pp. 1\u20132"
+        },
+        {
+          "id": "comal-garden-ridge",
+          "location": "PDF pp. 1\u20132"
+        },
+        {
+          "id": "comal-schertz",
+          "location": "PDF pp. 1\u20132"
+        },
+        {
+          "id": "comal-spring-branch",
+          "location": "PDF pp. 1\u20133"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "C3",
+      "authority": "tx-comal-county",
+      "title": "Separate provider upload destinations are published",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The live Environmental Health page links separate Files.com uploads for maintenance reports and maintenance contracts, with provider name, email and TCEQ license number requested. No report-format approval or receipt semantics were established by this research.",
+      "proposed_action": "Retain manual export/upload. Obtain the accepted format, signature and upload receipt details using a reviewed sample before calling a filing accepted.",
+      "sources": [
+        {
+          "id": "tx-comal-county-source-1",
+          "location": "Environmental Health page, maintenance report/contract instructions"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "C4",
+      "authority": "tx-comal-county",
+      "title": "Spray-area obstruction rule is useful to field work",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10.9 prohibits items such as picnic tables, play equipment and BBQ pits within the surface application spray area. The order and current saved OSSF Information page do not substantiate the draft assertion that self-maintaining homeowners submit no reports.",
+      "proposed_action": "Use spray-area condition as a field check. Keep the homeowner no-report exception unconfirmed until a current primary source or county reply supports it.",
+      "sources": [
+        {
+          "id": "comal-rules",
+          "location": "PDF p. 12, \u00a710.9"
+        },
+        {
+          "id": "tx-comal-county-source-2",
+          "location": "current OSSF Information page"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "H1",
+      "authority": "tx-hays-county",
+      "title": "Approval date is present in the original",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The official regulations include final TCEQ approval issued February 18, 2014; county adoption was June 4, 2013.",
+      "proposed_action": "Replace the missing-effective-date research claim, while preserving a distinct application activation date and checking for later amendments.",
+      "sources": [
+        {
+          "id": "hays-regulations",
+          "location": "PDF pp. 1\u20132"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "H2",
+      "authority": "tx-hays-county",
+      "title": "Contract-based timing needs implementation",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10.V.2 requires tests/reports every four months unless the permit specifies otherwise. First testing and report submittal are within 14 days of contract start, later dates derive from that start, and the last testing/reporting is within 14 days of contract end. Changing providers requires a renewal term of at least one year and four inspections including the initial inspection.",
+      "proposed_action": "Do not model Hays as only last-visit-plus-four-months. Review first/last windows, provider changes and permit overrides. Disable an unconditional six-month assumption in a proposed new version until its permit/local basis is established.",
+      "sources": [
+        {
+          "id": "hays-regulations",
+          "location": "PDF p. 19, \u00a710.V.2"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "H3",
+      "authority": "tx-hays-county",
+      "title": "Provider registration and renewal prerequisites are documented",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10.V.3 makes county provider registration annual, expiring December 31, with next-year renewals accepted no earlier than December 1 and no registration fee. Contracts are accepted only from current providers in good standing. Section 10.V.6 prevents same-provider renewal acceptance until all prior-period reports have been submitted.",
+      "proposed_action": "Track county registration separately from state credentials, and flag prior report completeness before renewal. Do not imply a TCEQ license alone satisfies this county prerequisite.",
+      "sources": [
+        {
+          "id": "hays-regulations",
+          "location": "PDF pp. 19\u201320, \u00a710.V.3 and V.6"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "H4",
+      "authority": "tx-hays-county",
+      "title": "Corrective reports have their own clock",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10.V.4 requires correction, retesting and another report to the owner and county within ten days of the previous report when chlorine is inadequate or the system is malfunctioning. Extra reports must not postpone the regular maintenance schedule.",
+      "proposed_action": "Represent a corrective retest/report separately from normal scheduling. Preserve the source wording previous report; do not silently anchor it to a visit or reset the ordinary due date.",
+      "sources": [
+        {
+          "id": "hays-regulations",
+          "location": "PDF p. 19, \u00a710.V.4"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "H5",
+      "authority": "tx-hays-county",
+      "title": "Maintenance contact found; channel acceptance still needs confirmation",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The live Development Services contact page publishes ossfmaintenance@hayscountytx.gov for OSSF maintenance inquiries, phone 512-393-2150 option 0. The 2026 fee schedule says applications/documents are handled online through MGO. Neither establishes that all recurring reports/contracts may be emailed.",
+      "proposed_action": "Use the dedicated inquiry contact to confirm report/contract destinations, approved format and receipt. Do not enable email dispatch from an inquiry label.",
+      "sources": [
+        {
+          "id": "hays-contact-browser-excerpt",
+          "location": "Permit Administration"
+        },
+        {
+          "id": "hays-fees",
+          "location": "PDF p. 1, heading"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "H6",
+      "authority": "tx-hays-county",
+      "title": "A maintenance-contract late fee is published",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The January 1, 2026 fee schedule lists a $50 OSSF maintenance contract late fee. It separately lists $600/$900 OSSF renewal with a designer no-change letter; that entry must not be treated as a routine maintenance-contract renewal charge. The exact late-fee trigger was not established.",
+      "proposed_action": "Add the late-fee source to the research draft and confirm its trigger. Keep permit fees separate. Commercial/institutional/non-residential systems also require a flow meter under \u00a710.W.6.",
+      "sources": [
+        {
+          "id": "hays-fees",
+          "location": "PDF p. 1"
+        },
+        {
+          "id": "hays-regulations",
+          "location": "PDF p. 20, \u00a710.W.6"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "T1",
+      "authority": "tx-travis-county",
+      "title": "Additional report and contract fields are mandatory in the chapter",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Chapter 448 \u00a7448.034(e) requires unauthorized alterations, applicable spray-area condition, permit number, printed name/signature, site physical address and provider physical/business addresses, business phone and emergency phone. Contracts have additional fields under (f). The section begins with a single-family applicability statement; commercial applicability should be reviewed separately.",
+      "proposed_action": "Convert questions about unauthorized alterations and emergency contact into documented template/data gaps for the scoped workflow. Do not infer a typed name meets signature acceptance or that the exact format is approved.",
+      "sources": [
+        {
+          "id": "tx-travis-county-source-1",
+          "location": "PDF pp. 12\u201314, \u00a7448.034(a), (e), (f)"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "T2",
+      "authority": "tx-travis-county",
+      "title": "The 1,000-foot Lake Travis boundary claim is contradicted",
+      "status": "conflict",
+      "confidence_in_source_reading": "high",
+      "evidence": "The county non-residential checklist states LCRA review within 2,000 feet of the 691-foot contour. LCRA\u2019s own program describes a 2,000-foot Lake Travis zone. Its order \u00a76 defines the below-691-foot restricted zone and a water-quality zone within 2,000 horizontal feet from the outer restricted-zone boundary in the drainage area. This contradicts a simple 1,000-foot exclusion in the draft.",
+      "proposed_action": "Correct the research claim and require permit/map-based reviewed authority assignment. Consult LCRA\u2019s jurisdiction map for candidate sites and seek a determination where unclear; do not approximate the contour with a present shoreline distance.",
+      "sources": [
+        {
+          "id": "travis-nonres-checklist",
+          "location": "PDF p. 4, item 21"
+        },
+        {
+          "id": "lcra-ossf-program",
+          "location": "program jurisdiction paragraph"
+        },
+        {
+          "id": "lcra-order",
+          "location": "\u00a76 Area of Jurisdiction"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "T3",
+      "authority": "tx-travis-county",
+      "title": "Code effective-date evidence is stronger than a retrieval date",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "Chapter 448 identifies amendments adopted November 28, 2023, effective July 16, 2024 on TCEQ approval. The copy also gives the earlier chapter effective date February 23, 2015.",
+      "proposed_action": "Keep amendment dates attached to affected provisions rather than assuming every provision began in 2024. Maintenance destination/format/receipt and commercial lab requirements remain unsettled in this pass.",
+      "sources": [
+        {
+          "id": "tx-travis-county-source-1",
+          "location": "PDF p. 1 and amendment footnotes"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "B1",
+      "authority": "tx-brazoria-county",
+      "title": "Maintenance report and contract email destination is explicit",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The live Environmental Health Contact Us page expressly directs maintenance contracts and reports to ehmaintenance@brazoriacountytx.gov. The email link itself is malformed (mailto: with no address), but the rendered address is visible and explicit. Phone is 979-864-1600.",
+      "proposed_action": "Replace the no-published-channel claim with this public destination evidence. Report format, signature acceptance and an accepted receipt still require a reviewed sample/confirmation before production dispatch.",
+      "sources": [
+        {
+          "id": "brazoria-contact-browser-excerpt",
+          "location": "OSSF Maintenance section"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "B2",
+      "authority": "tx-brazoria-county",
+      "title": "Approved county order and scope recovered",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The order linked by the live regulations page includes county adoption June 10, 2010 and final TCEQ approval June 30, 2010. Section 6 excludes incorporated cities and areas regulated under an existing rule. Sections 8\u20139 adopt TCEQ rules and future amendments.",
+      "proposed_action": "Remove the unreadable-order/unknown-date blocker. Confirm later amendments and actual permit authority for pilot sites; a historical statewide permit-count report is not a current city coverage list.",
+      "sources": [
+        {
+          "id": "brazoria-order",
+          "location": "PDF pp. 1\u20132, 6, 12"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "B3",
+      "authority": "tx-brazoria-county",
+      "title": "County provider registration is required and free in the order",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10(b) requires TCEQ credentials plus registration with the county Environmental Health Department before installer/provider activity. The order prescribes an in-person standard form with evidence of current credentials, no registration fee, current registration information, and restrictions when suspended/revoked. Homeowners are exempt from this registration requirement, not from all maintenance conditions.",
+      "proposed_action": "Track county registration/good standing. Confirm whether an online/email process now replaces the printed in-person procedure. Do not ask whether registration exists as if wholly unknown.",
+      "sources": [
+        {
+          "id": "brazoria-order",
+          "location": "PDF p. 7, \u00a710(b)"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "B4",
+      "authority": "tx-brazoria-county",
+      "title": "Homeowner qualifications and repair response are documented",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10(g) requires qualifying homeowner training or specified licensing/manufacturer certification, with historical exceptions and loss conditions. It also requires an owner to initiate malfunction repair within ten days after Designated Representative notification. Section 10(f) concerns the recorded affidavit.",
+      "proposed_action": "Do not encode a blanket homeowner exemption or confuse repair initiation with report submission timing. County report format, commercial lab details, filing fees and acknowledgments remain separate questions.",
+      "sources": [
+        {
+          "id": "brazoria-order",
+          "location": "PDF p. 10, \u00a710(f)\u2013(g)"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "B5",
+      "authority": "tx-brazoria-county",
+      "title": "Fee evidence has limits",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The linked fee schedule lists OSSF permit/reinspection charges, and the order has a general collection clause covering multiple fee types. No routine maintenance report/contract filing amount was identified in the retrieved schedule. This does not prove no maintenance-related fee can apply.",
+      "proposed_action": "Ask a specific fee/late-fee question rather than setting a zero charge on absence alone.",
+      "sources": [
+        {
+          "id": "brazoria-fees",
+          "location": "derived text, OSSF section"
+        },
+        {
+          "id": "brazoria-order",
+          "location": "PDF p. 11, \u00a712"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "G1",
+      "authority": "tx-grimes-county",
+      "title": "A newer adopted local order was recovered",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The official August 21, 2024 court record includes a certified adopted OSSF order and a passed adoption motion. Its effective clause requires TCEQ approval. The July 29, 2024 TCEQ attachment is a notice to proceed on a proposed draft, not final authorization after adoption.",
+      "proposed_action": "Replace the newspaper-only/2023/order-not-found claim. Request the final TCEQ approval before asserting an effective date or deciding which historical records the 2024 requirements cover.",
+      "sources": [
+        {
+          "id": "grimes-2024-order",
+          "location": "PDF pp. 1, 6\u20137"
+        },
+        {
+          "id": "grimes-adoption-minutes",
+          "location": "August 21, 2024 adoption motion"
+        },
+        {
+          "id": "grimes-tceq-notice",
+          "location": "PDF p. 1"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "G2",
+      "authority": "tx-grimes-county",
+      "title": "The adopted order says four months and adds pH/sludge",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 9.C.1 requires maintenance/testing/reporting at least every four months, with reports submitted to the Designated Representative, including pump-tank sludge levels and pH and spray-area condition. No six-month monitoring exception appears in this local provision. Final approval/effective-date evidence remains incomplete.",
+      "proposed_action": "Flag the draft six-month fallback and missing fields for review. Do not auto-pass a six-month schedule based solely on state monitoring guidance. Preserve the effective-date uncertainty; do not invent pH units or pass/fail thresholds.",
+      "sources": [
+        {
+          "id": "grimes-2024-order",
+          "location": "PDF pp. 4\u20135, \u00a79.C.1"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "G3",
+      "authority": "tx-grimes-county",
+      "title": "Homeowner qualification is not wholly unknown",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 9.B describes homeowner eligibility through licensing/registration or TEEX training and evidence to the Designated Representative, with loss of eligibility for failures/falsification/violations. This is more specific than the draft claim that no qualification rule was published.",
+      "proposed_action": "Attach the actual eligibility provision to the draft, subject to the missing final approval and any later amendments. Provider approval/registration workflow still needs clarification.",
+      "sources": [
+        {
+          "id": "grimes-2024-order",
+          "location": "PDF p. 4, \u00a79.B"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "G4",
+      "authority": "tx-grimes-county",
+      "title": "The affidavit renewal sentence is now complete",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The original 2024 affidavit calls for continuous maintenance and a signed contract submitted within 30 days after property transfer, upon renewal, or upon changing providers. The full sentence is readable; it does not settle how its timing relates to the state pre-expiration requirement.",
+      "proposed_action": "Remove the summarizer-truncation blocker. Preserve the complete language and confirm renewal/provider-change timing and destination. The Microsoft form found on the county page is for complaints, not recurring maintenance filings.",
+      "sources": [
+        {
+          "id": "tx-grimes-county-source-3",
+          "location": "PDF p. 1"
+        },
+        {
+          "id": "tx-grimes-county-source-1",
+          "location": "Environmental Permits page"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "M1",
+      "authority": "tx-montgomery-county",
+      "title": "The live site publishes an approved local order",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "The live OSSF page links an 11-page order packet. It includes county adoption December 8, 2020 and final TCEQ approval March 4, 2021. The first two pages have text; most of the actual local order is scanned. A file number such as 620145 is not an order identifier.",
+      "proposed_action": "Remove the no-order/no-effective-date/website-unreadable claim. Use the adopted title and dates; check later amendments and retain a distinct Aerowise activation date.",
+      "sources": [
+        {
+          "id": "montgomery-local-order",
+          "location": "PDF pp. 1\u20132, 4\u201311"
+        },
+        {
+          "id": "montgomery-ossf-page",
+          "location": "Local Order link"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "M2",
+      "authority": "tx-montgomery-county",
+      "title": "Commercial/multifamily annual lab testing has order support",
+      "status": "public_evidence",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 10(j) requires annual BOD and TSS for all commercial and multifamily OSSFs. It also restricts aerobic homeowner maintenance to a Certified Maintenance Provider, defined in \u00a710(a)(1) to include TCEQ and county status. The order does not supply BOD/TSS limits or lab filing format in this provision.",
+      "proposed_action": "Scope annual lab tracking to the explicit categories and actual permit; ask for limits, lab attachments, due-date anchor and submission practice rather than whether the annual obligation exists.",
+      "sources": [
+        {
+          "id": "montgomery-local-order",
+          "location": "PDF pp. 6\u20138, \u00a710(a)(1), (j)"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "M3",
+      "authority": "tx-montgomery-county",
+      "title": "The initial contract remains a scoped source",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The previously cited readable county initial contract requires three inspections each year, one every four months, during the initial two-year period and reports within 14 days after the test. The live site also links new residential/general and food-establishment initial contract scans, archived here for comparison. The adopted order does not settle a separate recurring post-initial monitoring interval in \u00a710(j).",
+      "proposed_action": "Do not treat an initial contract as proof of renewal-period policy. Confirm whether six-month monitored schedules are permitted after the initial term and what current renewal terms require.",
+      "sources": [
+        {
+          "id": "tx-montgomery-county-source-1",
+          "location": "PDF p. 1"
+        },
+        {
+          "id": "montgomery-local-order",
+          "location": "PDF pp. 7\u20138, \u00a710(j)"
+        },
+        {
+          "id": "montgomery-new-initial-contract",
+          "location": "live form, PDF p. 1"
+        },
+        {
+          "id": "montgomery-food-contract",
+          "location": "live food form, PDF p. 1"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "M4",
+      "authority": "tx-montgomery-county",
+      "title": "Better contacts found, but no explicit maintenance filing channel",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "The live OSSF page names supervisor Keith Miles at keith.miles@mctx.org, phone 936-539-7839. The All Forms page publishes mc.maint@mctx.org for open-record requests involving septic-connected structures. That is narrower than authorization for recurring reports/renewal contracts.",
+      "proposed_action": "Use the supervisor or records contact to request the missing submission/renewal instructions and sample acceptance. Do not repurpose a complaint inbox or infer dispatch authorization from an address containing maint.",
+      "sources": [
+        {
+          "id": "montgomery-ossf-page",
+          "location": "OSSF Supervisor contact"
+        },
+        {
+          "id": "montgomery-forms-page",
+          "location": "Open Records Request instruction"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "M5",
+      "authority": "tx-montgomery-county",
+      "title": "Jurisdiction exclusions and fee evidence are more concrete",
+      "status": "partial",
+      "confidence_in_source_reading": "high",
+      "evidence": "Section 6 excludes existing-rule areas and incorporated cities, adding cities that execute intergovernmental contracts with the county. The live fee schedule has permit/reinspection entries and a $200 septic non-compliance administrative fee per incident; it does not identify a recurring maintenance filing fee. The downloaded SJRA order is a separate authority source, not Montgomery\u2019s order.",
+      "proposed_action": "Review city/county/SJRA authority against each permit. Ask whether the non-compliance fee can apply to late maintenance filings and obtain the applicable agreement/boundary basis; do not infer a routine filing charge.",
+      "sources": [
+        {
+          "id": "montgomery-local-order",
+          "location": "PDF p. 5, \u00a76"
+        },
+        {
+          "id": "montgomery-fees",
+          "location": "PDF p. 2, SEPTIC section"
+        },
+        {
+          "id": "tx-montgomery-county-source-4",
+          "location": "SJRA order, \u00a75"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    },
+    {
+      "id": "M6",
+      "authority": "tx-montgomery-county",
+      "title": "Food-establishment initial contracts require monthly inspections",
+      "status": "implementation_gap",
+      "confidence_in_source_reading": "high",
+      "evidence": "The commercial food-establishment initial two-year contract linked by the current All Forms page requires at least twelve inspections per year, one every month, and report submission to owner/authority within 14 days after testing. The scan is an older form (revised November 25, 2009) still linked today. The general initial contract instead says three yearly visits/every four months.",
+      "proposed_action": "Do not use one residential four-month schedule for all Montgomery sites. Flag food establishments for permit/contract review and model the monthly initial-term schedule when applicable. Confirm whether the older linked form remains controlling and what follows the initial term.",
+      "sources": [
+        {
+          "id": "montgomery-food-contract",
+          "location": "PDF p. 1"
+        },
+        {
+          "id": "montgomery-new-initial-contract",
+          "location": "PDF p. 1"
+        },
+        {
+          "id": "montgomery-forms-page",
+          "location": "two separately labeled initial contract links"
+        }
+      ],
+      "authority_confirmation": false,
+      "implemented": false
+    }
+  ]
+}

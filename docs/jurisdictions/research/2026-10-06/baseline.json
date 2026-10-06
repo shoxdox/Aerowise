@@ -1,0 +1,529 @@
+{
+  "commit": "39298979ebd8cc89d9027f78b1f51fc6a313b5c2",
+  "authorities": [
+    {
+      "authority": "tx-williamson-county",
+      "unresolved": [
+        "The county publishes a reporting address (ossf@wilcotx.gov) only in its packet for homeowners who maintain their own system. Whether maintenance providers send reports to the same address, or through MyGovernment Online, is not stated.",
+        "Report deadline: the 2026 affidavit says within 10 days of testing; the homeowner packet says within 14 days of the due date; TCEQ says 14 days after the test. Aerowise uses 10 days, the strictest.",
+        "Contract timing: the affidavit says 30 days before the previous contract expires; the care brochure says 'within 30 days of expiration'. Aerowise uses 30 days before.",
+        "The order requires sludge levels in the pump tank on each report (Section 10.E.7). Aerowise's built-in inspection form has no sludge-level field, so this is not checked; record it in the notes until the form has one.",
+        "The county's form asks for a chlorine grab sample for surface application systems. Aerowise does not record whether a system disperses on the surface, so the chlorine reading is not required here.",
+        "Which addresses inside Williamson County fall under the City of Austin (and so not this office) is not published as a list; every site needs a reviewed assignment.",
+        "The order's effective date (its TCEQ approval) is not shown on the copy read, which was also read through a page summarizer; Williamson inspections and contracts dated before 2026-10-06 are held for review.",
+        "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here.",
+        "Williamson County publishes no acknowledgment of a received report or contract."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "Williamson County's OSSF order takes effect on TCEQ approval (Section 17); the copy read (attached to the Commissioners Court agenda of 2021-01-12) leaves its approval date blank. Aerowise applies this ruleset from 2026-10-06 only because that is when the profile was written; that is not the legal effective date."
+        },
+        "sources": [
+          {
+            "title": "Williamson County: On-Site Sewage Facilities (OSSF)",
+            "url": "https://www.wilcotx.gov/644/On-Site-Sewage-Facilities-OSSF",
+            "retrievedOn": "2026-10-06",
+            "note": "Regulates OSSFs 'located within Williamson County, except for those areas that are located within the City of Austin.' Applications only through MyGovernment Online. Phone 512-943-3330. Nothing about maintenance report submission."
+          },
+          {
+            "title": "Order Adopting Rules of Williamson County, Texas for On-Site Sewage Facilities (Commissioners Court agenda item, 2021-01-12)",
+            "url": "https://public.destinyhosted.com/wilcodocs/2021/COM/20210112_1578/25845_Williamson_County_Order_(Final_Revision)_.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "Section 6: applies to all areas within Williamson County except areas regulated under an existing order, ordinance or resolution. Section 10.D.4: systems with electronic monitoring are not inspected more often than every 6 months; others submit maintenance inspection reports at least once every 4 months. Section 10.E.7: reports include sludge levels in the pump tank and the condition of the spray area. Section 10.E.6: maintenance by TCEQ-registered companies unless the homeowner qualifies. Section 17: effective on TCEQ approval. Read through a page summarizer."
+          },
+          {
+            "title": "Williamson County: OSSF Routine Maintenance Affidavit to the Public",
+            "url": "https://www.wilcotx.gov/DocumentCenter/View/20281",
+            "retrievedOn": "2026-10-06",
+            "note": "Updated 6/26/2026. Testing and reporting every 4 months, or every 6 months with electronic monitoring equipment; reports to the Williamson County Engineer's Office 'within 10 days of testing'; new maintenance contracts '30 days prior to expiration of the previous contract or within 30 days after the property has been transferred'. No submission address."
+          },
+          {
+            "title": "Williamson County: Homeowner Maintenance Packet",
+            "url": "https://www.wilcotx.gov/DocumentCenter/View/16756/Homeowner-Maintenance-Packet-PDF",
+            "retrievedOn": "2026-10-06",
+            "note": "Updated 9/25/25. For homeowners who maintain their own system: reports every 4 months, or 6 with an operating autodialer, 'within 14 days of due date', to ossf@wilcotx.gov, 3151 SE Inner Loop, Ste. B, Georgetown, TX 78626, or fax 512.943.3335. The county's form asks for a chlorine grab sample (required for surface application) and a sludge test in the pump tank."
+          },
+          {
+            "title": "Williamson County Engineer's OSSF Program Fees",
+            "url": "https://www.wilcotx.gov/DocumentCenter/View/16737",
+            "retrievedOn": "2026-10-06",
+            "note": "Updated 9/12/25. Aerobic license renewal or transfer $60 (the owner's, every two years). No fee for filing a maintenance report or contract."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Reports to the permitting authority and owner at least once every four months, within 14 days after the test; six months with an electronic monitor that notifies the provider of failures and monitors disinfection. Technicians must be registered maintenance technicians."
+          }
+        ],
+        "unresolved": [
+          "The county publishes a reporting address (ossf@wilcotx.gov) only in its packet for homeowners who maintain their own system. Whether maintenance providers send reports to the same address, or through MyGovernment Online, is not stated.",
+          "Report deadline: the 2026 affidavit says within 10 days of testing; the homeowner packet says within 14 days of the due date; TCEQ says 14 days after the test. Aerowise uses 10 days, the strictest.",
+          "Contract timing: the affidavit says 30 days before the previous contract expires; the care brochure says 'within 30 days of expiration'. Aerowise uses 30 days before.",
+          "The order requires sludge levels in the pump tank on each report (Section 10.E.7). Aerowise's built-in inspection form has no sludge-level field, so this is not checked; record it in the notes until the form has one.",
+          "The county's form asks for a chlorine grab sample for surface application systems. Aerowise does not record whether a system disperses on the surface, so the chlorine reading is not required here.",
+          "Which addresses inside Williamson County fall under the City of Austin (and so not this office) is not published as a list; every site needs a reviewed assignment.",
+          "The order's effective date (its TCEQ approval) is not shown on the copy read, which was also read through a page summarizer; Williamson inspections and contracts dated before 2026-10-06 are held for review.",
+          "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here.",
+          "Williamson County publishes no acknowledgment of a received report or contract."
+        ]
+      }
+    },
+    {
+      "authority": "tx-denton-county",
+      "unresolved": [
+        "Denton County's form says to email it to ossfinspections@dentoncounty.gov. Whether providers may send their own report format there instead of the county form is not stated; the office checks each report before pressing Send.",
+        "No channel is published for maintenance contracts, and nothing says the ossfinspections address takes them. Contract filings are held for review and filed by hand until the county says otherwise.",
+        "No report deadline is published; Aerowise uses TCEQ's 14 days after the test.",
+        "Whether electronic monitoring allows 6 months between visits is not addressed (the county form says every 4 months), so Aerowise allows no 6-month schedule here.",
+        "The Denton County OSSF order is not published, so its number, dates, and any commercial schedule, lab tests or fees are unknown.",
+        "The county's form asks for the CL2 grab result, complaint response dates and lid security, which Aerowise's report does not lay out the same way.",
+        "Denton County covers unincorporated Denton County only; the City of Denton runs its own program and other cities are not listed. Every site needs a reviewed assignment.",
+        "Denton County publishes no acknowledgment of an emailed report or contract."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "The Denton County OSSF order is referenced but not published on the county site, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+        },
+        "sources": [
+          {
+            "title": "Denton County: Environmental Health Division",
+            "url": "https://www.dentoncounty.gov/657/Environmental-Health-Division",
+            "retrievedOn": "2026-10-06",
+            "note": "'administers the Denton County on-site sewage facility (OSSF) order per the Texas Administrative Code and Texas Water Code throughout the unincorporated portions of Denton County'. Phone 940-349-2920; 3900 Morse Street, Denton, TX 76208."
+          },
+          {
+            "title": "Denton County: What You Must Know, On-Site Sewage Facilities (Rev 9/14/20)",
+            "url": "https://www.dentoncounty.gov/DocumentCenter/View/1441/What-You-Must-Know-PDF",
+            "retrievedOn": "2026-10-06",
+            "note": "Owners of aerobic systems 'must continuously maintain a signed written contract with a valid maintenance company and submit a copy of the contract to the Denton County Environmental Health Division at least thirty (30) days prior to expiration of the previous contract or have written approval from this department showing approved homeowner training.' Covers 'the unincorporated (outside of city limits) portions of Denton County'. Read through a page summarizer."
+          },
+          {
+            "title": "Denton County: Testing and Reporting Form (Rev 3/9/2021)",
+            "url": "https://www.dentoncounty.gov/DocumentCenter/View/1439/Homeowners-Inspection-Form-PDF",
+            "retrievedOn": "2026-10-06",
+            "note": "'Required frequency of maintenance check and test: Every 4 months'. 'After inspection, please mail, fax or email this form to: Denton County Environmental, 3900 Morse St, Denton, TX 76208 ... Fax: (940) 349-2588 Email: ossfinspections@dentoncounty.gov'. One copy to the homeowner and one to the permitting authority. Fields: permit number, checklist (aerators, filters, irrigation pumps, recirculation pumps, disinfection device, chlorine supply, electrical circuits, distribution system, sprayfield vegetation), repairs, CL2 grab result, complaint response dates, lid security. No deadline. Read through a page summarizer."
+          },
+          {
+            "title": "Denton County: Septic Permit Application Packet (Rev 11/26/24)",
+            "url": "https://www.dentoncounty.gov/DocumentCenter/View/1440/Septic-Permit-Application-Packet-PDF",
+            "retrievedOn": "2026-10-06",
+            "note": "'All maintenance on this OSSF must be performed by an approved maintenance company or per Denton County OSSF order.' Permit fees only. Read through a page summarizer."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          }
+        ],
+        "unresolved": [
+          "Denton County's form says to email it to ossfinspections@dentoncounty.gov. Whether providers may send their own report format there instead of the county form is not stated; the office checks each report before pressing Send.",
+          "No channel is published for maintenance contracts, and nothing says the ossfinspections address takes them. Contract filings are held for review and filed by hand until the county says otherwise.",
+          "No report deadline is published; Aerowise uses TCEQ's 14 days after the test.",
+          "Whether electronic monitoring allows 6 months between visits is not addressed (the county form says every 4 months), so Aerowise allows no 6-month schedule here.",
+          "The Denton County OSSF order is not published, so its number, dates, and any commercial schedule, lab tests or fees are unknown.",
+          "The county's form asks for the CL2 grab result, complaint response dates and lid security, which Aerowise's report does not lay out the same way.",
+          "Denton County covers unincorporated Denton County only; the City of Denton runs its own program and other cities are not listed. Every site needs a reviewed assignment.",
+          "Denton County publishes no acknowledgment of an emailed report or contract."
+        ]
+      }
+    },
+    {
+      "authority": "tx-comal-county",
+      "unresolved": [
+        "Comal County's Rules for OSSF could not be read (a scanned PDF with no text), so any county-specific frequency, deadline, report contents or lab testing is unknown. Aerowise follows TCEQ's 30 TAC 285.7 until they are read.",
+        "Which addresses Comal County covers is not published outside those rules (cities with their own OSSF programs are unknown); every site needs a reviewed assignment.",
+        "Reports and contracts are uploaded to two separate county portals, which Aerowise cannot use for the office. The office downloads the report, uploads it and records it as sent. File naming or format rules for the portal are not published.",
+        "The adoption and effective dates of Comal County's rules are unknown.",
+        "Comal County publishes no acknowledgment of an uploaded report or contract.",
+        "No lab testing (BOD, TSS) or commercial-specific schedule is published in the readable sources, so none is required here."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "Comal County's Rules for OSSF are published as a scanned PDF with no readable text, so their adoption and effective dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+        },
+        "sources": [
+          {
+            "title": "Comal County: Environmental Health",
+            "url": "https://www.comalcounty.gov/274/Environmental-Health",
+            "retrievedOn": "2026-10-06",
+            "note": "Maintenance reports are uploaded at https://comalcountyengineersoffice.files.com/u/maintenance-reports and contracts at https://comalcountyengineersoffice.files.com/u/maintenance-contracts, signing in with 'your name, email and TCEQ License number'. 195 David Jonas Dr, New Braunfels, TX 78132; phone 830-608-2090; fax 830-608-2078."
+          },
+          {
+            "title": "Comal County: OSSF Information (homeowner maintenance FAQ)",
+            "url": "https://www.comalcounty.gov/276/OSSF-Information",
+            "retrievedOn": "2026-10-06",
+            "note": "Licensed maintenance providers submit testing reports to Comal County; 'The reporting requirements for licensed maintenance providers have not changed.' Homeowners maintaining their own single-family system submit no reports. Only single-family owners may maintain their own aerobic OSSF; everyone else uses a licensed maintenance provider. No deadline, format or address beyond the portal."
+          },
+          {
+            "title": "Comal County: Rules for OSSF (PDF)",
+            "url": "https://www.comalcounty.gov/DocumentCenter/View/2141/",
+            "retrievedOn": "2026-10-06",
+            "note": "Could not be read: the PDF is a scan with no machine-readable text. Its coverage area, dates and any maintenance provisions are unknown."
+          },
+          {
+            "title": "Comal County Environmental Health Department Fees (effective 2019-01-01)",
+            "url": "https://www.comalcounty.gov/DocumentCenter/View/2142/",
+            "retrievedOn": "2026-10-06",
+            "note": "No fee for maintenance reports, maintenance contracts or late reports."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+          }
+        ],
+        "unresolved": [
+          "Comal County's Rules for OSSF could not be read (a scanned PDF with no text), so any county-specific frequency, deadline, report contents or lab testing is unknown. Aerowise follows TCEQ's 30 TAC 285.7 until they are read.",
+          "Which addresses Comal County covers is not published outside those rules (cities with their own OSSF programs are unknown); every site needs a reviewed assignment.",
+          "Reports and contracts are uploaded to two separate county portals, which Aerowise cannot use for the office. The office downloads the report, uploads it and records it as sent. File naming or format rules for the portal are not published.",
+          "The adoption and effective dates of Comal County's rules are unknown.",
+          "Comal County publishes no acknowledgment of an uploaded report or contract.",
+          "No lab testing (BOD, TSS) or commercial-specific schedule is published in the readable sources, so none is required here."
+        ]
+      }
+    },
+    {
+      "authority": "tx-hays-county",
+      "unresolved": [
+        "Hays County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+        "Which addresses Hays County covers is set by other entities' orders, ordinances or resolutions, which the county does not list; every site needs a reviewed assignment.",
+        "Hays County counts report due dates from the contract's start (first report within 14 days of it) and allows a permit to set another schedule. Aerowise counts 4 months from the last visit and 14 days from the inspection.",
+        "A report showing low chlorine needs a re-test and a new report within ten days. Aerowise does not schedule that re-test; the office books it.",
+        "Hays County's order does not say whether electronic monitoring allows six months between visits; Aerowise follows TCEQ's 30 TAC 285.7(e).",
+        "The order's approval and effective dates were read through a summarizer and are not confirmed.",
+        "Hays County publishes no list of what a maintenance report must contain beyond 30 TAC 285.91(12), no acknowledgment of a received report, and no report or contract filing fee here (the fee schedule was not read).",
+        "No lab testing (BOD, TSS) is published, so none is required here. Commercial systems need flow meters, which Aerowise does not record."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "The order takes effect on its approval and TCEQ's approval (its effective-date section). A summarizer reported Commissioners Court approval on 2013-06-04 and TCEQ approval on 2014-02-18; neither date was confirmed against the county's copy, so Aerowise applies the ruleset from 2026-10-06, the day it was written."
+        },
+        "sources": [
+          {
+            "title": "Hays County On-Site Sewage Facility Regulations",
+            "url": "https://www.hayscountytx.gov/DocumentCenter/View/1893/Hays-County-On-Site-Sewage-Facility-Regulations-PDF",
+            "retrievedOn": "2026-10-06",
+            "note": "Applies to 'all areas lying within Hays County, Texas, except for the areas regulated under an existing Order, Ordinance, or Resolution.' Section V.1: maintenance by a TCEQ-licensed maintenance provider. Section V.2: tested and reports submitted every four months 'unless otherwise specified on the permit'; the first test and report of each contract period within 14 days of the contract's start, later due dates counted from the contract's start, the last within 14 days of its end. A report showing less than the required chlorine residual needs a re-test and another report to the owner and Hays County within ten days. No list of report contents, no submission address. Read through a page summarizer."
+          },
+          {
+            "title": "Hays County: On-Site Sewage Facility (OSSF) Maintenance Affidavit",
+            "url": "https://www.hayscountytx.gov/DocumentCenter/View/1896/On-Site-Sewage-Facility-OSSF-Maintenance-Affidavit-PDF",
+            "retrievedOn": "2026-10-06",
+            "note": "Undated. A new maintenance contract must be obtained at least 30 days before service ceases; on a transfer, a signed contract goes to Hays County Development Services within 30 days. Systems other than single-family residences may only be maintained by licensed providers."
+          },
+          {
+            "title": "Hays County: Septic Permits",
+            "url": "https://www.hayscountytx.gov/496/Septic-Permits",
+            "retrievedOn": "2026-10-06",
+            "note": "Covers unincorporated Hays County. Ongoing maintenance is required for all aerobic or advanced systems. Phone 512-393-2150; contact through MyGovernmentOnline. No submission address for maintenance reports."
+          },
+          {
+            "title": "Hays County: FAQ, septic",
+            "url": "https://www.hayscountytx.gov/m/faq?cat=51",
+            "retrievedOn": "2026-10-06",
+            "note": "A maintenance contract is required for all aerobic systems."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+          }
+        ],
+        "unresolved": [
+          "Hays County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+          "Which addresses Hays County covers is set by other entities' orders, ordinances or resolutions, which the county does not list; every site needs a reviewed assignment.",
+          "Hays County counts report due dates from the contract's start (first report within 14 days of it) and allows a permit to set another schedule. Aerowise counts 4 months from the last visit and 14 days from the inspection.",
+          "A report showing low chlorine needs a re-test and a new report within ten days. Aerowise does not schedule that re-test; the office books it.",
+          "Hays County's order does not say whether electronic monitoring allows six months between visits; Aerowise follows TCEQ's 30 TAC 285.7(e).",
+          "The order's approval and effective dates were read through a summarizer and are not confirmed.",
+          "Hays County publishes no list of what a maintenance report must contain beyond 30 TAC 285.91(12), no acknowledgment of a received report, and no report or contract filing fee here (the fee schedule was not read).",
+          "No lab testing (BOD, TSS) is published, so none is required here. Commercial systems need flow meters, which Aerowise does not record."
+        ]
+      }
+    },
+    {
+      "authority": "tx-travis-county",
+      "unresolved": [
+        "Travis County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+        "Which addresses Travis County covers is set by city limits, the City of Austin's limited-purpose annexations, LCRA's area within 1,000 feet of Lake Travis and other entities' orders; every site needs a reviewed assignment.",
+        "Chapter 448 requires every report to list unauthorized alterations and the provider's emergency phone number. Aerowise's report has neither field; the office must add them by hand until it does.",
+        "Chapter 448 was read through a page summarizer; confirm the quoted lists against the county's copy.",
+        "Travis County publishes no acknowledgment of a received report or contract.",
+        "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": "2024-07-16",
+          "basis": "Travis County Code Chapter 448 as amended 2023-11-28 (Item 33), effective 2024-07-16, per the header of the county's published copy. The chapter was first adopted 2014-12-30, effective 2015-02-23."
+        },
+        "sources": [
+          {
+            "title": "Travis County Code Chapter 448, Rules of Travis County, Texas for On-Site Sewage Facilities",
+            "url": "https://www.traviscountytx.gov/images/commissioners_court/Doc/county-code/subtitle19/Ch448_Rules_On-Site_Sewage_Facilities.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "Amendments through 2023-11-28, effective 2024-07-16. 448.005: applies to unincorporated Travis County except areas under another local entity's order and areas annexed by the City of Austin for the limited purpose of public health; also Webberville, Manor, Mustang Ridge, San Leanna, the part of Leander in Travis County, and entities with a TCEQ delegation and an interlocal agreement. 448.034(e): reports also include unauthorized alterations, the spray area's condition (if applicable), the Permit to Construct number, the provider's printed name and signature, the OSSF's address, and the provider's address, business phone and emergency phone. 448.034(f): the same for contracts. No submission address or deadline. Read through a page summarizer."
+          },
+          {
+            "title": "Travis County: Affidavit to the Public for OSSF Requiring Maintenance",
+            "url": "https://www.traviscountytx.gov/images/tnr/Docs/SP-04.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "Continuous service policy for the first two years; then a single-family owner obtains a maintenance contract within 30 days or maintains the system personally. No submission details. Undated."
+          },
+          {
+            "title": "Travis County TNR: Permit Enforcement",
+            "url": "https://www.traviscountytx.gov/tnr/development-services/permitting-center/permit-enforcement",
+            "retrievedOn": "2026-10-06",
+            "note": "'LCRA has OSSF permitting authority for properties within 1,000' of Lake Travis.' Phone 512-854-4215. Nothing on maintenance reports."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test; technicians must be registered."
+          }
+        ],
+        "unresolved": [
+          "Travis County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+          "Which addresses Travis County covers is set by city limits, the City of Austin's limited-purpose annexations, LCRA's area within 1,000 feet of Lake Travis and other entities' orders; every site needs a reviewed assignment.",
+          "Chapter 448 requires every report to list unauthorized alterations and the provider's emergency phone number. Aerowise's report has neither field; the office must add them by hand until it does.",
+          "Chapter 448 was read through a page summarizer; confirm the quoted lists against the county's copy.",
+          "Travis County publishes no acknowledgment of a received report or contract.",
+          "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here."
+        ]
+      }
+    },
+    {
+      "authority": "tx-brazoria-county",
+      "unresolved": [
+        "Brazoria County publishes no confirmed way to submit maintenance inspection reports or contracts. An ehmaintenance@brazoriacountytx.gov address is reported elsewhere but was not read on any official page (the Contact Us page returned 403), so it is not used: inspection filings are held for review and contracts are filed by hand.",
+        "The county's regulations, fee schedule, contact page and OSSF brochure returned 403. Any county-specific frequency, deadline, report contents, lab tests, fees and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+        "Maintenance providers 'must be registered with the County'; what registration involves is not published, and Aerowise does not track it.",
+        "Brookside Village, Manvel and Surfside Beach are separate TCEQ authorized agents, and Pearland's procedure points to TCEQ Region 12. Other cities and ETJs are not published. Every site needs a reviewed assignment.",
+        "No phone number for Brazoria County Environmental Health was read.",
+        "Brazoria County publishes no acknowledgment of a received report or contract."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "Brazoria County's OSSF regulations page could not be read (403), so the order and its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+        },
+        "sources": [
+          {
+            "title": "Brazoria County Environmental Health: OSSF Permitting Process",
+            "url": "https://www.brazoriacountytx.gov/departments/environmental-health/forms-permit-applications/ossf-permitting-process",
+            "retrievedOn": "2026-10-06",
+            "note": "Permit applications 'must be submitted for review in person or by mail. Initial submissions will not be accepted via email.' Installers and maintenance providers 'must be registered with the County'; a maintenance contract comes with the application where required. No permit for a single-family OSSF on a single tract of ten acres or more meeting the setbacks. Nothing on maintenance reports."
+          },
+          {
+            "title": "Brazoria County Environmental Health: Forms & Permit Applications",
+            "url": "https://www.brazoriacountytx.gov/departments/environmental-health/forms-permit-applications",
+            "retrievedOn": "2026-10-06",
+            "note": "Lists 'OSSF Maintenance Providers' and homeowner-maintenance training forms (titles only; documents not read). No maintenance report form."
+          },
+          {
+            "title": "Brazoria County Environmental Health: Contact Us",
+            "url": "https://www.brazoriacountytx.gov/departments/environmental-health/contact-us",
+            "retrievedOn": "2026-10-06",
+            "note": "Could not be read (403 on three attempts). No phone or maintenance email for the department was read."
+          },
+          {
+            "title": "TCEQ: Types of Systems Installed by Authorized Agents, 2024",
+            "url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2024-aa-atcs.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "Brazoria authorized agents: Brazoria County (620020), City of Brookside Village (620024), City of Manvel (620022), Village of Surfside Beach (620274). Only agents that issued permits that year are listed. Read through a page summarizer."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+          }
+        ],
+        "unresolved": [
+          "Brazoria County publishes no confirmed way to submit maintenance inspection reports or contracts. An ehmaintenance@brazoriacountytx.gov address is reported elsewhere but was not read on any official page (the Contact Us page returned 403), so it is not used: inspection filings are held for review and contracts are filed by hand.",
+          "The county's regulations, fee schedule, contact page and OSSF brochure returned 403. Any county-specific frequency, deadline, report contents, lab tests, fees and dates are unknown; Aerowise follows TCEQ's 30 TAC 285.7.",
+          "Maintenance providers 'must be registered with the County'; what registration involves is not published, and Aerowise does not track it.",
+          "Brookside Village, Manvel and Surfside Beach are separate TCEQ authorized agents, and Pearland's procedure points to TCEQ Region 12. Other cities and ETJs are not published. Every site needs a reviewed assignment.",
+          "No phone number for Brazoria County Environmental Health was read.",
+          "Brazoria County publishes no acknowledgment of a received report or contract."
+        ]
+      }
+    },
+    {
+      "authority": "tx-grimes-county",
+      "unresolved": [
+        "Grimes County publishes no way to submit maintenance inspection reports or contracts in anything readable; its main OSSF page is blocked to automated fetching. Inspection filings are held for review and contracts are filed by hand.",
+        "Grimes County's OSSF order was not found. A local newspaper (not an official source) reports an update approved 2023-08-16 that changed aerobic reporting; until the order is read, Aerowise follows TCEQ's 30 TAC 285.7.",
+        "The affidavit requires a contract with 'an approved maintenance company'; whether homeowners may maintain their own systems, and what makes a company approved, is not published.",
+        "The City of Todd Mission requires its own septic permit on top of the county's; who receives maintenance reports for Todd Mission sites, and whether other cities run their own program, is not published. Every site needs a reviewed assignment.",
+        "The county pages and PDFs were read through a page summarizer; quotes haven't been compared with the PDFs in a browser.",
+        "Grimes County publishes no acknowledgment of a received report or contract."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "Grimes County's OSSF order could not be found or read (a local newspaper reports an update approved 2023-08-16, pending TCEQ approval; not confirmed from an official source). Aerowise applies the ruleset from 2026-10-06, the day it was written."
+        },
+        "sources": [
+          {
+            "title": "Grimes County: Environmental Permits",
+            "url": "https://grimescountytexas.gov/permits",
+            "retrievedOn": "2026-10-06",
+            "note": "Staff includes a 'Designated Representative'. 1170 CR 280, Annex Bldg., Suite ENV105, Anderson; mailing 270 FM 149 W, Anderson, TX 77830; (936) 873-4495. No email, and nothing on maintenance contracts or reports. Read through a page summarizer."
+          },
+          {
+            "title": "Grimes County: TCEQ On-Site Sewage Facilities, Environmental Services",
+            "url": "https://grimescountytexas.gov/index.asp?DE=DE2DB1C7-211D-4F70-A422-2891027B6ED5&SEC=51D0BA70-3EF0-4E47-86C8-5613AD1C8E1A",
+            "retrievedOn": "2026-10-06",
+            "note": "Could not be read: robots.txt blocks automated fetching. Likely the county's main OSSF page."
+          },
+          {
+            "title": "Grimes County: Affidavit to the Public, OSSF (2024)",
+            "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/OSSF_Affidavit_(2024).pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "'This OSSF must be covered by a continuous maintenance contract' with 'an approved maintenance company'; a 'signed maintenance contract must be submitted to Grimes County within 30 days after the property has been transferred'. No channel. Read through a page summarizer; one sentence on renewals came back incomplete."
+          },
+          {
+            "title": "Grimes County: Seven Steps to Obtaining a Permit",
+            "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/Seven_Steps_to_Obtaining_a_Permit.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "Permit fees only (residential $420, commercial $624). Nothing on maintenance contracts or reports. Read through a page summarizer."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+          }
+        ],
+        "unresolved": [
+          "Grimes County publishes no way to submit maintenance inspection reports or contracts in anything readable; its main OSSF page is blocked to automated fetching. Inspection filings are held for review and contracts are filed by hand.",
+          "Grimes County's OSSF order was not found. A local newspaper (not an official source) reports an update approved 2023-08-16 that changed aerobic reporting; until the order is read, Aerowise follows TCEQ's 30 TAC 285.7.",
+          "The affidavit requires a contract with 'an approved maintenance company'; whether homeowners may maintain their own systems, and what makes a company approved, is not published.",
+          "The City of Todd Mission requires its own septic permit on top of the county's; who receives maintenance reports for Todd Mission sites, and whether other cities run their own program, is not published. Every site needs a reviewed assignment.",
+          "The county pages and PDFs were read through a page summarizer; quotes haven't been compared with the PDFs in a browser.",
+          "Grimes County publishes no acknowledgment of a received report or contract."
+        ]
+      }
+    },
+    {
+      "authority": "tx-montgomery-county",
+      "unresolved": [
+        "Montgomery County publishes no way to submit maintenance inspection reports or renewal contracts in anything readable; its mctx.org OSSF pages are blocked by robots.txt. HealthComplaints@mctx.org is for complaints only. Inspection filings are held for review and contracts are filed by hand.",
+        "The county form says three inspections a year, one every four months, and doesn't mention electronic monitoring, so Aerowise allows no 6-month schedule here (TCEQ would allow two a year).",
+        "Commercial and non-single-family systems need one BOD and TSS grab sample a year; no limits, lab format or report it goes with are published.",
+        "No Montgomery County OSSF order was found; its number, dates and any other county rules are unknown.",
+        "SJRA permits OSSFs within 2,075 feet of Lake Conroe outside city limits; how the distance is measured, and who permits inside city limits near the lake, is not published. Which cities run their own program is also not published. Every site needs a reviewed assignment.",
+        "The county pages and PDFs were read through a page summarizer; quotes haven't been compared with the PDFs in a browser.",
+        "Montgomery County publishes no acknowledgment of a received report or contract."
+      ],
+      "profile": {
+        "status": "draft",
+        "sourcesCheckedOn": "2026-10-06",
+        "requirementEffective": {
+          "date": null,
+          "basis": "No Montgomery County OSSF order was found, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+        },
+        "sources": [
+          {
+            "title": "Montgomery County: Two Year Initial Maintenance Contract (county form)",
+            "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/Initial%202%20yr%20Maintenance%20maintenance.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "'There will be a minimum of three (3) inspections, one every four (4) months, to be made each year for this initial two (2) year period.' 'The report shall be submitted to the permitting authority and the owner within 14 days after the date the test is performed.' 'Non-single family residences, commercial, require one BOD and TSS grab sample per year.' No channel. Read twice through a page summarizer with the same wording."
+          },
+          {
+            "title": "Montgomery County: Residential New Septic System permit packet (rev. April 19, 2024)",
+            "url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20NEW%20SEPTIC%20SYSTEM.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "The two-year initial maintenance contract, signed by owner and installer, is part of the permit packet 'BEFORE FINAL INSPECTION'. Read through a page summarizer."
+          },
+          {
+            "title": "Montgomery County: How to Obtain a Septic, with OSSF fees (rev. March 22, 2023)",
+            "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/How%20to%20Obtain%20a%20Septic.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "501 N. Thompson, Suite 100, Conroe; Permit Department (936) 539-7836; inspections (936) 539-7839. Fees for permits, modifications, variances and reinspections only; none for reports or contracts. Read through a page summarizer."
+          },
+          {
+            "title": "San Jacinto River Authority: Order Adopting Rules for OSSFs Within 2,075 Feet of Lake Conroe",
+            "url": "https://www.sjra.net/wp-content/uploads/2015/03/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-Feet-of-Lake-Conroe-Texas-2015.pdf",
+            "retrievedOn": "2026-10-06",
+            "note": "Section 5: SJRA's rules apply to 'all the area lying within 2,075 feet of Lake Conroe', except areas under a predecessor rule or inside a municipality's corporate limits. Effective June 1, 2016. This copy is unsigned with a blank order number; '384053.4' on it is a document footer, not the order number. Read through a page summarizer."
+          },
+          {
+            "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+            "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+            "retrievedOn": "2026-10-06",
+            "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+          },
+          {
+            "title": "TCEQ OSSF maintenance requirements",
+            "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+            "retrievedOn": "2026-10-06",
+            "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+          }
+        ],
+        "unresolved": [
+          "Montgomery County publishes no way to submit maintenance inspection reports or renewal contracts in anything readable; its mctx.org OSSF pages are blocked by robots.txt. HealthComplaints@mctx.org is for complaints only. Inspection filings are held for review and contracts are filed by hand.",
+          "The county form says three inspections a year, one every four months, and doesn't mention electronic monitoring, so Aerowise allows no 6-month schedule here (TCEQ would allow two a year).",
+          "Commercial and non-single-family systems need one BOD and TSS grab sample a year; no limits, lab format or report it goes with are published.",
+          "No Montgomery County OSSF order was found; its number, dates and any other county rules are unknown.",
+          "SJRA permits OSSFs within 2,075 feet of Lake Conroe outside city limits; how the distance is measured, and who permits inside city limits near the lake, is not published. Which cities run their own program is also not published. Every site needs a reviewed assignment.",
+          "The county pages and PDFs were read through a page summarizer; quotes haven't been compared with the PDFs in a browser.",
+          "Montgomery County publishes no acknowledgment of a received report or contract."
+        ]
+      }
+    }
+  ]
+}

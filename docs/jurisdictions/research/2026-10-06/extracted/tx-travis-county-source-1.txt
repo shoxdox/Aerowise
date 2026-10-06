@@ -1,0 +1,1050 @@
+                     Chapter 448. Rules of Travis County, Texas,
+                           for On-Site Sewage Facilities1
+Contents:
+
+  Subchapter A. General Provisions of Chapter
+448.001      Policy and Purpose 2
+448.002.     Definitions and Acronyms 2
+448.003      Conflicts 4
+448.004      On-Site Sewage Facility Regulation and Enforcement 4
+448.005      Jurisdictional Area/Applicability 5
+448.006      Compliance with On-Site Sewage Facility Rules 5
+448.007      TCEQ Rules Adopted; Incorporation by Reference 6
+448.008      Authority to Act 6
+448.009      Adoption of Rules that are More Stringent 6
+448.010      Additional Findings 6
+448.011      Local Administrative Procedures 7
+448.012      Duties and Powers of Designated Representatives 7
+448.013      Collection of Fees 7
+448.014      Appeals 7
+448.015      Enforcement Plan 7
+448.016      Severability 8
+448.017      Relinquishment of Order 8
+448.018      Effective Date 8
+[448.019 – 448.030 Reserved for Expansion] 9
+
+  Subchapter B
+448.031      Travis County's More Stringent Rules 9
+448.032      Facility Planning [285.4] 9
+448.033      Application and Permitting Procedures (§§285.3, 285.5 and 285.6) 10
+448.034      Maintenance Requirements (§285.7) 12
+448.035      Site Evaluation (§285.30) 14
+448.036      Criteria for Sewage Treatment Systems (§285.32) 14
+448.037      Criteria for Sewage Disposal Systems (§285.33) 14
+[448.038 – 448.050 Reserved for Expansion] 16
+
+  Subchapter C.
+448.051      Local Administrative Procedures 16
+448.052      Enforcement 16
+448.053      Notice 17
+448.054      Permit to Construct and License to Operate. 17
+448.055      Variance Procedures 18
+448.056      Submission of Planning Materials 20
+448.057      Procedures for Reviewing Planning Materials 21
+448.058      Permit to Construct 21
+448.059      License to Operate 23
+448.060      Affidavit Forms 23
+448.061      Recording of Designated Representative's License Number 24
+
+
+
+
+1 Chapter 48 was replaced by Travis County Commissioners Court on 12/30/2014, Item #21R.
+
+Effective date was February 23, 2015, the date the Texas Commission on Environmental Quality
+approved the rules. Chapter 48 was renumbered as Chapter 448 on June 1, 2018. Chapter 448 amended
+November 28, 2023, Item 33. Effective date is July 16, 2024, the date the Texas Commission on
+Environmental Quality approved the rules.
+
+
+Amendments added through 11/28/2023, Item 33                                         Page 1 of 24
+Subchapter A. General Provisions of Chapter
+
+448.001    Policy and Purpose
+(a)        Background and Policy.
+           (1)    The Texas Commission on Environmental Quality has established
+                  rules for on-site sewage facilities to provide the citizens of this State
+                  with adequate public health protection and to minimize
+                  environmental pollution.
+           (2)    The Legislature has enacted legislation, codified as Texas Health
+                  and Safety Code Chapter 366, which authorizes a local
+                  governmental entity to regulate the use of on-site sewage facilities in
+                  its jurisdiction in order to abate or prevent pollution or injury to public
+                  health arising out of the use of on-site sewage facilities.
+           (3)    Due notice was given of a public meeting to determine whether the
+                  Commissioners Court of Travis County, Texas should enact an
+                  order controlling or prohibiting the installation or use of on-site
+                  sewage facilities in Travis County, Texas.
+           (4)    The Commissioners Court of Travis County, Texas finds that the
+                  use of on-site sewage facilities in Travis County, Texas is causing
+                  or may cause pollution, and is injuring or may injure the public
+                  health.
+           (5)    The Commissioners Court of Travis County, Texas has considered
+                  the matter and deems it appropriate to enact an order adopting
+                  rules regulating on-site sewage facilities to abate or prevent
+                  pollution or injury to public health in Travis County, Texas.
+(b)        Findings and Adoption of Rules. The Commissioners Court of Travis
+           County, Texas finds that:
+           (1)    The matters and facts recited in subsection (a) are true and correct;
+           (2)    The use of on-site sewage facilities in Travis County, Texas, is
+                  causing or may cause pollution and is injuring or may injure the
+                  public health; and
+           (3)    It is necessary and appropriate to adopt this chapter of the Travis
+                  County Code, which is to be entitled "Rules of Travis County, Texas
+                  for On-Site Sewage Facilities.
+
+448.002.   Definitions and Acronyms
+Words and phrases in this chapter have the same meaning they have in Chapter
+366 (On-Site Sewage Disposal Systems) of the Texas Health and Safety Code and
+Chapter 285 (On-Site Sewage Facilities) of Title 30 of the Texas Administrative Code.
+The following words and terms in this section, when used in this chapter, have the
+following meanings:
+
+
+Amendments added through 11/28/2023, Item 33                                      Page 2 of 24
+          (1)     "Accessory use" means a use which is incidental and subordinate to
+                  the principal use of the parcel of land on which it is located.
+          (2)     "Accessory structure" means a structure which is on the same
+                  parcel of property as the principal structure to be insured and which
+                  is incidental to the use of the principal structure.
+          (3)     "Authorized Agent" means the Travis County Commissioners Court
+                  or its designee, the Travis County Transportation and Natural
+                  Resources Department.
+          (4)     "Commissioners Court" means the Travis County Commissioners
+                  Court.
+          (5)     "County Executive" means the county executive of the Travis
+                  County Transportation and Natural Resources Department or their
+                  designee.
+          (6)     "Development" means any man-made change to improved or
+                  unimproved real estate, including, but not limited to, the
+                  construction of buildings or other structures, a change in the use of
+                  improved or unimproved real estate, mining, dredging, filling,
+                  grading, paving, surfacing, excavation operations, drilling
+                  operations, the storage of equipment or materials, and the clearing
+                  of land for the purpose of preparing a site for any man-made
+                  change to improved or unimproved real estate.
+          (7)     "License to Operate" means written permission from the Permitting
+                  Authority to operate an on-site sewage facility.
+          (8)     "Lot" or "site" means the unit of land area served by an on-site
+                  sewage facility.
+          (9)     "Maintenance" means required or routine performance checks,
+                  examinations, upkeep, cleaning, or mechanical adjustments to an
+                  on-site sewage facility, including replacement of pumps, filters,
+                  aerator lines, valves, or electrical components. Maintenance does
+                  not include alterations.
+          (10)    "On-site sewage facility" or "OSSF" means a system that:
+                  (A)    does not treat or dispose of more than 5,000 gallons of
+                         sewage each day; and
+                  (B)    is used only for disposal of sewage produced on a site where
+                         any part of the system is located.
+          (11)    "Permit to Construct" means written permission from the Permitting
+                  Authority to construct an on-site sewage facility showing the date
+                  the permission was granted.
+          (12)    "Permitting Authority" means the Travis County Commissioners
+                  Court or its designee, the Travis County Transportation and Natural
+                  Resources Department.
+
+
+Amendments added through 11/28/2023, Item 33                                  Page 3 of 24
+          (13)    "Person" means an individual, association, partnership, corporation,
+                  organization, business trust, political subdivision, state or federal
+                  agency, or an agent or employee thereof.
+          (14)    "Repair" means to replace any components of an on-site sewage
+                  facility in situations not included under emergency repairs
+                  according to 30 Texas Administrative Code § 285.35 (relating to
+                  emergency repairs), excluding maintenance. The replacement of
+                  tanks or drainfields is considered a repair and requires a permit for
+                  the entire OSSF system.
+          (15)    "Residential unit" means a structure that is used for habitation.
+          (16)    "Sewage" means waste that:
+                  (A)  is primarily organic and biodegradable or decomposable; and
+                  (B)  generally originates as human, animal, or plant waste from
+                       certain activities, including the use of toilet facilities, washing,
+                       bathing, and preparing food.
+          (17)    "TAC" means the Texas Administrative Code.
+          (18)    "TCEQ" means the Texas Commission for Environmental Quality or
+                  its successive agencies.
+          (19)    "TCEQ Rules" means the rules promulgated by the Texas
+                  Commission on Environmental Quality for on-site sewage facilities
+                  in Title 30 Texas Administrative Code Chapter 30, Subchapters A
+                  and G, and Chapter 285 and all future amendments and revisions to
+                  those rules.
+
+448.003   Conflicts
+(a)       This chapter repeals and replaces any other on-site sewage facility orders
+          or parts of orders of Travis County, Texas.
+(b)       All Codes or policies, or parts of Codes or policies of Travis County related
+          to this chapter that are in conflict with the provisions of this chapter are
+          hereby repealed.
+
+448.004   On-Site Sewage Facility Regulation and Enforcement
+Travis County, Texas clearly understands there are technical criteria, legal
+requirements, and administrative procedures and duties associated with regulating
+on­ site sewage facilities, and will fully enforce Chapter 366 of the Texas Health and
+Safety Code, Chapters 7 and 37 of the Texas Water Code, and associated rules
+referenced in section 448.006 of this chapter.
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                    Page 4 of 24
+448.005    Jurisdictional Area/Applicability 2
+This chapter applies to:
+           (1)     the unincorporated areas of Travis County, Texas except:
+                   (A)   the areas regulated under an order adopted by a local
+                         governmental entity other than Travis County; and
+                   (B)   the areas have been annexed by the City of Austin for the
+                         limited purpose of public health;
+           (2)     areas within the corporate limits of Webberville, Manor, Mustang
+                   Ridge, and San Leanna;
+           (3)     areas within the corporate limits of Leander located within Travis
+                   County; and
+           (4)     areas within the territorial limits of a local governmental entity
+                   located in whole or in part in Travis County that:
+                   (A)   has been delegated the authority by the TCEQ executive
+                         director to implement and enforce the rules adopted under
+                         Texas Health and Safety Code, Chapter 366; and
+                   (B)   has entered into an interlocal agreement with Travis County
+                         for the enforcement of that local governmental entity's OSSF
+                         rules.
+
+448.006    Compliance with On-Site Sewage Facility Rules
+(a)        Any person who has an ownership interest in an on-site sewage facility or
+           who participates in any activity relating to the development of planning
+           materials, construction, installation, alteration, repair, extension,
+           operation, maintenance, permitting, inspection, or investigation of an on-
+           site sewage facility within the jurisdictional area of Travis County, Texas
+           must comply with the TCEQ Rules and all applicable provisions of this
+           chapter.
+(b)        A person must obtain a Permit to Construct from the County in
+           accordance with this chapter before the person constructs, installs, alters,
+           repairs, extends, or modifies an OSSF unless the OSSF is excluded or
+           exempted under State law or this chapter.
+(c)        Any person who has an ownership interest in an on-site sewage facility
+           within the jurisdictional area of Travis County must obtain a License to
+           Operate from the County before the person operates or allows any person
+           to operate the on-site sewage facility.
+
+
+
+
+2 Section 448.005 amended 11/28/2023, Item 33.   Effective date is 7/16/2024, the date TCEQ approved
+amendments to Chapter 448.
+
+
+Amendments added through 11/28/2023, Item 33                                             Page 5 of 24
+448.007   TCEQ Rules Adopted; Incorporation by Reference
+(a)       Travis County adopts the rules promulgated by the Texas Commission on
+          Environmental Quality for on-site sewage facilities in Title 30 Texas
+          Administrative Code Chapter 30, Subchapters A and G, and Chapter 285.
+(b)       The TCEQ Rules and all future amendments and revisions to them are
+          incorporated by reference and made a part of this chapter.
+
+448.008   Authority to Act
+All officials and employees of Travis County, Texas who have duties under the TCEQ
+Rules are authorized to perform those duties as are required of them under the TCEQ
+Rules and the provisions of this chapter.
+
+448.009   Adoption of Rules that are More Stringent
+(a)       Travis County, Texas adopts certain OSSF rules that are more stringent than
+          those adopted by the TCEQ.
+(b)       The more stringent rules adopted by the Travis County Commissioners Court
+          shall take precedence over any less stringent rules adopted by TCEQ.
+(c)       Travis County's more stringent rules are set forth in subchapter B.
+
+448.010   Additional Findings
+The Travis County Commissioners Court finds that it is proper and necessary to adopt
+OSSF standards that are more stringent than the standards adopted by TCEQ because:
+          (1)     Protecting water resources is vital to human health, and some
+                  residents within Travis County depend heavily upon groundwater for
+                  their drinking water;
+          (2)     The population of Travis County is projected to double by the year
+                  2050;
+          (3)     A significant amount of the projected future growth within the
+                  unincorporated areas of Travis County is expected to rely on on-site
+                  sewage facilities;
+          (4)     The adoption of OSSF regulations that are more stringent within the
+                  Recharge Zone of the Edwards Aquifer (including those land areas
+                  situated above the Trinity Aquifer Recharge Zones) and other aquifers
+                  which have environmentally sensitive rapid recharge conditions is
+                  necessary and appropriate to avert public health hazards resulting
+                  from the projected increased use of on-site sewage facilities and the
+                  increased usage of water; and
+          (5)     The more stringent rules will provide greater public health and safety
+                  protection for the residents of Travis County.
+
+
+
+Amendments added through 11/28/2023, Item 33                                    Page 6 of 24
+448.011   Local Administrative Procedures
+The County's local administrative procedures are set forth in subchapter C.
+
+448.012   Duties and Powers of Designated Representatives
+(a)       The Transportation and Natural Resources Department of Travis County,
+          Texas will ensure that each individual who acts as a designated
+          representative for Travis County within Travis County's jurisdictional area is
+          certified by the Texas Commission on Environmental Quality before that
+          individual assumes duties and responsibilities as a designated representative
+          of Travis County, Texas.
+(b)       Each of Travis County's designated representatives is authorized to review
+          permit applications, site evaluations, and planning materials and to conduct
+          inspections of on-site sewage facilities.
+
+448.013   Collection of Fees
+(a)       All fees collected under this chapter must be made payable to Travis County,
+          Texas and must be paid in accordance with fee schedules adopted by the
+          Commissioners Court as authorized by law.
+(b)       Each fee collected by Travis County for an application for a Permit to
+          Construct must include a fee of $10 that Travis County must forward to the
+          TCEQ Water Resources Management Account in accordance with Chapter
+          367 of the Texas Health and Safety Code.
+
+448.014   Appeals
+Persons aggrieved by an action or decision of the designated representative may
+appeal such action or decision by mailing, within 30 days of the action or decision, a
+written appeal to the Travis County Commissioners Court.
+
+448.015   Enforcement Plan
+(a)       Travis County, Texas clearly understands that, as a minimum, it must follow
+          the requirements in 30 TAC Section 285.71 (Authorized Agent Enforcement
+          of OSSFs).
+(b)       This chapter adopts and incorporates all applicable provisions related to on-
+          site sewage facilities, which includes, but is not limited to, those found in
+          Chapters 341 and 366 of the Texas Health and Safety Code, Chapters 7, 26,
+          and 37 of the Texas Water Code, 30 Texas Administrative Code Chapter 30,
+          Subchapters A and G, and 30 Texas Administrative Code Chapter 285.
+(c)       At the request of the Commissioners Court, the County Attorney or other
+          prosecuting attorney for the County may file an action in a court of competent
+          jurisdiction to do one or more of the following:
+
+
+
+Amendments added through 11/28/2023, Item 33                                   Page 7 of 24
+          (1)     Enjoin the violation or threatened violation of a requirement established
+                  by or adopted by the Commissioners Court under this chapter;
+          (2)     Seek civil or criminal penalties as provided by law; and
+          (3)     Take all actions or seek any penalty authorized under law, including
+                  the penalties and enforcement provisions of Chapters 341 and 366 of
+                  the Texas Health and Safety Codes, Chapters 7 and 26 of the Texas
+                  Water Code, 30 Texas Administrative Code Chapter 285, and the
+                  provisions of this chapter.
+
+448.016   Severability
+It is the intention of the Commissioners Court of Travis County, Texas, that the phrases,
+clauses, sentences, paragraphs, and sections of this chapter are severable, and if any
+phrase, clause, sentence, paragraph, or section of this chapter is declared
+unconstitutional by the valid judgment or decree of any court of competent jurisdiction,
+such unconstitutionality shall not affect any of the remaining phrases, clauses,
+sentences, paragraphs, or sections of this chapter, since the same would have been
+enacted by the Commissioners Court without incorporation in this chapter of such
+unconstitutional phrases, clause, sentence, paragraph, or section.
+If any provision of this chapter or the application thereof to any person or circumstances
+is held invalid, the validity of the remainder of this chapter and the application thereof to
+other persons and circumstances shall not be affected.
+
+448.017   Relinquishment of Order
+(a)       If the Commissioners Court of Travis County, Texas decides that it no longer
+          wishes to regulate on-site sewage facilities in its area of jurisdiction, the
+          Commissioners Court, as the authorized agent, and the TCEQ shall follow the
+          procedures outlined in 30 Texas Administrative Code Section 285.10 (d) (1)
+          through (4).
+(b)       After relinquishing its OSSF authority, the authorized agent understands that
+          it may be subject to charge-back fees in accordance with 30 Texas
+          Administrative Code Section 285.10(d)(5) and Section 285.14 after the date
+          that delegation has been relinquished.
+
+448.018   Effective Date
+This chapter shall be in full force and effect from and after its date of approval as
+required by law and upon the approval of the Texas Commission on Environmental
+Quality.
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                      Page 8 of 24
+[448.019 – 448.030 Reserved for Expansion]
+
+Subchapter B
+
+448.031   Travis County's More Stringent Rules
+This subchapter sets forth the more stringent rules adopted by Travis County, Texas.
+
+448.032   Facility Planning [285.4]
+(a)       All property that will use an on-site sewage facility for sewage disposal must
+          be evaluated for overall site suitability.
+(b)       Unless the lot or tract is exempted under 30 Texas Administrative Code
+          Section 285.4(b)(1), the minimum lot size for a residential structure served by
+          an OSSF, regardless of whether the lot or tract is served by a public water
+          supply, is one acre.
+(c)       Residential Structures Served by OSSFs.
+          (1)     Each residential unit served by an OSSF is considered a separate
+                  structure. Except as provided in Paragraph (2), multiple residential
+                  units may be on a single lot or site only if the lot or site contains at
+                  least one acre of land for each residential unit.
+          (2)     A lot or site of at least one acre in size that was created before TCEQ's
+                  approval of this chapter and that has a single-family dwelling located
+                  on it may have one additional residential unit placed on the lot or site
+                  as an accessory structure for accessory use if:
+                  (A)    having more than one residential unit on the lot or site does not
+                         violate restrictions in a plat, deed, or restrictive covenant for the
+                         lot;
+                  (B)    all other requirements of Chapter 285 of Title 30 of the Texas
+                         Administrative Code and the Travis County Code are met; and
+                  (C)    the lot or site owner files a restrictive covenant in the Official
+                         Public Records of Travis County, Texas that:
+                         (i)      prohibits the addition of any more habitable structures on
+                                  the lot or site without approval by the local entity having
+                                  OSSF jurisdiction over the lot;
+                         (ii)     prohibits the residential units from being conveyed or
+                                  transferred to separate owners without approval by the
+                                  local entity having OSSF jurisdiction over the lot;
+                         (iii)    prohibits any further subdivision of the lot or site without
+                                  approval by the local entity having OSSF jurisdiction over
+                                  the lot; and
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                       Page 9 of 24
+                         (iv)   provides that the restrictive covenant is enforceable by
+                                the owners of adjacent land, TCEQ, and the local
+                                governmental entity having OSSF jurisdiction over the lot.
+          (3)     If the County Executive determines that having more than one
+                  residential unit on the lot or site will not adversely affect public health,
+                  safety, or welfare, the County Executive may waive the requirement
+                  that a plat be approved for structures and a lot or site meeting the
+                  requirements of this subsection.
+(d)       Review of Planning Materials. Persons proposing single-family residential
+          developments, condominium developments, multi-unit residential
+          developments, manufactured housing communities, commercial
+          developments, or any other type of development with structures served by
+          OSSFs must submit planning materials for these developments to the
+          Permitting Authority as set forth in Subchapter C, Travis County Local
+          Administrative Procedures, and obtain the Permitting Authority's written
+          approval of the planning materials before submitting an OSSF application.
+(e)       Notice in Deed and Plat Records.
+          (1)     Where approval of on-site sewage facilities in a development will be
+                  granted based on conditions that restrict lots with regard to on-site
+                  sewage facilities, those conditions shall be reflected by appropriate plat
+                  notes or restrictive covenants filed in the Official Public Records of
+                  Travis County, Texas. The County will not issue a Permit to Construct
+                  or a License to Operate unless a property owner has recorded all plat
+                  notes and restrictive covenants required by the County.
+          (2)     In addition to the requirements set forth in 30 Texas Administrative
+                  Code Chapter 285, on each new plat, the following note shall be
+                  included (along with any specific restrictions imposed):
+                  This subdivision is subject to all the terms and conditions of Chapter
+                  448, Travis County Code, Rules of Travis County, Texas for On-Site
+                  Sewage Facilities. These rules require, among other things, that a
+                  construction permit be obtained from Travis County before an on-site
+                  sewage facility can be constructed, altered, modified, or repaired in the
+                  subdivision and that a license to operate be obtained from Travis
+                  County before an on-site sewage facility can be operated in the
+                  subdivision.
+
+448.033   Application and Permitting Procedures (§§285.3, 285.5 and 285.6)
+(a)       No Exemptions. All OSSFs in the jurisdictional area of Travis County are
+          subject to the provisions of this chapter regardless of the size of the lot on
+          which the OSSF is located.
+          (1)     Except for emergency repairs that are authorized by 30 TAC Section
+                  285.35, a person must obtain a Permit to Construct from the County
+
+
+
+Amendments added through 11/28/2023, Item 33                                       Page 10 of 24
+                  before constructing, installing, altering, extending, or repairing an
+                  OSSF.
+          (2)     An individual who makes an emergency repair to an OSSF must notify
+                  the Permitting Authority, in writing, within 72 hours after starting the
+                  emergency repair. The notice must include a detailed description of the
+                  methods and materials used in the repairs.
+          (3)     The Permitting Authority has discretion to require an inspection of the
+                  emergency repairs.
+(b)       Local Procedures. Local Administrative Procedures to be used in Travis
+          County in administering 30 Texas Administrative Code Section 285.5 are set
+          forth in Subchapter C.
+(c)       Time Limit on Applications. An application for an OSSF Permit to Construct
+          expires one year after the date the application fee is paid for if the applicant
+          has been unable to obtain an OSSF Permit to Construct from the County
+          during that one-year period. After an application has expired, an applicant for
+          an OSSF Permit to Construct must submit a new application and pay a new
+          application fee.
+(d)       Permit to Construct/License to Operate. Under Travis County procedures, the
+          licensing of an on-site sewage facility is separated into two parts: the Permit
+          to Construct, which is a permit that is issued by Travis County for construction
+          of an onsite wastewater system specifically designed for a specific use, and
+          the License to Operate, which is a license that is issued by Travis County that
+          allows an onsite wastewater system constructed in accordance with the
+          Permit to Construct to be operated as designed, to actively put through, treat,
+          and dispose of sewage waste being generated by the use for which the
+          system is designed.
+          (1)     A Permit to Construct expires 12 months from the date of issuance, or
+                  upon completion of construction, whichever is sooner. The County may
+                  grant a 30-day permit extension if there have been no changes to the
+                  design plan approved by the Permitting Authority and the owner
+                  applies for the extension at least 30 days prior to the expiration of the
+                  Permit to Construct. A fee will be charged towards the cost of the
+                  extension and re­ issuance of permits. After a Permit to Construct has
+                  expired, a person who seeks to construct an OSSF must submit a new
+                  application and pay a new application fee in order to obtain a new
+                  Permit to Construct.
+          (2)     Certification by Designer. The Permitting Authority will not issue a
+                  License to Operate for an OSSF that was designed by a professional
+                  engineer or registered sanitarian until the owner provides the
+                  Permitting Authority with:
+                  (A)     the engineer or sanitarian's written assurance that the engineer
+                          or sanitarian has inspected the OSSF and determined that it has
+                          been installed as designed and specified; and
+
+
+Amendments added through 11/28/2023, Item 33                                     Page 11 of 24
+                  (B)    an accurate as-built drawing of the OSSF.
+          (3)     A License to Operate is limited to authorization to operate an OSSF in
+                  accordance with the design and use approved by the Permitting
+                  Authority.
+          (4)     Termination of License to Operate. A License to Operate issued under
+                  this chapter or previous OSSF rules adopted by the County may be
+                  revoked by the Permitting Authority if:
+                  (A)    the OSSF fails;
+                  (B)    the OSSF receives more sewage than the amount for which it
+                         was approved;
+                  (C)    the OSSF receives non-sewage wastewater;
+                  (D)    a structure connected to the OSSF exceeds or violates the
+                         terms of the License to Operate;
+                  (E)    the property on which the OSSF is located is used for a purpose
+                         other than that described in the original application for the
+                         Permit to Construct the OSSF; or
+                  (F)    the OSSF is operated in a manner that does not conform to the
+                         design and use approved by the Permitting Authority.
+          (5)     It is a violation of this Chapter for any person to operate or allow any
+                  person to operate an OSSF for which the License to Operate has been
+                  terminated or for which a License to Operate has not been issued by
+                  the Permitting Authority.
+          (6)     An owner of an OSSF for which a License to Operate has been
+                  terminated may apply in writing to the Permitting Authority to have the
+                  License to Operate re-instated. The Permitting Authority may re-instate
+                  a License to Operate if the owner of the OSSF has paid all applicable
+                  fees, and the Permitting Authority determines, after conducting an
+                  inspection of the OSSF, that the OSSF is functioning properly and that
+                  the owner of the OSSF has taken affirmative steps to ensure that the
+                  OSSF will be operated only in accordance with the design and use
+                  previously approved by the Permitting Authority.
+(e)       The County will not issue a suitability letter for a TCEQ stormwater pollution
+          prevention plan permit until the Permitting Authority determines that an
+          application for an OSSF Permit to Construct and/or application for a
+          subdivision proposing to use OSSF's is administratively complete.
+
+448.034   Maintenance Requirements (§285.7)
+(a)       This section applies to OSSFs for which maintenance is required as specified
+          in Table XII of 30 TAC Section 285.91 and that serve single-family dwellings.
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                  Page 12 of 24
+(b)       At the end of the initial two-year service policy, a homeowner may perform
+          maintenance activities for an OSSF that serves the homeowner's single family
+          dwelling only if the homeowner:
+          (1)     has taken the training and passed the test required for a TCEQ
+                  registered maintenance technician, as required in 30 Texas
+                  Administrative Code Section 30.245(b), and has provided the results of
+                  the test and proof of attendance at the training to the County; or
+          (2)     has taken equivalent training specifically for homeowners, as
+                  determined by the County, has passed any tests that were required as
+                  part of the training, and has provided to the County the results of any
+                  tests that were part of the training and proof of attendance at the
+                  training.
+(c)       A homeowner who performs maintenance activities for an OSSF that serves
+          the homeowner's single family dwelling must comply with the testing and
+          reporting requirements set forth in 30 Texas Administrative Code Section
+          285.7(e)(1 )-(3) for maintenance providers.
+(d)       Notwithstanding any provision to the contrary, the owner of a single-family
+          dwelling who has been personally maintaining the OSSF for the single-family
+          dwelling must obtain a maintenance contract for the OSSF and provide a
+          copy of the contract to the County within ten days after the County notifies the
+          owner that:
+          (1)     The owner has violated Texas Health and Safety Code Chapter 366, a
+                  rule adopted pursuant to Texas Health and Safety Code Chapter 366,
+                  or this chapter, and the owner chooses to enter into a contract for the
+                  maintenance of the system instead of personally correcting the
+                  violation; or
+          (2)     The owner has, within three years of a previous violation, committed
+                  another violation of Texas Health and Safety Code Chapter 366, a rule
+                  adopted pursuant to Texas Health and Safety Code Chapter 366, or
+                  this chapter.
+(e)       In addition to the information required by 30 TAC Chapter 285, all
+          maintenance/inspection reports, including reports prepared by homeowners
+          who provide maintenance on their own OSSFs, must include the following:
+          (1)     the reporting of any alterations to the OSSF that have not been
+                  authorized by the County;
+          (2)     the condition of the spray area (if applicable};
+          (3)     the permit number for the Permit to Construct;
+          (4)     the printed name and signature of the maintenance provider or
+                  homeowner/property owner if the homeowner is submitting the report;
+          (5)     the physical address of the OSSF location; and
+
+
+
+Amendments added through 11/28/2023, Item 33                                  Page 13 of 24
+           (6)     the physical address, business address, business telephone number,
+                   and emergency phone number of the maintenance provider.
+           (f)     In addition to the information required by 30 Texas Administrative
+                   Code Chapter 285, all maintenance/inspection contracts must include
+                   the following:
+           (1)     the permit number for the Permit to Construct;
+           (2)     the printed name and signature of the maintenance provider or
+                   homeowner if the homeowner is submitting the report;
+           (3)     the physical address of the OSSF location; and
+           (4)     the physical address, business address, business telephone number,
+                   and emergency phone number of the maintenance provider.
+
+448.035    Site Evaluation (§285.30)
+Travis County requires that backhoe pits be excavated to a depth of two feet below the
+bottom of the proposed excavation or to a restrictive horizon, whichever is less for soil
+evaluations. Profile holes are required to be excavated and soil analysis reports must be
+submitted with all applications for Permits to Construct on-site sewage facilities.
+
+448.036    Criteria for Sewage Treatment Systems (§285.32)
+(a)        Testing of Tanks. Following installation and prior to final backfilling, all tanks
+           in the system, including but not limited to septic tanks, pump tanks, trash
+           tanks, and aerobic treatment units, shall be tested by being filled to the outlet
+           with clean water and checked 24 hours later for leaks and structural integrity.
+(b)        Non-residential Treatment Requirements - Non-residential systems shall have
+           a minimum of six-day retention time in a septic tank, or in a pre-treatment
+           tank prior to a treatment unit; or provide equalization tanks per 30 Texas
+           Administrative Code Section 285.34(b)(4)
+
+448.037    Criteria for Sewage Disposal Systems (§285.33) 3
+(a)        Limits on Daily Application Rate. Except as provided in Paragraphs (1) and
+           (2), the total daily application of effluent from an OSSF may not exceed 60
+           gallons per tenth of an acre of the lot or site. Fractional acreage shall be
+           rounded down to the nearest tenth of an acre.
+           (1)     For parcels that were legally platted before TCEQ's approval of this
+                   chapter and that are less than or equal to four-tenths of an acre, up to
+                   240-gallons per day may be allowed.
+
+
+
+3
+ 448.037(a)(2) amended 11/28/2023, Item 33. Effective date is 7/16/2024, the date TCEQ approved
+amendments to Chapter 448.
+
+
+Amendments added through 11/28/2023, Item 33                                          Page 14 of 24
+          (2)     For proposed developments with less than 50% gross impervious
+                  cover, including OSSF drainfield required area as impervious cover, an
+                  exemption may be granted to allow a higher effluent application rate.
+(b)       Disposal Processes - Proprietary - Drip Irrigation
+          (1)     There shall be a minimum of two feet of soil between the drip emitter
+                  and groundwater; however, only one foot of soil is required where
+                  secondary treatment is used.
+          (2)     Drip irrigation systems shall be designed using a maximum application
+                  rate of 0.15 gallon per square foot per day.
+          (3)     Drip irrigation systems shall provide a minimum of two feet per second
+                  flushing velocity.
+          (4)     There shall be a minimum of one foot of soil between the drip emitter
+                  and solid or fractured rock.
+(c)       Disposal Processes - Non-Standard - Low Pressure Dosed Drainfield -
+          Drainfield Criteria
+          (1)     There shall be a minimum of three feet of undisturbed soil between the
+                  sidewalls of multiple excavations.
+          (2)     Low pressure dose designs shall include consideration for elevation
+                  changes between laterals and friction losses in manifold piping
+                  between lateral lines.
+          (3)     When on sloping ground, supply manifolds shall connect to the highest
+                  lateral in a drainfield zone.
+(d)       Disposal Processes - Non-standard - Surface Irrigation Systems
+          (1)     Surface irrigation shall be conducted during the night-time hours,
+                  preferably just before sunrise.
+          (2)     Consideration must be given towards controlling run-off from the
+                  disposal area during rain events.
+          (3)     The minimum setback to a property line is 25 feet.
+(e)       Disposal Processes - Non-Standard - Soil Substitution Drainfields. Soil
+          Substitution beds are required to use pressure dose application. Pipe and
+          orifice spacing for the distribution piping is to be the same as for current
+          mound design requirements.
+(f)       Pipe Bedding - Pipes such as sewer pipes from the structure to the treatment
+          facility and from the treatment facility to the disposal component shall be
+          bedded with four inches of Class lb, Class II, or Class Ill soil with less than
+          30% gravel. The bedding soil shall be free of organic material and any rocks
+          or grains larger than ½ inch.
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                  Page 15 of 24
+(g)       Pump Tank Sizing - Pump tank shall be sized to provide at least one full day
+          of flow above the alarm on setting unless dual pumps are used per
+          requirements of 30 Texas Administrative Code 285.34(b)(3).
+(h)       Installations on Slopes Exceeding 10%. Drainfields with finished grades
+          exceeding 10% shall either provide erosion control matting or 80% vegetative
+          cover prior to final inspection.
+
+[448.038 – 448.050 Reserved for Expansion]
+
+Subchapter C.
+
+448.051   Local Administrative Procedures
+(a)       This Subchapter sets forth procedures that must be followed by persons who
+          are applying for a Permit to Construct or a License to Operate an OSSF. This
+          Subchapter also sets out the County's enforcement authority.
+(b)       The Local Administrative Procedures set forth in this Subchapter are
+          designed to further the ability of the Permitting Authority in assuring that a
+          person does not:
+          (1)     install, construct, alter, extend, or repair an OSSF without obtaining a
+                  Permit to Construct from the Permitting Authority;
+          (2)     operate or maintain an OSSF or discharge (includes deposit, conduct,
+                  drain, throw or otherwise release or dispose of wastewater or effluent,
+                  or to allow any of these acts) sewage or sewage effluent into an OSSF
+                  without obtaining a License to Operate from the Permitting Authority; or
+          (3)     cause, permit or allow the operation of or the maintenance of an OSSF
+                  in a manner that will cause, or may tend to cause pollution, injury to the
+                  public health, or nuisance conditions.
+
+448.052   Enforcement
+In order to enforce this chapter, the Permitting Authority is authorized to:
+          (1)     enter private property to inspect or monitor incipient or existing OSSFs
+                  at all reasonable times and at any time there is reasonable cause to
+                  believe a violation of this chapter has been committed or is being
+                  committed. Notwithstanding the foregoing, the Permitting Authority or
+                  TCEQ may inspect an on-site sewage system using aerobic treatment
+                  at any time.
+          (2)     order the work being done on an OSSF in violation of this chapter to be
+                  stopped by notice in writing of the suspension or revocation of the
+                  permit to the person doing or causing the work to be done.
+          (3)     issue a written order to a person to immediately cease using any
+                  OSSF causing pollution or constituting a nuisance, or otherwise
+
+
+Amendments added through 11/28/2023, Item 33                                    Page 16 of 24
+                   operating in violation of this chapter, and may seek legal process to
+                   enforce its orders.
+          (4)      revoke a License to Operate an individual onsite wastewater system if
+                   the system for which it has been issued is being operated in violation
+                   of this chapter, is not being operated within the manufacturer's
+                   specifications, does not have a valid maintenance contract when one is
+                   required, or becomes a public nuisance. A Notice of Violation for
+                   inappropriate operation shall first be issued by Travis County. If the
+                   violation for which the property owner is cited is not corrected within
+                   the time specified in the Notice of Violation, Travis County may revoke
+                   the License to Operate.
+          (5)      take any other action authorized by law to enforce local, state, and
+                   federal rules relating to OSSFs within the County's jurisdictional area.
+
+448.053   Notice
+(a)       Unless otherwise specified, any notice prepared by the County may be given
+          by hand delivery or by US Mail. Notice by the County may also be
+          accomplished by posting a sign on the property to which the notice refers.
+(b)       Any notice that is required to be sent to the County must be given by:
+          (1)      hand delivery or overnight courier to the Permitting Authority at 700
+                   Lavaca, Suite 500, Austin, Texas 78701,
+          (2)      United States Mail, postage prepaid, return receipt requested, to the
+                   following address:
+                          Travis County Transportation and Natural Resources
+                          Department On-Site Wastewater Program, P.O. Box 1748
+                          Austin, Texas 78767
+
+448.054   Permit to Construct and License to Operate.
+To facilitate the efficient implementation of this chapter:
+          (1)      The Permit to Construct is limited to the authorization to install,
+                   construct, alter, extend, or repair an OSSF in accordance with the
+                   planning materials approved by the Permitting Authority. It does not
+                   include authorization to operate the OSSF.
+          (2)      The License to Operate is not included in the Permit to Construct, but
+                   will be issued upon certification by the designer of record and final
+                   approval of construction by the Permitting Authority. The License to
+                   Operate will allow an OSSF to be operated in accordance with the
+                   approved planning materials for the discharging of sewage into the
+                   facility for treatment and disposal or reuse.
+          (3)      Because wastewater collection systems provide greater public health
+                   protection than 055 f=s, the Permitting Authority may elect to not issue
+
+
+Amendments added through 11/28/2023, Item 33                                    Page 17 of 24
+                  a Permit to Construct if the Permitting Authority determines that any
+                  portion of the proposed OSSF is located within 500 feet of the
+                  boundary of an area served by a private or public wastewater
+                  collection system that would, in the opinion of the Permitting Authority,
+                  be legally and technically feasible for the OSSF to connect to.
+
+448.055   Variance Procedures
+Variances from this chapter may be granted as provided in this subsection.
+          (1)     Requests for variances from this chapter shall be considered on an
+                  individual basis in accordance with the criteria specified in 30 Texas
+                  Administrative Code Section 285.3(c) and where site conditions (such
+                  as lot size, separation distance and setbacks) are such that no
+                  alternative that complies with this chapter can be found.
+          (2)     The Commissioners Court authorizes the Permitting Authority to grant
+                  variances involving exceptions to technical construction standards or
+                  local setback and separation distances more stringent than State
+                  standards as long as the variance granted results in a system which
+                  ensures public health protection equivalent to that provided under the
+                  TCEQ Rules. The Permitting Authority is authorized to grant
+                  administrative variances, including, for example, a variance to allow
+                  the construction of an OSSF in a drainage easement if the applicant
+                  has taken concrete steps to vacate the easement and there is no
+                  known opposition to the vacation of the drainage easement. The
+                  Permitting Authority may refer any request for variance to the
+                  Commissioners Court for direction.
+          (3)     A person desiring a variance to any requirement of this chapter shall
+                  file a written request with the Permitting Authority, stating the specific
+                  provision from which a variance is requested, and including any
+                  information which the requestor feels is pertinent to the request.
+          (4)     In granting a variance, the Commissioners Court or the Permitting
+                  Authority may specify terms and conditions determined to be
+                  necessary or advisable to ensure equivalent public health protection,
+                  such as requiring certain treatment levels, monitoring equipment, and
+                  procedures for design and/or operating and/or maintenance. The
+                  owner of the property shall allow the Permitting Authority to enter the
+                  property for the purpose of inspecting the facility at any reasonable
+                  time to ascertain that conditions are met.
+          (5)     Requests for variances requiring approval by the Commissioners Court
+                  will be submitted for Court consideration as follows:
+                  (A)     The Permitting Authority shall review the request within 30 days
+                          of the completed request, formulate a recommendation to the
+                          Court, and make a written reply either requesting additional
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                     Page 18 of 24
+                         information or notifying the applicant of a Court date and of the
+                         Permitting Authority's recommendation to the Court.
+                  (B)    Notwithstanding any other provision of this chapter, if the
+                         variance request is made in conjunction with an application for
+                         final plat approval under Chapter 482, Travis County Code, the
+                         request must be reviewed, acted on, and appealed within the
+                         time periods established under Chapter 482 in lieu of this
+                         chapter.
+          (6)     Procedures for consideration of requests for variances that may be
+                  granted by the Permitting Authority will be as follows:
+                  (A)   Not later than 30 days after the receipt of a complete request for
+                        variance, the Permitting Authority shall review the request and
+                        reply to the applicant in writing, granting or denying the request,
+                        or requesting additional information. If the Permitting Authority
+                        does not reply in writing to an applicant within 30 days after
+                        receiving the applicant's request for variance, the request is
+                        denied.
+                  (B)   A person aggrieved by an action or decision of the Permitting
+                        Authority regarding the person's request for a variance may,
+                        within 30 days after the date of the document giving notice of
+                        the action or decision, or within 30 days after the action if no
+                        document is given, appeal to the Commissioners Court. The
+                        appeal shall be initiated by filing a written objection with the
+                        Permitting Authority. The written objection shall state the
+                        specific action or decision being appealed, the relief requested,
+                        the person's reasons for requesting the relief, and a copy of the
+                        document, if any, giving notice of the action or decision
+                        appealed.
+                  (C)   The Permitting Authority shall notify the County Judge who shall
+                        place the matter on the agenda of the Commissioners Court in
+                        accordance with usual Court procedures. The Permitting
+                        Authority shall provide written notice of the time and place of the
+                        hearing before the Court to the person making the appeal.
+                  (D)   The Commissioners Court shall review the matter in the
+                        scheduled hearing, considering the materials submitted by the
+                        Permitting Authority and the person seeking the appeal, as well
+                        as any information and evidence that it considers relevant. The
+                        Commissioners Court shall render its decision no later than ten
+                        days after the conclusion of the hearing. If the Commissioners
+                        Court does not approve a request for variance within ten days
+                        after the hearing, the request is denied unless the
+                        Commissioners Court schedules an additional hearing and
+                        approves the variance at the subsequent hearing.
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                   Page 19 of 24
+          (7)     The Permitting Authority shall keep complete records of variances
+                  granted. The Permitting Authority shall make periodic reports to the
+                  Commissioners Court including locations, descriptions of the variances
+                  requested, the reasons for the variances, and Permitting Authority's
+                  justifications for the granting of the variances, as specified by the
+                  Court.
+
+448.056   Submission of Planning Materials
+The following planning materials, which must be prepared by a professional engineer or
+registered sanitarian, must be submitted with an application for a preliminary plan, final
+plat, or when proposing a manufactured housing community, condominium
+development, multi-unit residential development, business park, or other similar use that
+will use OSSFs for sewage disposal:
+          (1)     An accurate plan that complies with all applicable State of Texas and
+                  County standards and that shows each existing or proposed lot, its
+                  size, source of water, and the area available for disposal fields.
+          (2)     The geographic location of the development or subdivision and its
+                  proximity to streams and lakes.
+          (3)     Identification on the plan of the location of recharge features, which
+                  features must be indicated on the final plat.
+          (4)     Identification on the plan of planned or existing well locations and a
+                  sanitary zone with a 100-foot radius around private wells, and a 150-
+                  foot radius around public wells, within which no effluent disposal fields
+                  may be sited as set forth in this chapter.
+          (5)     A comprehensive drainage and 100-year floodplain impact plan.
+          (6)     Identification on the topographic map or plan of the 100-year floodplain
+                  and the floodway.
+          (7)     A report detailing the types of OSSFs to be considered and their
+                  compatibility with area-wide drainage and groundwater.
+          (8)     Results of a site evaluation for soil suitability in accordance with
+                  section 448.035 of this chapter based upon a number of soil profile
+                  holes which will provide a representative sample of soils. Profile holes
+                  shall be to a depth of five feet or to a limiting condition, whichever is
+                  shallower. Test locations shall be evenly distributed throughout the
+                  development and be representative of the soils within the
+                  development. Where soil conditions are variable, additional soil profile
+                  hole testing may be required in test sites determined by the Permitting
+                  Authority. An analysis of each soil layer in each profile hole shall be
+                  provided including soil classification, structure, gravel content
+                  percentage, and presence of mottles and/or groundwater.
+          (9)     Depiction on the plan of the areas and depths of scalping or fill and
+                  road cuts for the purpose of addressing setback requirements.
+
+
+Amendments added through 11/28/2023, Item 33                                    Page 20 of 24
+          10)     Notification on the plan of the presence of mottled soils or water in soil
+                  profile holes indicating the groundwater table is less than five feet
+                  below the surface as the surface exists or as it will be after grading and
+                  filling that may be required in the development.
+          (11)    Depiction on the plan of areas of greater than 30% slope with a
+                  cumulative total of areas with greater than 30% per lot.
+          (12)    Any additional planning materials that the Permitting Authority and/or
+                  staff of the Permitting Authority determine are necessary to
+                  demonstrate the applicant's compliance with the requirements of this
+                  chapter.
+
+448.057   Procedures for Reviewing Planning Materials
+(a)       Preliminary Review. Preliminary review may be requested by the applicant,
+          including scheduling an on-site inspection by the Permitting Authority. To
+          obtain preliminary review, an applicant shall submit at least the materials
+          listed in Section 448.056(a), (b), (d), and (f).
+(b)       Final Review. The Permitting Authority shall review the final planning
+          materials for compliance with this chapter and recommendations made for the
+          preliminary review, if any. Changes in the planning materials may require
+          additional review. Survey and staking of individual lots is required before the
+          final review.
+(c)       Final Plat Approval. If reviewed in conjunction with an application for final plat
+          approval, the Permitting Authority shall make a written recommendation to the
+          Commissioners Court within 45 days of a proper and complete submittal of
+          planning materials.
+          (1)     Approval. If the recommendation is for approval of the subdivision as
+                  proposed for use with OSSFs, the Permitting Authority shall continue
+                  to process the plat, preliminary plan, or basic development permit for
+                  approval.
+          (2)     Approval with Conditions or Denial. If the recommendation is for
+                  approval with conditions or for denial, the applicant may appeal as
+                  provided in Chapter 482, Travis County Code.
+(d)       Limits of Approval. An approval recommendation under this subsection does
+          not constitute either a Permit to Construct or a License to Operate for a
+          specific OSSF.
+
+448.058   Permit to Construct
+(a)       Application.
+          (1)     Except for making emergency repairs that are authorized by 30 Texas
+                  Administrative Code Section 285.35, no person may construct, install,
+
+
+
+
+Amendments added through 11/28/2023, Item 33                                   Page 21 of 24
+                  repair, alter, or extend an OSSF unless the person has first obtained a
+                  Permit to Construct from the Permitting Authority.
+          (2)     In addition to other requirements, a property owner who seeks to have
+                  an OSSF constructed, installed, repaired, altered, or extended on that
+                  person's property shall submit a complete "Application for On-Site
+                  Sewage Facility Permit to Construct" to the Permitting Authority. The
+                  owner or an agent of the owner may seek information and/or
+                  assistance pertaining to the requirements for design of an OSSF for a
+                  specific property once application has been made.
+          (3)     To be considered administratively complete, an application must
+                  include all the information specified in the "Application for On-Site
+                  Sewage Facility Permit to Construct," including:
+                  (A)    construction planning materials that demonstrate that the
+                         proposed OSSF complies with this chapter. Construction
+                         planning materials that are prepared by a registered sanitarian
+                         or licensed professional engineer must include the signature
+                         and official seal of the professional as well as the date of
+                         preparation.
+                  (B)    the results of a site evaluation as required by section 448.035 of
+                         this chapter.
+                  (C)    the floor plan of all the structures serving as the generating unit
+                         shall be included with the application for a permit to construct an
+                         onsite wastewater system. Square footages, labels, and
+                         dimensions must be included for clarity.
+                  (D)    a statement stating that the site has been marked by a sign,
+                         visible from the road frontage, that is at least 12" x 24", bearing
+                         the street address.
+          (4)     An application must be accompanied by payment of required fees.
+(b)       Site Inspection.
+          (1)     After an administratively complete application has been received by
+                  the County, the Permitting Authority shall conduct an inspection of the
+                  site on which the OSSF is to be constructed, and shall make a finding
+                  on the issuance of a Permit to Construct, based upon the information
+                  in the complete application and any other information available to the
+                  Permitting Authority.
+                  (A)     Upon a finding by the Permitting Authority that construction may
+                          begin, the County will issue a Permit to Construct to the
+                          applicant. The applicant must post the permit in a conspicuous
+                          manner at the site at all times during construction.
+                  (B)     If the Permitting Authority determines that a Permit to Construct
+                          cannot be issued, the Permitting Authority shall notify the
+                          applicant in writing of the reasons why the permit cannot be
+                          issued.
+
+
+Amendments added through 11/28/2023, Item 33                                   Page 22 of 24
+          (2)     The construction, installation, extension, or repair of an OSSF shall be
+                  made in accordance with the approved design and requirements of the
+                  Permit to Construct.
+(c)       Construction Inspections.
+          (1)     The Permitting Authority shall inspect installations of OSSFs in
+                  accordance with the inspection schedule established in the Permit to
+                  Construct. Each type of system will have an included number of
+                  inspections given in the inspection schedule. Any additional
+                  inspections required will incur an additional fee per inspection.
+          (2)     Components of an OSSF may not be installed or covered until required
+                  inspections have been made and approval has been obtained from the
+                  Permitting Authority for that stage of construction.
+          (3)     The applicant or installer shall notify the Permitting Authority that an
+                  inspection is desired at least two working days, excluding weekends
+                  and County-designated holidays, before the need for each inspection.
+          (4)     The applicant or installer shall provide whatever reasonable assistance
+                  the Permitting Authority requests in order to make each inspection.
+          (5)     The inspection of drip emitters in place and uncovered is required
+                  except where drip emitters are installed by the "plowed-in" method.
+                  When "plowed-in" the connections of all drip emitter tubing to the
+                  header piping will be uncovered for inspection.
+
+448.059   License to Operate
+(a)       New OSSFs. After final inspection of a newly installed OSSF, the Permitting
+          Authority shall make a finding on whether to issue a License to Operate,
+          based upon the information obtained from the inspections and any other
+          information available to the Permitting Authority.
+(b)       Upon a finding that the use of the new OSSF will not cause pollution, injury to
+          the public health, or nuisance conditions and is not in conflict with this
+          chapter, other provisions of the Travis County Code, the Permitting Authority
+          will issue a License to Operate the OSSF.
+(c)       Upon a finding that a License to Operate cannot be issued, the Permitting
+          Authority shall notify the applicant in writing and shall include the reasons for
+          denying the issuance of a license.
+
+448.060   Affidavit Forms
+Sample affidavit forms for use under this chapter will be provided by the Permitting
+Authority. The maintenance affidavit must include the following language:
+          The OSSF shall be covered by a continuous service policy for the first two
+          years. After the initial two-year service policy, the owner of an aerobic
+
+
+
+Amendments added through 11/28/2023, Item 33                                    Page 23 of 24
+          treatment system for a single family residence shall either obtain a
+          maintenance contract within 30 days or maintain the system personally.
+
+448.061   Recording of Designated Representative's License Number
+The Designated Representative must record the Designated Representative's license
+number on all items prepared by the Designated Representative.
+
+
+
+
+Amendments added through 11/28/2023, Item 33                              Page 24 of 24
+

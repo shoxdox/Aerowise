@@ -1,0 +1,208 @@
+Maintenance of On-Site Sewage Facilities (Septic Systems) - Texas Commission on Environmental Quality - www.tceq.texas.gov
+Skip to Content
+About Us
+Contact Us
+Calendar
+Jobs
+Org Chart
+Sign Up for Updates
+ESPAÑOL
+Home
+Air
+Land
+Water
+Licenses
+Permits
+Reporting
+Event Calendar
+Sign Up for Updates
+About Us
+Contact Us
+Calendar
+Jobs
+Org Chart
+Search Site
+Search tceq.texas.gov
+Home
+Air
+Land
+Water
+Licenses
+Permits
+Reporting
+Questions or Comments:
+ossf@tceq.texas.gov
+Home
+Permits, Registrations, and Reporting
+OSSF
+Maintenance of On-Site Sewage Facilities (Septic Systems)
+Maintenance of On-Site Sewage Facilities (Septic Systems)
+Overview of proper On-Site Sewage Facility (OSSF) maintenance, including when  maintenance is required and what type of chlorine to use.  How to become an OSSF maintenance company.
+https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html
+https://www.tceq.texas.gov/@@site-logo/TCEQ-logo-header.png
+Maintenance of On-Site Sewage Facilities (Septic Systems)
+Overview of proper On-Site Sewage Facility (OSSF) maintenance, including when  maintenance is required and what type of chlorine to use.  How to become an OSSF maintenance company.
+Two years after the initial installation of your aerobic treatment unit, maintenance can be performed by homeowners for systems that use
+secondary treatment systems
+,
+non-standard treatment systems
+,
+drip irrigation
+, and
+surface application disposal.
+Note:
+Some permitting authorities have adopted more stringent requirements, which may require homeowner training or even a prohibition against homeowner maintenance. Please contact your local permitting authority to check for more stringent requirements. Contact information can be found on the
+On Site Activity Reporting System
+search site.
+Who can I contract with to do maintenance on my OSSF?
+The contract must be with a "licensed"
+maintenance provider
+. A maintenance provider is an individual person. At one time, TCEQ registered OSSF maintenance companies, but TCEQ no longer registers OSSF maintenance companies.
+What does the licensed maintenance provider do?
+The maintenance provider is responsible for fulfilling the requirements of the
+maintenance contract
+.
+At a minimum, the maintenance company or maintenance provider shall:
+Install a tag, or some other form of identification, on the system at the beginning of each maintenance contract;
+The identification shall either be punched or marked at the time of each visit, including responses to owner complaints, to provide the owner with a record of the visit.
+Inspect components of the system and note whether or not every component is working during each site visit;
+If a component is not operating properly, the property owner must have it repaired.
+Test the system as required in
+30 TAC §285.91(4)
+;
+Submit a report to the permitting authority and owner at least once every four months [see
+30 TAC §285.90(3)
+for a sample report];
+The reporting frequency may be reduced to once every
+six months
+if the system uses an electronic monitor, automatic radio or telephone to notify the maintenance provider of your system or component failure and to monitor the amount of disinfection in the system;
+The maintenance provider is responsible for ensuring that the electronic monitoring and automatic radio or telephone access systems are working properly.
+Your report must include all responses to property owner complaints and electronic monitoring notices;
+Your report must be submitted within 14 days after the test is performed.
+What should the contract specify?
+The maintenance contract shall specify the following:
+List items that are covered by the contract;
+Specify a time frame in which the maintenance provider will visit the property in response to a complaint by the property owner regarding the operation of the system;
+Specify the name of the individual employed by the maintenance company who will be performing the maintenance on your system;
+Identify the frequency of routine maintenance and the frequency of the required testing and reporting; and
+Identify who is responsible for maintaining the disinfection unit.
+How do I become a licensed maintenance provider?
+A licensed maintenance provider is defined as a person who is in the business of maintaining OSSFs using aerobic treatment. In order to obtain the license, a person must:
+Hold a current Installer Class II (OSII),
+OR
+license,
+Hold a Class C or higher Wastewater Operator license
+OR
+.
+Have successfully completed three years as a
+registered
+maintenance provider(or maintenance technician).
+The individual must also:
+successfully complete the TCEQ-approved Basic Maintenance Provider course;
+successfully complete a TCEQ-approved Advanced Aerobic System course;
+pass the licensing exam;
+AND
+submit a completed application for a licensed maintenance provider and a $111 application fee to the Texas Commission on Environmental Quality at
+New Licenses or Registrations
+.
+How do I become a registered maintenance technician?
+Every individual performing maintenance under a licensed maintenance provider must be a registered maintenance technician,
+AND
+successfully complete the TCEQ-approved Basic Maintenance Provider course;
+AND
+work directly under the supervision of a licensed maintenance provider;
+AND
+submit a completed Application for Registration as an On-Site Sewage Facility(OSSF) Maintenance Technician and a $111 application fee to the Texas Commission on Environmental Quality at
+New Licenses or Registrations
+.
+What laws and rules govern OSSF maintenance?
+The statute regarding this requirement is
+Texas Health and Safety Code Section 366.0515
+.
+The rule regarding the specifics of OSSF maintenance is
+30 TAC §285.7
+.
+What type of chlorine should I use for wastewater disinfection?
+When disinfection of secondarily treated wastewater effluent is required and you are using chlorine tablets, it is important that you use a chlorine tablet that is made from calcium hypochlorite and is certified for wastewater disinfection by EPA. They are very reactive and will kill 99% of the bacteria present in the effluent within 10 minutes. Follow all warning and precaution statements of the chlorine tablet manufacturer to protect yourself and the system equipment.
+WARNING:
+DO NOT
+use swimming pool chlorine tablets in your disinfection system. The chlorine in these tablets are made from trichloroisocyanuric acid. Swimming pool tablets dissolve more slowly than calcium hypochlorite and do not thoroughly disinfect the effluent. Additionally, there is a danger of explosion using swimming pool tablets since the tablets will release an explosive gas called nitrogen chloride due to the fact that they are not totally immersed in water at all times while in use. They are not approved by EPA for wastewater effluent disinfection.
+Should I pump my septic tank?
+For conventional systems, it is recommended that you pump your septic tank every three to five years to prevent short circuiting of the treatment process. Access the online database to obtain a list of
+registered sludge transporters
+in your area. For aerobic treatment units, it depends on the depth of sludge and manufacturer's recommendations.
+Who can I contact for more information?
+The following page provides e-mail addresses and phone numbers of staff who can assist with technical information, licensing, complaints, and other issues regarding on-site sewage facilities (septic systems).
+On-site Sewage Facility Program Contacts
+On-Site Sewage Facilities (Septic Systems) Home
+Information for Homeowners
+Information for Licensees
+Information for Regulators
+On-Site Activity Reporting System (OARS)
+How are we doing? Take our customer satisfaction survey
+Related Content
+Contact TCEQ's OSSF program
+:
+E-mail addresses and phone numbers for assistance with technical information, licensing, complaints, and other issues about on-site sewage facilities (septic systems).
+External Quick Links
+EPA Septic Systems Guidance, Policy, and Regulations
+TX Onsite Wastewater Association
+TX Department of Licensing and Regulation’s Sanitarian Registration Program
+TX Board of Professional Engineers
+Texas A&M Engineering Extension Service
+TAMU On-Site Sewage Facilities (OSSF)
+OSSF Program Responsibilities
+Home
+About Us
+Online Services
+Environmental Emergencies
+PROGRAMS
+Air
+Land
+Water
+Permits
+Licenses
+Reporting
+DOCUMENTS
+Data and Records
+Rules
+Forms
+Publications
+Maps
+Public Notices
+CONNECT
+Contact Us
+Working with Us
+For TCEQ
+Employees
+Sign Up for Updates
+Twitter
+Facebook
+Instagram
+LinkedIn
+YouTube
+Site Help
+|
+Disclaimer
+|
+Site Policies
+|
+Accessibility
+|
+Website Archive
+|
+Our Compact with Texans
+|
+TCEQ Homeland Security
+Statewide Links:
+Texas.gov
+|
+Texas Homeland Security
+|
+TRAIL Statewide Archive
+|
+Texas Veterans Portal
+© 2002-
+Texas Commission on Environmental Quality
+Last Modified
+2026-03-03

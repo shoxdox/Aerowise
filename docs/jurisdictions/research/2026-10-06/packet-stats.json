@@ -1,0 +1,16 @@
+{
+  "source_records": 57,
+  "unique_original_pdfs": 35,
+  "unique_scanned_or_hybrid_pdfs": 16,
+  "unique_pdfs_with_ocr": 12,
+  "baseline_unresolved_items": 56,
+  "findings": 34,
+  "disposition_counts": {
+    "partial": 16,
+    "conflict": 3,
+    "implementation_gap": 7,
+    "public_evidence": 10,
+    "not_resolved": 12,
+    "access_blocked": 8
+  }
+}
