@@ -483,3 +483,11 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
 4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
 5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
+
+## 2026-10-06 · W7.1 Stripe Connect on staging
+
+- **Staging stays the demo; named services go live in test mode.** Staging runs `DEMO_MODE=true` (stand-ins for everything, nightly reset), and W7 needs real accounts there. Rather than a third environment, `DEMO_LIVE_SERVICES` lists the services the demo uses for real. Each is allowed only in a mode where nothing real happens, checked at startup: Stripe only with a test-mode key. QuickBooks (sandbox only) and Twilio (texts redirected to one test phone) join the list in W7.2 and W7.3. The banner's "Nothing is sent" stays true for Stripe test mode.
+- **Staging refuses live Stripe keys outright**, with or without demo mode, and production refuses `DEMO_LIVE_SERVICES`.
+- **One Connect webhook endpoint.** With direct charges every event Aerowise reads (checkout, refunds, `account.updated`) happens on a connected account, so only the "Connected accounts" endpoint is needed; `STRIPE_WEBHOOK_SECRET` still takes several secrets for rotation.
+- **Checkout pages last 23 hours, not 24.** Stripe's 24-hour maximum is counted on its clock.
+- **The recorded run is a manual checklist plus the `stripe_events` table.** No Claude session can reach staging or Stripe from its sandbox, so Justin runs the steps in `INTEGRATIONS.md` and the webhook log on the server is the record.

@@ -18,10 +18,11 @@ const db = createDb(url);
 const production = process.env.NODE_ENV === "production";
 // Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
 const store = storeFromEnv(process.env);
-// The same outside services as the API; DEMO_MODE=true makes every one a test stand-in.
+// The same outside services as the API; DEMO_MODE=true makes every one a test stand-in,
+// except those DEMO_LIVE_SERVICES switches to their real test-mode accounts.
 // Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
 const providers = providersFromEnv({ db, store, env: process.env, production });
-log.info({ demo: providers.demo, email: providers.mail.name, redirected: !!(process.env.EMAIL_REDIRECT_TO && providers.mailProvider), errorTracking: reporter.name }, "providers");
+log.info({ demo: providers.demo, demoLive: providers.demoLive, email: providers.mail.name, redirected: !!(process.env.EMAIL_REDIRECT_TO && providers.mailProvider), errorTracking: reporter.name }, "providers");
 // Fictional rules (the example county) are for development, tests and the demo only.
 await syncRulesets(db, undefined, { includeFictional: !production || providers.demo });
 const ctx = {
