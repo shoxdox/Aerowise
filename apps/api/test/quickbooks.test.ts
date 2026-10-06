@@ -201,6 +201,21 @@ describe("sending invoices and payments", () => {
     expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced", remoteState: "deleted" });
   });
 
+  it("leaves alone a refunded payment that was deleted in QuickBooks", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await synced(t);
+    const inv = await issue(t, cs.nora.id);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    const sent = (await link("payment", paid.payments[0].id))!;
+    await new TestQuickBooksProvider(ctx.db, () => ctx.now).company(realm).deletePayment(sent.externalId!, sent.syncToken!);
+    await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 200, reason: "Overcharged" });
+    await runWorker(ctx);
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "ignored", syncError: "The payment was deleted in QuickBooks" });
+    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(0);
+    expect(Object.values((await companies().get(realm)).invoices)[0]!.balanceCents).toBe(30000);
+  });
+
   it("sends a payment refunded before it reached QuickBooks at what was kept, or not at all", async () => {
     const t = await createTenant(ctx, "Org A");
     const { cs, realm } = await synced(t);
