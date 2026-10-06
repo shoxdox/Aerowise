@@ -1,0 +1,115 @@
+{
+  "jurisdiction": {
+    "key": "tx-travis-county",
+    "state": "TX",
+    "authorityName": "Travis County Transportation and Natural Resources, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2024-07-16",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Travis County Code Chapter 448 (amendments through 2023-11-28, effective 2024-07-16), Travis County's affidavit to the public for OSSFs requiring maintenance, its permit enforcement page, 30 TAC 285.7 and TCEQ's OSSF maintenance page. Travis County publishes no way to submit maintenance reports. See docs/jurisdictions/tx-travis-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": "2024-07-16",
+      "basis": "Travis County Code Chapter 448 as amended 2023-11-28 (Item 33), effective 2024-07-16, per the header of the county's published copy. The chapter was first adopted 2014-12-30, effective 2015-02-23."
+    },
+    "sources": [
+      {
+        "title": "Travis County Code Chapter 448, Rules of Travis County, Texas for On-Site Sewage Facilities",
+        "url": "https://www.traviscountytx.gov/images/commissioners_court/Doc/county-code/subtitle19/Ch448_Rules_On-Site_Sewage_Facilities.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Amendments through 2023-11-28, effective 2024-07-16. 448.005: applies to unincorporated Travis County except areas under another local entity's order and areas annexed by the City of Austin for the limited purpose of public health; also Webberville, Manor, Mustang Ridge, San Leanna, the part of Leander in Travis County, and entities with a TCEQ delegation and an interlocal agreement. 448.034(e): reports also include unauthorized alterations, the spray area's condition (if applicable), the Permit to Construct number, the provider's printed name and signature, the OSSF's address, and the provider's address, business phone and emergency phone. 448.034(f): the same for contracts. No submission address or deadline. Read through a page summarizer."
+      },
+      {
+        "title": "Travis County: Affidavit to the Public for OSSF Requiring Maintenance",
+        "url": "https://www.traviscountytx.gov/images/tnr/Docs/SP-04.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Continuous service policy for the first two years; then a single-family owner obtains a maintenance contract within 30 days or maintains the system personally. No submission details. Undated."
+      },
+      {
+        "title": "Travis County TNR: Permit Enforcement",
+        "url": "https://www.traviscountytx.gov/tnr/development-services/permitting-center/permit-enforcement",
+        "retrievedOn": "2026-10-06",
+        "note": "'LCRA has OSSF permitting authority for properties within 1,000' of Lake Travis.' Phone 512-854-4215. Nothing on maintenance reports."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test; technicians must be registered."
+      }
+    ],
+    "unresolved": [
+      "Travis County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+      "Which addresses Travis County covers is set by city limits, the City of Austin's limited-purpose annexations, LCRA's area within 1,000 feet of Lake Travis and other entities' orders; every site needs a reviewed assignment.",
+      "Chapter 448 requires every report to list unauthorized alterations and the provider's emergency phone number. Aerowise's report has neither field; the office must add them by hand until it does.",
+      "Chapter 448 was read through a page summarizer; confirm the quoted lists against the county's copy.",
+      "Travis County publishes no acknowledgment of a received report or contract.",
+      "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Travis"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Travis County covers unincorporated Travis County plus Webberville, Manor, Mustang Ridge, San Leanna and the Travis County part of Leander. It does not cover the City of Austin (including its limited-purpose annexations) or LCRA's area near Lake Travis (check LCRA's map first). If unsure, call Travis County TNR at 512-854-4215. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Travis County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "30 TAC 285.7(d)(2) (read 2026-10-06): a copy of the signed contract goes to the permitting authority 30 days before the service policy or current contract expires. Travis County publishes no address for it, so contracts are filed by hand. Chapter 448.034(f) lists what the contract must show."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Travis County's chapter adds nothing."
+    }
+  },
+  "inspection": {
+    "requiredFields": [
+      "dispersal_field"
+    ],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Travis County describes no reply to maintenance reports or contracts."
+  }
+}
