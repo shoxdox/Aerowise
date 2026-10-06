@@ -365,8 +365,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         severity: dueOn < today ? ("high" as const) : ("medium" as const),
         title: "Fix, retest and report again",
         detail:
-          `The report showed low or no chlorine, or an item that failed. ${r.authorityName} wants the system fixed, retested and reported again within ${r.withinDays} days of that report ` +
-          `(${r.sent ? `sent ${r.reportOn}` : `counted from the report's date, ${r.reportOn}, until it is sent`}). ` +
+          `The report showed low or no chlorine, or an item that failed. ${r.authorityName} wants the system fixed, retested and reported again within ${r.withinDays} days of the previous report ` +
+          `(${r.sent ? `sent ${r.reportOn}` : `counted from the report's date, ${r.reportOn}, until it is sent`}; Aerowise's reading, not confirmed by ${r.authorityName}). ` +
           (r.retestOn ? `Retest booked for ${r.retestOn}.` : "Book the retest as an extra visit; the contract's visits stay as they are."),
         dueOn,
         site: site(r),

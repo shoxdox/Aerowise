@@ -320,13 +320,27 @@ export const rulesetRules = z.object({
      * first within `firstWithinDays` of the start, the next every `intervalMonths` from the
      * start, and the last in the `lastWithinDaysOfEnd` days before the end.
      */
-    contractVisits: z.object({ firstWithinDays: z.number().int().min(1).max(90), lastWithinDaysOfEnd: z.number().int().min(1).max(90), note: z.string().max(1000) }).optional(),
+    contractVisits: z
+      .object({
+        firstWithinDays: z.number().int().min(1).max(90),
+        lastWithinDaysOfEnd: z.number().int().min(1).max(90),
+        note: z.string().max(1000),
+        /** How Aerowise reads wording the authority has not confirmed, shown to the office with the schedule. */
+        unconfirmed: z.string().max(500).optional(),
+      })
+      .optional(),
     /**
      * A report showing low chlorine or a system not working needs a fix, a retest and a new
      * report within this many days of that report (Hays 10.V.4). The extra report never moves
      * the regular visits.
      */
     correctiveReport: z.object({ withinDays: z.number().int().min(1).max(90), note: z.string().max(1000) }).optional(),
+    /**
+     * The authority lets a site's permit set the interval instead ("unless otherwise specified
+     * on the permit"). A site's recorded permit interval then replaces `intervalMonths` and
+     * any monitoring allowance.
+     */
+    permitOverride: z.object({ note: z.string().max(1000) }).optional(),
   }),
   /** Lab tests the authority requires on a schedule, such as annual BOD and TSS. */
   labTests: labTestRule.optional(),
@@ -395,9 +409,11 @@ export function verifiedWith(rules: RulesetRules) {
 /**
  * The longest the authority allows between inspections of a residential or commercial
  * system, and of one with qualifying electronic monitoring on record where the authority
- * allows longer for those.
+ * allows longer for those, or the site's permit interval where the authority defers to the permit.
  */
-export function serviceIntervalMonths(rules: RulesetRules, customerType: "residential" | "commercial", monitored = false) {
+export function serviceIntervalMonths(rules: RulesetRules, customerType: "residential" | "commercial", monitored = false, permitIntervalMonths: number | null = null) {
+  // Where the authority lets the permit decide, a recorded permit interval is the rule.
+  if (rules.service.permitOverride && permitIntervalMonths) return permitIntervalMonths;
   const base = (customerType === "commercial" ? rules.service.commercialIntervalMonths : undefined) ?? rules.service.intervalMonths;
   const m = rules.service.monitored;
   return monitored && m?.appliesTo.includes(customerType) ? Math.max(base, m.intervalMonths) : base;

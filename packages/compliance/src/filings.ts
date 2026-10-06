@@ -250,21 +250,20 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
 
 /**
  * What decides the site's interval on a date: whether the site is residential or commercial,
- * and whether it had qualifying electronic monitoring.
+ * whether it had qualifying electronic monitoring, and any interval its own permit sets.
  */
 async function siteServiceBasis(db: Executor, organizationId: string, siteId: string, onDate: string) {
-  const [customerType, monitored] = await Promise.all([siteCustomerType(db, organizationId, siteId), siteMonitoredOn(db, organizationId, siteId, onDate)]);
-  return { customerType, monitored };
+  const [site, monitored] = await Promise.all([siteTypeAndPermit(db, organizationId, siteId), siteMonitoredOn(db, organizationId, siteId, onDate)]);
+  return { customerType: site?.customerType ?? "residential", monitored, permitIntervalMonths: site?.permitIntervalMonths ?? null };
 }
 
-/** The site's own type ("commercial" belongs to the property, not the plan). */
-async function siteCustomerType(db: Executor, organizationId: string, siteId: string) {
-  const s = await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", siteId).executeTakeFirst();
-  return s?.customerType ?? "residential";
+/** The site's own type ("commercial" belongs to the property, not the plan) and permit interval. */
+async function siteTypeAndPermit(db: Executor, organizationId: string, siteId: string) {
+  return db.selectFrom("sites").select(["customerType", "permitIntervalMonths"]).where("organizationId", "=", organizationId).where("id", "=", siteId).executeTakeFirst();
 }
 
 /** Deadline, next due date and method for an inspection filing under a resolved jurisdiction. */
-function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { customerType: "residential" | "commercial"; monitored: boolean }) {
+function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { customerType: "residential" | "commercial"; monitored: boolean; permitIntervalMonths: number | null }) {
   const r = resolved.rules;
   return {
     jurisdictionId: resolved.jurisdictionId,
@@ -275,7 +274,7 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { 
     deadlineOn: addDays(completedOn, r.filing.deadlineDays),
     deadlineBasis: `${r.filing.deadlineDays} days after the inspection on ${completedOn}`,
     warningDays: r.filing.warningDays,
-    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored)),
+    nextDueOn: addMonths(completedOn, serviceIntervalMonths(r, basis.customerType, basis.monitored, basis.permitIntervalMonths)),
     ...feeColumns(r, "inspection_report"),
   };
 }
@@ -298,7 +297,9 @@ async function contractVisitDeadline<T extends { deadlineOn: string; deadlineBas
   return {
     ...terms,
     deadlineOn: visit.dueOn,
-    deadlineBasis: `${resolved.authorityName} counts report due dates from the contract's start: visit ${visit.sequence}'s test and report are due by ${visit.dueOn}`,
+    deadlineBasis:
+      `${resolved.authorityName} counts report due dates from the contract's start: visit ${visit.sequence}'s test and report are due by ${visit.dueOn}` +
+      (resolved.rules.service.contractVisits?.unconfirmed ? ` (${resolved.rules.service.contractVisits.unconfirmed})` : ""),
   };
 }
 
@@ -1042,7 +1043,8 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
     await move(trx, f, "needs_review", a.at, { reviewReason: problem }, null, a.actorUserId);
     return;
   }
-  const terms = termsFor(resolved, completedOn, await siteServiceBasis(trx, f.organizationId, insp.siteId, completedOn));
+  let terms = termsFor(resolved, completedOn, await siteServiceBasis(trx, f.organizationId, insp.siteId, completedOn));
+  if (resolved.rules.service.contractVisits) terms = await contractVisitDeadline(trx, f.organizationId, f.inspectionId!, resolved, terms);
   await move(trx, f, "pending", a.at, { ...terms, reviewReason: null }, { type: "filing_rechecked", summary: `Filing checked again for ${resolved.authorityName}` }, a.actorUserId);
   f.rulesetId = terms.rulesetId;
   f.jurisdictionId = terms.jurisdictionId;

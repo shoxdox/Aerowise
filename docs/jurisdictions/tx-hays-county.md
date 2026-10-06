@@ -8,9 +8,9 @@ Each of these is open in `profile.unresolved`. Hays County Development Services 
 
 1. **Where do maintenance providers send inspection reports and contracts?** No filing channel is published. The inquiry address above and MyGovernmentOnline (which the fee schedule names for applications and documents) are not said to take recurring reports. This is the blocker: once the county names a channel, a new ruleset version can send them.
 2. **Which cities run their own OSSF program?** The order covers all of Hays County except areas under another entity's order, and names none. Until the county lists them, every Hays site needs a person to check it.
-3. **Does "within 14 days of the end of the contract period" mean the 14 days before the end?** Aerowise reads it that way. Also: can one visit be both the last of a contract and the first of its renewal?
+3. **Does "within 14 days of the end of the contract period" mean the 14 days before the end?** Aerowise reads it that way, and says so wherever it applies the reading: the warning before a fourth visit is added, and a contract visit's report deadline. Also: can one visit be both the last of a contract and the first of its renewal?
 4. **Is each visit's report due by that visit's due date?** The order says report due dates are "determined from the start date of the contract". Aerowise makes a contract visit's report due by the visit's due date when that comes before 14 days after the inspection.
-5. **What starts the 10-day corrective clock, and what is the "required chlorine residual"?** Aerowise counts from the date the report was sent (or the report's own date until it is sent), and flags a zero reading, a chlorine device needing service or any failed item.
+5. **What starts the 10-day corrective clock, and what is the "required chlorine residual"?** The order says "within ten (10) days of the previous report". Aerowise reads the previous report's date as the day it was sent (or the report's own date until it is sent), says so on the inbox item, and flags a zero reading, a chlorine device needing service or any failed item.
 6. **Section 10.V.6 holds a same-provider renewal until every report from the previous period is in, but the renewal is due before the last report can exist.** Aerowise counts only the reports due by the day of filing. Is that what the county does?
 7. **When does the $50 maintenance contract late fee apply?** The 2026 fee schedule lists it without a trigger, so Aerowise charges nothing.
 8. **How do providers register with the county each year (10.V.3)?** It is free and ends December 31, but the form is not published.
@@ -20,7 +20,9 @@ Each of these is open in `profile.unresolved`. Hays County Development Services 
 - key: `tx-hays-county`, ruleset v2 (v1 kept as published; v2 applies from the same day, 2026-10-06)
 - state: TX
 - authority: Hays County Development Services, On-Site Sewage Facilities
-- requirement in effect: 2014-02-18, the TCEQ Executive Director's approval (PDF pp. 1–2 of the county's copy, read directly). Section 17: in force from its approval and the TCEQ's. The county adopted it 2013-06-04. Later amendments were not checked. Aerowise applies the ruleset from 2026-10-06; nothing earlier is backdated.
+- requirement in effect (the legal date): 2014-02-18, the TCEQ Executive Director's approval (PDF pp. 1–2 of the county's copy, read directly). Section 17: in force from its approval and the TCEQ's. The county adopted it 2013-06-04. Later amendments were not checked.
+- rule activation in Aerowise (a different thing): `effectiveFrom` 2026-10-06, the day the profile was written. It decides only which Aerowise ruleset a new contract or filing uses; it says nothing about when the county's rule took force, and nothing earlier is backdated.
+- what happens to existing records when v2 activates: nothing is rewritten. A contract keeps the visits it was created with, and a filing keeps the ruleset version, deadline and next due date it was opened under. v2 applies to contracts and filings created after it is loaded, and to a held filing the office re-checks. The ten-day corrective item is v2's, so a report filed under v1 raises none.
 - source links (all read 2026-10-06):
   - Hays County OSSF Regulations, with the TCEQ approval order: https://www.hayscountytx.gov/DocumentCenter/View/1893/Hays-County-On-Site-Sewage-Facility-Regulations-PDF (original PDF, 22 pages, sha256 `dc45dc3b…94fe`; Section 10.V on PDF pp. 19–20, checked by eye)
   - OSSF Maintenance Affidavit (undated): https://www.hayscountytx.gov/DocumentCenter/View/1896/On-Site-Sewage-Facility-OSSF-Maintenance-Affidavit-PDF
@@ -46,13 +48,17 @@ v2 sets `service.contractVisits`, so a Hays contract's visits count from its sta
 | 12 months from 2026-10-06 | 4 | 2026-10-20, 2027-02-06, 2027-06-06, and 2027-09-21 to 2027-10-05 |
 | 24 months | 7 | first within 14 days, then every 4 months from the start, last in the final 14 days |
 
-A 12-month plan of 3 visits needs 4, and the office is asked before the fourth is added. v1's six-month schedule for monitored systems is gone: the order says four months unless the permit says otherwise, and does not mention monitoring. A permit with another interval needs the office to adjust the contract.
+A 12-month plan of 3 visits needs 4, and the office is asked before the fourth is added. The warning ends with Aerowise's reading of the last window: "Aerowise reads "within 14 days of the end of the contract period" as the 14 days before the end; Hays County has not confirmed this" (`service.contractVisits.unconfirmed`, question 3). The same sentence follows a contract visit's report deadline.
+
+v1's six-month schedule for monitored systems is gone: the order says four months unless the permit says otherwise, and does not mention monitoring.
+
+**Permit override.** v2 sets `service.permitOverride`. A site's permit interval is recorded on the site (Permit inspection interval, in months, with where the permit says so; the note is required). On a Hays site it replaces the four months for new contracts and for each filing's next due date. A six-month permit makes a 12-month plan of three visits enough: due 2026-10-20, 2027-04-06, and 2027-09-21 to 2027-10-05. Other authorities ignore the field.
 
 ## Corrective reports
 
 Section 10.V.4: a report showing "less than the required chlorine residual, or ... in any other way not functioning properly" needs a fix, a retest and "another report ... within ten (10) days of the previous report". "Such extra reports shall not alter or postpone the regular maintenance schedule."
 
-v2 sets `service.correctiveReport`. A Hays report with a zero chlorine reading, a chlorine device needing service or any failed item puts "Fix, retest and report again" in the inbox, due 10 days after the report was sent (or after the report's own date while it is unsent). The office books the retest from the inbox as an extra visit. It uses none of the contract's visits, so the regular schedule stays where it was. Its report keeps the usual 14-day deadline. The item clears once a later inspection of the site is completed. See question 5.
+v2 sets `service.correctiveReport`. A Hays report with a zero chlorine reading, a chlorine device needing service or any failed item puts "Fix, retest and report again" in the inbox, due 10 days after the previous report: the day it was sent, or the report's own date while it is unsent. The item says this anchor is Aerowise's reading (question 5). The office books the retest from the inbox as an extra visit. It uses none of the contract's visits, so the regular schedule stays where it was. Its report keeps the usual 14-day deadline. The item clears once a later inspection of the site is completed. See question 5.
 
 ## Lab tests
 
@@ -108,17 +114,19 @@ An owner may maintain their own system only after passing the TCEQ Basic Mainten
 
 `apps/api/test/hays.test.ts` covers these cases:
 - v2 reads as written and replaces v1 from 2026-10-06; v1 is unchanged
-- a 12-month plan of 3 visits asks for a fourth, saying why
+- a 12-month plan of 3 visits asks for a fourth, saying why and labelling the last-window reading as unconfirmed
 - first visit within 14 days of the start, later ones every 4 months from it, last in the final 14 days
 - a 24-month contract counted from its own start
 - the first visit's report due by that visit's due date, held for review and never sent
 - 4 months between visits even with monitoring on record
+- a six-month permit interval, recorded with its source, giving 3 visits and a six-month next due date; refused without the source
 - a missing chlorine residual, which keeps the inspection a draft
 - a zero chlorine reading: inbox item due 10 days after the report, a retest booked as an extra visit, the contract's visits unchanged, the item cleared by the retest
 - no corrective item when everything works
 - a same-provider renewal held while a report from the previous contract is unsent
 - a short contract that may follow another provider's, held with the year-and-four-inspections reason
 - a Hays site never matched by county alone
+- v2 loaded after v1 was in use: the v1 contract's visits and the v1 filing's version and dates unchanged, and no corrective item for a v1 report
 
 `packages/domain/src/schedule.test.ts` covers the visit windows on their own.
 

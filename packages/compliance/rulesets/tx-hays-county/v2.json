@@ -117,11 +117,15 @@
     "contractVisits": {
       "firstWithinDays": 14,
       "lastWithinDaysOfEnd": 14,
-      "note": "Hays County Regulations 10.V.2: first test and report within 14 days of the contract's start, later due dates counted from the start, the last within 14 days of the end. A 12-month contract has four visits."
+      "note": "Hays County Regulations 10.V.2: first test and report within 14 days of the contract's start, later due dates counted from the start, the last within 14 days of the end. A 12-month contract has four visits.",
+      "unconfirmed": "Aerowise reads \"within 14 days of the end of the contract period\" as the 14 days before the end; Hays County has not confirmed this"
     },
     "correctiveReport": {
       "withinDays": 10,
       "note": "Hays County Regulations 10.V.4: low chlorine or a system not functioning properly needs a fix, a retest and another report within ten days of the previous report; extra reports do not move the regular schedule."
+    },
+    "permitOverride": {
+      "note": "Hays County Regulations 10.V.2: every four months \"unless otherwise specified on the permit\". A site whose permit sets another interval, recorded with where it was read, uses that interval instead."
     }
   },
   "inspection": {

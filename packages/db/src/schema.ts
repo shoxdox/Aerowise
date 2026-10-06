@@ -139,6 +139,8 @@ export interface SitesTable {
   locationSource: ColumnType<"manual" | "geocoder" | null, "manual" | "geocoder" | null | undefined, "manual" | "geocoder" | null>;
   geocodeStatus: ColumnType<"not_found" | null, "not_found" | null | undefined, "not_found" | null>;
   permitNumber: string | null;
+  permitIntervalMonths: ColumnType<number | null, number | null | undefined, number | null>;
+  permitIntervalNote: ColumnType<string | null, string | null | undefined, string | null>;
   accessNotes: string | null;
   gateCode: string | null;
   safetyFlags: Generated<string[]>;

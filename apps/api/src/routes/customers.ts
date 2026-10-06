@@ -39,6 +39,9 @@ const CUSTOMER_COLUMNS = [
 
 export const CONTACT_COLUMNS = ["id", "customerId", "siteId", "name", "email", "phone", "type", "consentEmail", "consentSms"] as const;
 
+/** A permit's own inspection interval is only recorded with where it was read. */
+export const PERMIT_NOTE_NEEDED = "Say where the permit's inspection interval was read (permitIntervalNote)";
+
 export const SITE_COLUMNS = [
   "id",
   "customerId",
@@ -53,6 +56,8 @@ export const SITE_COLUMNS = [
   "locationSource",
   "geocodeStatus",
   "permitNumber",
+  "permitIntervalMonths",
+  "permitIntervalNote",
   "accessNotes",
   "gateCode",
   "safetyFlags",
@@ -310,6 +315,7 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         const { lat, lng, ...fields } = definedOnly(req.body);
         const located = lat != null && lng != null;
         if (!located && (lat != null || lng != null)) throw unprocessable("Give both lat and lng, or neither");
+        if (fields.permitIntervalMonths != null && !fields.permitIntervalNote) throw unprocessable(PERMIT_NOTE_NEEDED);
         const created = await trx
           .insertInto("sites")
           .values({ ...fields, ...(located ? { lat, lng, locationSource: "manual" as const } : {}), organizationId, customerId: parent.id })

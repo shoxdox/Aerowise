@@ -1,7 +1,8 @@
-import { bundledRulesets, explainSite, loadCatalog, rulesetOn } from "@aerowise/compliance";
+import { bundledRulesets, explainSite, loadCatalog, rulesetOn, syncRulesets } from "@aerowise/compliance";
 import { drainTasks } from "@aerowise/tasks";
 import { mayAutoSubmit } from "@aerowise/domain";
-import { describe, expect, it } from "vitest";
+import { sql } from "kysely";
+import { afterAll, describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 import { completeValues, JPEG, photoUrl, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
@@ -26,10 +27,11 @@ type Visit = { id: string; sequence: number; windowStart: string; dueOn: string;
  * under a contract starting 2026-10-06 (the day the profile begins) on a 12-month plan of 3 visits (Hays needs 4), with
  * the first visit on 2026-10-07.
  */
-async function haysVisit(c: TestContext, opts: { monitored?: boolean; termMonths?: number; visitsPerTerm?: number } = {}) {
+async function haysVisit(c: TestContext, opts: { monitored?: boolean; termMonths?: number; visitsPerTerm?: number; permitMonths?: number } = {}) {
   c.now = new Date(`${VISIT_DAY}T18:00:00Z`);
   const t = await createTenant(c, "Org A");
-  expect((await t.api.patch(`/sites/${t.site.id}`, { county: "Hays", state: "TX" })).statusCode).toBe(200);
+  const permit = opts.permitMonths ? { permitIntervalMonths: opts.permitMonths, permitIntervalNote: "Permit 12-3456, special conditions, page 2" } : {};
+  expect((await t.api.patch(`/sites/${t.site.id}`, { county: "Hays", state: "TX", ...permit })).statusCode).toBe(200);
   const j = ((await t.api.get("/jurisdictions")).json().items as { id: string; key: string }[]).find((x) => x.key === KEY)!;
   const assigned = await t.api.put(`/sites/${t.site.id}/jurisdiction`, {
     jurisdictionId: j.id,
@@ -111,7 +113,8 @@ describe("Hays County visits counted from the contract's start (10.V.2)", () => 
       planVisits: 3,
       visitsPerTerm: 4,
       warning:
-        "Hays County Development Services, On-Site Sewage Facilities counts visits from the contract's start: one within 14 days of it, one at least every 4 months, and one in the last 14 days, so this contract needs 4 visits instead of the plan's 3, at the same price. Create it with 4 visits?",
+        "Hays County Development Services, On-Site Sewage Facilities counts visits from the contract's start: one within 14 days of it, one at least every 4 months, and one in the last 14 days, so this contract needs 4 visits instead of the plan's 3, at the same price. " +
+        'Aerowise reads "within 14 days of the end of the contract period" as the 14 days before the end; Hays County has not confirmed this. Create it with 4 visits?',
     });
   });
 
@@ -143,7 +146,7 @@ describe("Hays County visits counted from the contract's start (10.V.2)", () => 
     // 14 days after the inspection would be 2026-10-21; the first report is due within 14 days of the start.
     expect(f).toMatchObject({ deadlineOn: "2026-10-20", nextDueOn: "2027-02-07", jurisdiction: { key: KEY }, status: "needs_review" });
     const detail = (await s.api.get(`/filings/${f!.id}`)).json();
-    expect(detail.deadlineBasis).toContain("counts report due dates from the contract's start: visit 1's test and report are due by 2026-10-20");
+    expect(detail.deadlineBasis).toContain("counts report due dates from the contract's start: visit 1's test and report are due by 2026-10-20 (Aerowise reads");
     const calls = mail.calls;
     await runWorker(ctx);
     expect(mail.calls).toBe(calls);
@@ -155,6 +158,25 @@ describe("Hays County visits counted from the contract's start (10.V.2)", () => 
     expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
     await runWorker(ctx);
     expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-20", nextDueOn: "2027-02-07" });
+  });
+
+  it("uses the interval the site's permit sets, recorded with where it was read", async () => {
+    // "Every four (4) months unless otherwise specified on the permit": a six-month permit
+    // makes a 12-month plan of three visits enough.
+    const { s, preview, complete } = await haysVisit(ctx, { permitMonths: 6 });
+    expect(preview).toMatchObject({ planVisits: 3, visitsPerTerm: 3, warning: null });
+    expect(await visitsOf(s, s.contract.id)).toEqual([
+      [1, "2026-10-06", "2026-10-20", "open"],
+      [2, "2026-10-21", "2027-04-06", "open"],
+      [3, "2027-09-21", "2027-10-05", "open"],
+    ]);
+    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
+    await runWorker(ctx);
+    expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-20", nextDueOn: "2027-04-07" });
+    // A permit interval is not recorded without saying where it was read.
+    const bare = await s.api.patch(`/sites/${s.site.id}`, { permitIntervalNote: null });
+    expect(bare.statusCode).toBe(422);
+    expect(bare.json().message ?? bare.body).toContain("permitIntervalNote");
   });
 
   it("keeps an inspection without a chlorine residual as a draft", async () => {
@@ -177,7 +199,7 @@ describe("Hays County corrective reports (10.V.4)", () => {
 
     const [item] = await correctiveItems(s);
     // The report was made 2026-10-07 and has not been sent (no published channel).
-    expect(item).toMatchObject({ dueOn: "2026-10-17", target: { id: done.id }, detail: expect.stringContaining("counted from the report's date, 2026-10-07, until it is sent") });
+    expect(item).toMatchObject({ dueOn: "2026-10-17", target: { id: done.id }, detail: expect.stringContaining("within 10 days of the previous report (counted from the report's date, 2026-10-07, until it is sent; Aerowise's reading") });
 
     // Booking the retest uses none of the contract's visits.
     const retest = await s.api.post("/jobs", { retestOfInspectionId: done.id, technicianId: s.tech.id, scheduledDate: "2026-10-12" });
@@ -245,5 +267,33 @@ describe("Hays County contract filings (10.V.2, 10.V.6)", () => {
       status: "needs_review",
       reviewReason: expect.stringContaining("If the previous contract was with another provider, Hays County Development Services, On-Site Sewage Facilities requires this one to run at least 12 months with 4 inspections, counting the first; it runs 6 months with 3"),
     });
+  });
+});
+
+describe("Hays County v2 arriving after v1 was in use", () => {
+  // The other tests run with every bundled ruleset; this one changes them, so put them back.
+  afterAll(async () => {
+    await sql`truncate jurisdiction_rulesets, jurisdictions cascade`.execute(ctx.db);
+    await syncRulesets(ctx.db);
+  });
+
+  it("leaves contracts and filings made under v1 as they were", async () => {
+    await sql`truncate jurisdiction_rulesets, jurisdictions cascade`.execute(ctx.db);
+    await syncRulesets(ctx.db, bundledRulesets().filter((r) => r.jurisdiction.key !== KEY || r.version === 1));
+    const { s, preview, complete } = await haysVisit(ctx);
+    // v1 splits a 12-month plan of three visits evenly.
+    expect(preview).toMatchObject({ visitsPerTerm: 3, warning: null });
+    expect((await complete({ ...completeValues(), air_pressure: 4.5, chlorine_level: 0 })).json()).toMatchObject({ status: "completed" });
+    await runWorker(ctx);
+    const visits = await visitsOf(s, s.contract.id);
+    const [filing] = await filingsOf(s);
+    expect(filing).toMatchObject({ jurisdiction: { rulesetVersion: 1 }, deadlineOn: "2026-10-21" });
+
+    await syncRulesets(ctx.db);
+    await runWorker(ctx);
+    expect(await visitsOf(s, s.contract.id)).toEqual(visits);
+    expect((await filingsOf(s))[0]).toMatchObject({ id: filing!.id, jurisdiction: { rulesetVersion: 1 }, deadlineOn: "2026-10-21", nextDueOn: filing!.nextDueOn });
+    // The ten-day corrective report belongs to v2, so a v1 report raises none.
+    expect(await correctiveItems(s)).toEqual([]);
   });
 });

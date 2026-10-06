@@ -7,7 +7,7 @@ import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { notFound, unprocessable } from "../lib/errors.ts";
 import { definedOnly } from "../lib/json.ts";
-import { CONTACT_COLUMNS, SITE_COLUMNS, siteRow } from "./customers.ts";
+import { CONTACT_COLUMNS, PERMIT_NOTE_NEEDED, SITE_COLUMNS, siteRow } from "./customers.ts";
 
 const SYSTEM_COLUMNS = [
   "id",
@@ -126,13 +126,16 @@ export const siteRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }
       const row = await db.transaction().execute(async (trx) => {
         const current = await trx
           .selectFrom("sites")
-          .select(["id", ...ADDRESS_COLUMNS, "locationSource"])
+          .select(["id", ...ADDRESS_COLUMNS, "locationSource", "permitIntervalMonths", "permitIntervalNote"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .forUpdate()
           .executeTakeFirst();
         if (!current) throw notFound("Site");
         const { lat, lng, ...fields } = definedOnly(req.body);
+        const permitMonths = fields.permitIntervalMonths !== undefined ? fields.permitIntervalMonths : current.permitIntervalMonths;
+        const permitNote = fields.permitIntervalNote !== undefined ? fields.permitIntervalNote : current.permitIntervalNote;
+        if (permitMonths != null && !permitNote) throw unprocessable(PERMIT_NOTE_NEEDED);
         const addressChanged = ADDRESS_COLUMNS.some((c) => fields[c] !== undefined && fields[c] !== current[c]);
         let location = {};
         if (lat !== undefined || lng !== undefined) {

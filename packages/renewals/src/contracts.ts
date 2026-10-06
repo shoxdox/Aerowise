@@ -36,7 +36,7 @@ export interface AddedVisits {
   authorityName: string;
   intervalMonths: number;
   /** Set when the authority counts visits from the contract's start (Hays). */
-  contractVisits?: ContractVisitRule;
+  contractVisits?: ContractVisitRule & { unconfirmed?: string };
 }
 
 /** `termsForSite`, also saying when (and why) the authority needs more visits than the plan has. */
@@ -47,10 +47,10 @@ export async function siteVisitTerms<T extends VisitTerms>(
   startOn: string,
   terms: T,
   catalog?: CatalogEntry[],
-): Promise<{ terms: T; added: AddedVisits | null; contractVisits: ContractVisitRule | null }> {
+): Promise<{ terms: T; added: AddedVisits | null; contractVisits: (ContractVisitRule & { unconfirmed?: string }) | null }> {
   const site = await db
     .selectFrom("sites")
-    .select(["county", "state", "jurisdictionId", "customerType"])
+    .select(["county", "state", "jurisdictionId", "customerType", "permitIntervalMonths"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", siteId)
     .executeTakeFirstOrThrow();
@@ -59,7 +59,7 @@ export async function siteVisitTerms<T extends VisitTerms>(
   if (!resolved) return { terms, added: null, contractVisits: null };
   // Monitoring only matters where the authority allows a longer interval for it.
   const monitored = resolved.rules.service.monitored ? await siteMonitoredOn(db, organizationId, siteId, startOn) : false;
-  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored);
+  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored, site.permitIntervalMonths);
   const contractVisits = resolved.rules.service.contractVisits ?? null;
   const visitsPerTerm = contractVisits ? anchoredVisitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths) : visitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths);
   if (visitsPerTerm === terms.visitsPerTerm) return { terms, added: null, contractVisits };
@@ -78,7 +78,8 @@ export class MoreVisitsRequired extends Error {
     const rule = c
       ? `${added.authorityName} counts visits from the contract's start: one within ${c.firstWithinDays} days of it, one at least every ${every}, and one in the last ${c.lastWithinDaysOfEnd} days`
       : `${added.authorityName} requires an inspection at least every ${every}`;
-    super(`${rule}, so this contract needs ${added.visitsPerTerm} visits instead of the plan's ${added.planVisits}, at the same price. Create it with ${added.visitsPerTerm} visits?`);
+    const reading = c?.unconfirmed ? ` ${c.unconfirmed}.` : "";
+    super(`${rule}, so this contract needs ${added.visitsPerTerm} visits instead of the plan's ${added.planVisits}, at the same price.${reading} Create it with ${added.visitsPerTerm} visits?`);
   }
 }
 
