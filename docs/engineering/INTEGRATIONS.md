@@ -127,7 +127,7 @@ Run log (newest last):
 
 | Date | Who | Connect | Review | Invoice | Payment | Conflict | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-06 | Codex | passed (Sandbox Company US) | passed (demo customers approved, default item mapped) | passed (INV-1001, INV-1002 match totals) | passed for INV-1002 (balance 0, matches); **not matching for INV-1001**: the $2 Stripe refund never reaches QuickBooks (refunds aren't synced), so QuickBooks shows it paid while Aerowise shows $2 due | passed (`changed_in_both`, resolved by sending the Aerowise version) | A deploy interrupted the first sync at 20 of 50; the normal sync recovered after the 10-minute lease. 50 customers, 2 invoices, 2 payments synced, no sync errors. Disconnect passed; reconnect in progress |
+| 2026-10-06 | Codex | passed (Sandbox Company US) | passed (demo customers approved, default item mapped) | passed (INV-1001, INV-1002 match totals) | passed for INV-1002 (balance 0, matches); **not matching for INV-1001**: the $2 Stripe refund never reaches QuickBooks (refunds aren't synced), so QuickBooks shows it paid while Aerowise shows $2 due | passed (`changed_in_both`, resolved by sending the Aerowise version) | A deploy interrupted the first sync at 20 of 50; the normal sync recovered after the 10-minute lease. 50 customers, 2 invoices, 2 payments synced, no sync errors. Disconnect and reconnect passed, keeping the 50 customer, 2 invoice and 2 payment links. Refund gap tracked as open below |
 
 ### Going to production (Intuit's app review)
 
