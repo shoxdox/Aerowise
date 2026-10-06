@@ -1,0 +1,100 @@
+{
+  "jurisdiction": {
+    "key": "tx-bexar-county",
+    "state": "TX",
+    "authorityName": "Bexar County, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Bexar County's On-Site Sewage Facilities page, 30 TAC 285.7 and TCEQ's OSSF maintenance page. Bexar County's OSSF court order (PDF) could not be read: the copy is a scan with no text. Bexar County publishes no way to submit maintenance reports. See docs/jurisdictions/tx-bexar-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "Bexar County's OSSF court order is published as a scanned PDF with no readable text, so its dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Bexar County: On-Site Sewage Facilities",
+        "url": "https://www.bexar.org/3218/On-Site-Sewage-Facilities",
+        "retrievedOn": "2026-10-06",
+        "note": "'Bexar County requires that all on-site sewage facilities within Bexar County have to be permitted.' The initial permit is valid for 2 years after installation; 'After the initial permit expires the homeowner is responsible for maintaining a service contract with a service provider and submitting that contract to Bexar County. The service provider is responsible for submitting quarterly maintenance reports to the Designated Representative.' A renewal fee of $30.00 is mentioned. Phone 210-335-6700. No submission address, email or portal for reports or contracts."
+      },
+      {
+        "title": "Bexar County: OSSF Commissioners Court Order (PDF)",
+        "url": "https://www.bexar.org/DocumentCenter/View/30421/OSSF",
+        "retrievedOn": "2026-10-06",
+        "note": "Could not be read: the PDF is a scan with no machine-readable text. Its coverage area, dates and maintenance provisions are unknown."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Bexar County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address), and does not name its 'Designated Representative', so inspection filings are held for review and contracts are filed by hand.",
+      "Bexar County's page says reports are quarterly, while TCEQ requires every four months. Aerowise uses quarterly (every 3 months), the stricter, until the county confirms.",
+      "Whether electronic monitoring allows fewer visits in Bexar County is not published; with quarterly reports stated, Aerowise allows no longer schedule.",
+      "Bexar County's OSSF court order could not be read (a scanned PDF with no text), so its coverage area, report contents, deadline, lab testing and dates are unknown. Aerowise uses TCEQ's 14-day deadline.",
+      "Which addresses Bexar County covers (for example, any city running its own OSSF program) is not published in a readable source; every site needs a reviewed assignment.",
+      "The page mentions a $30.00 renewal fee without saying whether it applies to filing a maintenance contract, so no filing fee is set.",
+      "Bexar County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Bexar"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Bexar County requires every OSSF in the county to be permitted, but which areas it regulates directly is not published in a readable source. Check the site's permit in Bexar County's permit map (https://map.govpilot.com/map/TX/bexarcountytx) or call 210-335-6700. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Bexar County says providers submit reports to its 'Designated Representative' but publishes no way to do it."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Bexar County's page (read 2026-10-06): after the 2-year initial permit, the homeowner keeps a service contract and submits it to Bexar County. Timing from 30 TAC 285.7(d)(2): 30 days before the service policy or current contract expires. No address is published, so contracts are filed by hand."
+  },
+  "service": {
+    "intervalMonths": 3
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Bexar County describes no reply to maintenance reports or contracts."
+  }
+}
