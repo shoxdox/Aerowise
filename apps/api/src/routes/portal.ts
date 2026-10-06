@@ -27,6 +27,7 @@ import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
@@ -296,7 +297,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .executeTakeFirst();
       // The signed copy when there is one; one still waiting for the signature is not out yet.
       const copy = row && (await customerCopy(db, link.organizationId, req.params.reportId));
-      const data = copy?.ready ? await store.get(copy.storageKey) : null;
+      const data = copy?.ready ? await readForDownload(db, store, copy.storageKey) : null;
       if (!row || !copy || !data) throw notFound("Report");
       return reply
         .type("application/pdf")

@@ -28,6 +28,8 @@ type CreatedAt = ColumnType<Date, never, never>;
 export interface OrganizationsTable {
   id: Generated<string>;
   name: string;
+  /** A fictional demo company: only ever reaches the stand-ins, and holds made-up contact details. Fixed when made. */
+  demo: Generated<boolean>;
   phone: string | null;
   email: string | null;
   addressLine1: string | null;
@@ -139,6 +141,8 @@ export interface SitesTable {
   locationSource: ColumnType<"manual" | "geocoder" | null, "manual" | "geocoder" | null | undefined, "manual" | "geocoder" | null>;
   geocodeStatus: ColumnType<"not_found" | null, "not_found" | null | undefined, "not_found" | null>;
   permitNumber: string | null;
+  permitIntervalMonths: ColumnType<number | null, number | null | undefined, number | null>;
+  permitIntervalNote: ColumnType<string | null, string | null | undefined, string | null>;
   accessNotes: string | null;
   gateCode: string | null;
   safetyFlags: Generated<string[]>;

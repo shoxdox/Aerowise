@@ -23,6 +23,7 @@ export * from "./queue.ts";
 export * from "./heartbeat.ts";
 export * from "./monitor.ts";
 export * from "./providers.ts";
+export * from "./demo-gate.ts";
 export { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 export { queueQuickBooksSync, scheduleQuickBooksSyncs, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 export {

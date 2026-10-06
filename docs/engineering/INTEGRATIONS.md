@@ -18,6 +18,8 @@ Staging runs the demo (`DEMO_MODE=true`): every outside service is a test stand-
 - `quickbooks`: `QUICKBOOKS_ENVIRONMENT` must be `sandbox`, with `QUICKBOOKS_CLIENT_ID` and `QUICKBOOKS_CLIENT_SECRET` set. Only Intuit sandbox companies can be connected.
 - `sms`: Twilio's keys and `SMS_REDIRECT_TO`, one test phone. Every text goes there instead of to the customer, starting "[Test, for +1…]".
 
+`DEMO_LIVE_SERVICES` never reaches a demo company (`organizations.demo`, such as the seeded "Hill Country Aerobic Services (demo)" with the public sign-ins): its calls always go to the stand-ins (`packages/tasks/src/demo-gate.ts`, W10.1). Run these checks in a company made from staging's `/admin` instead, which is real as far as Aerowise is concerned and has no public sign-in.
+
 Everything not listed stays a stand-in. The settings check also refuses a live Stripe key, `QUICKBOOKS_ENVIRONMENT=production`, or Twilio without `SMS_REDIRECT_TO` (outside demo mode) on staging, and any `DEMO_LIVE_SERVICES` or `SMS_REDIRECT_TO` in production. Several services are listed together, e.g. `DEMO_LIVE_SERVICES=stripe,quickbooks`.
 
 After editing the settings file, redeploy staging so the containers pick it up:

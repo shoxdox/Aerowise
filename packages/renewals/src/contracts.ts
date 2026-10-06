@@ -1,6 +1,6 @@
 import { loadCatalog, resolveSite, siteMonitoredOn, type CatalogEntry } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { buildTermSchedule, serviceIntervalMonths, visitsWithin } from "@aerowise/domain";
+import { anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, serviceIntervalMonths, visitsWithin, type ContractVisitRule } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -35,6 +35,8 @@ export interface AddedVisits {
   visitsPerTerm: number;
   authorityName: string;
   intervalMonths: number;
+  /** Set when the authority counts visits from the contract's start (Hays). */
+  contractVisits?: ContractVisitRule & { unconfirmed?: string };
 }
 
 /** `termsForSite`, also saying when (and why) the authority needs more visits than the plan has. */
@@ -45,30 +47,39 @@ export async function siteVisitTerms<T extends VisitTerms>(
   startOn: string,
   terms: T,
   catalog?: CatalogEntry[],
-): Promise<{ terms: T; added: AddedVisits | null }> {
+): Promise<{ terms: T; added: AddedVisits | null; contractVisits: (ContractVisitRule & { unconfirmed?: string }) | null }> {
   const site = await db
     .selectFrom("sites")
-    .select(["county", "state", "jurisdictionId", "customerType"])
+    .select(["county", "state", "jurisdictionId", "customerType", "permitIntervalMonths"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", siteId)
     .executeTakeFirstOrThrow();
   terms = { ...terms, customerType: site.customerType };
   const resolved = resolveSite(catalog ?? (await loadCatalog(db)), site, startOn);
-  if (!resolved) return { terms, added: null };
+  if (!resolved) return { terms, added: null, contractVisits: null };
   // Monitoring only matters where the authority allows a longer interval for it.
   const monitored = resolved.rules.service.monitored ? await siteMonitoredOn(db, organizationId, siteId, startOn) : false;
-  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored);
-  const visitsPerTerm = visitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths);
-  if (visitsPerTerm === terms.visitsPerTerm) return { terms, added: null };
-  return { terms: { ...terms, visitsPerTerm }, added: { planVisits: terms.visitsPerTerm, visitsPerTerm, authorityName: resolved.authorityName, intervalMonths } };
+  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored, site.permitIntervalMonths);
+  const contractVisits = resolved.rules.service.contractVisits ?? null;
+  const visitsPerTerm = contractVisits ? anchoredVisitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths) : visitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths);
+  if (visitsPerTerm === terms.visitsPerTerm) return { terms, added: null, contractVisits };
+  return {
+    terms: { ...terms, visitsPerTerm },
+    added: { planVisits: terms.visitsPerTerm, visitsPerTerm, authorityName: resolved.authorityName, intervalMonths, ...(contractVisits ? { contractVisits } : {}) },
+    contractVisits,
+  };
 }
 
 /** The office has not yet agreed to the extra visits the site's authority needs. */
 export class MoreVisitsRequired extends Error {
   constructor(readonly added: AddedVisits) {
-    super(
-      `${added.authorityName} requires an inspection at least every ${added.intervalMonths} month${added.intervalMonths === 1 ? "" : "s"}, so this contract needs ${added.visitsPerTerm} visits instead of the plan's ${added.planVisits}, at the same price. Create it with ${added.visitsPerTerm} visits?`,
-    );
+    const every = `${added.intervalMonths} month${added.intervalMonths === 1 ? "" : "s"}`;
+    const c = added.contractVisits;
+    const rule = c
+      ? `${added.authorityName} counts visits from the contract's start: one within ${c.firstWithinDays} days of it, one at least every ${every}, and one in the last ${c.lastWithinDaysOfEnd} days`
+      : `${added.authorityName} requires an inspection at least every ${every}`;
+    const reading = c?.unconfirmed ? ` ${c.unconfirmed}.` : "";
+    super(`${rule}, so this contract needs ${added.visitsPerTerm} visits instead of the plan's ${added.planVisits}, at the same price.${reading} Create it with ${added.visitsPerTerm} visits?`);
   }
 }
 
@@ -83,10 +94,12 @@ export async function insertContract(
   input: { siteId: string; startOn: string; terms: Terms; autoRenew: boolean; notes?: string | null; previousContractId?: string; signedDocumentId?: string | null },
   opts: { catalog?: CatalogEntry[]; acceptVisits?: number; confirmExtraVisits?: boolean } = {},
 ) {
-  const { terms, added } = await siteVisitTerms(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
+  const { terms, added, contractVisits } = await siteVisitTerms(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
   // The office is warned before visits are added (Justin, 2026-10-05): it must accept the count.
   if (opts.confirmExtraVisits && added && opts.acceptVisits !== added.visitsPerTerm) throw new MoreVisitsRequired(added);
-  const schedule = buildTermSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm);
+  const schedule = contractVisits
+    ? buildAnchoredSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm, contractVisits)
+    : buildTermSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm);
   const created = await trx
     .insertInto("contracts")
     .values({

@@ -29,6 +29,7 @@ import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { notFound, unprocessable } from "../lib/errors.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 
@@ -756,7 +757,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     async (req, reply) => {
       const row = await db.selectFrom("contractDocuments").select(["id", "organizationId", "storageKey", "filename"]).where("id", "=", req.params.id).executeTakeFirst();
       if (!row || !signer.verify(row.organizationId, row.id, req.query.exp, req.query.sig, now().getTime(), "contract-files")) throw notFound("File");
-      const data = await compliance.store.get(row.storageKey);
+      const data = await readForDownload(db, compliance.store, row.storageKey);
       if (!data) throw notFound("File");
       return reply.type("application/pdf").header("content-disposition", `inline; filename="${row.filename}"`).header("x-content-type-options", "nosniff").send(data);
     },

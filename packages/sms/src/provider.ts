@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export interface SmsSendInput {
+  /** The company texting; a demo company's texts only ever reach the stand-in. */
+  organizationId: string;
   from: string;
   to: string;
   body: string;

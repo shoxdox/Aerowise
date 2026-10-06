@@ -49,6 +49,8 @@ export default function SitePage() {
       postalCode: v.postalCode ?? null,
       county: v.county ?? null,
       permitNumber: v.permitNumber ?? null,
+      permitIntervalMonths: v.permitIntervalMonths ? Number(v.permitIntervalMonths) : null,
+      permitIntervalNote: v.permitIntervalNote ?? null,
       customerType: v.customerType,
       gateCode: v.gateCode ?? null,
       accessNotes: v.accessNotes ?? null,
@@ -120,6 +122,15 @@ export default function SitePage() {
             <input name="permitNumber" defaultValue={site.permitNumber ?? ""} />
           </label>
           <label>
+            Permit inspection interval (months)
+            <input name="permitIntervalMonths" type="number" min={1} max={24} defaultValue={site.permitIntervalMonths ?? ""} placeholder="The authority's own" />
+          </label>
+          <label className="wide">
+            Where the permit says so
+            <input name="permitIntervalNote" defaultValue={site.permitIntervalNote ?? ""} placeholder="For example: permit 12-3456, page 2" />
+            <span className="muted small">Used only where the authority lets the permit set the interval (Hays County).</span>
+          </label>
+          <label>
             System use
             <select name="customerType" defaultValue={site.customerType}>
               <option value="residential">Residential</option>
@@ -164,6 +175,14 @@ export default function SitePage() {
         <dl className="card details">
           <dt>Permit</dt>
           <dd>{site.permitNumber ?? "Not recorded"}</dd>
+          {site.permitIntervalMonths !== null && (
+            <>
+              <dt>Permit interval</dt>
+              <dd>
+                Every {site.permitIntervalMonths} month{site.permitIntervalMonths === 1 ? "" : "s"} ({site.permitIntervalNote})
+              </dd>
+            </>
+          )}
           <dt>County</dt>
           <dd>{site.county ?? "—"}</dd>
           <dt>System use</dt>

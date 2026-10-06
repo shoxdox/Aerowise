@@ -25,12 +25,20 @@ export function canTransition(from: JobStatus, to: JobStatus): boolean {
 
 const date = z.iso.date();
 
-export const scheduleInput = z.object({
-  obligationId: id,
-  technicianId: id,
-  scheduledDate: date,
-  notes: z.string().trim().max(2000).nullish(),
-});
+export const scheduleInput = z
+  .object({
+    /** A contract visit. */
+    obligationId: id.optional(),
+    /**
+     * Or an extra visit to retest after this inspection's report (Hays 10.V.4): it is not one
+     * of the contract's visits, so the regular schedule does not move.
+     */
+    retestOfInspectionId: id.optional(),
+    technicianId: id,
+    scheduledDate: date,
+    notes: z.string().trim().max(2000).nullish(),
+  })
+  .refine((v) => Boolean(v.obligationId) !== Boolean(v.retestOfInspectionId), { message: "Give either obligationId or retestOfInspectionId", path: ["obligationId"] });
 
 export const reschedulePatch = z.object({
   technicianId: id.optional(),

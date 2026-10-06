@@ -13,13 +13,16 @@ import { IntuitQuickBooksProvider, TestQuickBooksProvider } from "@aerowise/quic
 import { CensusGeocoder, TestGeocoder } from "@aerowise/routing";
 import { RedirectingSmsProvider, TestSmsProvider, TwilioSmsProvider } from "@aerowise/sms";
 import { LocalDiskStore } from "@aerowise/storage";
-import { demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
+import { DemoGatedBilling, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport, demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { testDatabaseUrl } from "./db-url.ts";
 import { createOrg, setupTestApp } from "./helpers.ts";
 
 const ctx = setupTestApp();
+
+/** The real service behind a demo gate (or the provider itself when there is no gate). */
+const live = (p: unknown) => (p && typeof p === "object" && "live" in p ? (p as { live: unknown }).live : p);
 const store = new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-demo-")));
 
 // Every real outside service configured, as on a host where someone pasted live keys.
@@ -60,7 +63,7 @@ describe("demo mode providers", () => {
     const testKeys = { ...realKeys, STRIPE_SECRET_KEY: "sk_test_not_a_real_key", DEMO_MODE: "true" };
     const p = providersFromEnv({ db: ctx.db, store, env: { ...testKeys, DEMO_LIVE_SERVICES: " Stripe " }, production: true });
     expect(p.demoLive).toEqual(["stripe"]);
-    expect(p.payments).toBeInstanceOf(StripeProvider);
+    expect(live(p.payments)).toBeInstanceOf(StripeProvider);
     // Everything else stays a stand-in.
     expect(p.mail).toBeInstanceOf(OutboxTransport);
     expect(p.quickbooks?.provider).toBeInstanceOf(TestQuickBooksProvider);
@@ -79,8 +82,8 @@ describe("demo mode providers", () => {
     const sandbox = { ...realKeys, QUICKBOOKS_ENVIRONMENT: "sandbox", DEMO_MODE: "true" };
     const p = providersFromEnv({ db: ctx.db, store, env: { ...sandbox, DEMO_LIVE_SERVICES: "quickbooks" }, production: true });
     expect(p.demoLive).toEqual(["quickbooks"]);
-    expect(p.quickbooks?.provider).toBeInstanceOf(IntuitQuickBooksProvider);
-    expect((p.quickbooks?.provider as IntuitQuickBooksProvider).environment).toBe("sandbox");
+    expect(live(p.quickbooks?.provider)).toBeInstanceOf(IntuitQuickBooksProvider);
+    expect(p.quickbooks?.provider.environment).toBe("sandbox");
     expect(p.payments).toBeInstanceOf(TestPaymentProvider);
     expect(p.sms?.provider).toBeInstanceOf(TestSmsProvider);
     // Not listed: the stand-in.
@@ -91,15 +94,15 @@ describe("demo mode providers", () => {
     // Both together.
     const both = providersFromEnv({ db: ctx.db, store, env: { ...sandbox, STRIPE_SECRET_KEY: "sk_test_x", DEMO_LIVE_SERVICES: "stripe,quickbooks" }, production: true });
     expect(both.demoLive).toEqual(["stripe", "quickbooks"]);
-    expect(both.payments).toBeInstanceOf(StripeProvider);
+    expect(live(both.payments)).toBeInstanceOf(StripeProvider);
   });
 
   it("uses real Twilio in demo mode only when DEMO_LIVE_SERVICES names it, and only to the one test phone", () => {
     const env = { ...realKeys, DEMO_MODE: "true", SMS_REDIRECT_TO: "+15125550199" };
     const p = providersFromEnv({ db: ctx.db, store, env: { ...env, DEMO_LIVE_SERVICES: "sms" }, production: true });
     expect(p.demoLive).toEqual(["sms"]);
-    expect(p.sms?.provider).toBeInstanceOf(RedirectingSmsProvider);
-    expect((p.sms?.provider as RedirectingSmsProvider).redirectTo).toBe("+15125550199");
+    expect(live(p.sms?.provider)).toBeInstanceOf(RedirectingSmsProvider);
+    expect((live(p.sms?.provider) as RedirectingSmsProvider).redirectTo).toBe("+15125550199");
     expect(p.sms?.webhookBaseUrl).toBe("https://demo.example.com/api");
     expect(providersFromEnv({ db: ctx.db, store, env, production: true }).sms?.provider).toBeInstanceOf(TestSmsProvider);
     expect(() => demoLiveServicesFromEnv({ ...realKeys, DEMO_LIVE_SERVICES: "sms" })).toThrow(/SMS_REDIRECT_TO must be one test phone/);
@@ -109,13 +112,19 @@ describe("demo mode providers", () => {
   it("uses the real services when demo mode is off", () => {
     const p = providersFromEnv({ db: ctx.db, store, env: realKeys, production: true });
     expect(p.demo).toBe(false);
-    expect(p.mail).toBeInstanceOf(ProviderTransport);
+    expect(live(p.mail)).toBeInstanceOf(ProviderTransport);
     expect(p.mailProvider).toBeInstanceOf(ResendEmailProvider);
-    expect(p.payments).toBeInstanceOf(StripeProvider);
-    expect(p.quickbooks?.provider).toBeInstanceOf(IntuitQuickBooksProvider);
-    expect(p.sms?.provider).toBeInstanceOf(TwilioSmsProvider);
+    expect(live(p.payments)).toBeInstanceOf(StripeProvider);
+    expect(live(p.quickbooks?.provider)).toBeInstanceOf(IntuitQuickBooksProvider);
+    expect(live(p.sms?.provider)).toBeInstanceOf(TwilioSmsProvider);
     expect(p.geocoder).toBeInstanceOf(CensusGeocoder);
-    expect(p.billing).toBeInstanceOf(StripeBillingProvider);
+    expect(live(p.billing)).toBeInstanceOf(StripeBillingProvider);
+    // Each real one sits behind a gate that keeps demo companies on its stand-in.
+    expect(p.mail).toBeInstanceOf(DemoGatedTransport);
+    expect(p.payments).toBeInstanceOf(DemoGatedPayments);
+    expect(p.quickbooks?.provider).toBeInstanceOf(DemoGatedQuickBooks);
+    expect(p.sms?.provider).toBeInstanceOf(DemoGatedSms);
+    expect(p.billing).toBeInstanceOf(DemoGatedBilling);
   });
 
   it("turns unconfigured services off in production and uses stand-ins elsewhere", () => {
@@ -157,7 +166,7 @@ describe("the API in demo mode", () => {
   it("is off by default, and production keeps the fictional rules and test checkout out", async () => {
     const db = await fresh();
     const app = await buildApp({ db, production: true, fileSigningSecret: "s" });
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false });
     expect(await exampleRules(db)).toHaveLength(0);
     expect(app.hasRoute({ method: "POST", url: "/pay/:token/test-checkout" })).toBe(false);
     await app.close();
@@ -167,7 +176,7 @@ describe("the API in demo mode", () => {
   it("says so, loads the fictional rules and offers test checkout, in production", async () => {
     const db = await fresh();
     const app = await buildApp({ db, production: true, demo: true, fileSigningSecret: "s" });
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: true });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: true, demoCompany: true });
     expect(await exampleRules(db)).toHaveLength(1);
     expect(app.hasRoute({ method: "POST", url: "/pay/:token/test-checkout" })).toBe(true);
     await app.close();
@@ -193,6 +202,8 @@ describe("demo reseed", () => {
 
     const orgs = await ctx.db.selectFrom("organizations").select("name").execute();
     expect(orgs).toEqual([{ name: "Hill Country Aerobic Services (demo)" }]);
+    // A demo company: it only ever reaches the stand-ins, and holds made-up contact details.
+    expect(await ctx.db.selectFrom("organizations").select("demo").execute()).toEqual([{ demo: true }]);
     const users = await ctx.db.selectFrom("users").select("email").orderBy("email").execute();
     expect(users.map((u) => u.email)).toEqual(["office@example.com", "owner@example.com", "tech@example.com"]);
     expect(await ctx.db.selectFrom("platformAdmins").select("id").where("id", "=", admin.id).execute()).toHaveLength(1);

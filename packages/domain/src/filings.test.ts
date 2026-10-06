@@ -89,6 +89,14 @@ describe("serviceIntervalMonths", () => {
     expect(serviceIntervalMonths(rules({ intervalMonths: 4 }), "residential", true)).toBe(4);
   });
 
+  it("uses the site's permit interval only where the authority lets the permit decide", () => {
+    const permit = { intervalMonths: 4, permitOverride: { note: "unless otherwise specified on the permit" } };
+    expect(serviceIntervalMonths(rules(permit), "residential", false, 6)).toBe(6);
+    expect(serviceIntervalMonths(rules(permit), "commercial", false, 1)).toBe(1);
+    expect(serviceIntervalMonths(rules(permit), "residential", false, null)).toBe(4);
+    expect(serviceIntervalMonths(rules({ intervalMonths: 4 }), "residential", false, 6)).toBe(4);
+  });
+
   it("rejects intervals outside 1 to 24 months", () => {
     expect(() => rules({ intervalMonths: 0 })).toThrow();
     expect(() => rules({ intervalMonths: 4, commercialIntervalMonths: 25 })).toThrow();

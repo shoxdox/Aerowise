@@ -25,6 +25,7 @@ import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { applyView, checkDraftRefs, invoiceBase, invoiceDetail, issueDraft, overdueFirst, queueSend, toListItem, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
 import { dateInZone, organizationToday } from "../lib/today.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 const VIEWS = ["unpaid", "overdue", "draft", "paid", "void", "all"] as const;
@@ -436,7 +437,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const org = await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
       if (payments.provider && org.stripeAccountId) {
         for (const s of openSessions) {
-          await payments.provider.expireCheckout({ accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => req.log.warn({ err }, "could not expire checkout"));
+          await payments.provider.expireCheckout({ organizationId, accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => req.log.warn({ err }, "could not expire checkout"));
         }
       }
       return detail(organizationId, req.params.id);
@@ -453,7 +454,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId } = req.requireAuth();
       const inv = await db.selectFrom("invoices").select(["number", "pdfStorageKey"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
       if (!inv) throw notFound("Invoice");
-      const data = inv.pdfStorageKey ? await store.get(inv.pdfStorageKey) : null;
+      const data = inv.pdfStorageKey ? await readForDownload(db, store, inv.pdfStorageKey) : null;
       if (!data) throw new HttpError(404, "not_ready", "The PDF is still being prepared");
       return reply
         .header("content-type", "application/pdf")
@@ -561,6 +562,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           const org = await trx.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
           if (!payments.provider || !org.stripeAccountId) throw unprocessable("Online payments are not set up, so this payment cannot be refunded from here");
           const r = await payments.provider.createRefund({
+            organizationId,
             accountId: org.stripeAccountId,
             // The same refund request always gets the same key, so a retry cannot refund twice.
             idempotencyKey: `refund-${p.id}-${prior.n + 1}`,

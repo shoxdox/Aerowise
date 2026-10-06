@@ -296,6 +296,86 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     return [...lateItems, ...overItems];
   }
 
+  /**
+   * Authorities that want a fix, a retest and a new report soon after a report shows low
+   * chlorine or a system not working (Hays 10.V.4: within ten days of that report). The item
+   * stays until a later inspection of the site is completed; the retest is an extra visit,
+   * so the contract's regular visits never move.
+   */
+  async function correctiveReports(organizationId: string, today: string): Promise<InboxException[]> {
+    const rows = await sql<{
+      inspectionId: string;
+      reportOn: string;
+      sent: boolean;
+      withinDays: number;
+      authorityName: string;
+      retestOn: string | null;
+      siteId: string;
+      addressLine1: string;
+      city: string;
+      customerId: string;
+      displayName: string;
+    }>`
+      select i.id as "inspectionId",
+             coalesce((f.sent_at at time zone org.timezone)::date, (rep.generated_at at time zone org.timezone)::date, (i.completed_at at time zone org.timezone)::date)::text as "reportOn",
+             f.sent_at is not null as sent,
+             (r.rules->'service'->'correctiveReport'->>'withinDays')::int as "withinDays",
+             jd.authority_name as "authorityName",
+             rt.scheduled_date::text as "retestOn",
+             s.id as "siteId", s.address_line1 as "addressLine1", s.city,
+             c.id as "customerId", c.display_name as "displayName"
+      from filings f
+      join organizations org on org.id = f.organization_id
+      join jurisdiction_rulesets r on r.id = f.ruleset_id
+      join jurisdictions jd on jd.id = f.jurisdiction_id
+      join inspections i on i.id = f.inspection_id and i.organization_id = f.organization_id
+      join sites s on s.id = f.site_id and s.organization_id = f.organization_id
+      join customers c on c.id = s.customer_id and c.organization_id = s.organization_id
+      left join reports rep on rep.id = f.report_id and rep.organization_id = f.organization_id
+      left join lateral (
+        select j.scheduled_date from jobs j
+        where j.organization_id = f.organization_id and j.site_id = s.id and j.obligation_id is null
+          and j.status in ('scheduled', 'in_progress') and j.scheduled_date >= (i.completed_at at time zone org.timezone)::date
+        order by j.scheduled_date limit 1
+      ) rt on true
+      where f.organization_id = ${organizationId}
+        and f.kind = 'inspection_report'
+        and r.rules->'service' ? 'correctiveReport'
+        and i.status = 'completed'
+        and s.active
+        and exists (
+          select 1 from inspection_values v
+          where v.organization_id = i.organization_id and v.inspection_id = i.id
+            and (v.value_json = '"fail"'::jsonb
+              or (v.field_key = 'chlorinator' and v.value_json = '"needs_service"'::jsonb)
+              or (v.field_key = 'chlorine_level' and jsonb_typeof(v.value_json) = 'number' and (v.value_json #>> '{}')::numeric <= 0))
+        )
+        and not exists (
+          select 1 from inspections later
+          where later.organization_id = i.organization_id and later.site_id = i.site_id
+            and later.status = 'completed' and later.completed_at > i.completed_at
+        )
+      order by i.completed_at
+      limit ${PER_KIND}`.execute(db);
+    return rows.rows.map((r) => {
+      const dueOn = addDays(r.reportOn, r.withinDays);
+      return {
+        key: `corrective_report_due:${r.inspectionId}`,
+        kind: "corrective_report_due" as const,
+        severity: dueOn < today ? ("high" as const) : ("medium" as const),
+        title: "Fix, retest and report again",
+        detail:
+          `The report showed low or no chlorine, or an item that failed. ${r.authorityName} wants the system fixed, retested and reported again within ${r.withinDays} days of the previous report ` +
+          `(${r.sent ? `sent ${r.reportOn}` : `counted from the report's date, ${r.reportOn}, until it is sent`}; Aerowise's reading, not confirmed by ${r.authorityName}). ` +
+          (r.retestOn ? `Retest booked for ${r.retestOn}.` : "Book the retest as an extra visit; the contract's visits stay as they are."),
+        dueOn,
+        site: site(r),
+        customer: customer(r),
+        target: { type: "inspection" as const, id: r.inspectionId },
+      };
+    });
+  }
+
   async function openIssues(organizationId: string): Promise<InboxException[]> {
     const rows = await sites(organizationId)
       .innerJoin("issues as x", (j) => j.onRef("x.siteId", "=", "s.id").onRef("x.organizationId", "=", "s.organizationId"))
@@ -643,6 +723,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           filingExceptions(organizationId, today),
           lateNextVisits(organizationId, today),
           labTestItems(organizationId, today),
+          correctiveReports(organizationId, today),
           openIssues(organizationId),
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),

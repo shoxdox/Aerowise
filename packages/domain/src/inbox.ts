@@ -15,6 +15,7 @@ export const EXCEPTION_KINDS = [
   "next_visit_late",
   "lab_test_late",
   "lab_result_over_limit",
+  "corrective_report_due",
   "issue_open",
   "contract_expiring",
   "contract_expired",

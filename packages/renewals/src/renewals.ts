@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, buildTermSchedule, contractInstallments, type RenewalTerms } from "@aerowise/domain";
+import { addDays, contractInstallments, termEndOn, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
 import { insertContract, termsForSite } from "./contracts.ts";
 
@@ -93,7 +93,7 @@ export async function offerTerms(db: Executor, organizationId: string, contract:
   const priceCents = override.priceCents ?? base.priceCents;
   // The offer shows the visits the new contract will have under the site's authority.
   const terms = await termsForSite(db, organizationId, contract.siteId, startOn, base);
-  return { ...terms, priceCents, autoRenew: contract.autoRenew, startOn, endOn: buildTermSchedule(startOn, terms.termMonths, terms.visitsPerTerm).endOn };
+  return { ...terms, priceCents, autoRenew: contract.autoRenew, startOn, endOn: termEndOn(startOn, terms.termMonths) };
 }
 
 export interface ContractRow {

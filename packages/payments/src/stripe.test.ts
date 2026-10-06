@@ -61,7 +61,7 @@ describe("StripeProvider checkout", () => {
 
   it("refunds on the connected account with our idempotency key", async () => {
     const { provider, calls } = fakeStripe(() => ({ id: "re_1", object: "refund", status: "pending", failure_reason: null }));
-    const refund = await provider.createRefund({ accountId: "acct_123", idempotencyKey: "refund-1", paymentIntentId: "pi_1", amountCents: 1000, metadata: { refundId: "r1" } });
+    const refund = await provider.createRefund({ organizationId: "org-1", accountId: "acct_123", idempotencyKey: "refund-1", paymentIntentId: "pi_1", amountCents: 1000, metadata: { refundId: "r1" } });
     expect(refund).toEqual({ refundId: "re_1", status: "pending", failureReason: null });
     expect(calls[0]!.headers.get("stripe-account")).toBe("acct_123");
     expect(calls[0]!.headers.get("idempotency-key")).toBe("refund-1");

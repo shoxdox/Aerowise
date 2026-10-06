@@ -30,7 +30,7 @@ import {
 import { invoiceEvent } from "@aerowise/payments";
 import { activateRenewal, canonicalJson, createRenewal, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
 import type { ObjectStore } from "@aerowise/storage";
-import { enqueue, payUrlFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
+import { enqueue, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { sql, type Transaction } from "kysely";
@@ -41,6 +41,7 @@ import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { issueDraft, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
 import { definedOnly } from "../lib/json.ts";
 import { organizationToday } from "../lib/today.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
@@ -585,7 +586,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
   async function sendAgreement(reply: FastifyReply, documentId: string | null) {
     const doc = documentId ? await db.selectFrom("signedDocuments").select(["pdfStorageKey"]).where("id", "=", documentId).executeTakeFirst() : undefined;
     if (!doc) throw notFound("Signed agreement");
-    const data = doc.pdfStorageKey ? await store.get(doc.pdfStorageKey) : null;
+    const data = doc.pdfStorageKey ? await readForDownload(db, store, doc.pdfStorageKey) : null;
     if (!data) throw new HttpError(404, "not_ready", "The signed copy is still being prepared. Try again in a minute.");
     return reply.header("content-type", "application/pdf").header("content-disposition", `inline; filename="agreement.pdf"`).send(data);
   }
@@ -643,7 +644,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         signed: doc ? { signerName: doc.signerName, signedAt: doc.signedAt.toISOString(), pdfReady: !!doc.pdfStorageKey } : null,
         pay,
         newTermStartsOn: r.status === "activated" ? r.startOn : null,
-        testMode: provider?.kind === "test",
+        testMode: !!provider && (await providerFor(provider, r.organizationId)).kind === "test",
       };
     },
   );
