@@ -132,7 +132,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
   app.get(
     "/quickbooks/callback",
     {
-      config: { permission: "billing:manage" },
+      config: { permission: "billing:manage", changesState: true },
       schema: {
         tags: ["quickbooks"],
         summary: "Where QuickBooks sends the browser after the owner approves (or declines) the connection",

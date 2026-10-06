@@ -1079,6 +1079,17 @@ export interface PlatformAdminsTable {
   createdAt: CreatedAt;
 }
 
+export interface SupportSessionsTable {
+  id: Generated<string>;
+  tokenHash: Buffer;
+  adminId: string;
+  organizationId: string;
+  reason: string;
+  startedAt: CreatedAt;
+  expiresAt: Timestamp;
+  endedAt: Timestamp | null;
+}
+
 export interface PlatformAdminSessionsTable {
   id: Generated<string>;
   tokenHash: Buffer;
@@ -1214,6 +1225,7 @@ export interface DB {
   platformAdmins: PlatformAdminsTable;
   demoRequests: DemoRequestsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
+  supportSessions: SupportSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
   billingPeriods: BillingPeriodsTable;
   billingEvents: BillingEventsTable;

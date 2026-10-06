@@ -14,6 +14,7 @@ import {
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
 import { adminRoutes } from "./routes/admin.ts";
+import { adminSupportRoutes } from "./routes/admin-support.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
@@ -251,6 +252,7 @@ export async function buildApp({
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
+  await app.register(adminSupportRoutes, { db, production });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
   await app.register(organizationRoutes, { db, store });
