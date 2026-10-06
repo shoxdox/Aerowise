@@ -50,6 +50,29 @@ describe("Intuit OAuth", () => {
 describe("Intuit company API", () => {
   const company = (f: ReturnType<typeof fakeFetch>) => new IntuitQuickBooksProvider(config, f.fn).company("123", "token");
 
+  it("records a refund as a Refund Receipt from the chosen account, once per request id", async () => {
+    const f = fakeFetch({ body: { RefundReceipt: { Id: "90", SyncToken: "0" } } }, { body: { QueryResponse: { Account: [{ Id: "5", Name: "Stripe Clearing", AccountType: "Other Current Asset" }] } } });
+    const c = company(f);
+    const r = await c.createRefundReceipt(
+      { customerId: "9", itemId: "1", amountCents: 200, description: "Refund on INV-1001: Overcharged", txnDate: "2026-03-02", accountId: "5", paymentType: "CreditCard", reference: "re_1234567890abcdefghijklmnop", privateNote: "Aerowise refund" },
+      "aw-link-1",
+    );
+    expect(r).toEqual({ id: "90", syncToken: "0" });
+    expect(f.calls[0]!.url.pathname).toBe("/v3/company/123/refundreceipt");
+    expect(f.calls[0]!.url.searchParams.get("requestid")).toBe("aw-link-1");
+    expect(JSON.parse(String(f.calls[0]!.init.body))).toEqual({
+      CustomerRef: { value: "9" },
+      TxnDate: "2026-03-02",
+      DepositToAccountRef: { value: "5" },
+      PaymentType: "CreditCard",
+      PaymentRefNum: "567890abcdefghijklmnop".slice(-21),
+      PrivateNote: "Aerowise refund",
+      Line: [{ DetailType: "SalesItemLineDetail", Amount: 2, Description: "Refund on INV-1001: Overcharged", SalesItemLineDetail: { ItemRef: { value: "1" }, Qty: 1, UnitPrice: 2 } }],
+    });
+    expect(await c.listAccounts()).toEqual([{ id: "5", name: "Stripe Clearing", type: "Other Current Asset", active: true }]);
+    expect(f.calls[1]!.url.searchParams.get("query")).toContain("AccountType in ('Bank', 'Other Current Asset')");
+  });
+
   it("lowers a payment with a full update that keeps its other fields, and deletes one", async () => {
     const current = { Id: "77", SyncToken: "2", TxnDate: "2026-03-01", PaymentRefNum: "1042", CustomerRef: { value: "9" }, TotalAmt: 10, MetaData: { CreateTime: "x" }, Line: [] };
     const f = fakeFetch({ body: { Payment: current } }, { body: { Payment: { ...current, SyncToken: "3", TotalAmt: 8 } } }, { body: { Payment: { Id: "77", status: "Deleted" } } });

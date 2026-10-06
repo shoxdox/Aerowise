@@ -5,6 +5,8 @@ import {
   type CustomerPayload,
   type InvoicePayload,
   type PaymentChange,
+  type QboAccount,
+  type RefundReceiptPayload,
   type PaymentPayload,
   type QboCustomer,
   type QboInvoice,
@@ -338,6 +340,32 @@ class IntuitCompany implements QuickBooksCompany {
 
   async deletePayment(id: string, syncToken: string) {
     await this.call("POST", "/payment", { operation: "delete" }, { Id: id, SyncToken: syncToken });
+  }
+
+  async listAccounts(): Promise<QboAccount[]> {
+    const rows = await this.queryAll("Account", "AccountType in ('Bank', 'Other Current Asset') and Active in (true, false)");
+    return rows.map((a) => ({ id: String(a.Id), name: a.FullyQualifiedName ?? a.Name, type: String(a.AccountType), active: a.Active !== false }));
+  }
+
+  async createRefundReceipt(p: RefundReceiptPayload, requestId: string) {
+    const body = {
+      CustomerRef: { value: p.customerId },
+      TxnDate: p.txnDate,
+      DepositToAccountRef: { value: p.accountId },
+      PaymentType: p.paymentType,
+      PaymentRefNum: p.reference ? p.reference.slice(-21) : undefined,
+      PrivateNote: p.privateNote,
+      Line: [
+        {
+          DetailType: "SalesItemLineDetail",
+          Amount: toAmount(p.amountCents),
+          Description: p.description.slice(0, 4000),
+          SalesItemLineDetail: { ItemRef: { value: p.itemId }, Qty: 1, UnitPrice: toAmount(p.amountCents) },
+        },
+      ],
+    };
+    const r = (await this.call("POST", "/refundreceipt", { requestid: requestId }, body)).RefundReceipt as Json;
+    return { id: String(r.Id), syncToken: String(r.SyncToken ?? "0") };
   }
 
   async changes(since: Date): Promise<Changes> {

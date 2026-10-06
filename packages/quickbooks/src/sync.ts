@@ -20,6 +20,8 @@ export function candidateOf(c: QboCustomer, score = 1, reasons: MatchReason[] = 
 }
 export type StoredCandidate = ReturnType<typeof candidateOf>;
 
+/** What refunds reversing a payment (not credits) have taken off it; the payment is lowered by this. */
+const reversedSql = sql<number>`(select coalesce(sum(r.amount_cents), 0) from refunds r where r.payment_id = p.id and r.status = 'succeeded' and r.intent = 'reverse')`;
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dateIn = (d: Date, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
@@ -91,7 +93,11 @@ export async function syncOrganization(ctx: QuickBooksContext, organizationId: s
   try {
     const company = await openCompany(ctx, organizationId);
     const org = await ctx.db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
-    const run = new SyncRun(ctx, company, organizationId, org.timezone, conn.defaultItemId);
+    const run = new SyncRun(ctx, company, organizationId, org.timezone, conn.defaultItemId, {
+      itemId: conn.refundItemId,
+      stripeAccountId: conn.stripeRefundAccountId,
+      manualAccountId: conn.manualRefundAccountId,
+    });
     await run.readChanges(conn.changesSince ?? conn.connectedAt);
     await run.discover(conn.syncFrom);
     more = await run.push();
@@ -117,6 +123,8 @@ class SyncRun {
     private readonly org: string,
     private readonly timezone: string,
     private readonly defaultItemId: string | null,
+    /** Where Refund Receipts go, as the company chose on the QuickBooks page. */
+    private readonly refunds: { itemId: string | null; stripeAccountId: string | null; manualAccountId: string | null },
   ) {
     this.write = new LinkWriter(ctx);
   }
@@ -183,13 +191,21 @@ class SyncRun {
       where p.organization_id = ${org} and p.status = 'succeeded'
         and not exists (select 1 from quickbooks_links l where l.organization_id = p.organization_id and l.entity_type = 'payment' and l.entity_id = p.id)
       on conflict do nothing`.execute(db);
-    // Payments refunded in Aerowise after they were sent (links from before this check hold the full amount).
+    // Payments reversed by a refund after they were sent (links from before this check hold the full amount).
     await sql`
       update quickbooks_links l set status = 'queued', updated_at = ${this.ctx.now()}
       from payments p
       where l.organization_id = ${org} and l.entity_type = 'payment' and l.status = 'synced' and l.external_id is not null
         and p.organization_id = l.organization_id and p.id = l.entity_id
-        and coalesce(l.pushed_hash, p.amount_cents::text) <> (p.amount_cents - p.refunded_cents)::text`.execute(db);
+        and coalesce(l.pushed_hash, p.amount_cents::text) <> (p.amount_cents - ${reversedSql})::text`.execute(db);
+    // Credit refunds of payments that go to QuickBooks: each becomes a Refund Receipt.
+    await sql`
+      insert into quickbooks_links (organization_id, entity_type, entity_id, status)
+      select r.organization_id, 'refund', r.id, 'queued' from refunds r
+      join quickbooks_links pl on pl.organization_id = r.organization_id and pl.entity_type = 'payment' and pl.entity_id = r.payment_id and pl.status <> 'ignored'
+      where r.organization_id = ${org} and r.status = 'succeeded' and r.intent = 'credit'
+        and not exists (select 1 from quickbooks_links l where l.organization_id = r.organization_id and l.entity_type = 'refund' and l.entity_id = r.id)
+      on conflict do nothing`.execute(db);
     // Invoices voided in Aerowise after they were sent.
     await sql`
       update quickbooks_links l set status = 'queued', updated_at = ${this.ctx.now()}
@@ -242,6 +258,7 @@ class SyncRun {
       ["customer", (l: Link) => this.pushCustomer(l)],
       ["invoice", (l: Link) => this.pushInvoice(l)],
       ["payment", (l: Link) => this.pushPayment(l)],
+      ["refund", (l: Link) => this.pushRefund(l)],
     ] as const) {
       const links = await this.due(type);
       if (links.length === BATCH) more = true;
@@ -428,18 +445,19 @@ class SyncRun {
     const p = await db
       .selectFrom("payments as p")
       .innerJoin("invoices as i", (j) => j.onRef("i.id", "=", "p.invoiceId").onRef("i.organizationId", "=", "p.organizationId"))
-      .select(["p.id", "p.status", "p.amountCents", "p.refundedCents", "p.method", "p.reference", "p.providerPaymentId", "p.receivedOn", "p.succeededAt", "p.invoiceId", "i.customerId", "i.number"])
+      .select([reversedSql.as("reversedCents"), "p.id", "p.status", "p.amountCents", "p.method", "p.reference", "p.providerPaymentId", "p.receivedOn", "p.succeededAt", "p.invoiceId", "i.customerId", "i.number"])
       .where("p.organizationId", "=", this.org)
       .where("p.id", "=", link.entityId)
       .executeTakeFirst();
     if (!p || p.status !== "succeeded") return this.write.ignored(link, "Only cleared payments are sent to QuickBooks");
-    // What the customer kept paying: refunds come off the payment, so QuickBooks shows the balance Aerowise does.
-    const net = p.amountCents - p.refundedCents;
+    // A refund reversing the payment (the customer owes it again) comes off the payment itself,
+    // so QuickBooks shows the balance Aerowise does. Credit refunds go over as Refund Receipts.
+    const net = p.amountCents - p.reversedCents;
     const label = PAYMENT_METHOD_LABELS[p.method];
-    const refunded = p.refundedCents > 0 ? `; ${usd(p.refundedCents)} refunded, ${usd(net)} kept` : "";
-    const privateNote = `Aerowise ${label.toLowerCase()} payment on INV-${p.number}${p.providerPaymentId ? ` (Stripe ${p.providerPaymentId})` : ""}${refunded}`;
-    if (link.externalId) return this.refundPayment(link, { invoiceId: p.invoiceId, number: p.number, amountCents: p.amountCents, refundedCents: p.refundedCents }, privateNote);
-    if (net === 0) return this.write.ignored(link, "Refunded in full before it reached QuickBooks");
+    const reversed = p.reversedCents > 0 ? `; ${usd(p.reversedCents)} reversed by refund, ${usd(net)} kept` : "";
+    const privateNote = `Aerowise ${label.toLowerCase()} payment on INV-${p.number}${p.providerPaymentId ? ` (Stripe ${p.providerPaymentId})` : ""}${reversed}`;
+    if (link.externalId) return this.reversePayment(link, { invoiceId: p.invoiceId, number: p.number, amountCents: p.amountCents, reversedCents: p.reversedCents }, privateNote);
+    if (net === 0) return this.write.ignored(link, "Reversed in full before it reached QuickBooks");
     const invLink = await this.link("invoice", p.invoiceId);
     if (invLink?.status === "ignored") return this.write.ignored(link, "The invoice is not synced to QuickBooks");
     if (invLink?.status !== "synced" || !invLink.externalId) return this.write.waiting(link, "Waiting for the invoice to reach QuickBooks");
@@ -469,12 +487,12 @@ class SyncRun {
   }
 
   /**
-   * A payment already in QuickBooks that was refunded since: lower it to what was kept, or
+   * A payment already in QuickBooks that a refund reversed since: lower it to what was kept, or
    * delete it when nothing was. A payment someone changed in QuickBooks is never overwritten
    * without a person choosing to.
    */
-  private async refundPayment(link: Link, p: { invoiceId: string; number: number | null; amountCents: number; refundedCents: number }, privateNote: string) {
-    const net = p.amountCents - p.refundedCents;
+  private async reversePayment(link: Link, p: { invoiceId: string; number: number | null; amountCents: number; reversedCents: number }, privateNote: string) {
+    const net = p.amountCents - p.reversedCents;
     const remote = await this.company.getPayment(link.externalId!);
     if (!remote) return this.write.conflict(link, "deleted_in_quickbooks", {});
     const invLink = await this.link("invoice", p.invoiceId);
@@ -491,7 +509,7 @@ class SyncRun {
       const applied = remote.applied.map((a) => `${usd(a.amountCents)} to ${a.invoiceId === invLink.externalId ? `INV-${p.number}` : `another invoice (QuickBooks id ${a.invoiceId})`}`).join(", ");
       return this.write.conflict(link, "changed_in_both", {
         fields: [
-          { field: "Amount", aerowise: `${usd(net)} (${usd(p.amountCents)} less ${usd(p.refundedCents)} refunded)`, quickbooks: usd(remote.amountCents) },
+          { field: "Amount", aerowise: `${usd(net)} (${usd(p.amountCents)} less ${usd(p.reversedCents)} reversed by refund)`, quickbooks: usd(remote.amountCents) },
           { field: "Applied to", aerowise: `${usd(net)} to INV-${p.number}`, quickbooks: applied || "No invoice" },
         ],
         remoteSyncToken: remote.syncToken,
@@ -508,6 +526,57 @@ class SyncRun {
     return this.write.synced(link, { syncToken: updated.syncToken, pushedHash: String(net) });
   }
 
+
+  /**
+   * A credit refund (the customer no longer owes it) as its own Refund Receipt: the payment
+   * stays as it was. It waits until its payment is in QuickBooks and the company has chosen
+   * the refund item and the account the money leaves from.
+   */
+  async pushRefund(link: Link) {
+    const r = await this.ctx.db
+      .selectFrom("refunds as r")
+      .innerJoin("payments as p", (j) => j.onRef("p.id", "=", "r.paymentId").onRef("p.organizationId", "=", "r.organizationId"))
+      .innerJoin("invoices as i", (j) => j.onRef("i.id", "=", "p.invoiceId").onRef("i.organizationId", "=", "p.organizationId"))
+      .select(["r.id", "r.status", "r.intent", "r.amountCents", "r.reason", "r.providerRefundId", "r.updatedAt", "p.id as paymentId", "p.method", "p.source", "p.reference", "p.providerPaymentId", "i.customerId", "i.number"])
+      .where("r.organizationId", "=", this.org)
+      .where("r.id", "=", link.entityId)
+      .executeTakeFirst();
+    if (!r || r.status !== "succeeded" || r.intent !== "credit") return this.write.ignored(link, "Only completed credit refunds are sent as Refund Receipts");
+    if (link.externalId) return this.write.synced(link);
+    const payLink = await this.link("payment", r.paymentId);
+    if (payLink?.status === "ignored") return this.write.ignored(link, "The payment is not synced to QuickBooks");
+    if (payLink?.status !== "synced" || !payLink.externalId) return this.write.waiting(link, "Waiting for the payment to reach QuickBooks");
+    const custLink = await this.link("customer", r.customerId);
+    if (custLink?.status !== "synced" || !custLink.externalId) return this.write.waiting(link, "Waiting for the customer to reach QuickBooks");
+    const stripe = r.source === "stripe";
+    const accountId = stripe ? this.refunds.stripeAccountId : this.refunds.manualAccountId;
+    if (!this.refunds.itemId || !accountId) {
+      return this.write.waiting(
+        link,
+        !this.refunds.itemId
+          ? "Choose the refund item on the QuickBooks page"
+          : stripe
+            ? "Choose the account Stripe refunds are paid from on the QuickBooks page"
+            : "Choose the account check and cash refunds are paid from on the QuickBooks page",
+      );
+    }
+    const paymentType = ({ card: "CreditCard", check: "Check", cash: "Cash", ach: "Other", other: "Other" } as const)[r.method];
+    const created = await this.company.createRefundReceipt(
+      {
+        customerId: custLink.externalId,
+        itemId: this.refunds.itemId,
+        amountCents: r.amountCents,
+        description: `Refund on INV-${r.number}${r.reason ? `: ${r.reason}` : ""}`,
+        txnDate: dateIn(r.updatedAt, this.timezone),
+        accountId,
+        paymentType,
+        reference: r.providerRefundId ?? r.reference,
+        privateNote: `Aerowise refund on INV-${r.number}${r.providerRefundId ? ` (Stripe ${r.providerRefundId}, payment ${r.providerPaymentId})` : ""}`,
+      },
+      `aw-${link.id}-${link.generation}`,
+    );
+    return this.write.synced(link, { externalId: created.id, syncToken: created.syncToken });
+  }
 }
 
 /** Both versions of what differs, for the person deciding. */

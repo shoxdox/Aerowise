@@ -197,12 +197,12 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           .execute(),
         db
           .selectFrom("invoices")
-          .select(["number", "issuedOn", "dueOn", "totalCents", "paidCents", "pendingCents", "paymentStatus", "publicToken"])
+          .select(["number", "issuedOn", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "paymentStatus", "publicToken"])
           .where("organizationId", "=", organizationId)
           .where("customerId", "=", customerId)
           .where("status", "=", "open")
           // Anything still owed, and the last year of the rest.
-          .where((eb) => eb.or([eb(sql`total_cents - paid_cents - pending_cents`, ">", 0), eb("issuedOn", ">=", sql<string>`${today}::date - 365`)]))
+          .where((eb) => eb.or([eb(sql`total_cents - credited_cents - paid_cents - pending_cents`, ">", 0), eb("issuedOn", ">=", sql<string>`${today}::date - 365`)]))
           .orderBy("issuedOn", "desc")
           .limit(50)
           .execute(),

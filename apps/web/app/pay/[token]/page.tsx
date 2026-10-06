@@ -132,6 +132,12 @@ function PayPage() {
             )}
             <dt>Total</dt>
             <dd>{money(inv.totalCents)}</dd>
+            {inv.creditedCents > 0 && (
+              <>
+                <dt>Refunded</dt>
+                <dd>−{money(inv.creditedCents)}</dd>
+              </>
+            )}
             {inv.paidCents > 0 && (
               <>
                 <dt>Paid</dt>

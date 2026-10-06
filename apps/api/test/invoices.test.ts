@@ -184,15 +184,21 @@ describe("payments recorded by the office", () => {
       "Payment received: $60.00 by cash for INV-1001",
     ]);
 
-    // Only the owner refunds; a refund reopens the balance.
+    // Only the owner refunds. Reversing a payment taken by mistake reopens the balance.
     const office = await createUser(ctx.db, t.org.id, "office");
     const officeApi = client(ctx.app, await login(ctx.app, office.email));
     const check = paid.payments[0];
-    expect((await officeApi.post(`/payments/${check.id}/refund`, { amountCents: 1000, reason: "Overcharged" })).statusCode).toBe(403);
-    const refunded = (await t.api.post(`/payments/${check.id}/refund`, { amountCents: 1000, reason: "Overcharged" })).json();
-    expect(refunded).toMatchObject({ paymentStatus: "partial", paidCents: 9000 });
-    expect(refunded.payments[0]).toMatchObject({ refundedCents: 1000, refunds: [{ amountCents: 1000, status: "succeeded" }] });
-    expect((await t.api.post(`/payments/${check.id}/refund`, { amountCents: 3001, reason: "Too much" })).statusCode).toBe(422);
+    expect((await officeApi.post(`/payments/${check.id}/refund`, { amountCents: 1000, reason: "Wrong customer" })).statusCode).toBe(403);
+    const reversed = (await t.api.post(`/payments/${check.id}/refund`, { amountCents: 1000, reason: "Wrong customer", intent: "reverse" })).json();
+    expect(reversed).toMatchObject({ paymentStatus: "partial", paidCents: 9000, creditedCents: 0, amountDueCents: 1000 });
+    expect(reversed.payments[0]).toMatchObject({ refundedCents: 1000, refunds: [{ amountCents: 1000, status: "succeeded", intent: "reverse" }] });
+    // An ordinary refund is a credit: the customer no longer owes it, so what is due stays the same.
+    const credited = (await t.api.post(`/payments/${check.id}/refund`, { amountCents: 500, reason: "Overcharged" })).json();
+    expect(credited).toMatchObject({ paymentStatus: "partial", paidCents: 8500, creditedCents: 500, amountDueCents: 1000 });
+    expect(credited.payments[0].refunds[1]).toMatchObject({ amountCents: 500, intent: "credit" });
+    expect(credited.events.at(-1).summary).toBe("Refunded $5.00: Overcharged");
+    expect(reversed.events.at(-1).summary).toBe("Refunded $10.00 to reverse the payment (owed again): Wrong customer");
+    expect((await t.api.post(`/payments/${check.id}/refund`, { amountCents: 2501, reason: "Too much" })).statusCode).toBe(422);
 
     // Voiding needs every payment refunded first.
     expect((await t.api.post(`/invoices/${inv.id}/void`, { reason: "Duplicate" })).statusCode).toBe(422);
@@ -363,7 +369,8 @@ describe("paying online", () => {
     const paymentId = (await t.api.get(`/invoices/${inv.id}`)).json().payments[0].id;
 
     const after = (await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 2500, reason: "Tablets returned" })).json();
-    expect(after).toMatchObject({ paymentStatus: "partial", paidCents: 30000, amountDueCents: 2500 });
+    // An ordinary refund: the customer no longer owes it, so the invoice stays paid.
+    expect(after).toMatchObject({ paymentStatus: "paid", paidCents: 30000, creditedCents: 2500, amountDueCents: 0 });
     const refundRow = await ctx.db.selectFrom("refunds").select(["providerRefundId", "status"]).executeTakeFirstOrThrow();
     // Stripe's own webhook for that refund changes nothing.
     const echo = await webhook(ctx, "refund.updated", { id: refundRow.providerRefundId, amount: 2500, status: "succeeded", payment_intent: "pi_test_manual" }, t.accountId!);
@@ -374,8 +381,12 @@ describe("paying online", () => {
     expect((await t.api.get(`/invoices/${inv.id}`)).json().paidCents).toBe(30000);
     await webhook(ctx, "refund.updated", { id: "re_dash_1", amount: 30000, status: "succeeded", payment_intent: "pi_test_manual" }, t.accountId!);
     const refunded = (await t.api.get(`/invoices/${inv.id}`)).json();
-    expect(refunded).toMatchObject({ paymentStatus: "refunded", paidCents: 0 });
-    expect(refunded.payments[0].refunds.map((r: { reason: string }) => r.reason)).toEqual(["Tablets returned", "Refunded in Stripe"]);
+    expect(refunded).toMatchObject({ paymentStatus: "refunded", paidCents: 0, creditedCents: 32500, amountDueCents: 0 });
+    // A dashboard refund counts as an ordinary refund (a credit).
+    expect(refunded.payments[0].refunds.map((r: { reason: string; intent: string }) => [r.reason, r.intent])).toEqual([
+      ["Tablets returned", "credit"],
+      ["Refunded in Stripe", "credit"],
+    ]);
 
     // Nothing left to refund.
     expect((await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 1, reason: "x" })).statusCode).toBe(422);

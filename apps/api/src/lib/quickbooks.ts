@@ -26,10 +26,13 @@ export async function listQuickBooksRecords(
     .leftJoin("invoices as iv", (j) => j.onRef("iv.id", "=", "l.entityId").onRef("iv.organizationId", "=", "l.organizationId").on("l.entityType", "=", "invoice"))
     .leftJoin("payments as pm", (j) => j.onRef("pm.id", "=", "l.entityId").onRef("pm.organizationId", "=", "l.organizationId").on("l.entityType", "=", "payment"))
     .leftJoin("invoices as piv", (j) => j.onRef("piv.id", "=", "pm.invoiceId").onRef("piv.organizationId", "=", "pm.organizationId"))
+    .leftJoin("refunds as rf", (j) => j.onRef("rf.id", "=", "l.entityId").onRef("rf.organizationId", "=", "l.organizationId").on("l.entityType", "=", "refund"))
+    .leftJoin("payments as rp", (j) => j.onRef("rp.id", "=", "rf.paymentId").onRef("rp.organizationId", "=", "rf.organizationId"))
+    .leftJoin("invoices as riv", (j) => j.onRef("riv.id", "=", "rp.invoiceId").onRef("riv.organizationId", "=", "rp.organizationId"))
     .leftJoin("plans as pl", (j) => j.onRef("pl.id", "=", "l.entityId").onRef("pl.organizationId", "=", "l.organizationId").on("l.entityType", "=", "plan"))
-    .leftJoin("customers as c", (j) => j.on(sql<boolean>`c.id = coalesce(cu.id, iv.customer_id, piv.customer_id)`).onRef("c.organizationId", "=", "l.organizationId"))
+    .leftJoin("customers as c", (j) => j.on(sql<boolean>`c.id = coalesce(cu.id, iv.customer_id, piv.customer_id, riv.customer_id)`).onRef("c.organizationId", "=", "l.organizationId"))
     .selectAll("l")
-    .select(["c.id as customerId", "c.displayName as customerName", "iv.number as invoiceNumber", "piv.number as paymentInvoiceNumber", "pm.amountCents as paymentCents", "pl.name as planName"])
+    .select(["c.id as customerId", "c.displayName as customerName", "iv.number as invoiceNumber", "piv.number as paymentInvoiceNumber", "pm.amountCents as paymentCents", "rf.amountCents as refundCents", "riv.number as refundInvoiceNumber", "pl.name as planName"])
     .where("l.organizationId", "=", organizationId)
     .where("l.status", "<>", "new");
   if (filter.attention) q = q.where((eb) => eb.or([eb("l.status", "=", "conflict"), eb.and([eb("l.status", "=", "failed"), eb("l.nextAttemptAt", "is", null)])]));
@@ -45,7 +48,9 @@ export async function listQuickBooksRecords(
           ? invoiceNumberLabel(r.invoiceNumber)
           : r.entityType === "payment"
             ? `${dollars(r.paymentCents ?? 0)} on ${invoiceNumberLabel(r.paymentInvoiceNumber)}`
-            : (r.planName ?? "Plan");
+            : r.entityType === "refund"
+              ? `Refund of ${dollars(r.refundCents ?? 0)} on ${invoiceNumberLabel(r.refundInvoiceNumber)}`
+              : (r.planName ?? "Plan");
     const guide = r.status === "conflict" && r.conflictKind ? QUICKBOOKS_CONFLICT_GUIDE[r.conflictKind] : r.status === "failed" ? QUICKBOOKS_CONFLICT_GUIDE.failed : null;
     const details = (r.conflict ?? null) as Record<string, unknown> | null;
     const candidates = ((details?.candidates ?? []) as StoredCandidate[]).map((c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, score: c.score, reasons: c.reasons as never }));

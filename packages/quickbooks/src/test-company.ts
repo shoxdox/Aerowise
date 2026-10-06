@@ -6,6 +6,8 @@ import {
   type CustomerPayload,
   type InvoicePayload,
   type PaymentChange,
+  type QboAccount,
+  type RefundReceiptPayload,
   type PaymentPayload,
   type QboCustomer,
   type QboInvoice,
@@ -23,6 +25,9 @@ export interface TestCompanyData {
   items: Record<string, QboItem>;
   invoices: Record<string, QboInvoice & { lines: InvoicePayload["lines"]; discountCents: number }>;
   payments: Record<string, { id: string; syncToken: string; customerId: string; invoiceId: string; amountCents: number; txnDate: string }>;
+  /** Missing in companies saved before refunds were synced. */
+  accounts?: Record<string, QboAccount>;
+  refundReceipts?: Record<string, RefundReceiptPayload & { id: string; syncToken: string }>;
   /** What a request id created, so a repeated create returns the same record. */
   requests: Record<string, string>;
   /** Changes in order, for change data capture. */
@@ -151,7 +156,16 @@ export class TestCompanies {
       const iid = id();
       items[iid] = { id: iid, name: itemName, type, active: true };
     }
-    const data: TestCompanyData = { name, next: n, customers, items, invoices: {}, payments: {}, requests: {}, log: [] };
+    const accounts: Record<string, QboAccount> = {};
+    for (const [accountName, type] of [
+      ["Checking", "Bank"],
+      ["Undeposited Funds", "Other Current Asset"],
+      ["Stripe Clearing", "Other Current Asset"],
+    ] as const) {
+      const aid = id();
+      accounts[aid] = { id: aid, name: accountName, type, active: true };
+    }
+    const data: TestCompanyData = { name, next: n, customers, items, accounts, invoices: {}, payments: {}, refundReceipts: {}, requests: {}, log: [] };
     await this.db
       .insertInto("quickbooksTestCompanies")
       .values({ realmId, data: JSON.stringify(data), updatedAt: this.now() })
@@ -381,6 +395,24 @@ class TestCompany implements QuickBooksCompany {
       const inv = c.invoices[pay.invoiceId];
       if (inv) c.invoices[pay.invoiceId] = { ...inv, balanceCents: inv.balanceCents + pay.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
       delete c.payments[id];
+    });
+  }
+
+  listAccounts() {
+    return this.read((c) => Object.values(c.accounts ?? {}));
+  }
+
+  createRefundReceipt(p: RefundReceiptPayload, requestId: string) {
+    return this.write((c, _at, newId) => {
+      const done = c.requests[requestId];
+      if (done && c.refundReceipts?.[done]) return { id: done, syncToken: c.refundReceipts[done].syncToken };
+      if (!c.items[p.itemId]?.active) throw new QuickBooksError("validation", `Invalid Reference Id: item ${p.itemId} is inactive or missing`, "2500");
+      if (!c.accounts?.[p.accountId]?.active) throw new QuickBooksError("validation", `Invalid Reference Id: account ${p.accountId} is inactive or missing`, "2500");
+      if (!c.customers[p.customerId]) throw new QuickBooksError("validation", "Invalid Reference Id: the customer is missing", "2500");
+      const id = newId();
+      c.refundReceipts = { ...(c.refundReceipts ?? {}), [id]: { ...p, id, syncToken: "0" } };
+      c.requests[requestId] = id;
+      return { id, syncToken: "0" };
     });
   }
 

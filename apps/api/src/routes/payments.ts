@@ -147,6 +147,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         totalCents: s.totalCents,
         paidCents: inv.paidCents,
         pendingCents: inv.pendingCents,
+        creditedCents: inv.creditedCents,
         amountDueCents: amountDue(inv),
         canPayOnline: canPayOnline(provider, inv),
         bankVerificationUrl: verify?.bankVerificationUrl ?? null,

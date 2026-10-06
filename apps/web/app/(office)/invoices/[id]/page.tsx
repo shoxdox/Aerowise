@@ -56,10 +56,12 @@ export default function InvoicePage() {
     if (!amount) return;
     const reason = window.prompt("Reason for the refund (kept on the invoice)");
     if (!reason) return;
+    // Usually the customer no longer owes what is refunded. Reversing a payment taken by mistake is the exception.
+    const intent = window.confirm("Does the customer still owe this amount?\n\nOK: reverse the payment (taken by mistake), so the balance is owed again.\nCancel: an ordinary refund, so they no longer owe it.") ? "reverse" : "credit";
     setBusy(true);
     setActionError(null);
     try {
-      await api(`/payments/${p.id}/refund`, { method: "POST", body: { amountCents: Math.round(Number(amount) * 100), reason } });
+      await api(`/payments/${p.id}/refund`, { method: "POST", body: { amountCents: Math.round(Number(amount) * 100), reason, intent } });
       await reload();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Could not refund");
@@ -134,6 +136,7 @@ export default function InvoicePage() {
             <dd>
               <strong>{money(inv.amountDueCents)}</strong>
               {inv.pendingCents > 0 && <span className="muted"> · {money(inv.pendingCents)} bank payment clearing</span>}
+              {inv.creditedCents > 0 && <span className="muted"> · {money(inv.creditedCents)} refunded, no longer owed</span>}
             </dd>
           </>
         )}
@@ -334,6 +337,7 @@ export default function InvoicePage() {
                     {p.refunds.map((r) => (
                       <div key={r.id} className="muted small">
                         {r.status === "failed" ? "Refund failed" : r.status === "pending" ? "Refund pending" : "Refunded"} {money(r.amountCents)}
+                        {r.intent === "reverse" && " (payment reversed, owed again)"}
                         {r.reason && `: ${r.reason}`}
                       </div>
                     ))}

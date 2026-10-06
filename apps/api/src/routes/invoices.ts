@@ -481,7 +481,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const at = now();
         const inv = await trx
           .selectFrom("invoices")
-          .select(["id", "status", "totalCents", "paidCents", "pendingCents"])
+          .select(["id", "status", "totalCents", "paidCents", "pendingCents", "creditedCents"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .forUpdate()
@@ -577,6 +577,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           paymentId: p.id,
           amountCents: req.body.amountCents,
           status: refund.status,
+          intent: req.body.intent,
           providerRefundId: refund.providerRefundId,
           reason: req.body.reason,
           failureReason: refund.failureReason,
@@ -588,14 +589,15 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await trx
           .insertInto("refunds")
           .values(values)
-          .onConflict((oc) => oc.column("providerRefundId").doUpdateSet({ reason: req.body.reason, createdBy: userId }))
+          .onConflict((oc) => oc.column("providerRefundId").doUpdateSet({ reason: req.body.reason, intent: req.body.intent, createdBy: userId }))
           .execute();
         await recalcInvoice(trx, organizationId, p.invoiceId, at);
+        const how = req.body.intent === "reverse" ? " to reverse the payment (owed again)" : "";
         const summary =
           refund.status === "succeeded"
-            ? `Refunded ${dollars(req.body.amountCents)}: ${req.body.reason}`
+            ? `Refunded ${dollars(req.body.amountCents)}${how}: ${req.body.reason}`
             : refund.status === "pending"
-              ? `Refund of ${dollars(req.body.amountCents)} started: ${req.body.reason}`
+              ? `Refund of ${dollars(req.body.amountCents)}${how} started: ${req.body.reason}`
               : `Refund of ${dollars(req.body.amountCents)} failed: ${refund.failureReason ?? "declined"}`;
         await invoiceEvent(trx, { organizationId, invoiceId: p.invoiceId, eventType: `refund_${refund.status}`, summary, actorUserId: userId, paymentId: p.id, at });
         await audit(trx, req, { action: "payment.refunded", entityType: "invoice", entityId: p.invoiceId, changes: { paymentId: p.id, ...req.body, status: refund.status } });

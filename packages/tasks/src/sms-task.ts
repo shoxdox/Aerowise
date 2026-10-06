@@ -97,7 +97,7 @@ export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Da
       case "payment_reminder": {
         const inv = await db
           .selectFrom("invoices")
-          .select(["status", "number", "dueOn", "totalCents", "paidCents", "pendingCents", "publicToken"])
+          .select(["status", "number", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "publicToken"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.relatedId)
           .executeTakeFirst();

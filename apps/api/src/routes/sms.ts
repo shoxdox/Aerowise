@@ -256,7 +256,7 @@ export const smsRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; s
       const { organizationId } = req.requireAuth();
       const inv = await db
         .selectFrom("invoices")
-        .select(["id", "status", "customerId", "siteId", "totalCents", "paidCents", "pendingCents"])
+        .select(["id", "status", "customerId", "siteId", "totalCents", "paidCents", "pendingCents", "creditedCents"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", req.params.id)
         .executeTakeFirst();
