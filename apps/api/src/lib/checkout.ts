@@ -1,5 +1,5 @@
 import type { Database } from "@aerowise/db";
-import { amountDue, invoiceSnapshot } from "@aerowise/domain";
+import { amountDue, invoiceSnapshot, platformFeeCents } from "@aerowise/domain";
 import type { PaymentProvider } from "@aerowise/payments";
 import { billingEmail, payUrlFor } from "@aerowise/tasks";
 import { sql } from "kysely";
@@ -28,6 +28,7 @@ export async function invoiceByToken(db: Database, token: string) {
       "i.pdfStorageKey",
       "o.stripeAccountId",
       "o.stripeChargesEnabled",
+      "o.platformFeeBps",
     ])
     .where("i.publicToken", "=", token)
     .executeTakeFirst();
@@ -50,6 +51,7 @@ export async function openCheckout(
   const { provider, inv } = opts;
   if (!canPayOnline(provider, inv) || !provider) throw unprocessable(amountDue(inv) === 0 ? "Nothing is due on this invoice" : "Online payment is not available. Contact your service provider.");
   const due = amountDue(inv);
+  const fee = platformFeeCents(due, inv.platformFeeBps);
   const at = opts.now;
   return db.transaction().execute(async (trx) => {
     // One checkout at a time per invoice.
@@ -61,6 +63,8 @@ export async function openCheckout(
       .where("invoiceId", "=", inv.id)
       .where("status", "=", "open")
       .where("amountCents", "=", due)
+      // A fee changed in /admin since the page was opened: open a new page at the new fee.
+      .where("applicationFeeCents", "=", fee)
       .where("expiresAt", ">", new Date(at.getTime() + REUSE_MIN_REMAINING_MS))
       .orderBy("createdAt", "desc")
       .executeTakeFirst();
@@ -72,6 +76,7 @@ export async function openCheckout(
       accountId: inv.stripeAccountId!,
       idempotencyKey: `checkout-${inv.id}-${n.n + 1}-${due}`,
       amountCents: due,
+      applicationFeeCents: fee,
       description: `${s.provider.name} invoice ${s.number}`,
       customerEmail: (await billingEmail(trx, inv.organizationId, inv.customerId)) ?? s.billTo.email,
       successUrl: opts.successUrl ?? `${payPage}?paid=1`,
@@ -80,7 +85,7 @@ export async function openCheckout(
     });
     await trx
       .insertInto("checkoutSessions")
-      .values({ organizationId: inv.organizationId, invoiceId: inv.id, providerSessionId: session.sessionId, amountCents: due, url: session.url, expiresAt: session.expiresAt, createdAt: at })
+      .values({ organizationId: inv.organizationId, invoiceId: inv.id, providerSessionId: session.sessionId, amountCents: due, applicationFeeCents: fee, url: session.url, expiresAt: session.expiresAt, createdAt: at })
       .execute();
     return { url: session.url };
   });

@@ -13,6 +13,7 @@ import {
   rulesetCoverage as rulesetCoverageSchema,
   SUBSCRIPTION_STATE_LABELS,
   subscriptionDefaults,
+  platformFeeInput,
   subscriptionPlanInput,
   type SubscriptionConfig,
   type SubscriptionPlan,
@@ -79,6 +80,7 @@ export const adminRoutes: FastifyPluginAsyncZod<{
         "o.name",
         "o.timezone",
         "o.createdAt",
+        "o.platformFeeBps",
         ...planColumns,
         // In force today in the organization's own time zone; cancelled contracts never count.
         sql<number>`(select count(*)::int from contracts c
@@ -101,6 +103,7 @@ export const adminRoutes: FastifyPluginAsyncZod<{
       activeContracts: r.activeContracts,
       users: r.users,
       lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
+      platformFeeBps: r.platformFeeBps,
       ...planOf(r),
     }));
   }
@@ -289,6 +292,40 @@ export const adminRoutes: FastifyPluginAsyncZod<{
           entityId: current.id,
           organizationId: current.id,
           changes: { before, after: next },
+        });
+      });
+      const [updated] = await loadOrganizations(req.params.id);
+      return updated!;
+    },
+  );
+
+  app.put(
+    "/admin/organizations/:id/platform-fee",
+    {
+      config: { platformAdmin: true },
+      schema: {
+        tags: ["admin"],
+        summary: "Set Aerowise's fee on an organization's homeowner payments",
+        description: "A Stripe Connect application fee in basis points (100 = 1%), taken from each card or bank payment opened from now on. 0 means no fee.",
+        params: z.object({ id: z.uuid() }),
+        body: platformFeeInput,
+        response: { 200: adminOrganization },
+      },
+    },
+    async (req) => {
+      const { adminId } = req.requireAdmin();
+      await db.transaction().execute(async (trx) => {
+        const current = await trx.selectFrom("organizations").select(["id", "platformFeeBps"]).where("id", "=", req.params.id).forUpdate().executeTakeFirst();
+        if (!current) throw notFound("Organization");
+        if (current.platformFeeBps === req.body.platformFeeBps) return;
+        await trx.updateTable("organizations").set({ platformFeeBps: req.body.platformFeeBps }).where("id", "=", current.id).execute();
+        await platformAudit(trx, req, {
+          adminId,
+          action: "organization.platform_fee_changed",
+          entityType: "organization",
+          entityId: current.id,
+          organizationId: current.id,
+          changes: { before: current.platformFeeBps, after: req.body.platformFeeBps },
         });
       });
       const [updated] = await loadOrganizations(req.params.id);

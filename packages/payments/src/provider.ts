@@ -19,6 +19,8 @@ export interface CheckoutInput {
   /** Stripe replays the first answer for a repeated key, so a retried request opens one page. */
   idempotencyKey: string;
   amountCents: number;
+  /** Aerowise's fee, taken from the payment as a Connect application fee. 0 means none. */
+  applicationFeeCents: number;
   description: string;
   customerEmail: string | null;
   successUrl: string;

@@ -25,6 +25,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Aerowise billing: monthly count of active contracts per organization, stored with each month; Stripe Billing invoices (per-contract price, monthly minimum, founder price) collected automatically; test stand-in in development | Code done; **needs Stripe Billing keys** |
 | Owner subscription page (`/settings/subscription`): plan, days left, estimate at today's count, saved payment method (Stripe customer portal), past invoices | Done |
 | Plan lifecycle: owner reminders 14, 7 and 1 days before a free period ends; trial to active with a saved card, read-only without; past due on a failed payment, read-only after a grace period, active again once paid | Done |
+| Platform fee: an optional per-company Stripe Connect application fee on homeowner card and bank payments, set in `/admin`, 0 by default | Done |
 | Plans, contracts, renewals (next term) and recurring inspection visits with due dates | Done |
 | Due-inspections list for the office | Done |
 | Jobs, office scheduling screen, technician daily route | Done |

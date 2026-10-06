@@ -508,3 +508,11 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Without Stripe Billing keys nothing moves on its own.** Reminders still go out, but a free period past its end stays as it is until an admin changes it in `/admin`, since nothing can be collected.
 - **Every automatic change is in the platform audit log** as `organization.plan_changed` with no admin and a reason; a change the owner triggered from the subscription page is also in the company's own audit log.
 - **A lapsed company's automatic sends keep going**, as Justin decided in W4.3: nothing in the lifecycle pauses queued filings or homeowner reminders.
+
+## 2026-10-06 · W4.5 Platform fee on homeowner payments
+
+- **A percentage, in basis points, per company.** `organizations.platform_fee_bps` (migration 0032), 0 by default, at most 1000 (10%). An Aerowise admin sets it in the plan form in `/admin` (`PUT /admin/organizations/:id/platform-fee`), audited as `organization.platform_fee_changed`. No fixed per-payment fee: a percentage is what Stripe Connect platforms usually charge and is easy to explain; a fixed part can be added later if Justin wants one.
+- **Taken as a Stripe Connect application fee** on the direct charge (`payment_intent_data.application_fee_amount`), so it applies the same way to card and bank (ACH) payments. Rounded down to the cent; when it rounds to 0 no fee is sent at all. Stripe's own processing fee is separate and still comes out of the company's share.
+- **Fixed when the payment page opens.** Each `checkout_sessions` row keeps the fee it was opened with. A homeowner pressing Pay again reuses a page only when the fee has not changed since; after a change they get a new page at the new fee. A page opened before the change and paid anyway keeps its old fee.
+- **Open question: refunds.** Refunds do not give the fee back yet (Stripe's default for application fees). Recommended: refund the fee in proportion (`refund_application_fee`) once a company has a fee, so a company is never charged a fee on money it returned. Not needed while every fee is 0.
+

@@ -6,7 +6,8 @@ const CHECKOUT_LIFETIME_SECONDS = 24 * 60 * 60;
 
 /**
  * Stripe Connect with direct charges: each provider has its own Stripe account (Express),
- * customers pay on it, and the money settles to the provider. Aerowise takes no fee.
+ * customers pay on it, and the money settles to the provider. Aerowise's fee, when an admin
+ * has set one for the provider, is taken from each payment as an application fee.
  */
 export class StripeProvider implements PaymentProvider {
   readonly kind = "stripe";
@@ -54,7 +55,12 @@ export class StripeProvider implements PaymentProvider {
         cancel_url: input.cancelUrl,
         expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_LIFETIME_SECONDS,
         metadata: input.metadata,
-        payment_intent_data: { description: input.description, metadata: input.metadata },
+        payment_intent_data: {
+          description: input.description,
+          metadata: input.metadata,
+          // Cards and bank (ACH) payments alike; Stripe moves the fee to Aerowise's platform account.
+          ...(input.applicationFeeCents > 0 ? { application_fee_amount: input.applicationFeeCents } : {}),
+        },
       },
       { stripeAccount: input.accountId, idempotencyKey: input.idempotencyKey },
     );

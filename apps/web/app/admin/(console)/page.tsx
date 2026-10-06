@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  PLATFORM_FEE_MAX_BPS,
   SUBSCRIPTION_STATE_LABELS,
   SUBSCRIPTION_TRANSITIONS,
   type AdminOrganization,
@@ -52,6 +53,9 @@ function priceSummary(o: AdminOrganization, defaults: SubscriptionConfig) {
   return `${money(price)}/contract, ${money(minimum)} min${founder ? " (founder)" : ""}`;
 }
 
+/** Basis points as a percentage: 50 → "0.5%". */
+const feePercent = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, "")}%`;
+
 function PlanEditor({
   org,
   defaults,
@@ -84,6 +88,13 @@ function PlanEditor({
           monthlyMinimumCentsOverride: toCents(v.minimum),
         },
       });
+      const platformFeeBps = Math.round(Number(v.fee ?? 0) * 100);
+      if (platformFeeBps !== org.platformFeeBps) {
+        await api(`/admin/organizations/${org.id}/platform-fee`, {
+          method: "PUT",
+          body: { platformFeeBps },
+        });
+      }
       onSaved();
     } catch (err) {
       setError(
@@ -146,6 +157,21 @@ function PlanEditor({
           defaultValue={toDollars(org.plan.monthlyMinimumCentsOverride)}
           placeholder={toDollars(defaults.monthlyMinimumCents)}
         />
+      </label>
+      <label>
+        Platform fee on homeowner payments (%)
+        <input
+          name="fee"
+          type="number"
+          min="0"
+          max={PLATFORM_FEE_MAX_BPS / 100}
+          step="0.01"
+          defaultValue={org.platformFeeBps / 100}
+        />
+        <span className="muted small">
+          Taken from each card or bank payment the company collects through
+          Aerowise. 0 means no fee.
+        </span>
       </label>
       <p className="muted small wide">
         Leave a price blank to use the standard price (
@@ -460,7 +486,11 @@ export default function AdminOrganizationsPage() {
                   )}
                 </td>
                 <td>{planSummary(o)}</td>
-                <td>{priceSummary(o, data.defaults)}</td>
+                <td>
+                  {priceSummary(o, data.defaults)}
+                  {o.platformFeeBps > 0 &&
+                    `; ${feePercent(o.platformFeeBps)} fee on payments`}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -39,6 +39,8 @@ export const adminOrganization = z.object({
   plan: subscriptionPlan,
   /** Days until a free period ends, in the organization's time zone; null when it has no end. */
   daysLeft: z.number().int().nullable(),
+  /** Aerowise's fee on the company's homeowner payments, in basis points (100 = 1%). */
+  platformFeeBps: z.number().int(),
 });
 export type AdminOrganization = z.infer<typeof adminOrganization>;
 
