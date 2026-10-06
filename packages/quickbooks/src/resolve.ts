@@ -63,7 +63,15 @@ export async function resolveLink(ctx: QuickBooksContext, organizationId: string
         await set({ status: "queued", force: true });
         break;
       case "keep_quickbooks":
-        await set({ status: "synced", syncToken: details.remoteSyncToken as string, remoteUpdatedAt: (details.remoteUpdatedAt as string | null) ?? null, pushedHash: await localHash(), lastSyncedAt: now, force: false });
+        // For a refunded payment, the person handles the refund in QuickBooks; the next refund asks again.
+        await set({
+          status: "synced",
+          syncToken: details.remoteSyncToken as string,
+          remoteUpdatedAt: (details.remoteUpdatedAt as string | null) ?? null,
+          pushedHash: link.entityType === "payment" ? String(details.netCents) : await localHash(),
+          lastSyncedAt: now,
+          force: false,
+        });
         break;
       case "recreate":
         await set({

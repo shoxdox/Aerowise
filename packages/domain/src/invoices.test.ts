@@ -36,7 +36,7 @@ describe("invoiceTotals", () => {
 });
 
 describe("paymentStatus", () => {
-  const s = (paidCents: number, pendingCents = 0, refundedCents = 0, totalCents = 10000) => paymentStatus({ totalCents, paidCents, pendingCents, refundedCents });
+  const s = (paidCents: number, pendingCents = 0, refundedCents = 0, totalCents = 10000, creditedCents = 0) => paymentStatus({ totalCents, paidCents, pendingCents, refundedCents, creditedCents });
   it("covers each state", () => {
     expect(s(0)).toBe("unpaid");
     expect(s(0, 10000)).toBe("processing");
@@ -48,9 +48,19 @@ describe("paymentStatus", () => {
     expect(s(6000, 0, 4000)).toBe("partial");
     expect(s(0, 0, 0, 0)).toBe("paid");
   });
+  it("takes a credit refund off what is owed, and a reversed one reopens the balance", () => {
+    // $100 paid, $20 refunded as a credit: $80 kept and nothing owed.
+    expect(s(8000, 0, 2000, 10000, 2000)).toBe("paid");
+    // The same $20 reversing the payment: $20 owed again.
+    expect(s(8000, 0, 2000, 10000, 0)).toBe("partial");
+    // All of it refunded as a credit.
+    expect(s(0, 0, 10000, 10000, 10000)).toBe("refunded");
+    expect(amountDue({ totalCents: 10000, paidCents: 8000, pendingCents: 0, creditedCents: 2000 })).toBe(0);
+    expect(amountDue({ totalCents: 10000, paidCents: 8000, pendingCents: 0, creditedCents: 0 })).toBe(2000);
+  });
   it("amount due leaves out what is already clearing", () => {
-    expect(amountDue({ totalCents: 10000, paidCents: 2500, pendingCents: 2500 })).toBe(5000);
-    expect(amountDue({ totalCents: 10000, paidCents: 12000, pendingCents: 0 })).toBe(0);
+    expect(amountDue({ totalCents: 10000, paidCents: 2500, pendingCents: 2500, creditedCents: 0 })).toBe(5000);
+    expect(amountDue({ totalCents: 10000, paidCents: 12000, pendingCents: 0, creditedCents: 0 })).toBe(0);
   });
 });
 

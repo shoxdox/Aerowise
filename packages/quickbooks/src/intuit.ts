@@ -4,6 +4,9 @@ import {
   type Changes,
   type CustomerPayload,
   type InvoicePayload,
+  type PaymentChange,
+  type QboAccount,
+  type RefundReceiptPayload,
   type PaymentPayload,
   type QboCustomer,
   type QboInvoice,
@@ -307,6 +310,62 @@ class IntuitCompany implements QuickBooksCompany {
     };
     const pay = (await this.call("POST", "/payment", { requestid: requestId }, body)).Payment as Json;
     return { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0") };
+  }
+
+  async getPayment(id: string) {
+    const pay = await this.read("Payment", id);
+    if (!pay) return null;
+    const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
+    const applied = ((pay.Line ?? []) as Json[]).flatMap((l) =>
+      ((l.LinkedTxn ?? []) as Json[]).filter((t) => t.TxnType === "Invoice").map((t) => ({ invoiceId: String(t.TxnId), amountCents: cents(l.Amount) })),
+    );
+    return { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0"), amountCents: cents(pay.TotalAmt), applied };
+  }
+
+  /** A full update: QuickBooks clears what a payment update leaves out, so send the rest back as it is. */
+  async updatePayment(id: string, syncToken: string, c: PaymentChange) {
+    const current = await this.read("Payment", id);
+    if (!current) throw new QuickBooksError("validation", "Object Not Found: the payment was deleted in QuickBooks", "610");
+    const body = {
+      ...current,
+      MetaData: undefined,
+      SyncToken: syncToken,
+      TotalAmt: toAmount(c.amountCents),
+      PrivateNote: c.privateNote,
+      Line: [{ Amount: toAmount(c.amountCents), LinkedTxn: [{ TxnId: c.invoiceId, TxnType: "Invoice" }] }],
+    };
+    const pay = (await this.call("POST", "/payment", {}, body)).Payment as Json;
+    return { id: String(pay.Id), syncToken: String(pay.SyncToken ?? "0") };
+  }
+
+  async deletePayment(id: string, syncToken: string) {
+    await this.call("POST", "/payment", { operation: "delete" }, { Id: id, SyncToken: syncToken });
+  }
+
+  async listAccounts(): Promise<QboAccount[]> {
+    const rows = await this.queryAll("Account", "AccountType in ('Bank', 'Other Current Asset') and Active in (true, false)");
+    return rows.map((a) => ({ id: String(a.Id), name: a.FullyQualifiedName ?? a.Name, type: String(a.AccountType), active: a.Active !== false }));
+  }
+
+  async createRefundReceipt(p: RefundReceiptPayload, requestId: string) {
+    const body = {
+      CustomerRef: { value: p.customerId },
+      TxnDate: p.txnDate,
+      DepositToAccountRef: { value: p.accountId },
+      PaymentType: p.paymentType,
+      PaymentRefNum: p.reference ? p.reference.slice(-21) : undefined,
+      PrivateNote: p.privateNote,
+      Line: [
+        {
+          DetailType: "SalesItemLineDetail",
+          Amount: toAmount(p.amountCents),
+          Description: p.description.slice(0, 4000),
+          SalesItemLineDetail: { ItemRef: { value: p.itemId }, Qty: 1, UnitPrice: toAmount(p.amountCents) },
+        },
+      ],
+    };
+    const r = (await this.call("POST", "/refundreceipt", { requestid: requestId }, body)).RefundReceipt as Json;
+    return { id: String(r.Id), syncToken: String(r.SyncToken ?? "0") };
   }
 
   async changes(since: Date): Promise<Changes> {

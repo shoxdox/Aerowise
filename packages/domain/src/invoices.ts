@@ -73,11 +73,13 @@ export function invoiceTotals(lines: readonly TotalsLine[], discountCents: numbe
 
 /**
  * Where an invoice stands with its payments. `paidCents` is what has cleared, less what
- * has been refunded; `pendingCents` is bank payments still clearing.
+ * has been refunded; `pendingCents` is bank payments still clearing. `creditedCents` is
+ * what was refunded as a credit: the customer no longer owes it, so it comes off the total.
  */
-export function paymentStatus(p: { totalCents: number; paidCents: number; pendingCents: number; refundedCents: number }): InvoicePaymentStatus {
-  if (p.paidCents > p.totalCents) return "overpaid";
-  if (p.paidCents === p.totalCents && (p.totalCents > 0 || p.refundedCents === 0)) return "paid";
+export function paymentStatus(p: { totalCents: number; paidCents: number; pendingCents: number; refundedCents: number; creditedCents: number }): InvoicePaymentStatus {
+  const owed = p.totalCents - p.creditedCents;
+  if (p.paidCents > owed) return "overpaid";
+  if (p.paidCents === owed && (owed > 0 || p.refundedCents === 0)) return "paid";
   if (p.paidCents > 0) return "partial";
   if (p.pendingCents > 0) return "processing";
   if (p.refundedCents > 0) return "refunded";
@@ -85,7 +87,7 @@ export function paymentStatus(p: { totalCents: number; paidCents: number; pendin
 }
 
 /** What is still owed and not already on its way. Never negative. */
-export const amountDue = (p: { totalCents: number; paidCents: number; pendingCents: number }) => Math.max(0, p.totalCents - p.paidCents - p.pendingCents);
+export const amountDue = (p: { totalCents: number; paidCents: number; pendingCents: number; creditedCents: number }) => Math.max(0, p.totalCents - p.creditedCents - p.paidCents - p.pendingCents);
 
 const PERIOD_MONTHS: Record<(typeof BILLING_FREQUENCIES)[number], number> = { annual: 12, semiannual: 6, quarterly: 3, monthly: 1 };
 
@@ -177,7 +179,13 @@ export const manualPaymentInput = z.object({
 });
 export type ManualPaymentInput = z.input<typeof manualPaymentInput>;
 
-export const refundInput = z.object({ amountCents: cents.min(1), reason: z.string().trim().min(1).max(2000) });
+/**
+ * `credit` (the usual refund): the customer no longer owes the amount, so the invoice stays paid.
+ * `reverse`: the payment was taken by mistake and the customer still owes it, so the balance reopens.
+ */
+export const REFUND_INTENTS = ["credit", "reverse"] as const;
+export type RefundIntent = (typeof REFUND_INTENTS)[number];
+export const refundInput = z.object({ amountCents: cents.min(1), reason: z.string().trim().min(1).max(2000), intent: z.enum(REFUND_INTENTS).default("credit") });
 
 export const billingSettingsInput = z.object({
   invoiceTermsDays: z.number().int().min(0).max(120),
@@ -206,6 +214,8 @@ export const invoiceListItem = z.object({
   totalCents: z.number().int(),
   paidCents: z.number().int(),
   pendingCents: z.number().int(),
+  /** Refunded as a credit: no longer owed. */
+  creditedCents: z.number().int(),
   amountDueCents: z.number().int(),
   sentAt: datetime.nullable(),
   customer: z.object({ id, displayName: z.string() }),
@@ -236,6 +246,7 @@ export const refund = z.object({
   id,
   amountCents: z.number().int(),
   status: z.enum(REFUND_STATUSES),
+  intent: z.enum(REFUND_INTENTS),
   reason: z.string().nullable(),
   createdAt: datetime,
 });
@@ -299,6 +310,8 @@ export const publicInvoice = z.object({
   totalCents: z.number().int(),
   paidCents: z.number().int(),
   pendingCents: z.number().int(),
+  /** Refunded as a credit: no longer owed. */
+  creditedCents: z.number().int(),
   amountDueCents: z.number().int(),
   canPayOnline: z.boolean(),
   /** Where the customer verifies their bank account so a bank payment can go ahead (Stripe's page). */

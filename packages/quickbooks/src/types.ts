@@ -29,6 +29,15 @@ export interface CustomerPayload {
   address: Address | null;
 }
 
+/** An account money can leave from for a refund: a bank account, or Undeposited Funds and other clearing accounts. */
+export interface QboAccount {
+  id: string;
+  name: string;
+  /** QuickBooks' AccountType, e.g. "Bank" or "Other Current Asset". */
+  type: string;
+  active: boolean;
+}
+
 export interface QboItem {
   id: string;
   name: string;
@@ -71,6 +80,35 @@ export interface PaymentPayload {
   privateNote: string;
 }
 
+export interface QboPayment {
+  id: string;
+  syncToken: string;
+  amountCents: number;
+  /** The invoices it pays, and how much of it goes to each. */
+  applied: { invoiceId: string; amountCents: number }[];
+}
+
+/** A refund recorded on its own; the original payment stays as it is. */
+export interface RefundReceiptPayload {
+  customerId: string;
+  /** The item whose income account the refund reduces. */
+  itemId: string;
+  amountCents: number;
+  description: string;
+  txnDate: string;
+  /** Where the money leaves from. */
+  accountId: string;
+  paymentType: "CreditCard" | "Check" | "Cash" | "Other";
+  reference: string | null;
+  privateNote: string;
+}
+
+export interface PaymentChange {
+  invoiceId: string;
+  amountCents: number;
+  privateNote: string;
+}
+
 export interface Changes {
   customers: QboCustomer[];
   /** Invoices changed since, with the ones deleted in QuickBooks marked. */
@@ -105,6 +143,15 @@ export interface QuickBooksCompany {
   createInvoice(payload: InvoicePayload, requestId: string): Promise<QboInvoice>;
   voidInvoice(id: string, syncToken: string): Promise<QboInvoice>;
   createPayment(payload: PaymentPayload, requestId: string): Promise<{ id: string; syncToken: string }>;
+  /** Null when the payment was deleted. */
+  getPayment(id: string): Promise<QboPayment | null>;
+  /** Changes what a payment applies to its invoice, as after a partial refund. */
+  updatePayment(id: string, syncToken: string, change: PaymentChange): Promise<{ id: string; syncToken: string }>;
+  deletePayment(id: string, syncToken: string): Promise<void>;
+  /** Bank and other current asset accounts, active and not: where refunds can be paid from. */
+  listAccounts(): Promise<QboAccount[]>;
+  /** `requestId` makes a retried create return the first result instead of a duplicate. */
+  createRefundReceipt(payload: RefundReceiptPayload, requestId: string): Promise<{ id: string; syncToken: string }>;
   /** What changed in QuickBooks since a moment (at most 30 days back). */
   changes(since: Date): Promise<Changes>;
 }

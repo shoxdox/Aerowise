@@ -25,6 +25,7 @@ export async function invoiceByToken(db: Database, token: string) {
       "i.totalCents",
       "i.paidCents",
       "i.pendingCents",
+      "i.creditedCents",
       "i.pdfStorageKey",
       "o.stripeAccountId",
       "o.stripeChargesEnabled",

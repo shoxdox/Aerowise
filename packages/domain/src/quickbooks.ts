@@ -5,7 +5,7 @@ import { id } from "./crm.ts";
 // provider's QuickBooks company. Nothing in QuickBooks is overwritten without a person
 // choosing to: anything Aerowise cannot settle on its own becomes a conflict to decide.
 
-export const QUICKBOOKS_ENTITY_TYPES = ["customer", "plan", "invoice", "payment"] as const;
+export const QUICKBOOKS_ENTITY_TYPES = ["customer", "plan", "invoice", "payment", "refund"] as const;
 export type QuickBooksEntityType = (typeof QUICKBOOKS_ENTITY_TYPES)[number];
 
 /** Per record. "Not connected" is not stored: it is the absence of a connection. */
@@ -56,7 +56,7 @@ export const QUICKBOOKS_CONFLICT_GUIDE: Record<QuickBooksConflictKind | "failed"
   },
   changed_in_both: {
     title: "Changed in both places",
-    explanation: "This customer was edited in Aerowise and in QuickBooks since the last sync. Choose which version QuickBooks should keep. Aerowise keeps its own details either way.",
+    explanation: "This record was edited in Aerowise and in QuickBooks since the last sync: a customer's details, or a payment refunded in Aerowise and changed in QuickBooks. Choose which version QuickBooks should keep. Aerowise keeps its own details either way.",
     actions: ["keep_quickbooks", "use_aerowise"],
   },
   deleted_in_quickbooks: {
@@ -234,7 +234,7 @@ export const quickbooksStatus = z.object({
       lastSyncError: z.string().nullable(),
     })
     .nullable(),
-  counts: z.object({ customer: statusCounts, plan: statusCounts, invoice: statusCounts, payment: statusCounts }),
+  counts: z.object({ customer: statusCounts, plan: statusCounts, invoice: statusCounts, payment: statusCounts, refund: statusCounts }),
   /** Records in conflict, or failed with no retry left: what the conflict center shows. */
   attention: z.number().int(),
 });
@@ -242,10 +242,18 @@ export type QuickBooksStatus = z.infer<typeof quickbooksStatus>;
 
 export const quickbooksItem = z.object({ id: z.string(), name: z.string(), type: z.string(), active: z.boolean() });
 export type QuickBooksItem = z.infer<typeof quickbooksItem>;
+/** A bank or clearing account (such as Undeposited Funds) refunds can be paid from. */
+export const quickbooksAccount = z.object({ id: z.string(), name: z.string(), type: z.string(), active: z.boolean() });
+export type QuickBooksAccount = z.infer<typeof quickbooksAccount>;
+const choice = z.object({ id: z.string(), name: z.string() }).nullable();
 
 export const quickbooksMapping = z.object({
   syncFrom: z.iso.date(),
   defaultItem: z.object({ id: z.string(), name: z.string() }).nullable(),
+  /** Refund Receipts (credit refunds): the item they reduce, and the accounts the money leaves from. None is assumed. */
+  refundItem: choice,
+  stripeRefundAccount: choice,
+  manualRefundAccount: choice,
   plans: z.array(
     z.object({
       planId: id,
@@ -261,6 +269,9 @@ export type QuickBooksMapping = z.infer<typeof quickbooksMapping>;
 export const quickbooksMappingInput = z.object({
   syncFrom: z.iso.date().optional(),
   defaultItemId: z.string().min(1).max(40).nullable().optional(),
+  refundItemId: z.string().min(1).max(40).nullable().optional(),
+  stripeRefundAccountId: z.string().min(1).max(40).nullable().optional(),
+  manualRefundAccountId: z.string().min(1).max(40).nullable().optional(),
   /** A null item means plan lines use the default item. */
   plans: z.array(z.object({ planId: id, itemId: z.string().min(1).max(40).nullable() })).max(500).optional(),
 });

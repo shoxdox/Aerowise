@@ -549,7 +549,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         .selectFrom("invoices as i")
         .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "i.customerId").onRef("c.organizationId", "=", "i.organizationId"))
         .leftJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
-        .select(["i.id", "i.number", "i.status", "i.dueOn", "i.totalCents", "i.paidCents", "i.pendingCents", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+        .select(["i.id", "i.number", "i.status", "i.dueOn", "i.totalCents", "i.paidCents", "i.pendingCents", "i.creditedCents", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
         .where("i.organizationId", "=", organizationId);
     type Row = Awaited<ReturnType<ReturnType<typeof base>["execute"]>>[number];
     const where = (r: Row) => ({
@@ -557,7 +557,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       customer: customer(r),
       target: { type: "invoice" as const, id: r.id },
     });
-    const owed = (r: Row) => dollars(Math.max(0, r.totalCents - r.paidCents - r.pendingCents));
+    const owed = (r: Row) => dollars(Math.max(0, r.totalCents - r.creditedCents - r.paidCents - r.pendingCents));
     const failedSince = new Date(now().getTime() - PAYMENT_FAILED_WINDOW_DAYS * 86_400_000);
     const [overdue, failed, overpaid] = await Promise.all([
       base().where("i.status", "=", "open").where("i.paymentStatus", "in", ["unpaid", "partial"]).where("i.dueOn", "<", today).orderBy("i.dueOn").limit(PER_KIND).execute(),
@@ -599,7 +599,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         kind: "invoice_overpaid" as const,
         severity: "medium" as const,
         title: "Paid more than owed: refund the difference",
-        detail: r.status === "void" ? `${invoiceNumberLabel(r.number)} is void but ${dollars(r.paidCents)} was paid on it` : `${invoiceNumberLabel(r.number)}: ${dollars(r.paidCents - r.totalCents)} over`,
+        detail: r.status === "void" ? `${invoiceNumberLabel(r.number)} is void but ${dollars(r.paidCents)} was paid on it` : `${invoiceNumberLabel(r.number)}: ${dollars(r.paidCents - (r.totalCents - r.creditedCents))} over`,
         dueOn: null,
       })),
     ];
@@ -675,7 +675,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           .execute(),
         db
           .selectFrom("invoices")
-          .select([sql<number>`count(*)::int`.as("n"), sql<number>`coalesce(sum(greatest(total_cents - paid_cents, 0)), 0)::int`.as("cents")])
+          .select([sql<number>`count(*)::int`.as("n"), sql<number>`coalesce(sum(greatest(total_cents - credited_cents - paid_cents, 0)), 0)::int`.as("cents")])
           .where("organizationId", "=", organizationId)
           .where("status", "=", "open")
           .where("paymentStatus", "in", ["unpaid", "processing", "partial"])

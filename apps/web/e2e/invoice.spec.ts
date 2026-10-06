@@ -45,4 +45,34 @@ test("the owner bills a contract and the homeowner pays it online", async ({ pag
   await page.reload();
   await expect(page.locator(".badge", { hasText: "Paid" }).first()).toBeVisible();
   await expect(page.getByText(/Paid \$[\d,.]+ online by card/)).toBeVisible();
+
+  // Refunds: Cancel sends nothing, and each choice sends its intent.
+  const refundBodies: { amountCents: number; intent: string }[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && /\/payments\/[^/]+\/refund$/.test(r.url())) refundBodies.push(r.postDataJSON());
+  });
+  const refundForm = page.getByRole("form", { name: "Refund payment" });
+  await page.getByRole("button", { name: "Refund", exact: true }).click();
+  await expect(refundForm.getByLabel(/Ordinary refund/)).toBeChecked();
+  await refundForm.getByLabel(/Reason/).fill("Changed my mind");
+  await refundForm.getByRole("button", { name: "Cancel" }).click();
+  await expect(refundForm).toBeHidden();
+  expect(refundBodies).toEqual([]);
+
+  await page.getByRole("button", { name: "Refund", exact: true }).click();
+  await refundForm.getByLabel(/Amount/).fill("1.00");
+  await refundForm.getByLabel(/Reason/).fill("Goodwill");
+  await refundForm.getByRole("button", { name: "Refund", exact: true }).click();
+  await expect(page.getByRole("cell").getByText(/Refund(ed| pending) \$1\.00: Goodwill/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Refund", exact: true }).click();
+  await refundForm.getByLabel(/Amount/).fill("2.00");
+  await refundForm.getByLabel(/Reason/).fill("Charged twice");
+  await refundForm.getByLabel(/Reverse payment/).check();
+  await refundForm.getByRole("button", { name: "Refund", exact: true }).click();
+  await expect(page.getByRole("cell").getByText(/Refund(ed| pending) \$2\.00 \(payment reversed, owed again\): Charged twice/)).toBeVisible();
+  expect(refundBodies.map((b) => [b.amountCents, b.intent])).toEqual([
+    [100, "credit"],
+    [200, "reverse"],
+  ]);
 });

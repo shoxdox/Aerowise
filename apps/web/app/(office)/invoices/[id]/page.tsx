@@ -23,6 +23,7 @@ export default function InvoicePage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [panel, setPanel] = useState<"payment" | "void" | null>(null);
+  const [refunding, setRefunding] = useState<Payment | null>(null);
   const [copied, setCopied] = useState(false);
   const [texted, setTexted] = useState<string | null>(null);
 
@@ -50,16 +51,15 @@ export default function InvoicePage() {
     void run("payments", { amountCents: Math.round(Number(v.amount) * 100), method: v.method, receivedOn: v.receivedOn, reference: v.reference ?? null, note: v.note ?? null });
   }
 
-  async function refund(p: Payment) {
-    const left = (p.amountCents - p.refundedCents) / 100;
-    const amount = window.prompt(`Refund how much? Up to ${money(p.amountCents - p.refundedCents)}.`, left.toFixed(2));
-    if (!amount) return;
-    const reason = window.prompt("Reason for the refund (kept on the invoice)");
-    if (!reason) return;
+  async function refund(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!refunding) return;
+    const v = formValues(event.currentTarget);
     setBusy(true);
     setActionError(null);
     try {
-      await api(`/payments/${p.id}/refund`, { method: "POST", body: { amountCents: Math.round(Number(amount) * 100), reason } });
+      await api(`/payments/${refunding.id}/refund`, { method: "POST", body: { amountCents: Math.round(Number(v.amount) * 100), reason: v.reason, intent: v.intent } });
+      setRefunding(null);
       await reload();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Could not refund");
@@ -134,6 +134,7 @@ export default function InvoicePage() {
             <dd>
               <strong>{money(inv.amountDueCents)}</strong>
               {inv.pendingCents > 0 && <span className="muted"> · {money(inv.pendingCents)} bank payment clearing</span>}
+              {inv.creditedCents > 0 && <span className="muted"> · {money(inv.creditedCents)} refunded, no longer owed</span>}
             </dd>
           </>
         )}
@@ -334,6 +335,7 @@ export default function InvoicePage() {
                     {p.refunds.map((r) => (
                       <div key={r.id} className="muted small">
                         {r.status === "failed" ? "Refund failed" : r.status === "pending" ? "Refund pending" : "Refunded"} {money(r.amountCents)}
+                        {r.intent === "reverse" && " (payment reversed, owed again)"}
                         {r.reason && `: ${r.reason}`}
                       </div>
                     ))}
@@ -344,7 +346,7 @@ export default function InvoicePage() {
                   </td>
                   <td>
                     {owner && p.status === "succeeded" && p.refundedCents < p.amountCents && (
-                      <button className="link" disabled={busy} onClick={() => void refund(p)}>
+                      <button className="link" disabled={busy} onClick={() => setRefunding(p)}>
                         Refund
                       </button>
                     )}
@@ -353,6 +355,36 @@ export default function InvoicePage() {
               ))}
             </tbody>
           </table>
+          {refunding && (
+            // Usually the customer no longer owes what is refunded. Reversing a payment taken by mistake is the exception.
+            <form className="card stack" onSubmit={refund} aria-label="Refund payment">
+              <label>
+                Amount ($), up to {money(refunding.amountCents - refunding.refundedCents)}
+                <input name="amount" type="number" min="0.01" step="0.01" max={(refunding.amountCents - refunding.refundedCents) / 100} defaultValue={((refunding.amountCents - refunding.refundedCents) / 100).toFixed(2)} required />
+              </label>
+              <label>
+                Reason (kept on the invoice)
+                <input name="reason" required />
+              </label>
+              <fieldset className="stack">
+                <legend>Does the customer still owe this amount?</legend>
+                <label>
+                  <input type="radio" name="intent" value="credit" defaultChecked /> Ordinary refund: they no longer owe it
+                </label>
+                <label>
+                  <input type="radio" name="intent" value="reverse" /> Reverse payment: it was taken by mistake, so the balance is owed again
+                </label>
+              </fieldset>
+              <div className="row">
+                <button type="submit" disabled={busy}>
+                  Refund
+                </button>
+                <button type="button" className="secondary" disabled={busy} onClick={() => setRefunding(null)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
         </section>
       )}
 

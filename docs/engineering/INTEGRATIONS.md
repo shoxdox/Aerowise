@@ -119,7 +119,9 @@ Signed in to staging as the demo owner:
 
    Every link should be `synced` (or a `conflict` from step 5), and the connection's `environment` `sandbox`.
 
-**Known gap: refunds.** The sync sends a payment once it clears and never sends refunds, so an invoice refunded in Aerowise (or in Stripe) stays paid in QuickBooks. How refunds should appear in QuickBooks is Justin's call (decision card in the W7 thread, unanswered as of 2026-10-06); a proposed fix is in a separate PR. Until one ships, the office enters refunds in QuickBooks by hand.
+**Refunds.** An ordinary refund (Credit) goes to QuickBooks as a Refund Receipt, and the payment stays as it is. A refund that reverses a payment taken by mistake (Reverse, chosen when refunding) lowers the QuickBooks payment instead, unless someone changed that payment in QuickBooks; then it goes to the conflict center. Refund Receipts wait until the QuickBooks page has a refund item and both refund accounts chosen. See DECISIONS.md, "Refunds: credit by default".
+
+8. **Refunds.** On the QuickBooks page, under Refunds, choose a refund item, the account card and bank refunds are paid from, and the account check and cash refunds are paid from. Use the sandbox's own accounts; don't copy a real company's mapping. Then, on a new invoice paid by card, refund $2 with **Ordinary refund** (the default). Opening the refund form and pressing Cancel should send nothing. Aerowise should show the invoice paid with $2 refunded and $0 due. After **Sync now**, the sandbox should show the invoice at balance $0, the payment unchanged, and a $2 Refund Receipt from the chosen account. The Refund Receipt's private note names the Stripe refund. Press **Sync now** again: no second Refund Receipt should appear.
 
 The nightly reset removes the connection; the sandbox company keeps what was written to it. Intuit lets a sandbox company be reset from the developer dashboard.
 
@@ -127,7 +129,7 @@ Run log (newest last):
 
 | Date | Who | Connect | Review | Invoice | Payment | Conflict | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-06 | Codex | passed (Sandbox Company US) | passed (demo customers approved, default item mapped) | passed (INV-1001, INV-1002 match totals) | passed for INV-1002 (balance 0, matches); **not matching for INV-1001**: the $2 Stripe refund never reaches QuickBooks (refunds aren't synced), so QuickBooks shows it paid while Aerowise shows $2 due | passed (`changed_in_both`, resolved by sending the Aerowise version) | A deploy interrupted the first sync at 20 of 50; the normal sync recovered after the 10-minute lease. 50 customers, 2 invoices, 2 payments synced, no sync errors. Disconnect and reconnect passed, keeping the 50 customer, 2 invoice and 2 payment links. Refund gap: **open**, tracked under "Known gap: refunds" above |
+| 2026-10-06 | Codex | passed (Sandbox Company US) | passed (demo customers approved, default item mapped) | passed (INV-1001, INV-1002 match totals) | passed for INV-1002 (balance 0, matches); **not matching for INV-1001**: the $2 Stripe refund never reaches QuickBooks (refunds aren't synced), so QuickBooks shows it paid while Aerowise shows $2 due | passed (`changed_in_both`, resolved by sending the Aerowise version) | A deploy interrupted the first sync at 20 of 50; the normal sync recovered after the 10-minute lease. 50 customers, 2 invoices, 2 payments synced, no sync errors. Disconnect and reconnect passed, keeping the 50 customer, 2 invoice and 2 payment links. Refund gap: **open**. Fixed in code (Refund Receipts, Justin's choice); open until step 8 passes on staging |
 
 ### Going to production (Intuit's app review)
 
