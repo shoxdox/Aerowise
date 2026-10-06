@@ -5,7 +5,7 @@ How each outside service Aerowise talks to is set up, tried on staging and switc
 | Service | What for | Code | Staging | Production |
 | --- | --- | --- | --- | --- |
 | Stripe Connect | Homeowners paying a company's invoices online | `packages/payments` | Test mode, with `DEMO_LIVE_SERVICES=stripe` | Live keys |
-| QuickBooks Online | Invoices and payments into the company's books | `packages/quickbooks` | Stand-in (W7.2) | — |
+| QuickBooks Online | Invoices and payments into the company's books | `packages/quickbooks` | Intuit sandbox, with `DEMO_LIVE_SERVICES=quickbooks` | Production keys, after Intuit's app review |
 | Twilio | Reminder texts and replies | `packages/sms` | Stand-in (W7.3) | — |
 
 Stripe Billing (what companies pay Aerowise, W4) is a separate Stripe relationship with its own keys (`STRIPE_BILLING_*`); nothing here touches it.
@@ -15,8 +15,9 @@ Stripe Billing (what companies pay Aerowise, W4) is a separate Stripe relationsh
 Staging runs the demo (`DEMO_MODE=true`): every outside service is a test stand-in whatever keys are set, and the data is reset every night at 09:00 UTC. To try a service end to end, `DEMO_LIVE_SERVICES` in `/etc/aerowise/staging.env` names the services the demo uses for real anyway, comma-separated. Each one is allowed only in a mode where nothing real happens, and the API and worker refuse to start otherwise:
 
 - `stripe`: `STRIPE_SECRET_KEY` must be a test-mode key (`sk_test_` or `rk_test_`). No money moves.
+- `quickbooks`: `QUICKBOOKS_ENVIRONMENT` must be `sandbox`, with `QUICKBOOKS_CLIENT_ID` and `QUICKBOOKS_CLIENT_SECRET` set. Only Intuit sandbox companies can be connected.
 
-Everything not listed stays a stand-in. The settings check also refuses a live Stripe key on staging at all, and any `DEMO_LIVE_SERVICES` in production.
+Everything not listed stays a stand-in. The settings check also refuses a live Stripe key or `QUICKBOOKS_ENVIRONMENT=production` on staging at all, and any `DEMO_LIVE_SERVICES` in production. Several services are listed together, e.g. `DEMO_LIVE_SERVICES=stripe,quickbooks`.
 
 After editing the settings file, redeploy staging so the containers pick it up:
 
@@ -82,3 +83,61 @@ Run log (newest last):
 
 - Checkout pages asked Stripe for exactly 24 hours of life, Stripe's maximum counted on its own clock, so a server clock a little ahead got the page refused. They now last 23 hours.
 - A bank payment whose "cleared" event arrived before its "checkout completed" event was recorded as a card payment. Delayed-payment events now always mean a bank payment.
+
+## QuickBooks Online
+
+**How it works.** The owner connects a QuickBooks Online company from the **QuickBooks** page (`/quickbooks`) through Intuit's OAuth consent page. Aerowise stores the tokens encrypted (`QUICKBOOKS_TOKEN_KEY`), refreshes them as they expire, and the worker syncs every `QUICKBOOKS_SYNC_INTERVAL_MS` and after each change. The first sync is a review: Aerowise matches its customers to QuickBooks customers and the office approves each uncertain match before anything is written. After that it pushes customers, invoices and payments one way, Aerowise to QuickBooks, and reads QuickBooks' changes (change data capture) to raise conflicts instead of overwriting. Every write carries a request id, so a retried write is not duplicated. Every failure stored on a record names Intuit's request id ("Intuit ref …", the `intuit_tid` header), which Intuit support asks for.
+
+### Setting up QuickBooks for staging (Intuit sandbox)
+
+1. At developer.intuit.com, create an app for **QuickBooks Online and Payments** with the **Accounting** scope (`com.intuit.quickbooks.accounting`). Intuit gives every developer account a sandbox company (**Dashboard > Sandboxes**); no QuickBooks subscription is needed.
+2. In the app's **Development** settings, add the redirect URI `https://staging.deshain.com/api/quickbooks/callback`.
+3. **Settings file** (`/etc/aerowise/staging.env`), never in chat:
+   - `QUICKBOOKS_CLIENT_ID=` and `QUICKBOOKS_CLIENT_SECRET=` the **Development** keys
+   - `QUICKBOOKS_ENVIRONMENT=sandbox`
+   - `QUICKBOOKS_TOKEN_KEY` is already set by `setup.sh`; leave it
+   - add `quickbooks` to `DEMO_LIVE_SERVICES` (e.g. `stripe,quickbooks`)
+4. Redeploy staging.
+
+### The staging run
+
+Signed in to staging as the demo owner:
+
+1. **Connect.** On the QuickBooks page, **Connect** opens Intuit's consent page. Sign in with the Intuit developer account, pick the sandbox company and allow. Back in Aerowise the page names the sandbox company.
+2. **Review.** The first-sync review lists the demo customers with any likely matches among the sandbox company's own customers. Approve or create each, and pick the product or service used for invoice lines.
+3. **Invoice.** Issue an invoice in Aerowise. Within a sync it shows in the sandbox company (QuickBooks: **Sales > Invoices**) with the same number, lines and total.
+4. **Payment.** Record a payment on it in Aerowise (or pay it online with Stripe test mode). It shows in QuickBooks against that invoice, and the invoice's balance there drops to match.
+5. **Conflict.** In QuickBooks, rename a synced customer, then change the same customer in Aerowise. Aerowise shows a conflict on the QuickBooks page instead of overwriting either side.
+6. **Disconnect and reconnect.** **Disconnect** gives up the tokens; connecting again picks up where the links left off.
+7. **Record.** The sync's own record, without tokens:
+
+   ```sh
+   docker exec aerowise-staging-db-1 psql -U aerowise -d aerowise -c "select entity_type, status, count(*) from quickbooks_links group by 1, 2 order by 1, 2" -c "select environment, company_name, status, last_sync_finished_at, last_sync_error from quickbooks_connections"
+   ```
+
+   Every link should be `synced` (or a `conflict` from step 5), and the connection's `environment` `sandbox`.
+
+The nightly reset removes the connection; the sandbox company keeps what was written to it. Intuit lets a sandbox company be reset from the developer dashboard.
+
+Run log (newest last):
+
+| Date | Who | Connect | Review | Invoice | Payment | Conflict | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| — | — | — | — | — | — | — | Not run yet: waiting on the Intuit app's staging redirect URI and keys. |
+
+### Going to production (Intuit's app review)
+
+Production keys for an app that connects other people's QuickBooks companies are issued after Intuit reviews the app. Steps, in the Intuit developer portal:
+
+1. **App details:** app name, logo, and the URLs Intuit asks for: host domain `app.deshain.com`, launch URL `https://app.deshain.com/quickbooks`, disconnect URL `https://app.deshain.com/quickbooks` (the page explains what disconnecting means), a privacy policy and an end-user licence (terms) URL. The terms and privacy pages come from W8.3 with Justin's lawyer-reviewed text.
+2. **Production redirect URI:** `https://app.deshain.com/api/quickbooks/callback`.
+3. **Compliance questionnaire:** what Aerowise answers, from the code:
+   - OAuth 2.0 with the accounting scope only; tokens encrypted at rest (AES-256-GCM with `QUICKBOOKS_TOKEN_KEY`) and refreshed before expiry; refresh tokens replaced as Intuit rotates them; a refused refresh marks the connection as needing to connect again.
+   - Disconnecting revokes the token with Intuit.
+   - Errors are logged and shown to the office per record, with Intuit's `intuit_tid`.
+   - Writes are idempotent (`requestid`); reads page at 1000 rows; change data capture stays within Intuit's 30-day window; the minor version is pinned (`75`).
+   - Data is only synced one way (Aerowise to QuickBooks) plus conflict detection; nothing in QuickBooks is deleted.
+4. **Production keys** go in `/etc/aerowise/production.env` with `QUICKBOOKS_ENVIRONMENT=production`, then deploy production.
+
+Intuit's review can ask follow-up questions and take a few weeks. A design partner can't connect their real books until it is done; the sandbox works meanwhile.
+

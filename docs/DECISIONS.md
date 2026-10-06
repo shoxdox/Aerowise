@@ -522,3 +522,10 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **One Connect webhook endpoint.** With direct charges every event Aerowise reads (checkout, refunds, `account.updated`) happens on a connected account, so only the "Connected accounts" endpoint is needed; `STRIPE_WEBHOOK_SECRET` still takes several secrets for rotation.
 - **Checkout pages last 23 hours, not 24.** Stripe's 24-hour maximum is counted on its clock.
 - **The recorded run is a manual checklist plus the `stripe_events` table.** No Claude session can reach staging or Stripe from its sandbox, so Justin runs the steps in `INTEGRATIONS.md` and the webhook log on the server is the record.
+
+## 2026-10-06 · W7.2 QuickBooks against an Intuit sandbox
+
+- **`quickbooks` joins `DEMO_LIVE_SERVICES`, sandbox only.** The demo uses the real Intuit app only with `QUICKBOOKS_ENVIRONMENT=sandbox`, and staging refuses `production` outright, so staging can never connect a real company's books.
+- **Every QuickBooks failure names Intuit's request id** (`intuit_tid`, shown as "Intuit ref …" in the stored sync error). Intuit support asks for it, and Intuit's app review asks whether apps capture it.
+- **Production waits on Intuit's app review.** Its questionnaire answers and the URLs it asks for are in `docs/engineering/INTEGRATIONS.md`. The privacy and licence URLs depend on W8.3's pages.
+

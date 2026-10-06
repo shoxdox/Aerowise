@@ -6,12 +6,12 @@ import { QuickBooksError } from "./types.ts";
 type Call = { url: URL; init: RequestInit };
 
 /** A fetch that records requests and answers from a list. */
-function fakeFetch(...answers: { status?: number; body: unknown }[]) {
+function fakeFetch(...answers: { status?: number; body: unknown; headers?: Record<string, string> }[]) {
   const calls: Call[] = [];
   const fn = (async (url: string | URL, init?: RequestInit) => {
     calls.push({ url: new URL(String(url)), init: init ?? {} });
     const a = answers.shift() ?? { body: {} };
-    return new Response(JSON.stringify(a.body), { status: a.status ?? 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify(a.body), { status: a.status ?? 200, headers: { "content-type": "application/json", ...a.headers } });
   }) as typeof fetch;
   return { fn, calls };
 }
@@ -101,6 +101,13 @@ describe("Intuit company API", () => {
     await expect(company(fakeFetch({ status: 401, body: {} })).listItems()).rejects.toMatchObject({ kind: "auth" });
     await expect(company(fakeFetch({ status: 503, body: {} })).listItems()).rejects.toMatchObject({ kind: "transient" });
     expect(await company(fakeFetch(fault("610"))).getInvoice("1")).toBeNull();
+    // Intuit's request id rides along on every failure, for Intuit support.
+    await expect(company(fakeFetch({ ...fault("6000"), headers: { intuit_tid: "1-abc-2" } })).createCustomer(p, "r")).rejects.toMatchObject({
+      kind: "validation",
+      intuitTid: "1-abc-2",
+      message: "Msg: Detail (Intuit ref 1-abc-2)",
+    });
+    await expect(company(fakeFetch({ status: 401, body: {}, headers: { intuit_tid: "1-def-3" } })).listItems()).rejects.toMatchObject({ kind: "auth", intuitTid: "1-def-3" });
     const down = (async () => {
       throw new Error("ECONNRESET");
     }) as unknown as typeof fetch;
