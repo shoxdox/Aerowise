@@ -291,6 +291,14 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **A reset spends every open link of that person and ends all their sessions** in every organization. They sign in again with the new password rather than being signed in by the link, so a leaked link cannot become a session silently.
 - **Deactivation is per organization.** An owner deactivates a person's membership; their sessions in that organization are revoked and `findSession` already refuses inactive memberships, so the next request fails. Their other organizations are untouched. Owners cannot deactivate themselves, and a deactivated person comes back by reactivation, not by a new invitation (which office staff could otherwise use to undo an owner's decision).
 
+## 2026-10-05 · W2.4 Organization settings
+
+- **The MP license is the existing credential.** The settings page shows the responsible TCEQ maintenance provider chosen on the licenses page (`organizations.responsible_credential_id`, from #17) and links there, instead of a second license field that could disagree with what reports are signed and filed under.
+- **The logo is content-addressed.** It is stored at `<org>/logos/<sha256>.png|jpg`, and each report snapshot records that key (`provider.logoKey`). A report made before the logo changed redraws with its own logo, and removing the logo never deletes the file. PNG and JPEG only (checked by their first bytes), up to 1 MB. It is drawn at the top right of customer and authority inspection reports. When a signed copy is redrawn, the logo and, on the customer copy, the photos are now loaded too; before this, a signed customer copy was drawn without its photos.
+- **Invoices and renewal agreements do not show the logo yet.** Their PDFs are separate renderers; adding the logo there is a small follow-up if Justin wants it.
+- **Service counties are free text**, one per line, trimmed and de-duplicated without regard to case. Sites already store their county as typed, so a fixed list would not match imported data. W2.5's checklist only needs at least one.
+- **Who can change what:** everyone signed in can read the company settings (they appear on the documents everyone sends); only owners (`org:manage`) can change them or the logo.
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
