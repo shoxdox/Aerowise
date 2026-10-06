@@ -60,7 +60,8 @@ export async function recalcInvoice(trx: Transaction<DB>, organizationId: string
     paidCents,
     pendingCents: sums.pending,
     refundedCents: sums.refunded,
-    creditedCents: sums.credited,
+    // Nothing is owed on a void invoice, so there is nothing for a credit to come off.
+    creditedCents: invoice.status === "void" ? 0 : sums.credited,
   });
   const fullyPaid = status === "paid" || status === "overpaid";
   await trx

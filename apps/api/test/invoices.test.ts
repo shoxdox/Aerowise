@@ -391,7 +391,9 @@ describe("paying online", () => {
     // Nothing left to refund.
     expect((await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 1, reason: "x" })).statusCode).toBe(422);
     // With every payment refunded, the invoice can be voided, and its link stops working.
-    expect((await t.api.post(`/invoices/${inv.id}/void`, { reason: "Cancelled job" })).json().status).toBe("void");
+    const voided = (await t.api.post(`/invoices/${inv.id}/void`, { reason: "Cancelled job" })).json();
+    expect(voided).toMatchObject({ status: "void", paymentStatus: "refunded" });
+    expect((await t.api.get("/inbox")).json().items.find((i: { kind: string }) => i.kind === "invoice_overpaid")).toBeUndefined();
     expect((await client(ctx.app).get(`/pay/${inv.token}`)).statusCode).toBe(404);
   });
 
