@@ -512,6 +512,17 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Dumps are not encrypted beyond R2's own encryption at rest.** The bucket is private and the token is scoped to it. Client-side encryption (age or gpg) would add a key Justin must not lose; left for later.
 - **Open:** photos and signed PDFs in R2 have no second copy (R2 has no object versioning here). A nightly copy of the bucket to the server's disk, keeping deleted objects for 35 days, would cover a bug or a leaked token deleting them.
 
+## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
+
+- **Versions live in code** (`CURRENT_LEGAL_VERSIONS` in `packages/domain/src/legal.ts`), next to the placeholder text in `apps/web/components/legal/text.ts`. Changing the text means bumping the version in the same pull request, so the version on the page and the version owners accept can never disagree.
+- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0034) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
+- **When it is asked:** `/auth/me` returns `legalDue`, and the office screens show only the acceptance prompt until the owner accepts. The prompt links to the public `/terms` and `/privacy` pages and sends the versions it showed; if either changed meanwhile, the API answers 409 and records nothing.
+- **The API does not refuse other requests until acceptance.** The prompt is the gate. Blocking every API call would also block the technician app and the worker's own calls, and a forgotten click should never stop a county filing. Revisit if the lawyer requires a hard block.
+- **A read-only (lapsed) company can still accept** (`config.allowedWhenReadOnly`), or its owner could never get past the prompt to export their data.
+- **The demo owner is seeded as having accepted**, so the hosted demo and the e2e tests go straight in. A demo reseed now also keeps `demo_requests`, since real prospects can ask for a demo from the demo site.
+- **Support access (W2.6) is never asked to accept.** `/auth/me` returns no documents due for a support view, so the admin sees what the office sees; the owner still accepts at their own next sign-in, and the accept call is refused like every other support write.
+- **Open:** lawyer-reviewed text (Justin). The pages say clearly that the current text is a placeholder.
+
 ## 2026-10-05 · Justin's answers on the county rules questions
 
 Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):

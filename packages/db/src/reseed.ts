@@ -6,9 +6,10 @@ import { seed } from "./seed.ts";
 
 /**
  * Tables a demo reseed leaves alone: the migration record, the authority rules (the running
- * API and worker loaded them at start) and the platform admins who run Aerowise.
+ * API and worker loaded them at start), the platform admins who run Aerowise, and demo
+ * requests (real prospects can ask for a demo from the hosted demo's marketing page).
  */
-export const KEPT_ON_RESEED = ["schema_migrations", "jurisdictions", "jurisdiction_rulesets", "platform_admins", "platform_admin_sessions"];
+export const KEPT_ON_RESEED = ["schema_migrations", "jurisdictions", "jurisdiction_rulesets", "platform_admins", "platform_admin_sessions", "demo_requests"];
 
 /**
  * Empties every other table, removes stored files, and loads the demo data again: the
