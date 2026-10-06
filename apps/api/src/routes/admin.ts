@@ -1,5 +1,6 @@
 import { rulesetCoverage } from "@aerowise/compliance";
 import { verifyPassword, type Database } from "@aerowise/db";
+import type { ObjectStore } from "@aerowise/storage";
 import {
   adminOrganization,
   adminOrganizationInput,
@@ -8,6 +9,8 @@ import {
   daysLeft,
   initialPlan,
   invitationSent,
+  organizationErasure,
+  organizationErasureInput,
   ownerInvitationInput,
   platformAdminMe,
   rulesetCoverage as rulesetCoverageSchema,
@@ -24,6 +27,7 @@ import { z } from "zod";
 import { ADMIN_SESSION_COOKIE, createAdminSession, findAdminSession, revokeAdminSession } from "../auth/admin-sessions.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { createInvitation, emailInvitation, inviteUrlFor, listInvitations, type InvitationMail } from "../lib/invitations.ts";
+import { eraseOrganization } from "../lib/org-erase.ts";
 import { platformAudit } from "../lib/platform-audit.ts";
 
 // Same shape as a real hash so an unknown email costs the same time as a wrong password.
@@ -41,7 +45,8 @@ export const adminRoutes: FastifyPluginAsyncZod<{
   now: () => Date;
   invitations: InvitationMail;
   subscription: SubscriptionConfig;
-}> = async (app, { db, production, loginRateLimit, now, invitations, subscription }) => {
+  store: ObjectStore;
+}> = async (app, { db, production, loginRateLimit, now, invitations, subscription, store }) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
   const planColumns = [
@@ -81,6 +86,7 @@ export const adminRoutes: FastifyPluginAsyncZod<{
         "o.timezone",
         "o.createdAt",
         "o.platformFeeBps",
+        "o.dataDeletedAt",
         ...planColumns,
         // In force today in the organization's own time zone; cancelled contracts never count.
         sql<number>`(select count(*)::int from contracts c
@@ -104,6 +110,7 @@ export const adminRoutes: FastifyPluginAsyncZod<{
       users: r.users,
       lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
       platformFeeBps: r.platformFeeBps,
+      dataDeletedAt: r.dataDeletedAt ? r.dataDeletedAt.toISOString() : null,
       ...planOf(r),
     }));
   }
@@ -265,11 +272,12 @@ export const adminRoutes: FastifyPluginAsyncZod<{
       await db.transaction().execute(async (trx) => {
         const current = await trx
           .selectFrom("organizations as o")
-          .select(["o.id", "o.timezone", ...planColumns])
+          .select(["o.id", "o.timezone", "o.dataDeletedAt", ...planColumns])
           .where("o.id", "=", req.params.id)
           .forUpdate()
           .executeTakeFirst();
         if (!current) throw notFound("Organization");
+        if (current.dataDeletedAt) throw new HttpError(409, "organization_deleted", "This organization's data has been deleted");
         const before = planOf(current).plan;
         if (!canChangePlan(before.state, next.state)) {
           throw unprocessable(`A plan cannot go from ${SUBSCRIPTION_STATE_LABELS[before.state]} to ${SUBSCRIPTION_STATE_LABELS[next.state]}`);
@@ -349,8 +357,9 @@ export const adminRoutes: FastifyPluginAsyncZod<{
     async (req, reply) => {
       const { adminId } = req.requireAdmin();
       const organizationId = req.params.id;
-      const org = await db.selectFrom("organizations").select("id").where("id", "=", organizationId).executeTakeFirst();
+      const org = await db.selectFrom("organizations").select(["id", "dataDeletedAt"]).where("id", "=", organizationId).executeTakeFirst();
       if (!org) throw notFound("Organization");
+      if (org.dataDeletedAt) throw new HttpError(409, "organization_deleted", "This organization's data has been deleted");
       const at = now();
       const created = await db.transaction().execute(async (trx) => {
         const inv = await createInvitation(trx, { organizationId, email: req.body.email, name: req.body.name ?? null, role: "owner", by: { adminId }, now: at });
@@ -367,6 +376,68 @@ export const adminRoutes: FastifyPluginAsyncZod<{
       const emailed = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: created.id, token: created.token, inviterName: "The Aerowise team" });
       const [invitation] = await listInvitations(db, organizationId, at, [created.id]);
       return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, created.token), emailed });
+    },
+  );
+
+  app.post(
+    "/admin/organizations/:id/erase",
+    {
+      config: { platformAdmin: true },
+      schema: {
+        tags: ["admin"],
+        summary: "Delete all of an organization's data, on its request",
+        description:
+          "Deletes every record and stored file of the organization and signs its people out. The organization row stays, emptied, so the platform audit log keeps naming it. Cannot be undone.",
+        params: z.object({ id: z.uuid() }),
+        body: organizationErasureInput,
+        response: { 200: organizationErasure },
+      },
+    },
+    async (req) => {
+      const { adminId } = req.requireAdmin();
+      const organizationId = req.params.id;
+      const result = await db.transaction().execute(async (trx) => {
+        const org = await trx.selectFrom("organizations").select(["id", "name", "dataDeletedAt"]).where("id", "=", organizationId).forUpdate().executeTakeFirst();
+        if (!org) throw notFound("Organization");
+        if (org.dataDeletedAt) throw new HttpError(409, "organization_deleted", "This organization's data has already been deleted");
+        if (req.body.confirmName !== org.name.trim()) throw unprocessable("Type the organization's name exactly to confirm");
+        const erased = await eraseOrganization(trx, organizationId);
+        // Read-only stops billing and keeps anyone from adding data again.
+        await trx
+          .updateTable("organizations")
+          .set({ dataDeletedAt: now(), dataDeletedBy: adminId, subscriptionState: "read_only", subscriptionEndsOn: null })
+          .where("id", "=", organizationId)
+          .execute();
+        await platformAudit(trx, req, {
+          adminId,
+          action: "organization.data_deleted",
+          entityType: "organization",
+          entityId: organizationId,
+          organizationId,
+          changes: { name: org.name, ...erased },
+        });
+        return erased;
+      });
+
+      // Files go after the records are gone for good: a failure here leaves files nobody
+      // can reach, which the audit log records so they can be removed by hand.
+      let files: number | null = null;
+      try {
+        files = store.deleteOrganization ? await store.deleteOrganization(organizationId) : null;
+        await platformAudit(db, req, { adminId, action: "organization.files_deleted", entityType: "organization", entityId: organizationId, organizationId, changes: { files } });
+      } catch (err) {
+        req.log.error({ err, organizationId }, "deleting an organization's files failed");
+        await platformAudit(db, req, {
+          adminId,
+          action: "organization.files_delete_failed",
+          entityType: "organization",
+          entityId: organizationId,
+          organizationId,
+          changes: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+      const [organization] = await loadOrganizations(organizationId);
+      return { organization: organization!, ...result, files };
     },
   );
 };

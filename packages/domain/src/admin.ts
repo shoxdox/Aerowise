@@ -41,6 +41,8 @@ export const adminOrganization = z.object({
   daysLeft: z.number().int().nullable(),
   /** Aerowise's fee on the company's homeowner payments, in basis points (100 = 1%). */
   platformFeeBps: z.number().int(),
+  /** When a platform admin deleted the organization's data; null while it has its data. */
+  dataDeletedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 export type AdminOrganization = z.infer<typeof adminOrganization>;
 
@@ -55,3 +57,17 @@ export const subscriptionDefaults = z.object({
   monthlyMinimumCents: z.number().int(),
   pastDueGraceDays: z.number().int(),
 });
+
+/** Deleting an organization's data: the admin types the organization's name to confirm. */
+export const organizationErasureInput = z.object({ confirmName: z.string().trim().min(1).max(200) });
+export type OrganizationErasureInput = z.infer<typeof organizationErasureInput>;
+
+export const organizationErasure = z.object({
+  organization: adminOrganization,
+  /** Rows deleted per table. */
+  tables: z.record(z.string(), z.number().int()),
+  users: z.object({ deleted: z.number().int(), anonymized: z.number().int() }),
+  /** Stored files deleted, or null when the store could not be emptied (the audit log says why). */
+  files: z.number().int().nullable(),
+});
+export type OrganizationErasure = z.infer<typeof organizationErasure>;

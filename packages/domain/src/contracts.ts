@@ -46,12 +46,27 @@ export const contractInput = z.object({
   priceCents: money.optional(),
   autoRenew: z.boolean().default(false),
   notes: z.string().trim().max(5000).nullish(),
+  /**
+   * The visits per term the office agreed to, when the site's authority needs more than the
+   * plan has (see `GET /sites/:id/contract-terms`). Without it such a contract is refused (409).
+   */
+  acceptVisits: z.number().int().min(1).max(366).optional(),
+});
+
+/** What a contract on this plan at this site would get, before it is created. */
+export const contractTermsPreview = z.object({
+  planVisits: z.number().int(),
+  visitsPerTerm: z.number().int(),
+  /** Set when the site's authority needs more visits than the plan has: say so before creating. */
+  warning: z.string().nullable(),
 });
 
 export const renewInput = z.object({
   /** Defaults to the same plan as the contract being renewed. */
   planId: id.optional(),
   priceCents: money.optional(),
+  /** As for a new contract: the visits agreed to when the authority needs more than the plan has. */
+  acceptVisits: z.number().int().min(1).max(366).optional(),
 });
 
 export const cancelInput = z.object({
@@ -145,3 +160,4 @@ export type Contract = z.infer<typeof contract>;
 export type ContractDetail = z.infer<typeof contractDetail>;
 export type Obligation = z.infer<typeof obligation>;
 export type DueObligation = z.infer<typeof dueObligation>;
+export type ContractTermsPreview = z.infer<typeof contractTermsPreview>;

@@ -22,6 +22,16 @@ export class FakeS3 {
     if (!new RegExp(`^AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/\\d{8}/auto/s3/aws4_request, SignedHeaders=[^,]+, Signature=[0-9a-f]{64}$`).test(auth)) {
       return new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403 });
     }
+    if (req.method === "GET" && url.pathname === `/${this.bucket}` && url.searchParams.get("list-type") === "2") {
+      // ListObjectsV2, two keys a page so tests cross a page boundary.
+      const all = [...this.objects.keys()].filter((k) => k.startsWith(url.searchParams.get("prefix") ?? "")).sort();
+      const start = Number(url.searchParams.get("continuation-token") ?? 0);
+      const page = all.slice(start, start + 2);
+      const more = start + 2 < all.length;
+      const keys = page.map((k) => `<Contents><Key>${k.replace(/&/g, "&amp;")}</Key></Contents>`).join("");
+      const next = more ? `<NextContinuationToken>${start + 2}</NextContinuationToken>` : "";
+      return new Response(`<ListBucketResult><IsTruncated>${more}</IsTruncated>${keys}${next}</ListBucketResult>`, { status: 200 });
+    }
     const prefix = `/${this.bucket}/`;
     if (!url.pathname.startsWith(prefix)) return new Response("<Error><Code>NoSuchBucket</Code></Error>", { status: 404 });
     const key = url.pathname.slice(prefix.length).split("/").map(decodeURIComponent).join("/");
@@ -36,6 +46,10 @@ export class FakeS3 {
       const o = this.objects.get(key);
       if (!o) return new Response("<Error><Code>NoSuchKey</Code></Error>", { status: 404 });
       return new Response(new Uint8Array(o.body), { status: 200, headers: { "content-type": o.contentType } });
+    }
+    if (req.method === "DELETE") {
+      this.objects.delete(key);
+      return new Response(null, { status: 204 });
     }
     return new Response(null, { status: 405 });
   };

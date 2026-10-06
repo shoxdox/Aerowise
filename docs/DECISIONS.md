@@ -461,6 +461,16 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Owner only (`data:export`), and allowed while read-only.** Routes opt out of the read-only write block with `config.allowedWhenReadOnly` (added by W4.3 for saving a payment method); asking for an export uses it too. Downloads are GETs and work anyway.
 - **Not done here:** expiring old exports from storage, and emailing the owner when an export is ready.
 
+## 2026-10-05 · W5.6 Organization data deletion and data-handling page
+
+- **What goes:** every row of every table with an `organization_id` (read from the database, so a later table is covered without a code change), every stored file under the organization's prefix, and the people who belonged to no other organization. Someone who also works for another company keeps their account; a user row another record still points at is emptied (name, email, phone, password) instead of deleted.
+- **What stays:** the organization row, as a tombstone with only its name, plan and billing customer id, marked `data_deleted_at`/`data_deleted_by`. The platform audit log points at it and records who deleted what (row counts per table, users, files). The audit record has no tenant data in it beyond the company name. The billing customer id stays so a final invoice or refund can still be found at the billing provider; deleting the customer there is a manual step.
+- **Append-only tables** (audit events, reports, signed documents) refuse deletes through triggers. The erase switches those triggers off inside its own transaction only (`alter table … disable trigger user`, which briefly locks those tables) and back on before committing. Acceptable for a rare, deliberate admin action.
+- **Order:** records first in one transaction, files after it commits. A file failure leaves only unreachable files and writes `organization.files_delete_failed` to the platform audit log so they can be removed by hand. The reverse order could leave records pointing at deleted files.
+- **Confirmation:** the admin types the organization's exact name. The organization goes read-only (billing stops), its plan can no longer be changed and no one can be invited to it. Deletion cannot be undone. The screen asks the admin to have the owner download an export first.
+- **Data-handling page** (`/data-handling`, linked from the marketing page footer): placeholder text describing what the software does today. Justin supplies the statement.
+- **Open:** whether the company name should also be blanked in the tombstone (kept now so the admin can tell which company was deleted); how long the platform audit record of a deletion is kept.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -507,7 +517,7 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 
 1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
-2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Done in a follow-up: the contract form asks first, and the API refuses (409 `more_visits_required`) without `acceptVisits`. Imports still add the visits: they record contracts that already exist, and refusing would drop rows. The import summary does not list them yet.
 3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
 4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
 5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
@@ -537,9 +547,15 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Now:** `backup.sh` records every table's row count just before the dump (`db-<stamp>.counts`, kept and copied to R2 with the dump), and `restore-check.sh` fails when a table that had rows then has none restored. Empty-at-backup tables are fine; a company created after the backup does not fail the check either. Comparing with the live database alone would fail on any table whose first row arrived after the backup.
 - The counts are taken a moment before `pg_dump`'s own snapshot, not in it. A table emptied in that moment (say, its last expired session deleted) would show as missing; that is rare and clears on the next backup, so it was preferred over holding an exported snapshot open across the dump.
 
+## 2026-10-06 · W7.2 QuickBooks against an Intuit sandbox
+
+- **`quickbooks` joins `DEMO_LIVE_SERVICES`, sandbox only.** The demo uses the real Intuit app only with `QUICKBOOKS_ENVIRONMENT=sandbox`, and staging refuses `production` outright, so staging can never connect a real company's books.
+- **Every QuickBooks failure names Intuit's request id** (`intuit_tid`, shown as "Intuit ref …" in the stored sync error). Intuit support asks for it, and Intuit's app review asks whether apps capture it.
+- **Production waits on Intuit's app review.** Its questionnaire answers and the URLs it asks for are in `docs/engineering/INTEGRATIONS.md`. The privacy and licence URLs depend on W8.3's pages.
+
 ## 2026-10-06 · W4.5 Platform fee on homeowner payments
 
-- **A percentage, in basis points, per company.** `organizations.platform_fee_bps` (migration 0033), 0 by default, at most 1000 (10%). An Aerowise admin sets it in the plan form in `/admin` (`PUT /admin/organizations/:id/platform-fee`), audited as `organization.platform_fee_changed`. No fixed per-payment fee: a percentage is what Stripe Connect platforms usually charge and is easy to explain; a fixed part can be added later if Justin wants one.
+- **A percentage, in basis points, per company.** `organizations.platform_fee_bps` (migration 0034), 0 by default, at most 1000 (10%). An Aerowise admin sets it in the plan form in `/admin` (`PUT /admin/organizations/:id/platform-fee`), audited as `organization.platform_fee_changed`. No fixed per-payment fee: a percentage is what Stripe Connect platforms usually charge and is easy to explain; a fixed part can be added later if Justin wants one.
 - **Taken as a Stripe Connect application fee** on the direct charge (`payment_intent_data.application_fee_amount`), so it applies the same way to card and bank (ACH) payments. Rounded down to the cent; when it rounds to 0 no fee is sent at all. Stripe's own processing fee is separate and still comes out of the company's share.
 - **Fixed when the payment page opens.** Each `checkout_sessions` row keeps the fee it was opened with. A homeowner pressing Pay again reuses a page only when the fee has not changed since; after a change they get a new page at the new fee. A page opened before the change and paid anyway keeps its old fee.
 - **Open question: refunds.** Refunds do not give the fee back yet (Stripe's default for application fees). Recommended: refund the fee in proportion (`refund_application_fee`) once a company has a fee, so a company is never charged a fee on money it returned. Not needed while every fee is 0.

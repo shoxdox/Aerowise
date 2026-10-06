@@ -6,6 +6,7 @@ import {
   SUBSCRIPTION_TRANSITIONS,
   type AdminOrganization,
   type InvitationSent,
+  type OrganizationErasure,
   type SubscriptionConfig,
   type SubscriptionState,
 } from "@aerowise/domain";
@@ -199,6 +200,55 @@ function PlanEditor({
   );
 }
 
+/** Deleting an organization's data on its request: the admin types its name to confirm. */
+function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: (result: OrganizationErasure) => void; onCancel: () => void }) {
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await api<OrganizationErasure>(`/admin/organizations/${org.id}/erase`, { method: "POST", body: { confirmName: typed } }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not delete the data");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="card stack" onSubmit={onSubmit} aria-label={`Delete the data of ${org.name}`}>
+      <p style={{ margin: 0 }}>
+        <strong>Delete all of {org.name}&apos;s data</strong>
+      </p>
+      <p className="notice">
+        This deletes every customer, site, contract, inspection, report, invoice, user and file of this company, and signs its people out. It cannot be undone. Only do this when the
+        company has asked, and ask its owner to download an export first (Settings, Export).
+      </p>
+      <p className="muted small" style={{ margin: 0 }}>
+        The company stays in this list, marked as deleted, and the platform audit log keeps a record of the deletion.
+      </p>
+      <label>
+        <span>
+          Type <strong>{org.name}</strong> to confirm
+        </span>
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="row">
+        <button type="submit" className="danger" disabled={busy || typed.trim() !== org.name.trim()}>
+          {busy ? "Deleting…" : "Delete all data"}
+        </button>
+        <button type="button" className="link" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function AdminOrganizationsPage() {
   const { data, reload } = useLoad<{
     items: AdminOrganization[];
@@ -237,6 +287,7 @@ export default function AdminOrganizationsPage() {
     org: string;
     result: InvitationSent;
   } | null>(null);
+  const [erasing, setErasing] = useState<AdminOrganization | null>(null);
 
   async function onInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -413,6 +464,23 @@ export default function AdminOrganizationsPage() {
         </form>
       )}
 
+      {erasing && (
+        <EraseForm
+          key={erasing.id}
+          org={erasing}
+          onCancel={() => setErasing(null)}
+          onDone={async (result) => {
+            setErasing(null);
+            const records = Object.values(result.tables).reduce((n, c) => n + c, 0);
+            setNotice(
+              `Deleted the data of ${result.organization.name}: ${records} records, ${result.users.deleted + result.users.anonymized} users` +
+                (result.files === null ? ". Its files could not be deleted; see the platform audit log." : ` and ${result.files} files.`),
+            );
+            await reload();
+          }}
+        />
+      )}
+
       {editingOrg && data && (
         <PlanEditor
           key={editingOrg.id}
@@ -447,41 +515,61 @@ export default function AdminOrganizationsPage() {
               <tr key={o.id}>
                 <td>
                   {o.name}{" "}
-                  <button
-                    className="link small"
-                    onClick={() => setEditing(o.id)}
-                    aria-label={`Edit plan for ${o.name}`}
-                  >
-                    Edit plan
-                  </button>
+                  {o.dataDeletedAt ? (
+                    <span className="badge">Data deleted {when(o.dataDeletedAt)}</span>
+                  ) : (
+                    <>
+                      <button
+                        className="link small"
+                        onClick={() => setEditing(o.id)}
+                        aria-label={`Edit plan for ${o.name}`}
+                      >
+                        Edit plan
+                      </button>{" "}
+                      <button
+                        className="link small"
+                        onClick={() => {
+                          setErasing(o);
+                          setNotice(null);
+                        }}
+                        aria-label={`Delete the data of ${o.name}`}
+                      >
+                        Delete data
+                      </button>
+                    </>
+                  )}
                 </td>
                 <td>{o.activeContracts}</td>
                 <td>{o.users}</td>
                 <td>{when(o.lastActivityAt)}</td>
                 <td>{when(o.createdAt)}</td>
                 <td>
-                  <button
-                    className="link"
-                    onClick={() => {
-                      setInvitingFor(o);
-                      setSent(null);
-                    }}
-                  >
-                    Invite owner
-                  </button>
-                  {o.users > 0 && (
+                  {!o.dataDeletedAt && (
                     <>
-                      {" "}
                       <button
                         className="link"
                         onClick={() => {
-                          setSupportFor(o);
-                          setSupportError(null);
+                          setInvitingFor(o);
+                          setSent(null);
                         }}
-                        aria-label={`View ${o.name} read-only`}
                       >
-                        View read-only
+                        Invite owner
                       </button>
+                      {o.users > 0 && (
+                        <>
+                          {" "}
+                          <button
+                            className="link"
+                            onClick={() => {
+                              setSupportFor(o);
+                              setSupportError(null);
+                            }}
+                            aria-label={`View ${o.name} read-only`}
+                          >
+                            View read-only
+                          </button>
+                    </>
+                  )}
                     </>
                   )}
                 </td>

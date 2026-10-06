@@ -15,6 +15,8 @@ The dumps hold customer data and password hashes. They are readable by root only
 
 Logs: `/var/log/aerowise-backup.log` (nightly) and `/var/log/aerowise-restore-check.log` (weekly).
 
+On the server (since 2026-10-06) the reviewed `backup.sh`, `offsite.sh` and `restore-check.sh` are installed in `/usr/local/lib/aerowise/vps/`, with the source commit and each file's hash in `release.json` there, and `/etc/cron.d/aerowise` runs them from that folder. That keeps backups independent of which commit each app checkout is deployed at. The commands below name `/opt/aerowise/<env>/deploy/vps/`; on that server use `/usr/local/lib/aerowise/vps/` instead, and update it from a reviewed commit when these scripts change.
+
 ## Is it working?
 
 - **A missed backup emails you** when `BACKUP_HEARTBEAT_URL` is set: a Healthchecks.io check (free) with a 1-day period and a few hours' grace. `backup.sh` pings it only after the dump, the tarball and the checked copy in R2 all succeeded.
@@ -79,7 +81,9 @@ Each restore or restore check run for the record: date, where, which backup, and
 |---|---|---|---|
 | 2026-10-05 | Local test of the scripts (Docker Postgres 16 named like the server's, rclone's S3 server standing in for R2), with the synthetic demo seed | `db-20261005T233657Z.dump`, fetched back from the R2 stand-in | Passed. `restore-check.sh staging r2`: 63 tables, 463 rows, 1 organization; every table's count matched the live database (for example customers 50/50, sites 55/55, contracts 52/52, service obligations 156/156), same last migration (`0026_demo_requests.sql`), files tarball read back (2 files). Then all customers (and everything under them) and all files were deleted, and `restore.sh` with the copy fetched from R2 brought back customers 50, sites 55, contracts 52 and both files. A truncated dump made the check fail, a wrong R2 secret failed the backup, and a copy changed in the bucket failed the read-back. |
 | 2026-10-06 | Staging on the server (run by Codex for Justin) | `db-20261006T003819Z.dump`, on the server | Passed: 65 tables, 485 rows, 1 organization, last migration `0030_site_customer_type.sql`. |
-| 2026-10-06 | Production on the server (run by Codex for Justin) | `db-20261006T004009Z.dump`, copied to R2, checked, fetched back from R2 | Restored cleanly; all 65 tables' counts matched live (1 platform admin, no companies yet); files archive read back. Reported FAILED only because the check then required at least one organization, which a new production cannot have. Fixed in the next change (counts recorded at backup time); to be run again with the fixed script. |
+| 2026-10-06 | Production on the server (run by Codex for Justin) | `db-20261006T004009Z.dump`, copied to R2, checked, fetched back from R2 | Restored cleanly; all 65 tables' counts matched live (1 platform admin, no companies yet); files archive read back. Reported FAILED only because the check then required at least one organization, which a new production cannot have. Fixed in #56 (counts recorded at backup time) and run again below. |
+| 2026-10-06 | Production on the server, scripts from #56 (`dd40486`), run by Codex for Justin | `db-20261006T011529Z.dump` with its counts and files archive, copied to R2, read back, then fetched from R2 | `RESTORE CHECK PASSED production 2026-10-06 dump=db-20261006T011529Z.dump tables=65 rows=40 organizations=0 migration=0029_organization_settings.sql` |
+| 2026-10-06 | Staging on the server, same scripts | `db-20261006T011531Z.dump`, on the server | `RESTORE CHECK PASSED staging 2026-10-06 dump=db-20261006T011531Z.dump tables=67 rows=502 organizations=1 migration=0031_plan_reminders.sql` |
 
 ## Open
 

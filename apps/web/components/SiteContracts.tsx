@@ -1,6 +1,6 @@
 "use client";
 
-import { RENEWAL_STATUS_LABELS, type ContractDetail, type Plan, type RenewalStatus } from "@aerowise/domain";
+import { RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type RenewalStatus } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -8,6 +8,9 @@ import { ContractFilingStatus } from "@/components/ContractFilingStatus";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
+
+/** Thrown to stop `run` without an error message or closing the form. */
+class Keep extends Error {}
 
 const STATE_LABEL: Record<ContractDetail["state"], string> = {
   upcoming: "starts soon",
@@ -22,6 +25,8 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The authority needs more visits than the plan has: shown before anything is created.
+  const [moreVisits, setMoreVisits] = useState<{ body: Record<string, unknown>; preview: ContractTermsPreview } | null>(null);
   const router = useRouter();
 
   async function run(action: () => Promise<unknown>) {
@@ -31,6 +36,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
       setCreating(false);
       await reload();
     } catch (err) {
+      if (err instanceof Keep) return;
       setError(err instanceof ApiError ? err.message : "Could not save");
     }
   }
@@ -38,17 +44,27 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const v = formValues(event.currentTarget);
-    void run(() =>
-      api(`/sites/${siteId}/contracts`, {
-        method: "POST",
-        body: {
-          planId: v.planId,
-          startOn: v.startOn,
-          priceCents: v.price ? Math.round(Number(v.price) * 100) : undefined,
-          autoRenew: v.autoRenew === "on",
-        },
-      }),
-    );
+    const body = {
+      planId: v.planId,
+      startOn: v.startOn,
+      priceCents: v.price ? Math.round(Number(v.price) * 100) : undefined,
+      autoRenew: v.autoRenew === "on",
+    };
+    void run(async () => {
+      const preview = await api<ContractTermsPreview>(`/sites/${siteId}/contract-terms?planId=${v.planId}&startOn=${v.startOn}`);
+      if (preview.warning) {
+        setMoreVisits({ body, preview });
+        throw new Keep();
+      }
+      await api(`/sites/${siteId}/contracts`, { method: "POST", body });
+    });
+  }
+
+  function createWithMoreVisits() {
+    if (!moreVisits) return;
+    const { body, preview } = moreVisits;
+    setMoreVisits(null);
+    void run(() => api(`/sites/${siteId}/contracts`, { method: "POST", body: { ...body, acceptVisits: preview.visitsPerTerm } }));
   }
 
   function cancel(c: ContractDetail, event: FormEvent<HTMLFormElement>) {
@@ -101,9 +117,23 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 <input type="checkbox" name="autoRenew" />
                 Auto-renew
               </label>
-              <div className="wide">
-                <button type="submit">Start contract</button>
-              </div>
+              {moreVisits ? (
+                <div className="wide stack" role="alert">
+                  <p className="restriction">{moreVisits.preview.warning}</p>
+                  <div className="row">
+                    <button type="button" onClick={createWithMoreVisits}>
+                      Start contract with {moreVisits.preview.visitsPerTerm} visits
+                    </button>
+                    <button type="button" className="link" onClick={() => setMoreVisits(null)}>
+                      Change the plan
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="wide">
+                  <button type="submit">Start contract</button>
+                </div>
+              )}
             </>
           )}
         </form>

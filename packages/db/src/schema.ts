@@ -52,6 +52,8 @@ export interface OrganizationsTable {
   monthlyMinimumCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
   /** Aerowise's Stripe Connect application fee on homeowner payments, in basis points (100 = 1%). */
   platformFeeBps: Generated<number>;
+  dataDeletedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  dataDeletedBy: ColumnType<string | null, string | null | undefined, string | null>;
   billingCustomerId: ColumnType<string | null, string | null | undefined, string | null>;
   renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
   smsEnabled: Generated<boolean>;

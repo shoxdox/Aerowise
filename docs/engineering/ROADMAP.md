@@ -50,7 +50,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W5.3 | Undo a committed import | W5.2 | done |
 | W5.4 | Onboarding summary | W5.2 | done |
 | W5.5 | Full data export | W2.1 | done |
-| W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
+| W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | done |
 | W6.1 | Per-ruleset service intervals | — | done (#21) |
 | W6.2 | Annual lab tests as required tests | W6.1 | done (#26) |
 | W6.3 | Six-month schedule with electronic monitoring | W6.1 | done (#28) |
@@ -58,8 +58,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W6.5 | Ruleset verification workflow and badge | — | done (#36) |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | done (#42) |
 | W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | not started |
-| W7.1 | Stripe Connect live readiness | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=stripe` runs real Stripe test mode on the staging demo, two fixes, `INTEGRATIONS.md`; the recorded staging run waits on Justin's Stripe test-mode setup |
-| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | not started |
+| W7.1 | Stripe Connect live readiness | W1.3 | done (#54); keys set on staging by Codex, the recorded run is next |
+| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=quickbooks` (sandbox only), Intuit request ids on errors, app review steps in `INTEGRATIONS.md`; the recorded sandbox sync follows |
 | W7.3 | Twilio on a real account | W1.3 | not started |
 | W8.1 | Public marketing page | W6.5 | done (#37) |
 | W8.2 | Demo request form | W2.1, W8.1 | in progress (PR open) |
