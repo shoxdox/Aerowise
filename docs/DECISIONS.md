@@ -564,3 +564,9 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Every QuickBooks failure names Intuit's request id** (`intuit_tid`, shown as "Intuit ref …" in the stored sync error). Intuit support asks for it, and Intuit's app review asks whether apps capture it.
 - **Production waits on Intuit's app review.** Its questionnaire answers and the URLs it asks for are in `docs/engineering/INTEGRATIONS.md`. The privacy and licence URLs depend on W8.3's pages.
 
+## 2026-10-06 · W7.3 Twilio on a real account
+
+- **Staging's texts go to one test phone.** `SMS_REDIRECT_TO` sends every Twilio text to that number, prefixed "[Test, for <the real recipient>]", like `EMAIL_REDIRECT_TO` for email. `sms` joins `DEMO_LIVE_SERVICES` only with it set. Staging outside demo mode also requires it whenever Twilio is configured, and production refuses it.
+- **Demo mode with unused Twilio keys is fine.** The demo ignores Twilio's keys unless `sms` is listed, so trial keys sitting in staging's settings file don't trip the check.
+- **No paid route yet (Justin, 2026-10-06).** A trial account can't usefully text US numbers. Toll-free verification is the recommended route when it's time; the live test happens before the first design partner turns texting on.
+
