@@ -18,7 +18,7 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-const STATUS_CLASS: Record<ImportListItem["status"], string> = { preview: "upcoming", committed: "ok", failed: "danger", discarded: "cancelled" };
+const STATUS_CLASS: Record<ImportListItem["status"], string> = { preview: "upcoming", committed: "ok", failed: "danger", discarded: "cancelled", undone: "cancelled" };
 
 export default function ImportPage() {
   const router = useRouter();

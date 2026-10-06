@@ -441,6 +441,12 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Today-dependent remarks are notes, not warnings** (`notes` on a preview row). A row stays "ready" when the only remark is that its contract has ended or has no last inspection. Otherwise a typical file with no last-inspection column would mark every contract row as a warning.
 - **A last inspection without a contract** is not stored. With no contract there are no visits to schedule from it. W5.4's summary counts those sites as having no contract.
 
+## 2026-10-05 · W5.3 Undo a committed import
+
+- **What undo deletes:** the customers and sites the import created, the contracts it created and their visits, and the contacts and unit details of those customers and sites, even ones added after the import (they describe the record, they are not work). A site the import added to a customer already on file is deleted; that customer stays. The import itself is kept, marked `undone` with who and when, and the audit log records the counts. The file can be imported again.
+- **What blocks it: any row anywhere that points at what the import created**, found from the database's own foreign keys, so a table added later is checked without anyone listing it. Examples are a scheduled visit, an inspection, a report, an invoice, a filing, a renewal, a portal link, a text message, an authority assignment, a site or contract added later to an imported customer or site. Edits to imported records (a renamed customer, a note) do not block it. The page and the 409 name each blocker with a count. Undo is all or nothing: there is no partial undo of the rows that are free.
+- **Who:** anyone who can import (`crm:write`). The check and the delete run in one transaction holding the import row; work added in between makes the delete fail on its foreign key, which is reported as a 409 instead of a 500.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.

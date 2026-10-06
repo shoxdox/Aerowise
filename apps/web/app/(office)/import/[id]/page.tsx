@@ -1,6 +1,6 @@
 "use client";
 
-import { IMPORT_FIELD_LABELS, IMPORT_FIELDS, type ImportDetail, type ImportField, type ImportRow } from "@aerowise/domain";
+import { IMPORT_FIELD_LABELS, IMPORT_FIELDS, type ImportDetail, type ImportField, type ImportRow, type ImportUndoCheck } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -42,6 +42,43 @@ function Mapping({ imp, disabled, onSave }: { imp: ImportDetail; disabled: boole
         ))}
       </div>
     </details>
+  );
+}
+
+/** Undoing a saved import, or the work that stops it. */
+function Undo({ imp, busy, onUndo }: { imp: ImportDetail; busy: boolean; onUndo: () => void }) {
+  const { data: check } = useLoad<ImportUndoCheck>(`/imports/${imp.id}/undo`);
+  if (!check) return null;
+  const r = check.removes;
+  if (check.canUndo) {
+    return (
+      <div className="card row">
+        <span>
+          Imported the wrong file? Undo deletes the {plural(r.customers, "new customer")}, {plural(r.sites, "site")}, {plural(r.contracts, "contract")} and{" "}
+          {plural(r.visits, "visit")} this import created.
+        </span>
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(`Delete the ${plural(r.sites, "site")} and everything else this import created?`)) onUndo();
+          }}
+        >
+          Undo import
+        </button>
+      </div>
+    );
+  }
+  if (check.blockers.length === 0) return null;
+  return (
+    <div className="card">
+      <p>This import can&apos;t be undone because work was done on what it created:</p>
+      <ul>
+        {check.blockers.map((b) => (
+          <li key={b.table}>{b.label}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -87,7 +124,7 @@ export default function ImportPreviewPage() {
     <div className="stack">
       <div className="row">
         <h1>{imp.filename}</h1>
-        <span className={`badge ${imp.status === "committed" ? "ok" : imp.status === "failed" ? "danger" : ""}`}>{imp.status}</span>
+        <span className={`badge ${imp.status === "committed" ? "ok" : imp.status === "failed" ? "danger" : imp.status === "undone" ? "cancelled" : ""}`}>{imp.status}</span>
       </div>
       <p className="muted">
         <Link href="/import">All imports</Link> · uploaded {when(imp.createdAt)}
@@ -100,6 +137,10 @@ export default function ImportPreviewPage() {
           <Link href="/customers">Go to customers</Link> or{" "}
           <Link href="/due">see what is due</Link>.
         </p>
+      )}
+      {imp.status === "committed" && <Undo imp={imp} busy={busy} onUndo={() => run("/undo")} />}
+      {imp.status === "undone" && imp.undoneAt && (
+        <p className="card">Undone {when(imp.undoneAt)}. Nothing this import created remains; you can import the file again.</p>
       )}
       {imp.status === "failed" && <p className="card problems">Nothing was imported: {imp.error}. Fix the cause and try again; the preview is unchanged.</p>}
 
@@ -145,83 +186,86 @@ export default function ImportPreviewPage() {
       )}
       {error && <p className="error">{error}</p>}
 
-      <table className="compact import-rows">
-        <thead>
-          <tr>
-            <th>Row</th>
-            <th>Import</th>
-            <th>Customer</th>
-            <th>Service address</th>
-            <th>Permit</th>
-            <th>Phone / email</th>
-            <th>Plan</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.slice(0, SHOWN).map((r) => (
-            <tr key={r.rowNo} className={r.include ? undefined : "skipped"}>
-              <td>{r.rowNo}</td>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={r.include}
-                  disabled={!open || busy || r.status === "error"}
-                  onChange={(e) => run("/rows", e.currentTarget.checked ? { include: [r.rowNo] } : { exclude: [r.rowNo] })}
-                  aria-label={`Import row ${r.rowNo}`}
-                />
-              </td>
-              <td>
-                {r.record.customerName ?? "—"}
-                {r.existingCustomer && <div className="muted">existing customer</div>}
-                {r.result && (
-                  <div>
-                    <Link href={`/sites/${r.result.siteId}`}>Open site</Link>
-                  </div>
-                )}
-              </td>
-              <td>
-                {[r.record.addressLine1, r.record.addressLine2].filter(Boolean).join(", ") || "—"}
-                <div className="muted">{[r.record.city, r.record.state, r.record.postalCode].filter(Boolean).join(" ")}{r.record.county && ` · ${r.record.county}`}</div>
-              </td>
-              <td>{r.record.permitNumber ?? ""}</td>
-              <td>
-                {r.record.phone}
-                {r.record.email && <div>{r.record.email}</div>}
-              </td>
-              <td>
-                {r.record.planName}
-                {r.record.contractStart && (
-                  <div className="muted">
-                    {r.record.contractStart}
-                    {r.record.contractEnd && ` to ${r.record.contractEnd}`}
-                  </div>
-                )}
-                {r.record.lastInspection && <div className="muted">last inspected {r.record.lastInspection}</div>}
-              </td>
-              <td>
-                <span className={`badge ${STATUS_CLASS[r.status]}`}>{r.status}</span>
-                {r.duplicateOf && (
-                  <div>
-                    Same as{" "}
-                    {r.duplicateOf.siteId ? <Link href={`/sites/${r.duplicateOf.siteId}`}>{r.duplicateOf.label}</Link> : r.duplicateOf.label}
-                  </div>
-                )}
-                {r.notes.map((m) => (
-                  <div key={m} className="muted">
-                    {m}
-                  </div>
-                ))}
-                {r.messages.map((m) => (
-                  <div key={m} className={r.status === "error" ? "error" : "muted"}>
-                    {m}
-                  </div>
-                ))}
-              </td>
+      {/* Wide on a phone: the table scrolls sideways instead of widening the page. */}
+      <div className="scroll-x">
+        <table className="compact import-rows">
+          <thead>
+            <tr>
+              <th>Row</th>
+              <th>Import</th>
+              <th>Customer</th>
+              <th>Service address</th>
+              <th>Permit</th>
+              <th>Phone / email</th>
+              <th>Plan</th>
+              <th>Notes</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.slice(0, SHOWN).map((r) => (
+              <tr key={r.rowNo} className={r.include ? undefined : "skipped"}>
+                <td>{r.rowNo}</td>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={r.include}
+                    disabled={!open || busy || r.status === "error"}
+                    onChange={(e) => run("/rows", e.currentTarget.checked ? { include: [r.rowNo] } : { exclude: [r.rowNo] })}
+                    aria-label={`Import row ${r.rowNo}`}
+                  />
+                </td>
+                <td>
+                  {r.record.customerName ?? "—"}
+                  {r.existingCustomer && <div className="muted">existing customer</div>}
+                  {r.result && (
+                    <div>
+                      <Link href={`/sites/${r.result.siteId}`}>Open site</Link>
+                    </div>
+                  )}
+                </td>
+                <td>
+                  {[r.record.addressLine1, r.record.addressLine2].filter(Boolean).join(", ") || "—"}
+                  <div className="muted">{[r.record.city, r.record.state, r.record.postalCode].filter(Boolean).join(" ")}{r.record.county && ` · ${r.record.county}`}</div>
+                </td>
+                <td>{r.record.permitNumber ?? ""}</td>
+                <td>
+                  {r.record.phone}
+                  {r.record.email && <div>{r.record.email}</div>}
+                </td>
+                <td>
+                  {r.record.planName}
+                  {r.record.contractStart && (
+                    <div className="muted">
+                      {r.record.contractStart}
+                      {r.record.contractEnd && ` to ${r.record.contractEnd}`}
+                    </div>
+                  )}
+                  {r.record.lastInspection && <div className="muted">last inspected {r.record.lastInspection}</div>}
+                </td>
+                <td>
+                  <span className={`badge ${STATUS_CLASS[r.status]}`}>{r.status}</span>
+                  {r.duplicateOf && (
+                    <div>
+                      Same as{" "}
+                      {r.duplicateOf.siteId ? <Link href={`/sites/${r.duplicateOf.siteId}`}>{r.duplicateOf.label}</Link> : r.duplicateOf.label}
+                    </div>
+                  )}
+                  {r.notes.map((m) => (
+                    <div key={m} className="muted">
+                      {m}
+                    </div>
+                  ))}
+                  {r.messages.map((m) => (
+                    <div key={m} className={r.status === "error" ? "error" : "muted"}>
+                      {m}
+                    </div>
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {rows.length > SHOWN && (
         <p className="muted">
           Showing the first {SHOWN} of {rows.length} rows. Use the tiles above to see only the rows that need a look.

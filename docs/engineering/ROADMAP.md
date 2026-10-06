@@ -47,7 +47,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W4.5 | Platform fee on homeowner payments | W4.1 | not started |
 | W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
 | W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done |
-| W5.3 | Undo a committed import | W5.2 | not started |
+| W5.3 | Undo a committed import | W5.2 | done |
 | W5.4 | Onboarding summary | W5.2 | not started |
 | W5.5 | Full data export | W2.1 | not started |
 | W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | not started |
