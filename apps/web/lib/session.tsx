@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "./api";
+import { setDisplayTimeZone } from "./format";
 
 export interface Me {
   user: { id: string; name: string; email: string };
@@ -24,7 +25,10 @@ const SessionContext = createContext<Me | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   useEffect(() => {
-    api<Me>("/auth/me").then(setMe, () => {});
+    api<Me>("/auth/me").then((m) => {
+      setDisplayTimeZone(m.organization.timezone);
+      setMe(m);
+    }, () => {});
   }, []);
   if (!me) return <p className="muted pad">Loading…</p>;
   return <SessionContext.Provider value={me}>{children}</SessionContext.Provider>;
