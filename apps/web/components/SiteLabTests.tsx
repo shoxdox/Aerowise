@@ -69,6 +69,12 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
           {req.note && <span className="muted"> {req.note}</span>}
         </p>
       )}
+      {req && req.overLimit.length > 0 && (
+        <p className="restriction" role="alert">
+          The latest sample is above {req.authorityName}&apos;s limit:{" "}
+          {req.overLimit.map((o) => `${LAB_ANALYTE_LABELS[o.analyte]} ${o.value} mg/L (limit ${o.limit})`).join(", ")}.
+        </p>
+      )}
       {form && (
         <form className="card grid" onSubmit={save}>
           {form.replaces && <p className="wide small">Correcting the sample of {day(form.replaces.sampledOn)}. The original stays on record, marked as replaced.</p>}

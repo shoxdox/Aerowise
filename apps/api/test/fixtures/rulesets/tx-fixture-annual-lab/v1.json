@@ -8,7 +8,7 @@
   "version": 1,
   "effectiveFrom": "2020-01-01",
   "effectiveTo": null,
-  "sourceReference": "FICTIONAL test fixture: an authority with the 4-month default that requires annual BOD and TSS lab tests. Not any real county's rules.",
+  "sourceReference": "FICTIONAL test fixture: an authority with the 4-month default that requires annual BOD and TSS lab tests, each at most 20 mg/L, with the latest results on its report. Not any real county's rules.",
   "applicability": {
     "counties": [
       "Annual Lab Fixture County"
@@ -27,7 +27,12 @@
       "residential",
       "commercial"
     ],
-    "note": "Fixture: effluent BOD and TSS by an accredited lab once a year."
+    "note": "Fixture: effluent BOD and TSS by an accredited lab once a year.",
+    "limits": {
+      "bod": 20,
+      "tss": 20
+    },
+    "onReport": true
   },
   "inspection": {
     "requiredFields": [

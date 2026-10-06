@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { CREDENTIAL_LABELS, validateInspection, type CredentialKind, type InspectionValues, type ReportedResponse, type RulesetRules, type TemplateDefinition } from "@aerowise/domain";
+import { CREDENTIAL_LABELS, dateInZone, LAB_ANALYTE_LABELS, labResultsOverLimit, labTestRequirement, validateInspection, type CredentialKind, type LabAnalyte, type LabTestRule, type InspectionValues, type ReportedResponse, type RulesetRules, type TemplateDefinition } from "@aerowise/domain";
 import { layoutSections, renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
@@ -196,10 +196,10 @@ async function responsibleProvider(db: Executor, organizationId: string, credent
 }
 
 /**
- * The authority's report layout, from the ruleset version the inspection's filing recorded,
- * or null when there is no filing yet or its ruleset sets none.
+ * The rules the inspection's filing recorded, or null when there is no filing yet. The
+ * authority copy is laid out and filled from these, not from whatever is in force later.
  */
-async function authorityLayout(db: Executor, organizationId: string, inspectionId: string) {
+async function filingRules(db: Executor, organizationId: string, inspectionId: string) {
   const row = await db
     .selectFrom("filings as f")
     .innerJoin("jurisdictionRulesets as r", "r.id", "f.rulesetId")
@@ -208,8 +208,45 @@ async function authorityLayout(db: Executor, organizationId: string, inspectionI
     .where("f.organizationId", "=", organizationId)
     .where("f.inspectionId", "=", inspectionId)
     .executeTakeFirst();
-  const rules = row?.rules as RulesetRules | undefined;
-  return rules?.report ? { rule: rules.report, jurisdictionKey: row!.key, rulesetVersion: rules.version } : null;
+  return row ? { rules: row.rules as RulesetRules, jurisdictionKey: row.key } : null;
+}
+
+/**
+ * The "Lab results" section of the authority copy, only where the ruleset asks for lab
+ * results on the report (Justin, 2026-10-05): the latest sample on record by the day of
+ * the inspection, each result against the authority's limit.
+ */
+async function labResultsSection(db: Executor, organizationId: string, siteId: string, rule: LabTestRule, onOrBefore: string): Promise<ReportSnapshot["sections"][number]> {
+  const test = await db
+    .selectFrom("labTests as t")
+    .select(["t.sampledOn", "t.labName", "t.labReference", "t.results"])
+    .where("t.organizationId", "=", organizationId)
+    .where("t.siteId", "=", siteId)
+    .where("t.sampledOn", "<=", onOrBefore)
+    .where((w) => w.not(w.exists(w.selectFrom("labTests as r").select("r.id").whereRef("r.organizationId", "=", "t.organizationId").whereRef("r.replacesId", "=", "t.id"))))
+    .orderBy("t.sampledOn", "desc")
+    .orderBy("t.recordedAt", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  if (!test) return { title: "Lab results", rows: [{ label: "Latest sample", value: "None on record", failed: true }] };
+  const results = test.results as { analyte: LabAnalyte; value: number }[];
+  const over = labResultsOverLimit(rule, results);
+  return {
+    title: "Lab results",
+    rows: [
+      { label: "Sampled on", value: String(test.sampledOn), failed: false },
+      { label: "Lab", value: [test.labName, test.labReference].filter(Boolean).join(", "), failed: false },
+      ...rule.analytes.map((a) => {
+        const r = results.find((x) => x.analyte === a);
+        const limit = rule.limits?.[a];
+        return {
+          label: `${LAB_ANALYTE_LABELS[a]} (mg/L)`,
+          value: r ? `${r.value}${limit !== undefined ? ` (limit ${limit})` : ""}` : "Not tested",
+          failed: !r || over.some((o) => o.analyte === a),
+        };
+      }),
+    ],
+  };
 }
 
 interface SnapshotOptions {
@@ -221,7 +258,7 @@ interface SnapshotOptions {
 
 async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: string, inspectionId: string, audience: Audience, opts: SnapshotOptions) {
   const insp = await loadInspection(db, organizationId, inspectionId);
-  const [values, issues, photos, system, credentials, provider, responses, layout] = await Promise.all([
+  const [values, issues, photos, system, credentials, provider, responses, filed] = await Promise.all([
     db.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).execute(),
     db.selectFrom("issues").select(["type", "severity", "description"]).where("organizationId", "=", organizationId).where("inspectionId", "=", inspectionId).orderBy("createdAt").execute(),
     db
@@ -243,8 +280,14 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
     credentialsOf(db, organizationId, insp.technicianUserId),
     responsibleProvider(db, organizationId, insp.responsibleCredentialId),
     audience === "authority" ? responsesForInspection(db, organizationId, inspectionId) : null,
-    audience === "authority" ? authorityLayout(db, organizationId, inspectionId) : null,
+    audience === "authority" ? filingRules(db, organizationId, inspectionId) : null,
   ]);
+  const layout = filed?.rules.report ? { rule: filed.rules.report, jurisdictionKey: filed.jurisdictionKey, rulesetVersion: filed.rules.version } : null;
+  const site = filed?.rules.labTests?.onReport
+    ? await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", insp.siteId).executeTakeFirstOrThrow()
+    : null;
+  const labRule = filed && site ? labTestRequirement(filed.rules, site.customerType) : null;
+  const labSection = labRule ? await labResultsSection(db, organizationId, insp.siteId, labRule, dateInZone(insp.completedAt, insp.timezone)) : null;
   const def = insp.definition as TemplateDefinition;
   const answers: InspectionValues = { ...Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...(opts.amendments ?? {}) };
   const photoLabel = (key: string) => def.photos.find((p) => p.key === key)?.label ?? key;
@@ -294,7 +337,7 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
     },
     template: { id: insp.templateId, name: insp.templateName, version: insp.templateVersion },
     layout: layout ? { title: layout.rule.title, formReference: layout.rule.formReference, jurisdictionKey: layout.jurisdictionKey, rulesetVersion: layout.rulesetVersion } : null,
-    sections: layout ? layoutSections(def, answers, layout.rule) : reportSections(def, answers, audience),
+    sections: [...(layout ? layoutSections(def, answers, layout.rule) : reportSections(def, answers, audience)), ...(labSection ? [labSection] : [])],
     issues: reportIssues(issues, audience),
     // Photos go on the customer copy; the authority copy is the form itself.
     photos: audience === "customer" ? photos.map((p) => ({ label: photoLabel(p.photoKey), storageKey: p.storageKey, contentType: p.contentType, capturedAt: p.capturedAt?.toISOString() ?? null })) : [],
