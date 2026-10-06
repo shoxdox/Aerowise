@@ -11,7 +11,7 @@ import { sql } from "kysely";
 import { StripeProvider, TestPaymentProvider } from "@aerowise/payments";
 import { IntuitQuickBooksProvider, TestQuickBooksProvider } from "@aerowise/quickbooks";
 import { CensusGeocoder, TestGeocoder } from "@aerowise/routing";
-import { TestSmsProvider, TwilioSmsProvider } from "@aerowise/sms";
+import { RedirectingSmsProvider, TestSmsProvider, TwilioSmsProvider } from "@aerowise/sms";
 import { LocalDiskStore } from "@aerowise/storage";
 import { demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
@@ -92,6 +92,18 @@ describe("demo mode providers", () => {
     const both = providersFromEnv({ db: ctx.db, store, env: { ...sandbox, STRIPE_SECRET_KEY: "sk_test_x", DEMO_LIVE_SERVICES: "stripe,quickbooks" }, production: true });
     expect(both.demoLive).toEqual(["stripe", "quickbooks"]);
     expect(both.payments).toBeInstanceOf(StripeProvider);
+  });
+
+  it("uses real Twilio in demo mode only when DEMO_LIVE_SERVICES names it, and only to the one test phone", () => {
+    const env = { ...realKeys, DEMO_MODE: "true", SMS_REDIRECT_TO: "+15125550199" };
+    const p = providersFromEnv({ db: ctx.db, store, env: { ...env, DEMO_LIVE_SERVICES: "sms" }, production: true });
+    expect(p.demoLive).toEqual(["sms"]);
+    expect(p.sms?.provider).toBeInstanceOf(RedirectingSmsProvider);
+    expect((p.sms?.provider as RedirectingSmsProvider).redirectTo).toBe("+15125550199");
+    expect(p.sms?.webhookBaseUrl).toBe("https://demo.example.com/api");
+    expect(providersFromEnv({ db: ctx.db, store, env, production: true }).sms?.provider).toBeInstanceOf(TestSmsProvider);
+    expect(() => demoLiveServicesFromEnv({ ...realKeys, DEMO_LIVE_SERVICES: "sms" })).toThrow(/SMS_REDIRECT_TO must be one test phone/);
+    expect(() => demoLiveServicesFromEnv({ DEMO_LIVE_SERVICES: "sms", SMS_REDIRECT_TO: "+15125550199" })).toThrow(/TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN/);
   });
 
   it("uses the real services when demo mode is off", () => {

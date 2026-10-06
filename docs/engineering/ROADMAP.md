@@ -60,8 +60,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W6.7 | Justin's answers on the county rules (DECISIONS.md, 2026-10-05) | W6.1–W6.4 | in progress: site type (#52), visit warning (#57), lab limits and report (this PR); invoice fees next |
 | W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | not started |
 | W7.1 | Stripe Connect live readiness | W1.3 | done (#54); keys set on staging by Codex, the recorded run is next |
-| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=quickbooks` (sandbox only), Intuit request ids on errors, app review steps in `INTEGRATIONS.md`; the recorded sandbox sync follows |
-| W7.3 | Twilio on a real account | W1.3 | not started |
+| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | done (#60); keys set on staging by Codex, the recorded sandbox sync is next |
+| W7.3 | Twilio on a real account | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=sms` with `SMS_REDIRECT_TO` (one test phone), route and live steps in `INTEGRATIONS.md`; blocked on a paid, approved Twilio number (Justin chose to wait, 2026-10-06) |
 | W8.1 | Public marketing page | W6.5 | done (#37) |
 | W8.2 | Demo request form | W2.1, W8.1 | in progress (PR open) |
 | W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | not started |

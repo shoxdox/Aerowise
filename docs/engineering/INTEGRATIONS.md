@@ -6,7 +6,7 @@ How each outside service Aerowise talks to is set up, tried on staging and switc
 | --- | --- | --- | --- | --- |
 | Stripe Connect | Homeowners paying a company's invoices online | `packages/payments` | Test mode, with `DEMO_LIVE_SERVICES=stripe` | Live keys |
 | QuickBooks Online | Invoices and payments into the company's books | `packages/quickbooks` | Intuit sandbox, with `DEMO_LIVE_SERVICES=quickbooks` | Production keys, after Intuit's app review |
-| Twilio | Reminder texts and replies | `packages/sms` | Stand-in (W7.3) | — |
+| Twilio | Reminder texts and replies | `packages/sms` | Stand-in; `DEMO_LIVE_SERVICES=sms` sends to one test phone once a number is approved | Live, after toll-free verification or A2P 10DLC |
 
 Stripe Billing (what companies pay Aerowise, W4) is a separate Stripe relationship with its own keys (`STRIPE_BILLING_*`); nothing here touches it.
 
@@ -16,8 +16,9 @@ Staging runs the demo (`DEMO_MODE=true`): every outside service is a test stand-
 
 - `stripe`: `STRIPE_SECRET_KEY` must be a test-mode key (`sk_test_` or `rk_test_`). No money moves.
 - `quickbooks`: `QUICKBOOKS_ENVIRONMENT` must be `sandbox`, with `QUICKBOOKS_CLIENT_ID` and `QUICKBOOKS_CLIENT_SECRET` set. Only Intuit sandbox companies can be connected.
+- `sms`: Twilio's keys and `SMS_REDIRECT_TO`, one test phone. Every text goes there instead of to the customer, starting "[Test, for +1…]".
 
-Everything not listed stays a stand-in. The settings check also refuses a live Stripe key or `QUICKBOOKS_ENVIRONMENT=production` on staging at all, and any `DEMO_LIVE_SERVICES` in production. Several services are listed together, e.g. `DEMO_LIVE_SERVICES=stripe,quickbooks`.
+Everything not listed stays a stand-in. The settings check also refuses a live Stripe key, `QUICKBOOKS_ENVIRONMENT=production`, or Twilio without `SMS_REDIRECT_TO` (outside demo mode) on staging, and any `DEMO_LIVE_SERVICES` or `SMS_REDIRECT_TO` in production. Several services are listed together, e.g. `DEMO_LIVE_SERVICES=stripe,quickbooks`.
 
 After editing the settings file, redeploy staging so the containers pick it up:
 
@@ -140,4 +141,47 @@ Production keys for an app that connects other people's QuickBooks companies are
 4. **Production keys** go in `/etc/aerowise/production.env` with `QUICKBOOKS_ENVIRONMENT=production`, then deploy production.
 
 Intuit's review can ask follow-up questions and take a few weeks. A design partner can't connect their real books until it is done; the sandbox works meanwhile.
+
+## Twilio
+
+**How it works.** Each company turns texting on from the **Texts** page (`/sms`) and sets the number its texts come from (one of the Twilio account's numbers). Aerowise sends on-the-way notices, inspection and report notices, and renewal and payment reminders to contacts who agreed to texts, outside quiet hours, and records each message. Twilio calls back with delivery receipts (`/api/webhooks/sms/status`, set on every send) and incoming replies (`/api/webhooks/sms/inbound`, set on the number). Both are checked against Twilio's signature. STOP, START and HELP replies are handled, and a STOP'd number is never texted again until it replies START.
+
+**Status (Justin, 2026-10-06): no paid Twilio route yet.** A Twilio trial account can't text US numbers usefully: a local number needs an upgraded account and A2P 10DLC registration, and a toll-free number needs toll-free verification. Justin chose to wait. Staging keeps the stand-in until a route is approved, and the live test happens before the first design partner turns texting on. Twilio's trial keys are in staging's settings file but unused, because the demo ignores them unless `sms` is listed.
+
+### Choosing a route (when it's time)
+
+- **Toll-free number + toll-free verification** (recommended for the pilot): upgrade the Twilio account, buy one toll-free number, submit the verification form (business details, use case "appointment reminders and account notifications", sample texts, how contacts opt in). No campaign fees. Approval usually takes days to a few weeks.
+- **Local number + A2P 10DLC**: upgrade, register a brand and a campaign in Twilio's Trust Hub, then buy a local number and add it to the campaign's messaging service. It adds registration and monthly campaign fees, and approval often takes longer.
+
+Either way, each design partner eventually sends from a number of its own (or of Aerowise's, registered for them). That is a choice for when the first one turns texting on.
+
+### Setting up Twilio for staging
+
+1. On the approved number, under **Messaging > A message comes in**: Webhook, HTTP POST, `https://staging.deshain.com/api/webhooks/sms/inbound`. Delivery receipts need no setting.
+2. **Settings file** (`/etc/aerowise/staging.env`), never in chat:
+   - `TWILIO_ACCOUNT_SID=` and `TWILIO_AUTH_TOKEN=` (the upgraded account's)
+   - `SMS_REDIRECT_TO=` the one test phone, like `+15125550123`
+   - add `sms` to `DEMO_LIVE_SERVICES` (e.g. `stripe,quickbooks,sms`)
+3. Redeploy staging.
+
+### The staging run
+
+1. On the **Texts** page, turn texting on and set the approved number as the sending number.
+2. Give a demo customer's contact a mobile number and text consent, then send that customer a reminder text. The test phone receives "[Test, for +1…] …", and the message shows delivered in Aerowise once Twilio's receipt arrives.
+3. **STOP.** Add a contact whose number is the test phone itself (with consent), text it, and reply STOP from the phone. The contact shows opted out, and Twilio's own STOP confirmation arrives. Reply START to undo.
+4. **Record.** Without numbers in full:
+
+   ```sh
+   docker exec aerowise-staging-db-1 psql -U aerowise -d aerowise -c "select created_at, kind, direction, status, error_code from sms_messages order by created_at"
+   ```
+
+Run log (newest last):
+
+| Date | Who | Send | Delivered | STOP | Notes |
+| --- | --- | --- | --- | --- | --- |
+| — | — | — | — | — | Not run yet: no approved Twilio number (Justin chose to wait, 2026-10-06). |
+
+### Going live in production
+
+With an approved number: put the keys in `/etc/aerowise/production.env` (no `SMS_REDIRECT_TO`, which production refuses), point the number's incoming messages at `https://app.deshain.com/api/webhooks/sms/inbound`, deploy, and the company sets its sending number on the Texts page.
 
