@@ -1,0 +1,152 @@
+{
+  "jurisdiction": {
+    "key": "tx-comal-county",
+    "state": "TX",
+    "authorityName": "Comal County Engineer's Office, Environmental Health",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06. v1's sources plus Comal County's OSSF rules (the scan, read from OCR) and its five published city agreements, from the 2026-10-06 county research packet (docs/jurisdictions/research/2026-10-06, findings C1 to C4). See docs/jurisdictions/tx-comal-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": "2013-11-26",
+      "basis": "Comal County's Rules for OSSF were adopted by the Commissioners Court on 2013-10-24 and approved by the TCEQ on 2013-11-26 (the county's 13-page scan, read from OCR in the research packet). Later amendments were not checked. Aerowise applies the ruleset only from 2026-10-06; nothing earlier is backdated."
+    },
+    "sources": [
+      {
+        "title": "Comal County: Environmental Health",
+        "url": "https://www.comalcounty.gov/274/Environmental-Health",
+        "retrievedOn": "2026-10-06",
+        "note": "Maintenance reports are uploaded at https://comalcountyengineersoffice.files.com/u/maintenance-reports and contracts at https://comalcountyengineersoffice.files.com/u/maintenance-contracts, signing in with 'your name, email and TCEQ License number'. 195 David Jonas Dr, New Braunfels, TX 78132; phone 830-608-2090; fax 830-608-2078."
+      },
+      {
+        "title": "Comal County: OSSF Information (homeowner maintenance FAQ)",
+        "url": "https://www.comalcounty.gov/276/OSSF-Information",
+        "retrievedOn": "2026-10-06",
+        "note": "Licensed maintenance providers submit testing reports to Comal County; 'The reporting requirements for licensed maintenance providers have not changed.' Only single-family owners may maintain their own aerobic OSSF; everyone else uses a licensed maintenance provider. v1 also read it as saying self-maintaining homeowners submit no reports; the 2026-10-06 review did not find that on the current page, so v2 does not rely on it."
+      },
+      {
+        "title": "Comal County: Rules for On-Site Sewage Facilities (scan)",
+        "url": "https://www.comalcounty.gov/documentcenter/view/2141",
+        "retrievedOn": "2026-10-06",
+        "note": "13-page scan, read from OCR in the research packet. Adopted 2013-10-24, TCEQ approval 2013-11-26 (PDF pp. 6-7, 10-13). Sections 8-9 adopt the TCEQ's rules and their later amendments. Section 10's local additions are about construction and siting; 10.9 (PDF p. 12) keeps picnic tables, play equipment, barbecue pits and the like out of a surface application spray area. No different maintenance interval, report deadline, form or lab schedule."
+      },
+      {
+        "title": "Comal County Environmental Health Department Fees (effective 2019-01-01)",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2142/",
+        "retrievedOn": "2026-10-06",
+        "note": "No fee for maintenance reports, maintenance contracts or late reports."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      },
+      {
+        "title": "Comal County: City of Bulverde interlocal agreement",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2136/City-of-Bulverde-Interlocal-Agreement-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-2: the county performs OSSF permitting, inspection and enforcement inside the city. Agreements with cities in more than one county cover only the Comal County part. Each can be ended or replaced, so its publication is not proof of current coverage for an address."
+      },
+      {
+        "title": "Comal County: City of Fair Oaks Ranch interlocal agreement",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2137/City-of-Fair-Oaks-Ranch-Interlocal-Agreement-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-2: the county performs OSSF permitting, inspection and enforcement inside the city. Agreements with cities in more than one county cover only the Comal County part. Each can be ended or replaced, so its publication is not proof of current coverage for an address."
+      },
+      {
+        "title": "Comal County: City of Garden Ridge interlocal agreement",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2138/City-of-Garden-Ridge-Interlocal-Agreement-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-2: the county performs OSSF permitting, inspection and enforcement inside the city. Agreements with cities in more than one county cover only the Comal County part. Each can be ended or replaced, so its publication is not proof of current coverage for an address."
+      },
+      {
+        "title": "Comal County: City of Schertz interlocal agreement",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2139/City-of-Schertz-Interlocal-Agreement-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-2: the county performs OSSF permitting, inspection and enforcement inside the city. Agreements with cities in more than one county cover only the Comal County part. Each can be ended or replaced, so its publication is not proof of current coverage for an address."
+      },
+      {
+        "title": "Comal County: City of Spring Branch interlocal agreement",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2140/City-of-Spring-Branch-Interlocal-Agreement-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF pp. 1-3: the county performs OSSF permitting, inspection and enforcement inside the city. Agreements with cities in more than one county cover only the Comal County part. Each can be ended or replaced, so its publication is not proof of current coverage for an address."
+      }
+    ],
+    "unresolved": [
+      "Comal County's rules (2013) add nothing to TCEQ's maintenance requirements, but a site's own permit can; Aerowise follows 30 TAC 285.7 unless the permit is checked.",
+      "Comal County publishes agreements with Bulverde, Fair Oaks Ranch, Garden Ridge, Schertz and Spring Branch under which it runs OSSF permitting inside them. Whether each is still in force, and which other cities run their own programs, is not published. Every site needs a reviewed assignment.",
+      "Reports and contracts are uploaded to two separate county portals, which Aerowise cannot use for the office. The office downloads the report, uploads it and records it as sent. File naming, format and signature rules for the portal are not published.",
+      "Comal County publishes no acknowledgment of an uploaded report or contract.",
+      "Whether homeowners who maintain their own single-family system submit reports is not stated on the county's current pages.",
+      "Section 10.9 keeps obstructions out of a spray area; Aerowise asks for the spray area's condition on Comal reports. Whether the county wants that line on non-spray reports is not stated.",
+      "No lab testing (BOD, TSS) or commercial-specific schedule is published, so none is required here."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Comal"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Comal County's Engineer's Office permits OSSFs in Comal County, including inside Bulverde, Fair Oaks Ranch, Garden Ridge, Schertz and Spring Branch under published agreements (the Comal County part only, for cities in more than one county). Other cities may run their own programs, and an agreement may have ended. Check the site's permit with the Engineer's Office at 830-608-2090 or its septic records search (https://cceo.comalcounty.gov/permit-search). Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Uploaded by the office to Comal County's maintenance reports portal, signing in with the provider's name, email and TCEQ license number."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Comal County takes contracts on a separate portal: https://comalcountyengineersoffice.files.com/u/maintenance-contracts (read 2026-10-06). Timing from 30 TAC 285.7(d)(2): a copy goes to the permitting authority 30 days before the service policy or current contract expires. The office uploads it by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Comal County's 2013 rules adopt the TCEQ's rules and set no different interval."
+    }
+  },
+  "inspection": {
+    "requiredFields": [
+      "spray_area"
+    ],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": "https://comalcountyengineersoffice.files.com/u/maintenance-reports"
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Comal County describes no reply to an uploaded report or contract. Record any acknowledgment it sends."
+  }
+}

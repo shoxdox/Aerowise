@@ -4,7 +4,7 @@ import { mayAutoSubmit } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { countyValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 // W6.C4: Comal County's draft profile (packages/compliance/rulesets/tx-comal-county).
 // The ruleset applies from 2026-10-06, so these visits happen on 2026-10-07.
@@ -15,7 +15,8 @@ const KEY = "tx-comal-county";
 const VISIT_DAY = "2026-10-07";
 const PORTAL = "https://comalcountyengineersoffice.files.com/u/maintenance-reports";
 
-const comal = () => bundledRulesets().find((r) => r.jurisdiction.key === KEY)!;
+const versions = () => bundledRulesets().filter((r) => r.jurisdiction.key === KEY);
+const comal = () => versions().at(-1)!;
 const AUTODIALER = { method: "autodialer", description: "Acme AD-200 on the control panel", notifies: "The maintenance provider, by phone call", startedOn: "2026-09-01", checkedOn: "2026-09-15" };
 
 /** A Comal County site the office has checked is permitted by the county, under contract, with a visit on 2026-10-07. */
@@ -51,9 +52,16 @@ const filingsOf = async (s: Setup) => (await s.api.get("/filings?view=all&kind=i
 describe("Comal County's draft profile", () => {
   it("reads as written: reports go to the county's upload portal by hand, never on their own", () => {
     const r = comal();
-    expect(r.profile).toMatchObject({ status: "draft", sourcesCheckedOn: "2026-10-06", requirementEffective: { date: null } });
+    expect(r.version).toBe(2);
+    expect(r.profile).toMatchObject({ status: "draft", sourcesCheckedOn: "2026-10-06", requirementEffective: { date: "2013-11-26" } });
     expect(r.profile!.sources.every((s) => s.url.startsWith("https://") && s.retrievedOn === "2026-10-06")).toBe(true);
-    expect(r.profile!.unresolved.some((u) => u.includes("could not be read"))).toBe(true);
+    // The rules scan is read now; the five city agreements are evidence, not an assignment.
+    expect(r.profile!.unresolved.some((u) => u.includes("could not be read"))).toBe(false);
+    expect(r.profile!.sources.filter((s) => s.title.includes("interlocal agreement"))).toHaveLength(5);
+    for (const city of ["Bulverde", "Fair Oaks Ranch", "Garden Ridge", "Schertz", "Spring Branch"]) expect(r.applicability.howToDecide).toContain(city);
+    // v1's homeowner no-report claim is not relied on.
+    expect(r.profile!.unresolved.join(" ")).toContain("is not stated on the county's current pages");
+    expect(r.inspection.requiredFields).toEqual(["spray_area"]);
     expect(mayAutoSubmit(r)).toBe(false);
     expect(r.applicability).toMatchObject({ counties: ["Comal"], assignment: "reviewed", howToDecide: expect.stringContaining("830-608-2090") });
     expect(r.inspectionReports?.submission).toBe("supported");
@@ -76,7 +84,7 @@ describe("Comal County's draft profile", () => {
   it("dates a valid inspection's filing 14 days out with the next visit in 4 months, for the office to upload and record", async () => {
     mail.mode = "ok";
     const { s, complete } = await comalVisit(ctx);
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
     await runWorker(ctx);
     const [f] = await filingsOf(s);
     expect(f).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07", jurisdiction: { key: KEY }, status: "needs_review" });
@@ -100,7 +108,7 @@ describe("Comal County's draft profile", () => {
 
   it("keeps an inspection without a chlorine residual as a draft", async () => {
     const { complete } = await comalVisit(ctx);
-    const values = { ...completeValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
     delete values.chlorine_level;
     const res = (await complete(values)).json();
     expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
@@ -109,8 +117,23 @@ describe("Comal County's draft profile", () => {
 
   it("allows six months between visits where electronic monitoring is on record", async () => {
     const { s, complete } = await comalVisit(ctx, { monitored: true });
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
     await runWorker(ctx);
     expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-04-07" });
+  });
+
+  it("keeps an inspection without the spray area's condition as a draft", async () => {
+    const { complete } = await comalVisit(ctx);
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    delete values.spray_area;
+    const res = (await complete(values)).json();
+    expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect(res.validationProblems.map((p: { key: string }) => p.key)).toContain("spray_area");
+  });
+
+  it("keeps v1 as published, replaced from the same day", () => {
+    const [v1, v2] = versions();
+    expect(v1).toMatchObject({ version: 1, profile: { requirementEffective: { date: null } }, inspection: { requiredFields: [] } });
+    expect(v2!.effectiveFrom).toBe(v1!.effectiveFrom);
   });
 });

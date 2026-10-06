@@ -1,0 +1,142 @@
+{
+  "jurisdiction": {
+    "key": "tx-brazoria-county",
+    "state": "TX",
+    "authorityName": "Brazoria County Environmental Health Department, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06. v1's sources plus the county's Environmental Health Contact Us page, its approved OSSF order and its fee schedule, from the 2026-10-06 county research packet (docs/jurisdictions/research/2026-10-06, findings B1 to B5). See docs/jurisdictions/tx-brazoria-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": "2010-06-30",
+      "basis": "Brazoria County's OSSF order (linked from its regulations page) was adopted by the Commissioners Court on 2010-06-10 and approved by the TCEQ on 2010-06-30 (PDF pp. 1-2, 12). Later amendments were not checked. Aerowise applies the ruleset only from 2026-10-06; nothing earlier is backdated."
+    },
+    "sources": [
+      {
+        "title": "Brazoria County Environmental Health: OSSF Permitting Process",
+        "url": "https://www.brazoriacountytx.gov/departments/environmental-health/forms-permit-applications/ossf-permitting-process",
+        "retrievedOn": "2026-10-06",
+        "note": "Permit applications 'must be submitted for review in person or by mail. Initial submissions will not be accepted via email.' Installers and maintenance providers 'must be registered with the County'; a maintenance contract comes with the application where required. No permit for a single-family OSSF on a single tract of ten acres or more meeting the setbacks. Nothing on maintenance reports."
+      },
+      {
+        "title": "Brazoria County Environmental Health: Forms & Permit Applications",
+        "url": "https://www.brazoriacountytx.gov/departments/environmental-health/forms-permit-applications",
+        "retrievedOn": "2026-10-06",
+        "note": "Lists 'OSSF Maintenance Providers' and homeowner-maintenance training forms (titles only; documents not read). No maintenance report form."
+      },
+      {
+        "title": "Brazoria County OSSF Regulations (approved order)",
+        "url": "https://www.brazoriacountytx.gov/home/showpublisheddocument/1190/635938334219200000",
+        "retrievedOn": "2026-10-06",
+        "note": "Adopted 2010-06-10, TCEQ approval 2010-06-30 (PDF pp. 1-2, 12). Section 6 (PDF p. 6): excludes incorporated cities and areas under an existing rule. Sections 8-9 adopt the TCEQ's rules and later amendments. Section 10(b) (PDF p. 7): installers and maintenance providers register with the Environmental Health Department in person on its standard form, with current credentials and no fee. Section 10(f)-(g) (PDF p. 10): the recorded affidavit; homeowner maintenance needs qualifying training or a listed license; an owner starts a repair within ten days of notice. Section 12 (PDF p. 11): a general fee clause."
+      },
+      {
+        "title": "Brazoria County fee schedule",
+        "url": "https://www.brazoriacountytx.gov/home/showpublisheddocument/13662/637686168999830000",
+        "retrievedOn": "2026-10-06",
+        "note": "OSSF section: permit and reinspection fees. No amount for a maintenance report or contract was found, which does not show none applies."
+      },
+      {
+        "title": "Brazoria County Environmental Health: Contact Us",
+        "url": "https://www.brazoriacountytx.gov/departments/environmental-health/contact-us",
+        "retrievedOn": "2026-10-06",
+        "note": "OSSF Maintenance section (browser excerpt in the research packet): maintenance contracts and reports go to ehmaintenance@brazoriacountytx.gov. The page's email link is broken (a mailto with no address), but the address is printed. Phone 979-864-1600. Nothing about format, signatures or a reply."
+      },
+      {
+        "title": "TCEQ: Types of Systems Installed by Authorized Agents, 2024",
+        "url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2024-aa-atcs.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Brazoria authorized agents: Brazoria County (620020), City of Brookside Village (620024), City of Manvel (620022), Village of Surfside Beach (620274). Only agents that issued permits that year are listed. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Brazoria County's Contact Us page says maintenance contracts and reports go to ehmaintenance@brazoriacountytx.gov. That is the published address, not the county's acceptance of Aerowise's report layout, typed signatures or this channel. Aerowise drafts the email and the office presses Send; nothing goes automatically.",
+      "Providers register with the county in person on its standard form, free (order 10(b)). Whether an emailed or online process replaces that is not said, and Aerowise does not record a company's registration.",
+      "Brookside Village, Manvel and Surfside Beach are separate TCEQ authorized agents, Pearland's procedure points to TCEQ Region 12, and the order excludes incorporated cities. Every site needs a reviewed assignment.",
+      "Homeowners may maintain their own system only with qualifying training or a listed license (order 10(g)); that is not an exemption from reporting.",
+      "No maintenance report, contract or late fee was found in the fee schedule, and the order has a general fee clause (section 12). Aerowise charges nothing; whether any filing fee applies is not said.",
+      "No county report form, report contents, lab tests or commercial schedule beyond 30 TAC 285.7 were found.",
+      "Brazoria County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Brazoria"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Brazoria County Environmental Health permits OSSFs in Brazoria County outside incorporated cities and areas under an existing rule (order section 6). Brookside Village, Manvel and Surfside Beach are separate TCEQ authorized agents and Pearland sends applications to TCEQ Region 12. Check the site's permit or call the county at 979-864-1600. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true,
+    "countyRegistration": {
+      "required": true,
+      "renews": "Registered in person with the Environmental Health Department on its standard form, with current TCEQ credentials. Free.",
+      "note": "Brazoria County order 10(b): installers and maintenance providers register with the county before working, and a suspended or revoked registration stops them. Aerowise does not record the registration; check it before filing."
+    }
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Sent by email to ehmaintenance@brazoriacountytx.gov, the address on the county's Contact Us page. The office presses Send; nothing goes automatically while this profile is a draft."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Brazoria County's Contact Us page sends maintenance contracts to ehmaintenance@brazoriacountytx.gov too. No renewal timing is published; timing from 30 TAC 285.7(d)(2), 30 days before the current contract expires. The office presses Send."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Brazoria County's order adopts the TCEQ's rules and sets no different interval."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "ehmaintenance@brazoriacountytx.gov",
+      "subject": "OSSF maintenance inspection report, permit {permitNumber}",
+      "contractSubject": "OSSF maintenance contract, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Brazoria County describes no reply to emailed reports or contracts. Record any acknowledgment it sends."
+  }
+}

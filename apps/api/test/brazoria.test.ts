@@ -13,7 +13,10 @@ const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now
 const KEY = "tx-brazoria-county";
 const VISIT_DAY = "2026-10-07";
 
-const brazoria = () => bundledRulesets().find((r) => r.jurisdiction.key === KEY)!;
+const versions = () => bundledRulesets().filter((r) => r.jurisdiction.key === KEY);
+const brazoria = () => versions().at(-1)!;
+const INBOX = "ehmaintenance@brazoriacountytx.gov";
+const PDF = Buffer.from("%PDF-1.4\n% synthetic signed contract for tests\n%%EOF\n");
 const AUTODIALER = { method: "autodialer", description: "Acme AD-200 on the control panel", notifies: "The maintenance provider, by phone call", startedOn: "2026-09-01", checkedOn: "2026-09-15" };
 
 /** A Brazoria County site outside the cities with their own program, under contract, with a visit on 2026-10-07. */
@@ -44,26 +47,41 @@ async function brazoriaVisit(c: TestContext, opts: { monitored?: boolean } = {})
   return { s, j, complete };
 }
 
+async function credentials(s: Setup) {
+  const mp = (await s.api.post("/credentials", { userId: s.owner.id, holderName: "Owner Person", kind: "tceq_maintenance_provider", number: "MP0001234", verifiedOn: "2026-10-01", verificationSource: "TCEQ license search" })).json();
+  expect((await s.api.post("/credentials", { userId: s.tech.id, holderName: "Tech Person", kind: "tceq_maintenance_technician", number: "MT0005678" })).statusCode).toBe(201);
+  await s.api.put("/settings/responsible-provider", { credentialId: mp.id });
+}
+
 const filingsOf = async (s: Setup) => (await s.api.get("/filings?view=all&kind=inspection_report")).json().items as { id: string; status: string; [k: string]: unknown }[];
 
 describe("Brazoria County's draft profile", () => {
-  it("reads as written: no published way to submit reports, so nothing is ever sent", () => {
+  it("reads as written: the county's published inbox, drafted for the office to send", () => {
     const r = brazoria();
-    expect(r.profile).toMatchObject({ status: "draft", sourcesCheckedOn: "2026-10-06", requirementEffective: { date: null } });
+    expect(r.version).toBe(2);
+    expect(r.profile).toMatchObject({ status: "draft", sourcesCheckedOn: "2026-10-06", requirementEffective: { date: "2010-06-30" } });
     expect(r.profile!.sources.every((s) => s.url.startsWith("https://") && s.retrievedOn === "2026-10-06")).toBe(true);
-    expect(r.profile!.unresolved.length).toBeGreaterThan(0);
+    // The published address is not the county's acceptance of Aerowise's reports.
+    expect(r.profile!.unresolved[0]).toContain("not the county's acceptance");
     expect(mayAutoSubmit(r)).toBe(false);
-    expect(r.applicability).toMatchObject({ counties: ["Brazoria"], assignment: "reviewed", howToDecide: expect.stringContaining("Manvel") });
-    expect(r.inspectionReports?.submission).toBe("unknown");
-    expect(r.submission).toMatchObject({ method: "manual_export" });
-    expect(r.submission.email).toBeUndefined();
-    // An unconfirmed address is never used as a channel.
-    expect(JSON.stringify(r.submission)).not.toContain("ehmaintenance");
+    expect(r.applicability).toMatchObject({ counties: ["Brazoria"], assignment: "reviewed", howToDecide: expect.stringContaining("979-864-1600") });
+    expect(r.inspectionReports?.submission).toBe("supported");
+    expect(r.contracts?.submission).toBeUndefined();
+    expect(r.submission).toMatchObject({ method: "email", email: { to: INBOX, contractSubject: expect.stringContaining("contract") } });
+    expect(r.provider?.countyRegistration).toMatchObject({ required: true, renews: expect.stringContaining("Free") });
     expect(r.service).toMatchObject({ intervalMonths: 4, monitored: { intervalMonths: 6 } });
-    expect(r.filing.deadlineDays).toBe(14);
+    expect(r.filing).toMatchObject({ deadlineDays: 14, autoSubmit: false });
     expect(r.contracts).toMatchObject({ filingRequired: true, renewalDaysBeforePreviousEnd: 30 });
     expect(r.inspection.requiredFields).toEqual([]);
     expect(r.labTests).toBeUndefined();
+    expect(r.fees).toBeUndefined();
+  });
+
+  it("keeps v1 as published, replaced from the same day", () => {
+    const [v1, v2] = versions();
+    expect(v1).toMatchObject({ version: 1, submission: { method: "manual_export" }, inspectionReports: { submission: "unknown" } });
+    expect(JSON.stringify(v1!.submission)).not.toContain("ehmaintenance");
+    expect(v2!.effectiveFrom).toBe(v1!.effectiveFrom);
   });
 
   it("does not match a Brazoria site by county alone", async () => {
@@ -73,16 +91,45 @@ describe("Brazoria County's draft profile", () => {
     expect(r.candidates.map((c) => c.jurisdiction.key)).toEqual([KEY]);
   });
 
-  it("dates a valid inspection's filing 14 days out with the next visit in 4 months, and holds it for review", async () => {
+  it("files a valid inspection within 14 days, next visit 4 months out, and emails it only when the office presses Send", async () => {
     mail.mode = "ok";
     const { s, complete } = await brazoriaVisit(ctx);
     expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
     await runWorker(ctx);
     const [f] = await filingsOf(s);
     expect(f).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07", jurisdiction: { key: KEY }, status: "needs_review" });
+    expect(f!.reviewReason).toContain("No responsible licensed maintenance provider");
+
+    await credentials(s);
+    const inspectionId = ((await s.api.get(`/filings/${f!.id}`)).json()).inspection.id as string;
+    expect((await s.api.post(`/inspections/${inspectionId}/signature`, { typedName: "Owner Person" })).statusCode).toBe(200);
+    expect((await filingsOf(s))[0]).toMatchObject({ status: "ready" });
     const calls = mail.calls;
     await runWorker(ctx);
     expect(mail.calls).toBe(calls);
+    expect((await s.api.post(`/filings/${f!.id}/submit`, {})).statusCode).toBe(200);
+    await runWorker(ctx);
+    const detail = (await s.api.get(`/filings/${f!.id}`)).json();
+    expect(detail.status).toBe("sent");
+    expect(detail.packages[0]).toMatchObject({ method: "email", recipient: INBOX, subject: expect.stringContaining("OSSF maintenance inspection report") });
+  });
+
+  it("files a signed contract to the same inbox, also only when the office presses Send", async () => {
+    mail.mode = "ok";
+    const { s } = await brazoriaVisit(ctx);
+    await credentials(s);
+    const up = await s.api.post(`/contracts/${s.contract.id}/document`, { filename: "Signed contract.pdf", contentBase64: PDF.toString("base64"), signedOn: "2026-09-30" });
+    expect(up.statusCode, up.body).toBe(201);
+    await runWorker(ctx);
+    const [cf] = (await s.api.get("/filings?view=all&kind=contract")).json().items as { id: string; status: string; reviewReason: string | null }[];
+    expect(cf, JSON.stringify(cf)).toMatchObject({ status: "ready" });
+    const calls = mail.calls;
+    await runWorker(ctx);
+    expect(mail.calls).toBe(calls);
+    expect((await s.api.post(`/filings/${cf!.id}/submit`, {})).statusCode).toBe(200);
+    await runWorker(ctx);
+    const detail = (await s.api.get(`/filings/${cf!.id}`)).json();
+    expect(detail.packages[0]).toMatchObject({ method: "email", recipient: INBOX, subject: expect.stringContaining("OSSF maintenance contract") });
   });
 
   it("keeps an inspection without a chlorine residual as a draft", async () => {
