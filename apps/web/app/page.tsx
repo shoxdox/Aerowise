@@ -70,6 +70,11 @@ export default function MarketingPage() {
                       </span>
                     )}
                   </span>
+                  {c.confirmedWithAuthority.length > 0 && (
+                    <span className="small">
+                      {COVERAGE.confirmedLabel}: {c.confirmedWithAuthority.map((l, i) => (i === 0 ? l : l.toLowerCase())).join(", ")}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

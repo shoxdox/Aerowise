@@ -1,5 +1,6 @@
 import type { Database } from "@aerowise/db";
-import { profileStatus, verifiedWith, type RulesetCoverage } from "@aerowise/domain";
+import { confirmationSummary, profileStatus, verifiedWith, type RulesetCoverage } from "@aerowise/domain";
+import { confirmationsFor, loadConfirmations } from "./confirmation.ts";
 import { explainSite, loadCatalog, rulesetOn } from "./rulesets.ts";
 
 /**
@@ -9,9 +10,10 @@ import { explainSite, loadCatalog, rulesetOn } from "./rulesets.ts";
  * counted as one to decide, not as both.
  */
 export async function rulesetCoverage(db: Database, today: string): Promise<RulesetCoverage> {
-  const [catalog, sites] = await Promise.all([
+  const [catalog, sites, confirmations] = await Promise.all([
     loadCatalog(db),
     db.selectFrom("sites").select(["organizationId", "county", "state", "jurisdictionId"]).where("active", "=", true).execute(),
+    loadConfirmations(db),
   ]);
   const use = new Map<string, { sites: number; orgs: Set<string>; toDecide: number }>();
   const tally = (id: string) => use.get(id) ?? (use.set(id, { sites: 0, orgs: new Set(), toDecide: 0 }), use.get(id)!);
@@ -48,6 +50,7 @@ export async function rulesetCoverage(db: Database, today: string): Promise<Rule
         sourcesCheckedOn: rules?.profile?.sourcesCheckedOn ?? null,
         sourceCount: rules?.profile?.sources.length ?? 0,
         unresolved: rules?.profile?.unresolved ?? [],
+        confirmation: confirmationSummary(confirmationsFor(confirmations, entry.jurisdiction.id)),
         sites: t?.sites ?? 0,
         organizations: t?.orgs.size ?? 0,
         sitesToDecide: t?.toDecide ?? 0,
