@@ -1,0 +1,105 @@
+{
+  "jurisdiction": {
+    "key": "tx-collin-county",
+    "state": "TX",
+    "authorityName": "Collin County Development Services, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Collin County's On-Site Sewage Facilities page, its Aerobic Systems Information Sheet, 30 TAC 285.7 and TCEQ's OSSF maintenance page. Collin County's OSSF Rules and Regulations (Court Order 2008-187-03-11) could not be read: the PDF is a scan with no text. See docs/jurisdictions/tx-collin-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "Collin County's OSSF Rules and Regulations (Court Order 2008-187-03-11) are published as a scanned PDF with no readable text, so their effective date is unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Collin County Development Services: On-Site Sewage Facilities",
+        "url": "https://www.collincountytx.gov/Services/Engineering/Development-Services/on-site-sewage-facilities",
+        "retrievedOn": "2026-10-06",
+        "note": "'New OSSF Contracts, Maintenance Reports, and Change of Ownership forms will be submitted through our OSSF Report Portal' (https://apps.collincountytx.gov/Forms/DS-AerobicPermit-Prod). Properties outside city limits apply to Collin County; inside city limits, check TCEQ's list for whether the city or Collin County is the permitting authority. Rules: Court Order 2008-187-03-11. (972) 548-5585; developmentservices@collincountytx.gov; 4690 Community Ave., McKinney, Texas 75071."
+      },
+      {
+        "title": "Collin County: Aerobic Systems Information Sheet",
+        "url": "https://www.collincountytx.gov/docs/default-source/development-services/documents/aerobic-systems-information-sheet.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Undated. 'Maintenance companies shall inspect a system 3 times a year minimum. This shall be done at 4-month intervals.' 'Copies of the report shall be sent to our Department and to the homeowner.' 'Renewals must be submitted to our department 30 days prior to the expiration of the contract.' A new owner files a Change of Ownership form within 15 days of closing. The original installation contract is good for 2 years. 'Chlorine must be maintained in surface irrigation systems at ALL times.' Nothing on electronic monitoring, deadlines or fees."
+      },
+      {
+        "title": "Collin County: On-Site Sewage Facilities Rules and Regulations (CO No. 2008-187-03-11)",
+        "url": "https://www.collincountytx.gov/docs/default-source/development-services/documents/on-site-sewage-facilities-rules-and-regulations-co-no-2008-187-03-11.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Could not be read: the PDF is a scan with no machine-readable text."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Reports and contracts go through Collin County's OSSF Report Portal, a web form Aerowise cannot fill for the office. The office downloads the report, submits it there and records it as sent. What the form asks for was not read.",
+      "Collin County's information sheet says 3 inspections a year minimum at 4-month intervals and says nothing about electronic monitoring, so Aerowise allows no 6-month schedule here.",
+      "Collin County's Rules and Regulations (CO 2008-187-03-11) could not be read (a scanned PDF with no text), so any report deadline, report contents, lab testing or fees are unknown. Aerowise uses TCEQ's 14-day deadline.",
+      "Inside city limits, the permitting authority is the city or Collin County per TCEQ's list; every site needs a reviewed assignment.",
+      "A new owner's Change of Ownership form (within 15 days of closing) is not tracked by Aerowise.",
+      "Collin County publishes no acknowledgment of a submitted report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Collin"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Outside city limits, Collin County is the permitting authority. Inside city limits, check TCEQ's list of authorized agents for whether the city or Collin County permits OSSFs. If unsure, call Collin County Development Services at (972) 548-5585. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Submitted by the office through Collin County's OSSF Report Portal."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Collin County's Aerobic Systems Information Sheet (read 2026-10-06): 'Renewals must be submitted to our department 30 days prior to the expiration of the contract', through the same OSSF Report Portal. The office submits it by hand."
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": "https://apps.collincountytx.gov/Forms/DS-AerobicPermit-Prod"
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Collin County describes no reply to a submitted report or contract. Record any acknowledgment it sends."
+  }
+}
