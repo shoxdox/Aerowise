@@ -311,8 +311,8 @@ Priority 1 is whatever the first design partner works in; it jumps the queue whe
 | ID | Authority | Priority | Status |
 | --- | --- | --- | --- |
 | W6.C1 | Williamson County | 2 | draft (#68); 6 questions for Justin in docs/jurisdictions/tx-williamson-county.md |
-| W6.C2 | Travis County | 2 | draft profile (this PR); held for review until the county names how reports are submitted |
-| W6.C3 | Hays County | 2 | not started |
+| W6.C2 | Travis County | 2 | draft (#69); held for review until the county names how reports are submitted |
+| W6.C3 | Hays County | 2 | draft profile (this PR); held for review until the county names how reports are submitted; 6 questions in docs/jurisdictions/tx-hays-county.md |
 | W6.C4 | Comal County | 2 | not started |
 | W6.C5 | Bexar County | 2 | not started |
 | W6.C6 | Johnson County | 3 | not started |
