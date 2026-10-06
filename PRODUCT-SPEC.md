@@ -1,5 +1,7 @@
 # PRODUCT-SPEC.md
 
+> Design reference. For implemented status and next actions, read README.md and docs/DEMO-PILOT-BRIEF.md. This specification is not an active coding queue.
+
 Status: Draft v0.2  
 Audience: Founder, design, Codex/engineering agents  
 Product name: **Aerowise**

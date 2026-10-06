@@ -1,5 +1,7 @@
 # Packet validation
 
+> Historical pre-build research snapshot at `3929897`. Supported corrections subsequently landed in #84/#87; original findings/dispositions and source bytes remain unchanged. For current status and the pilot confirmation queue, read [the current handoff](../../../DEMO-PILOT-BRIEF.md) and [pilot worksheet](../../../PILOT-CALL-SHEET.md). Earlier proposed coding tasks are superseded.
+
 Completed October 6, 2026.
 
 - `git pull --ff-only origin main` returned Already up to date. Local main and origin/main resolve to `39298979ebd8cc89d9027f78b1f51fc6a313b5c2`.
