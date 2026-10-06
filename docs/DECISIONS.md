@@ -646,6 +646,12 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Staging's Stripe and QuickBooks checks need their own company.** After this lands and staging is reseeded, the public demo company (owner@example.com) only reaches stand-ins, by design. Codex runs the `DEMO_LIVE_SERVICES` acceptance in a company made from staging's `/admin` (Organizations, New), which is not a demo company and has no public sign-in.
 - **Not covered:** the geocoder (a lookup that sends nothing; demo deployments already use the stand-in), and payments for a demo company on a deployment where online payments are off.
 
+## 2026-10-06 · W10.3 The demo's five-minute path
+
+- **The demo's history is played through the API, not written into the seed.** After seeding, `pnpm --filter @aerowise/api demo-story` signs in as the demo owner, office and technician on an in-process API whose outside services are all stand-ins, and does what a provider would have done before a prospect arrives: licenses on file, two overdue visits inspected yesterday (with photos) and filed with the county by email, one acknowledged with reference EC-DEMO-0042, a renewal sent for a contract ending in three weeks, and two invoices, one paid on the test checkout. The records are therefore exactly what the product makes, and stay right as the product changes. It runs once per seed (it does nothing when the demo company already has inspections) and refuses a production database outside demo mode. `db:seed`, `db:reseed-demo` and the e2e server run it.
+- **Demo sites are in the fictional Example County**, whose ruleset is loaded outside production, so due dates, reports and filings follow real-looking rules without implying anything about a real county. Every demo unit has a tablet or liquid chlorinator, and the demo's licenses are MP-DEMO-0001 and MT-DEMO-0001.
+- Today's and tomorrow's route is left untouched for the visitor to work through.
+
 ## 2026-10-06 · W12.V4 Partial confirmation per field
 
 - **Five fields, confirmed only by the authority.** Where reports go, report format, signature, where contracts go, and receipt and acceptance each get the state the evidence page already computes (`questionState`), from every answer recorded for that authority. Only the authority's own settling answer makes a field "confirmed by the authority"; provider documents and published rules show as "provider evidence only" or "published rule only".
