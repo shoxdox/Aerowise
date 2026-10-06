@@ -35,7 +35,7 @@ Logs: `/var/log/aerowise-backup.log` (nightly) and `/var/log/aerowise-restore-ch
 /opt/aerowise/<env>/deploy/vps/restore-check.sh <env> <path/to/db-<stamp>.dump>
 ```
 
-It starts a throwaway Postgres (`aerowise-restore-check-<env>`, data in memory), restores the dump with `--exit-on-error`, and prints a table of row counts: backup against live. It fails when the restore fails, when the backup has no tables or no organizations, or when the two databases have different tables at the same migration. The live database normally has a few more rows than the backup (work done since the backup). A deploy since the backup shows as a note about the migration. It also lists the files tarball, if there is one. The scratch container is removed when it finishes, whatever happens.
+It starts a throwaway Postgres (`aerowise-restore-check-<env>`, data in memory), restores the dump with `--exit-on-error`, and prints a table of row counts: backup against live. It fails when the restore fails, when the backup has no tables, when the two databases have different tables at the same migration, or when a table had rows at backup time but none restored. `backup.sh` records every table's row count just before the dump (`db-<stamp>.counts`, copied to R2 with it), so a table that was still empty then, like everything on a production with no companies yet, does not count as missing. Backups from before the counts existed are compared with the live database instead. The live database normally has a few more rows than the backup (work done since the backup). A deploy since the backup shows as a note about the migration. It also lists the files tarball, if there is one. The scratch container is removed when it finishes, whatever happens.
 
 ## Restore
 
@@ -78,7 +78,8 @@ Each restore or restore check run for the record: date, where, which backup, and
 | Date | Where | Backup | Result |
 |---|---|---|---|
 | 2026-10-05 | Local test of the scripts (Docker Postgres 16 named like the server's, rclone's S3 server standing in for R2), with the synthetic demo seed | `db-20261005T233657Z.dump`, fetched back from the R2 stand-in | Passed. `restore-check.sh staging r2`: 63 tables, 463 rows, 1 organization; every table's count matched the live database (for example customers 50/50, sites 55/55, contracts 52/52, service obligations 156/156), same last migration (`0026_demo_requests.sql`), files tarball read back (2 files). Then all customers (and everything under them) and all files were deleted, and `restore.sh` with the copy fetched from R2 brought back customers 50, sites 55, contracts 52 and both files. A truncated dump made the check fail, a wrong R2 secret failed the backup, and a copy changed in the bucket failed the read-back. |
-| | **Staging on the server** (to do, Justin) | | |
+| 2026-10-06 | Staging on the server (run by Codex for Justin) | `db-20261006T003819Z.dump`, on the server | Passed: 65 tables, 485 rows, 1 organization, last migration `0030_site_customer_type.sql`. |
+| 2026-10-06 | Production on the server (run by Codex for Justin) | `db-20261006T004009Z.dump`, copied to R2, checked, fetched back from R2 | Restored cleanly; all 65 tables' counts matched live (1 platform admin, no companies yet); files archive read back. Reported FAILED only because the check then required at least one organization, which a new production cannot have. Fixed in the next change (counts recorded at backup time); to be run again with the fixed script. |
 
 ## Open
 
