@@ -1,0 +1,64 @@
+            FEE TYPE                                          DESCRIPTION                                   FEE AMOUNT
+
+                                                           FIRE CODE
+FIRE                           <5,000 SQ. FT.                                                                   $ 500
+FIRE                           EACH ADDITIONAL 1,000 <=50,000 SQ. FT.                                           $ 100
+FIRE                           EACH ADDITIONAL 1,000 > 50,001 SQ. FT.                                           $ 150
+                                                  COMMERCIAL STRUCTURE
+NON-STRUCTURE                  NON-STRUCTURE (demo, driveway, disturbed area, etc.)                              $ 250
+NON-STRUCTURE IN FLOODPLAIN    NON-STRUCTURE FP (demo, driveway, disturbed area, fence, etc.)                    $ 300
+STRUCTURE                      STRUCTURE NEW < 5,000 SQ. FT.                                                     $ 500
+STRUCTURE                      STRUCTURE NEW 5,000 - 9,999 SQ. FT.                                               $ 750
+STRUCTURE                      STRUCTURE NEW 10,000 - 14,999 SQ. FT.                                            $ 1000
+STRUCTURE                      STRUCTURE NEW 15,000 - 20,000 SQ. FT.                                            $ 1500
+FLOODPLAIN                     STRUCTURE NEW FP < 5,000 SQ. FT.                                                  $ 600
+FLOODPLAIN                     STRUCTURE NEW FP 5,000 - 9,999 SQ. FT.                                            $ 850
+FLOODPLAIN                     STRUCTURE NEW FP 10,000 - 14,999 SQ. FT.                                         $ 1100
+FLOODPLAIN                     STRUCTURE NEW FP 15,000 - 20,000 SQ. FT.                                         $ 1600
+FLOODPLAIN                     NON-COMPLIANCE ADMIN FEE PER VIOLATION                                            $ 200
+STRUCT/NON-STRUCT/FLOOD        PERMIT RECERTIFICATION                                                 1/2 OF ORIGINAL PERMIT FEE
+                                                   RESIDENTIAL STRUCTURE
+NON-STRUCTURE                  NON-STRUCTURE (demo, driveway, disturbed area, fence, etc.)                       $ 250
+NON-STRUCTURE FLOODPLAIN       NON-STRUCTURE FP (demo, driveway, pool, disturbed area, fence, etc.)              $ 300
+STRUCTURE OUTSIDE FLOODPLAIN   STRUCTURE NEW NO PLUMBING <= 200 SQ. FT.                                           $ 50
+STRUCTURE OUTSIDE FLOODPLAIN   STRUCTURE NEW > 200 SQ. FT.                                                       $ 200
+FLOODPLAIN                     STRUCTURE NEW NO PLUMBING FP <= 200 SQ. FT.                                       $ 100
+FLOODPLAIN                     STRUCTURE NEW FP > 200 SQ. FT.                                                    $ 300
+FLOODPLAIN                     TEMP CLASS B                                                                      $ 100
+FLOODPLAIN                     FLOODPLAIN DETERMINATION                                                           $0
+FLOODPLAIN                     NON-COMPLIANCE ADMIN FEE PER INCIDENT                                             $ 200
+STRUCT/NON-STRUCT/FLOOD        PERMIT RECERTIFICATION                                                 1/2 OF ORIGINAL PERMIT FEE
+                                                  HEALTH
+FOOD                  FARMERS MARKET                                          $ 100
+FOOD                  INSPECTION - INITIAL                                    $ 150
+FOOD                  INSPECTION - REQUESTED / RE-INSPECTION                  $ 150
+FOOD                  LATE FEE                                                $ 100
+FOOD                  MASS GATHERING < 5,000                                  $ 400
+FOOD                  MASS GATHERING                                          $ 800
+FOOD                  MOBILE UNITS                                            $ 258
+FOOD                  MOBILE UNITS - AMENDING                                 $ 125
+FOOD                  PUSH CARTS                                              $ 200
+FOOD                  NEW / RENEWAL - HIGH VOLUME                             $ 500
+FOOD                  NEW / RENEWAL - MID VOLUME                              $ 375
+FOOD                  NEW / RENEWAL - LOW VOLUME                              $ 250
+FOOD                  NEW / RENEWAL - HIGH VOLUME (AMEND EXISTING PERMIT)     $ 200
+FOOD                  NEW / RENEWAL - MID VOLUME (AMEND EXISTING PERMIT)      $ 150
+FOOD                  NEW / RENEWAL - LOW VOLUME (AMEND EXISTING PERMIT)      $ 100
+FOOD                  TEMPORARY EVENT - (SINGLE EVENT - 14 DAYS)               $ 52
+FOOD                  TEMPORARY EVENT - (MULTIPLE EVENT - ANNUAL)             $ 200
+                                                 SEPTIC
+SEPTIC                COMMERCIAL - ADD-ON                                   $200 + $10
+SEPTIC / FLOODPLAIN   COMMERCIAL ADD-ON FP                                  $335 + $10
+SEPTIC                COMMERCIAL - NEW                                      $400 + $10
+SEPTIC / FLOODPLAIN   COMMERCIAL NEW FP                                     $550 + $10
+SEPTIC                REDRAW                                                   $0
+SEPTIC                REINSPECTION FEE                                        $ 150
+SEPTIC                NON-COMPLIANCE ADMIN FEE PER INCIDENT                   $ 200
+SEPTIC                RESIDENTIAL - ADD-ON                                  $135 + $10
+SEPTIC / FLOODPLAIN   RESIDENTIAL ADD-ON FP                                 $270 + $10
+SEPTIC                RESIDENTIAL - NEW                                     $350 + $10
+SEPTIC / FLOODPLAIN   RESIDENTIAL NEW FP                                    $480 + $10
+SEPTIC                SEPTIC DISCLAIMER                                        $0
+SEPTIC                SUBDIVISION REVIEW                                      $ 340
+SEPTIC                TDH FEE ONLY - STATE MANDATED SEPTIC FEE                 $ 10
+

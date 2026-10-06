@@ -1,0 +1,296 @@
+[
+  {
+    "authority": "tx-williamson-county",
+    "url": "https://www.wilcotx.gov/644/On-Site-Sewage-Facilities-OSSF",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-williamson-county",
+    "url": "https://public.destinyhosted.com/wilcodocs/2021/COM/20210112_1578/25845_Williamson_County_Order_(Final_Revision)_.pdf",
+    "result": "saved",
+    "id": "tx-williamson-county-source-2",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-williamson-county-source-2.pdf",
+    "title": "Order Adopting Rules of Williamson County, Texas for On-Site Sewage Facilities (Commissioners Court agenda item, 2021-01-12)",
+    "bytes": 214317
+  },
+  {
+    "authority": "tx-williamson-county",
+    "url": "https://www.wilcotx.gov/DocumentCenter/View/20281",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-williamson-county",
+    "url": "https://www.wilcotx.gov/DocumentCenter/View/16756/Homeowner-Maintenance-Packet-PDF",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-williamson-county",
+    "url": "https://www.wilcotx.gov/DocumentCenter/View/16737",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-williamson-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-williamson-county-source-6",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-williamson-county-source-6.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  },
+  {
+    "authority": "tx-denton-county",
+    "url": "https://www.dentoncounty.gov/657/Environmental-Health-Division",
+    "result": "failed",
+    "error": "HTTP Error 429: Too Many Requests"
+  },
+  {
+    "authority": "tx-denton-county",
+    "url": "https://www.dentoncounty.gov/DocumentCenter/View/1441/What-You-Must-Know-PDF",
+    "result": "failed",
+    "error": "HTTP Error 429: Too Many Requests"
+  },
+  {
+    "authority": "tx-denton-county",
+    "url": "https://www.dentoncounty.gov/DocumentCenter/View/1439/Homeowners-Inspection-Form-PDF",
+    "result": "failed",
+    "error": "HTTP Error 429: Too Many Requests"
+  },
+  {
+    "authority": "tx-denton-county",
+    "url": "https://www.dentoncounty.gov/DocumentCenter/View/1440/Septic-Permit-Application-Packet-PDF",
+    "result": "failed",
+    "error": "HTTP Error 429: Too Many Requests"
+  },
+  {
+    "authority": "tx-comal-county",
+    "url": "https://www.comalcounty.gov/274/Environmental-Health",
+    "result": "saved",
+    "id": "tx-comal-county-source-1",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-comal-county-source-1.html",
+    "title": "Comal County: Environmental Health",
+    "bytes": 92430
+  },
+  {
+    "authority": "tx-comal-county",
+    "url": "https://www.comalcounty.gov/276/OSSF-Information",
+    "result": "saved",
+    "id": "tx-comal-county-source-2",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-comal-county-source-2.html",
+    "title": "Comal County: OSSF Information (homeowner maintenance FAQ)",
+    "bytes": 96851
+  },
+  {
+    "authority": "tx-comal-county",
+    "url": "https://www.comalcounty.gov/DocumentCenter/View/2141/",
+    "result": "saved",
+    "id": "tx-comal-county-source-3",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-comal-county-source-3.pdf",
+    "title": "Comal County: Rules for OSSF (PDF)",
+    "bytes": 1879875
+  },
+  {
+    "authority": "tx-comal-county",
+    "url": "https://www.comalcounty.gov/DocumentCenter/View/2142/",
+    "result": "saved",
+    "id": "tx-comal-county-source-4",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-comal-county-source-4.pdf",
+    "title": "Comal County Environmental Health Department Fees (effective 2019-01-01)",
+    "bytes": 460630
+  },
+  {
+    "authority": "tx-comal-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-comal-county-source-6",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-comal-county-source-6.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  },
+  {
+    "authority": "tx-hays-county",
+    "url": "https://www.hayscountytx.gov/496/Septic-Permits",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-hays-county",
+    "url": "https://www.hayscountytx.gov/m/faq?cat=51",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-hays-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-hays-county-source-6",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-hays-county-source-6.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  },
+  {
+    "authority": "tx-travis-county",
+    "url": "https://www.traviscountytx.gov/images/commissioners_court/Doc/county-code/subtitle19/Ch448_Rules_On-Site_Sewage_Facilities.pdf",
+    "result": "saved",
+    "id": "tx-travis-county-source-1",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-travis-county-source-1.pdf",
+    "title": "Travis County Code Chapter 448, Rules of Travis County, Texas for On-Site Sewage Facilities",
+    "bytes": 260970
+  },
+  {
+    "authority": "tx-travis-county",
+    "url": "https://www.traviscountytx.gov/images/tnr/Docs/SP-04.pdf",
+    "result": "saved",
+    "id": "tx-travis-county-source-2",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-travis-county-source-2.pdf",
+    "title": "Travis County: Affidavit to the Public for OSSF Requiring Maintenance",
+    "bytes": 11313
+  },
+  {
+    "authority": "tx-travis-county",
+    "url": "https://www.traviscountytx.gov/tnr/development-services/permitting-center/permit-enforcement",
+    "result": "saved",
+    "id": "tx-travis-county-source-3",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-travis-county-source-3.html",
+    "title": "Travis County TNR: Permit Enforcement",
+    "bytes": 82637
+  },
+  {
+    "authority": "tx-travis-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-travis-county-source-5",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-travis-county-source-5.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "url": "https://www.brazoriacountytx.gov/departments/environmental-health/forms-permit-applications/ossf-permitting-process",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "url": "https://www.brazoriacountytx.gov/departments/environmental-health/forms-permit-applications",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "url": "https://www.brazoriacountytx.gov/departments/environmental-health/contact-us",
+    "result": "failed",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "url": "https://www.tceq.texas.gov/downloads/permitting/ossf/reporting-system/2024-aa-atcs.pdf",
+    "result": "saved",
+    "id": "tx-brazoria-county-source-4",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-brazoria-county-source-4.pdf",
+    "title": "TCEQ: Types of Systems Installed by Authorized Agents, 2024",
+    "bytes": 1742145
+  },
+  {
+    "authority": "tx-brazoria-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-brazoria-county-source-6",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-brazoria-county-source-6.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  },
+  {
+    "authority": "tx-grimes-county",
+    "url": "https://grimescountytexas.gov/permits",
+    "result": "saved",
+    "id": "tx-grimes-county-source-1",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-grimes-county-source-1.html",
+    "title": "Grimes County: Environmental Permits",
+    "bytes": 76556
+  },
+  {
+    "authority": "tx-grimes-county",
+    "url": "https://grimescountytexas.gov/index.asp?DE=DE2DB1C7-211D-4F70-A422-2891027B6ED5&SEC=51D0BA70-3EF0-4E47-86C8-5613AD1C8E1A",
+    "result": "saved",
+    "id": "tx-grimes-county-source-2",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-grimes-county-source-2.html",
+    "title": "Grimes County: TCEQ On-Site Sewage Facilities, Environmental Services",
+    "bytes": 45909
+  },
+  {
+    "authority": "tx-grimes-county",
+    "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/OSSF_Affidavit_(2024).pdf",
+    "result": "saved",
+    "id": "tx-grimes-county-source-3",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-grimes-county-source-3.pdf",
+    "title": "Grimes County: Affidavit to the Public, OSSF (2024)",
+    "bytes": 103346
+  },
+  {
+    "authority": "tx-grimes-county",
+    "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/Seven_Steps_to_Obtaining_a_Permit.pdf",
+    "result": "saved",
+    "id": "tx-grimes-county-source-4",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-grimes-county-source-4.pdf",
+    "title": "Grimes County: Seven Steps to Obtaining a Permit",
+    "bytes": 238122
+  },
+  {
+    "authority": "tx-grimes-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-grimes-county-source-6",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-grimes-county-source-6.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/Initial%202%20yr%20Maintenance%20maintenance.pdf",
+    "result": "saved",
+    "id": "tx-montgomery-county-source-1",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-montgomery-county-source-1.pdf",
+    "title": "Montgomery County: Two Year Initial Maintenance Contract (county form)",
+    "bytes": 28420
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "url": "https://cms1files.revize.com/montgomerycountytx/PACKET-RESIDENTIAL%20NEW%20SEPTIC%20SYSTEM.pdf",
+    "result": "saved",
+    "id": "tx-montgomery-county-source-2",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-montgomery-county-source-2.pdf",
+    "title": "Montgomery County: Residential New Septic System permit packet (rev. April 19, 2024)",
+    "bytes": 1024310
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "url": "https://cms1files.revize.com/montgomerycountytx/document_center/1%20Environmental%20Health/How%20to%20Obtain%20a%20Septic.pdf",
+    "result": "saved",
+    "id": "tx-montgomery-county-source-3",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-montgomery-county-source-3.pdf",
+    "title": "Montgomery County: How to Obtain a Septic, with OSSF fees (rev. March 22, 2023)",
+    "bytes": 495397
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "url": "https://www.sjra.net/wp-content/uploads/2015/03/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-Feet-of-Lake-Conroe-Texas-2015.pdf",
+    "result": "saved",
+    "id": "tx-montgomery-county-source-4",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-montgomery-county-source-4.pdf",
+    "title": "San Jacinto River Authority: Order Adopting Rules for OSSFs Within 2,075 Feet of Lake Conroe",
+    "bytes": 50880
+  },
+  {
+    "authority": "tx-montgomery-county",
+    "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+    "result": "saved",
+    "id": "tx-montgomery-county-source-6",
+    "path": "docs/research/county-evidence-2026-10-06/sources/tx-montgomery-county-source-6.html",
+    "title": "TCEQ OSSF maintenance requirements",
+    "bytes": 74267
+  }
+]

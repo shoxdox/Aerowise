@@ -1,0 +1,107 @@
+Aerowise — Demo and Pilot Readiness Brief
+Oct 6, 2026 · @Justin
+Where things stand
+The first brief (docs/PILOT-BUILD-BRIEF.md) is essentially complete: W1–W8 are done per docs/engineering/ROADMAP.md, 13 county rulesets exist as drafts, and the repo is green (670 tests, typecheck and lint clean, checked 2026-10-06). This brief adds three workstreams that stand between "the code works" and "a septic company owner can be handed a link and understand it in five minutes."
+The three gaps:
+1. No demo a prospect can use alone. Staging reseeds a fictional company, but there is no public demo login, no way to spin up a personalized demo for a named prospect, and no guidance when someone lands in the app for the first time.
+2. Nothing has been seen by an outsider. Every screen was built and tested by agents against synthetic data. A polish pass with a prospect's eyes is needed before the first demo link goes out.
+3. Ten research packets are not yet rulesets, and the verified workflow has not been used because no county has been called yet. Justin is making those calls; the code must make recording the answers quick.
+All ground rules from the first brief still apply, in particular: a draft ruleset never auto-sends, county rules only from cited sources, synthetic data only, and nothing leaves a demo environment.
+The relationships the product serves (for anyone new to the domain):
+• Homeowner → septic company: pays a yearly maintenance contract; receives report copies, renewals and invoices.
+• Septic company → county: inspects every four months, files a report within the county's deadline, files contracts and renewals, pays any county fees. The company is legally responsible for all of it.
+• Aerowise → septic company: software that knows each county's rules, prepares the right report, tracks deadlines and proof, and runs the office. Aerowise never files anything itself and never contacts homeowners.
+• Justin → county: calls each authority, confirms how it wants reports and contracts, and records the answer so a ruleset can be marked verified.
+W10. Demo experience
+A prospect should be able to open a link, sign in, and understand Aerowise without Justin on the call. Three layers, built in this order.
+W10.1 Public demo
+• One fictional company, "Hill Country Aerobic Services" (or similar; all names, addresses and permit numbers made up), with about 300 contracts spread across 3–4 real Texas counties that have draft rulesets, 3 technicians, a week of inspections due, a few overdue, 2 filings waiting for a signature, 1 rejected filing with a correction, renewals in every state, invoices paid and unpaid, a few homeowner texts, and QuickBooks connected to the test company.
+• Shared logins shown on the marketing page's "Try the demo" button: owner, office and technician. Passwords rotate on each nightly reseed and the page shows the current ones.
+• Reseeded nightly (already exists as pnpm db:reseed-demo); extend the seed to the richer data set above.
+• Hard isolation: DEMO_MODE already routes every outside service to its stand-in. Add: no real email addresses or phone numbers can be saved in a demo organization (validation refuses anything not under example.com / +1500555xxxx), and exports are watermarked "demo data".
+• A persistent banner: "Demo. Data resets nightly. Nothing is sent to a county, homeowner or bank."
+Done when: a stranger opens the marketing page, clicks "Try the demo", signs in as the owner, and can walk the inbox, a site, a filing, a renewal and an invoice without hitting an empty screen or an error.
+W10.2 Personalized prospect demos
+From /admin, Justin creates a demo for a named prospect in under two minutes.
+• Form: company name, logo upload, the counties they serve (picked from the ruleset list), number of technicians (1–15), approximate contract count (100–2,000), owner's first name for the greeting, expiry (default 14 days).
+• Result: a new organization in plan_state: demo with synthetic data generated to match: sites placed in the chosen counties (using the test geocoder's deterministic spots inside those counties), the chosen number of technicians with routes, contract count scaled, their logo on the PDFs and header, the company name everywhere. All homeowner names and addresses are fictional; no real-world data is used even for "realistic" addresses.
+• A single sign-in link (magic link, single-use to set a password, then normal login) that Justin copies into an email. The link expires with the demo. Role: owner. Optional second link for a technician so the owner can hand a phone to a tech.
+• Demo organizations are isolated like W10.1 (stand-in services, no real contact details, watermark) regardless of environment, so they can live on production.
+• Lifecycle: demo → expires to read_only after the expiry date, or Justin presses "Convert to trial": the synthetic data is wiped, the organization keeps its name, logo, counties and users, moves to trial or design_partner, and the first-run checklist appears. Deleting a demo removes everything.
+• Admin list of demos: prospect, created, expires, last sign-in, pages viewed count, converted or not. Last sign-in and activity are the sales signal.
+Done when: Justin creates a demo for "Example Septic LLC" in Comal and Hays with a logo, opens the link in a private window, sees their name and logo on the inbox and a report PDF, every site sits in Comal or Hays, and the technician link opens /tech with a route. Converting to trial leaves no synthetic customers behind. All tested, including that a demo organization cannot send anything real.
+W10.3 First-run guidance
+• A short guided tour on first sign-in for owner and office (5–6 steps: inbox, a due inspection, a filing and its proof, a renewal, billing). Dismissable, re-openable from the help menu, stored per user.
+• Empty states that explain, not just "No items": every list in the office has a one-line explanation and a next action.
+• A "How Aerowise handles your county" panel on each site and filing: the authority, status (draft or verified, with date and who confirmed), deadline rule, submission channel, and the open questions if still draft. This is the verified badge surfaced where the owner looks.
+• Technician app: a 3-step "today, stop, inspect" intro the first time /tech opens.
+Done when: a new owner's first five minutes have a visible path, and a filing screen shows the county's verified status without digging.
+W11. Polish pass
+Before the first demo link goes out, every screen gets walked as a septic company owner, an office manager and a technician would see it. Fix what they would trip on; do not add features.
+W11.1 Walkthrough with screenshots
+• One agent walks the full demo as each role on desktop and phone sizes, takes screenshots of every screen, and files one issue list grouped by severity: broken, confusing, ugly. Each item has the screenshot, the screen, what a real user would expect, and the fix.
+• Specific things to check: wording that assumes engineering knowledge ("ruleset", "idempotent", "ledger") replaced with the words a provider uses ("county rules", "filing", "payments"); every date shown in Central Time; money formatted consistently; PDFs open and look right with and without a logo; the technician app works with the phone offline and shows sync state plainly; forms show validation errors next to the field; no raw error text or stack trace ever reaches a screen.
+• Accessibility basics: tap targets, contrast, labels on inputs, keyboard navigation in the office app.
+W11.2 Fix the list
+• Work the "broken" items first, then "confusing", then "ugly". One PR per screen or flow. Screenshots before and after in each PR.
+• Lighthouse or equivalent on the marketing page and the office inbox; fix anything under 90 for performance and accessibility.
+W11.3 Marketing page copy
+• Replace placeholder copy in apps/web/components/marketing/copy.ts with real copy aimed at a Texas aerobic maintenance provider. Lead with the county problem, then the three things they get on day one: their book imported, their counties pre-configured, a tech app that works without signal. Honest about status: "Counties marked verified have confirmed our report format with us" and nothing stronger.
+• A county coverage section driven by the ruleset list and verified status, so it updates itself as Justin verifies counties.
+• "Try the demo" and "Request a personalized demo" as the two calls to action; the second lands in the existing demo-request flow.
+Done when: the issue list is empty of "broken" and "confusing" items, and someone who has never seen the product can describe what it does after reading the marketing page for one minute.
+W12. Counties: packets to rulesets, and recording Justin's calls
+W12.1 Ten packets become draft rulesets
+The research packets in county-research-archive/ (Bell, Bastrop, Brazoria, Grimes, Hill, Kaufman, McLennan, Montgomery, SJRA, and the Ellis addendum) become packages/compliance/rulesets/<key>/v1.json, docs/jurisdictions/<key>.md and fixture tests, one PR each, following the existing drafts (Williamson is the model). Rules:
+• Only what a packet cites goes in. "Not published" stays null or "unknown" with an entry in profile.unresolved. Quotes that came through a summarizer are marked as such in the source note.
+• Where a packet found a real local rule, encode it: SJRA's nine extra report fields and portal channel; Bell's quarterly schedule for food-service sites, annual BOD/TSS and $20 per contract year; Bastrop's $100 late fee and $20 renewal fee; Montgomery's annual BOD/TSS for commercial; Denton County's report email and form fields; McLennan's annual fee and provider penalty.
+• River authorities (SJRA) and health districts (Bell, McLennan) use assignment: "reviewed" like LCRA, with the counties they touch listed only to trigger review.
+• Each profile's "Open questions for Justin" is copied verbatim from the packet so the admin coverage page shows it.
+W12.2 Recording a county call
+Justin will call counties and come back with answers. Make capturing them a two-minute job, not a code change.
+• On the admin coverage page, each authority gets a "Record a call" form: date, who at the county (name, title, phone or email), and one field per open question, each with the answer and a "resolves this question" checkbox. Saved as a dated note on the ruleset profile (profile.verificationNotes[]), not as rule changes.
+• A second step, "Apply answers": shows the current draft values next to the recorded answers and lets Justin pick which to apply. Applying creates a v2 ruleset (published versions are immutable), with the call as its source, and opens a PR-style diff for review. Only after the diff is approved does status flip to verified, with verifiedBy, verifiedOn and the contact.
+• The verified badge (W6.5) then shows "Verified with <authority>, <date>" on the coverage page, on sites, on filings, and in the W10.3 county panel.
+• Partial verification is allowed and shown: "Report channel verified; fees unconfirmed." Each field in the profile carries its own verified: true/false so the badge can be honest.
+W12.3 Call sheet export
+• A button on the coverage page: "Call sheet" produces a PDF, one page per draft authority, with the office name, phone, email, hours, the person to ask for if known, and the open questions in priority order (submission channel and signature acceptance first). Justin prints or opens it on his phone before calling.
+Done when: all 23 authorities have a ruleset or a documented reason there is none (Kaufman may stay "blocked, nothing readable"); Justin records one real call through the form and a v2 verified ruleset results with no engineer involved; the call sheet PDF exists.
+Justin's checklist
+In order. Each item unblocks something below it.
+This week
+[ ] Run deploy/vps/setup.sh on the server and add the GitHub secrets, so staging deploys from main (docs/engineering/DEPLOY.md). Result: a live link.
+[ ] Buy the domain if not done; point staging. and app. at the server.
+[ ] Call Williamson (512-943-3330), Denton County (940-349-2920), Comal, Hays and Travis. Each docs/jurisdictions file has the questions; the first two to ask every time: where do providers send reports, and do you accept a PDF with a typed signature. Record each call in the W12.2 form once it exists; until then, paste the answers into the ruleset PR.
+Next week
+[ ] Create the first personalized demo for one real prospect (W10.2) and send the link with a two-line email: "Your counties are already set up. Log in and click around; nothing you do here is sent anywhere."
+[ ] Email 15 prospects from the TOWA list with the public demo link and the free-import offer. Prefer companies in verified counties.
+[ ] Send the terms, privacy and data-handling placeholder text to a lawyer.
+Before the first real company signs in
+[ ] Resend account, API key, DNS records (W3.1)
+[ ] Cloudflare R2 bucket and token (W3.2); decide on a separate backup bucket
+[ ] Stripe: Connect and Billing keys, customer portal on (W4, W7)
+[ ] Sentry DSN and an uptime monitor with your phone on the alert (W3.4)
+[ ] Run the restore check once on the real server and note it in RUNBOOK.md
+[ ] LLC and business bank account before any money moves
+Parked by choice: Twilio (texts), Intuit production app review, Render migration.
+Kickoff prompt
+Paste this into the Claude project with this doc attached (or committed as docs/DEMO-PILOT-BRIEF.md).
+You are the lead engineer on Aerowise. The repo is connected. The first brief (docs/PILOT-BUILD-BRIEF.md) and its roadmap (docs/engineering/ROADMAP.md) are done through W8. The attached "Aerowise — Demo and Pilot Readiness Brief" adds W10, W11 and W12; treat it as the source of truth alongside the first brief and the repo docs. All ground rules from the first brief still apply.
+
+Goal: a prospect can be handed a link, sign in alone, and understand Aerowise in five minutes; and Justin can turn a phone call with a county into a verified ruleset without an engineer.
+
+Step 1 (one small PR, first): commit this brief to docs/DEMO-PILOT-BRIEF.md and extend docs/engineering/ROADMAP.md with W10, W11 and W12 broken into PR-sized tasks (title, scope, files, acceptance test, dependencies), using the same id scheme. No application code in this PR.
+
+Step 2: worker threads in this order and parallelism:
+- Right away, in parallel: W10.1 (public demo), W12.1 (one PR per research packet, Williamson's ruleset is the model), W11.1 (walkthrough and issue list; screenshots in the PR).
+- After W10.1: W10.2 (personalized prospect demos from /admin) and W10.3 (first-run guidance).
+- After W11.1's list exists: W11.2 fixes, broken first. W11.3 marketing copy can start any time.
+- After W12.1 is mostly in: W12.2 (record a county call, apply answers as a v2, verify) and W12.3 (call sheet PDF).
+
+Demo rules, non-negotiable: a demo organization can never send email, text, filing or charge to anything real, regardless of environment or keys; it refuses real-looking contact details; its exports are watermarked; all demo data is fictional, including addresses. Test each of these.
+
+County rules, non-negotiable: only cited facts enter a ruleset; unknowns stay unknown; published versions are immutable, so Justin's answers become a v2; only Justin's recorded call can flip a ruleset to verified, and partial verification is shown honestly per field.
+
+When a task needs Justin (the server, a key, a county answer, copy approval), build behind the existing stand-ins, list it under "Needs from Justin" in the PR, and keep going.
+
+Each PR: what changed, how it was tested, screenshots for any UI, "Needs from Justin", open questions; small enough to review in 15 minutes. Update ROADMAP.md status at the end of every working session.

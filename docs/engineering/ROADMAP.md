@@ -1,6 +1,6 @@
 # Pilot roadmap
 
-This breaks workstreams W1–W8 of [the Pilot Build Brief](../PILOT-BUILD-BRIEF.md) into PR-sized tasks. Each task is one PR that a reviewer can read in about 15 minutes. The brief is the source of truth; when this file and the brief disagree, the brief wins and this file gets fixed.
+This breaks workstreams W1–W8 of [the Pilot Build Brief](../PILOT-BUILD-BRIEF.md), and W10–W12 of [the Demo and Pilot Brief](../DEMO-PILOT-BRIEF.md), into PR-sized tasks. Each task is one PR that a reviewer can read in about 15 minutes. The briefs are the source of truth; when this file and a brief disagree, the brief wins and this file gets fixed.
 
 Task ids (W2.3, W6.C1) are stable: they stay the same when tasks are reordered or finished, and PR titles start with them. New tasks get the next free number; a dropped task is marked "dropped", not deleted.
 
@@ -14,6 +14,7 @@ Task ids (W2.3, W6.C1) are stable: they stay the same when tasks are reordered o
 2. **After W2.1 lands** (organizations created outside the seed): W4 and W5.
 3. **Then:** W7 and W8.
 4. **W9 is not started** until a paying customer asks.
+5. **W10–W12** (demo, polish, county evidence) have their own order and owners in [Demo and pilot readiness](#demo-and-pilot-readiness-w10w12).
 
 Where two streams touch the same file, the dependency column says who goes first. The known overlaps:
 
@@ -27,8 +28,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | ID | Task | Depends on | Status |
 | --- | --- | --- | --- |
 | W1.1 | Hosting choice and deploy config | — | done (#39): Justin's server with Docker Compose (`deploy/vps/`), waiting on `setup.sh` being run there; Render config kept for later |
-| W1.2 | Demo mode: banner, nothing leaves, demo seed | — | done (`DEMO_MODE`, `pnpm db:reseed-demo`, banner on every screen) |
-| W1.3 | Deploy from main through CI | W1.1 | done: staging on every green push to main, production by hand, nightly reseed; waiting on the server's GitHub secrets |
+| W1.2 | Demo mode: banner, nothing leaves, demo seed | — | done (#31): `DEMO_MODE`, `pnpm db:reseed-demo`, banner on every screen |
+| W1.3 | Deploy from main through CI | W1.1 | done (#44): staging on every green push to main, production by hand, nightly reseed; waiting on the server's GitHub secrets |
 | W2.1 | Platform admin and `/admin`: create and list organizations | — | done (#22) |
 | W2.2 | User invites | W2.1 | done (#25) |
 | W2.3 | Password reset and user deactivation | W2.2 | done (#29) |
@@ -39,18 +40,18 @@ Where two streams touch the same file, the dependency column says who goes first
 | W3.2 | Cloudflare R2 object store | — | done (#30); using R2 needs Justin's Cloudflare account, bucket and token |
 | W3.3 | Production secrets check and hardening | — | done (#32); Render's TRUST_PROXY value to be read off staging |
 | W3.4 | Observability: logs, error tracking, alerts | — | done (#34); needs a Sentry DSN and an uptime monitor from Justin |
-| W3.5 | Backups and restore runbook | W1.1 | done (PR pending); scripts tested locally, the staging restore run is Justin's |
+| W3.5 | Backups and restore runbook | W1.1 | done (#47, #56); first passing restore checks on the server recorded in #62 |
 | W4.1 | Plan states and read-only mode | W2.1 | done (#35) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
 | W4.3 | Owner subscription page | W4.2 | done (#41); needs the Stripe customer portal turned on |
 | W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | done (#45) |
 | W4.5 | Platform fee on homeowner payments | W4.1 | done (#59) |
-| W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
-| W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done |
-| W5.3 | Undo a committed import | W5.2 | done |
-| W5.4 | Onboarding summary | W5.2 | done |
-| W5.5 | Full data export | W2.1 | done |
-| W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | done |
+| W5.1 | Import: several sheets and saved column mappings | W2.1 | done (#27) |
+| W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done (#46) |
+| W5.3 | Undo a committed import | W5.2 | done (#50) |
+| W5.4 | Onboarding summary | W5.2 | done (#55) |
+| W5.5 | Full data export | W2.1 | done (#58) |
+| W5.6 | Organization data deletion and data-handling page | W2.1, W5.5 | done (#61) |
 | W6.1 | Per-ruleset service intervals | — | done (#21) |
 | W6.2 | Annual lab tests as required tests | W6.1 | done (#26) |
 | W6.3 | Six-month schedule with electronic monitoring | W6.1 | done (#28) |
@@ -58,9 +59,9 @@ Where two streams touch the same file, the dependency column says who goes first
 | W6.5 | Ruleset verification workflow and badge | — | done (#36) |
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | done (#42) |
 | W6.7 | Justin's answers on the county rules (DECISIONS.md, 2026-10-05) | W6.1–W6.4 | done: site type (#52), visit warning (#57), lab limits and report (#64), filing fees on invoices (#65) |
-| W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | in progress: Williamson (C1, #68) and Travis (C2) drafts |
-| W7.1 | Stripe Connect live readiness | W1.3 | done (#54); staging run: onboarding, card, refund, ACH pending→settled and webhooks passed; microdeposit verification on the pay page added in #66, staging re-run pending |
-| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | done (#60); staging run: connect, review, invoice, payment, conflict, lease recovery, disconnect and reconnect passed. Refunds as Refund Receipts with a credit/reverse intent added in #67 (Justin's choice); staging refund step pending |
+| W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | done as drafts for 19 authorities (#68–#79; C9 covers Denton County and the City of Denton), which with LCRA and Harris County from #17 makes 21 real drafts; C16 Harris v2 and C19 LCRA blocked on the authority. Corrections from the 2026-10-06 research are W12.C |
+| W7.1 | Stripe Connect live readiness | W1.3 | done (#54, #66); staging run: onboarding, card, refund, ACH pending→settled, webhooks and the microdeposit re-run (INV-1004) passed on e0aead8 (evidence on #67) |
+| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | done (#60); staging run: connect, review, invoice, payment, conflict, lease recovery, disconnect and reconnect passed. Refunds as Refund Receipts with a credit/reverse intent added in #67 (Justin's choice); staging Refund Receipt passed on e0aead8 (evidence on #67) |
 | W7.3 | Twilio on a real account | W1.3 | done (#63): `DEMO_LIVE_SERVICES=sms` with `SMS_REDIRECT_TO` (one test phone), route and live steps in `INTEGRATIONS.md`; blocked on a paid, approved Twilio number (Justin chose to wait, 2026-10-06) |
 | W8.1 | Public marketing page | W6.5 | done (#37) |
 | W8.2 | Demo request form | W2.1, W8.1 | done (#40) |
@@ -321,15 +322,15 @@ Priority 1 is whatever the first design partner works in; it jumps the queue whe
 | W6.C9 | Denton County (and the City of Denton) | 3 | draft (#76): Denton County reports go to ossfinspections@dentoncounty.gov when the office presses Send (the county form names it); its contracts and all City of Denton filings are held for review, no channel published; questions in docs/jurisdictions/tx-denton-county.md and tx-city-of-denton.md |
 | W6.C10 | Kaufman County | 3 | draft (#77); held for review, no report or contract channel published; most county pages timed out; 6 questions in docs/jurisdictions/tx-kaufman-county.md |
 | W6.C11 | Bell County | 4 | draft (#78); the Bell County Public Health District; held for review, no report or contract channel published (ossf@ is for complaints only); food-dealer 3-month schedule and BOD/TSS left to the office; 9 questions in docs/jurisdictions/tx-bell-county-phd.md |
-| W6.C12 | McLennan County | 4 | draft profile (this PR); run by the Waco-McLennan County Public Health District; held for review, no report or contract channel published; published fees conflict ($40/$30 vs $20/$25), none recorded; 8 questions in docs/jurisdictions/tx-mclennan-county.md |
-| W6.C13 | Hill County | 4 | draft profile (this PR); program moved from the Sheriff's Office to Development Services on 2026-01-01; held for review, no report or contract channel published; no county order found; 7 questions in docs/jurisdictions/tx-hill-county.md |
-| W6.C14 | Bastrop County | 4 | draft profile (this PR); held for review, no report channel published; OSSF order is an unreadable scan; $100 late and $20 renewal fees unexplained, none recorded; 7 questions in docs/jurisdictions/tx-bastrop-county.md |
-| W6.C15 | Montgomery County | 5 | draft profile (this PR); held for review, no report channel readable (mctx.org blocked); every 4 months with no monitoring schedule; annual BOD/TSS for commercial; 11 questions in docs/jurisdictions/tx-montgomery-county.md |
+| W6.C12 | McLennan County | 4 | draft (#79); run by the Waco-McLennan County Public Health District; held for review, no report or contract channel published; published fees conflict ($40/$30 vs $20/$25), none recorded; 8 questions in docs/jurisdictions/tx-mclennan-county.md |
+| W6.C13 | Hill County | 4 | draft (#79); program moved from the Sheriff's Office to Development Services on 2026-01-01; held for review, no report or contract channel published; no county order found; 7 questions in docs/jurisdictions/tx-hill-county.md |
+| W6.C14 | Bastrop County | 4 | draft (#79); held for review, no report channel published; OSSF order is an unreadable scan; $100 late and $20 renewal fees unexplained, none recorded; 7 questions in docs/jurisdictions/tx-bastrop-county.md |
+| W6.C15 | Montgomery County | 5 | draft (#79); held for review, no report channel readable (mctx.org blocked); every 4 months with no monitoring schedule; annual BOD/TSS for commercial; 11 questions in docs/jurisdictions/tx-montgomery-county.md |
 | W6.C16 | Harris County v2 (quarterly residential, monthly commercial, annual tests) | 5 | blocked: needs the submission channel confirmed |
-| W6.C17 | Grimes County | 5 | draft profile (this PR); held for review, no report channel published; main OSSF page and order unreadable; 12 questions in docs/jurisdictions/tx-grimes-county.md |
-| W6.C18 | Brazoria County | 5 | draft profile (this PR); held for review; ehmaintenance@ unconfirmed and not used; most county pages returned 403; 12 questions in docs/jurisdictions/tx-brazoria-county.md |
+| W6.C17 | Grimes County | 5 | draft (#79); held for review, no report channel published; main OSSF page and order unreadable; 12 questions in docs/jurisdictions/tx-grimes-county.md |
+| W6.C18 | Brazoria County | 5 | draft (#79); held for review; ehmaintenance@ unconfirmed and not used; most county pages returned 403; 12 questions in docs/jurisdictions/tx-brazoria-county.md |
 | W6.C19 | LCRA (finish verification) | 5 | blocked: needs LCRA to confirm the emailed cover sheet |
-| W6.C20 | San Jacinto River Authority | 5 | draft profile (this PR); Lake Conroe 2,075-ft band, reviewed assignment; reports and contracts on SJRA's customer portal, filed by hand; order number unconfirmed (not 384053.4); 12 questions in docs/jurisdictions/tx-sjra-ossf.md |
+| W6.C20 | San Jacinto River Authority | 5 | draft (#79); Lake Conroe 2,075-ft band, reviewed assignment; reports and contracts on SJRA's customer portal, filed by hand; order number unconfirmed (not 384053.4); 12 questions in docs/jurisdictions/tx-sjra-ossf.md |
 
 ## W7. Integrations to live readiness
 
@@ -381,6 +382,65 @@ Priority 1 is whatever the first design partner works in; it jumps the queue whe
 - **Acceptance test:** API tests that acceptance is recorded with version and time, and that a new version asks again.
 - **Depends on:** W2.1.
 - **Needs from Justin:** terms of service and privacy policy text.
+
+## Demo and pilot readiness (W10–W12)
+
+From [the Demo and Pilot Brief](../DEMO-PILOT-BRIEF.md) (October 6, 2026), checked against `main` at `39298979` (#79). Each task names the thread that owns its row; only that thread changes the row's status. "Partly done" names the code that already covers part of the task, so nobody rebuilds it.
+
+**Order:**
+
+1. **Now, in parallel:** W10.1, W11.1, W12.C2–C7 and W12.V1.
+2. **After W10.1:** W10.2 and W10.3. **After W10.3:** W10.4, and W11.1's second walk of the seeded demo.
+3. **After W11.1's list exists:** W11.2 and W11.3. **After W10.2:** W11.4's "Try the demo" link.
+4. **After W12.V1:** W12.V2, W12.V3 and W12.V4, and W10.5's partial-confirmation display.
+5. **Last:** W10.6 personalized prospect demos, after W10.1–W10.4.
+
+**Shared files go one thread at a time:**
+
+- Migrations: whoever merges second renumbers past `main`'s newest migration and recreates the test databases.
+- `packages/db/src/seed.ts` and `reseed.ts` belong to W10. Other threads ask W10 for seed changes.
+- `packages/domain` schemas and ruleset JSON: W12.C owns ruleset files and the ruleset schema; W12.V owns the new evidence schemas; W10 owns the demo-organization schemas.
+- Report output: W12.C3 changes report fields in `packages/compliance` and `packages/reports`; W10.1 adds the demo watermark at render time. The second to merge integrates the first.
+- `/admin`: W10.2, W10.6 and W12.V add separate pages; the admin nav is a shared file, so the second to merge integrates.
+- The office site and filing authority panels: W10.5 owns the components; W12.V4 supplies the data through the API.
+
+| ID | Task | Owner | Depends on | Acceptance evidence | Status |
+| --- | --- | --- | --- | --- | --- |
+| W10.1 | Demo organizations isolated on the server and worker | Demo experience | — | API and worker tests: a demo organization makes no outside call (email, SMS, filing, payment, QuickBooks, billing) even with real keys and `DEMO_LIVE_SERVICES` set, on routes and queued tasks; synthetic-contact validation; watermarked exports and PDFs; tenant isolation and direct-API bypass tests | partly done: per-deployment `DEMO_MODE` stand-ins (#31, `packages/tasks/src/providers.ts`); per-organization isolation not started |
+| W10.2 | Public demo access, reset and abuse limits | Demo experience | W10.1 | DECISIONS.md entry for the reset, session and abuse approach; API tests for creation, expiry and limits; no shared password and no platform admin in a demo; e2e from "Try the demo" to the owner inbox | partly done: nightly `pnpm db:reseed-demo` and banner (#31); demo sign-ins today share one fixed password |
+| W10.3 | Five-minute path in the demo data | Demo experience | W10.1 | e2e as the owner: inbox, a site, a due inspection, a filing and its proof, a renewal and an invoice, none empty; existing e2e unchanged | partly done: seed has customers, sites, contracts and jobs (`packages/db/src/seed.ts`); no inspections, filings, renewals or invoices |
+| W10.4 | First-run guidance and explanatory empty states | Demo experience | W10.3 | e2e: owner and technician intros show once, dismiss and reopen, stored per user; each office list's empty state says what it is and what to do next | partly done: first-run checklist for new companies (W2.5, #51) |
+| W10.5 | County panel on sites and filings | Demo experience | W12.V1 for partial confirmation | Site panel adds the deadline rule and channel; partial confirmation shown per field once W12.V1 lands; component tests and screenshots | partly done: authority, draft or verified badge, assignment evidence and open questions on the site (`SiteAuthority.tsx`); deadline, channel, fees and proof on the filing page |
+| W10.6 | Personalized prospect demos (later) | Demo experience | W10.1–W10.4 | `/admin` creates an isolated demo company with a prospect's name and counties; expiring access; synthetic data only; lifecycle audit; converting to a trial leaves no synthetic customer (tested); nothing sent | not started |
+| W11.1 | Walkthrough as owner, office and technician, desktop and phone | Walkthrough and polish | — (again after W10.3) | Issue list committed under `docs/product/`, grouped broken, confusing, cosmetic, each with a screenshot and steps | not started |
+| W11.2 | Fix broken, then confusing | Walkthrough and polish | W11.1 | Before and after screenshots; a regression test for each broken item | not started |
+| W11.3 | Performance and accessibility measurements | Walkthrough and polish | W11.1 | Recorded measurements for the marketing page, sign-in, inbox and technician app; material problems fixed | not started |
+| W11.4 | Marketing copy and demo calls to action | Walkthrough and polish | W10.2 for "Try the demo" | Copy describes what exists; coverage never shows a draft as approved; e2e for both calls to action | partly done: coverage read from the rulesets with verified marks (W8.1, #37); demo request form (W8.2, #40) |
+| W12.C1 | Commit the 2026-10-06 research packet and manifest | Coordinator | — | `docs/jurisdictions/research/2026-10-06/` with `source-manifest.json`; PDFs cited by SHA-256 | done (this PR) |
+| W12.C2 | Hays contract-anchored schedule | County rules engine | W12.C1 | Tests: contract starting between visits, first and last windows, provider change, corrective report within ten days not moving routine visits, registration expiry, missing prior reports at renewal; no generic six-month monitored schedule | not started |
+| W12.C3 | Required report fields in the rendered PDF (Williamson, Grimes, Travis) | County rules engine | W12.C1 | Rendered PDFs show each required value with its unit; applicable and inapplicable spray-area cases; no invented pH limit | not started |
+| W12.C4 | Jurisdiction evidence: LCRA's 2,000-foot zone, city agreements, SJRA scope | County rules engine | W12.C1 | A Lake Travis site between 1,000 and 2,000 feet is not assigned to Travis automatically; city agreements cited, assignment still reviewed | not started |
+| W12.C5 | Montgomery use categories and initial versus renewal terms | County rules engine | W12.C1 | Tests: food versus general initial contracts, initial versus renewal term, annual commercial and multifamily BOD/TSS; food form's applicability left open | not started |
+| W12.C6 | Sources, dates, contacts and fees (Comal, Brazoria, Montgomery, Hays, Grimes, Williamson) | County rules engine | W12.C1 | New draft versions with page citations; Brazoria's published inbox recorded without acceptance; Grimes approval, Williamson's affidavit conflict and Hays's late-fee trigger kept open | not started |
+| W12.C7 | Denton and SJRA reconciliation | County rules engine | W12.C1 | Denton's saved form reconciled with the draft and #76's report and contract split kept; SJRA signed order reviewed with page citations; anything still ambiguous stays open | not started |
+| W12.V1 | Evidence log for authority and provider answers | Verification capture and call sheet | W6.5, W6.6 | Platform-admin only and audited; per-field partial confirmation; acceptance evidence labeled apart from public-rule evidence; tests that saving evidence changes no rule and verifies nothing | not started |
+| W12.V2 | Apply answers as a new ruleset version | Verification capture and call sheet | W12.V1 | Diff shown before applying; new immutable version; the existing full verification requirements still apply; one answer never verifies a profile | not started |
+| W12.V3 | Call sheet from the remaining questions | Verification capture and call sheet | W12.V1 | Pilot authority first; questions a permit, signed contract or accepted report could answer are marked; no send path exists | not started |
+| W12.V4 | Partial confirmation on the coverage page and marketing coverage | Verification capture and call sheet | W12.V1 | "Report channel confirmed; format open"-style status per field on `/admin/rulesets` and the marketing page; API supplies it to W10.5 | not started |
+
+### W10. Demo experience
+
+Owner: the "Demo experience" thread. The isolation rules are in [the brief](../DEMO-PILOT-BRIEF.md#w10-demo-experience); they hold whatever the keys or deployment. `DEMO_LIVE_SERVICES` stays for the separately controlled staging integration tests and never applies to a demo organization. Public access runs on a dedicated demo deployment, never on a production organization with shared owner or admin credentials. The earlier proposal's 300-contract seed is not a target; fill the empty flows.
+
+### W11. Walkthrough and polish
+
+Owner: the "Walkthrough and polish" thread. Change only what the walkthrough found. Checks: Central Time dates, money format, provider wording, field validation, role access, PDFs with and without a logo, the technician app offline with visible sync state, keyboard, labels, contrast and tap targets.
+
+### W12. County evidence and verification
+
+Corrections (W12.C) belong to the "County rules engine" thread, verification capture (W12.V) to the "Verification capture and call sheet" thread. The evidence is [the 2026-10-06 research packet](../jurisdictions/research/2026-10-06/ARCHIVE.md). Its findings are unimplemented and unconfirmed by any authority. Corrections to a published ruleset go in a new immutable version, and related corrections are batched into one PR to avoid repeating the full suite per authority (suggested batches: C2 alone, C3 alone, C5 alone, and C4, C6 and C7 together). Denton's `access_blocked` entries mean fresh retrieval failed, not that the saved originals or #76 are wrong. Public research never marks an authority verified.
+
+The earlier proposal's W12.1 (ten packets become draft rulesets) is done in #75 and #77–#79 and is not repeated.
 
 ## W9. Later
 
