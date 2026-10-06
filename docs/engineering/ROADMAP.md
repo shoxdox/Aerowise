@@ -64,7 +64,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W7.3 | Twilio on a real account | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=sms` with `SMS_REDIRECT_TO` (one test phone), route and live steps in `INTEGRATIONS.md`; blocked on a paid, approved Twilio number (Justin chose to wait, 2026-10-06) |
 | W8.1 | Public marketing page | W6.5 | done (#37) |
 | W8.2 | Demo request form | W2.1, W8.1 | done (#40) |
-| W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | in progress (PR open); placeholder text until Justin supplies lawyer-reviewed text |
+| W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | done (#43); placeholder text until Justin supplies lawyer-reviewed text |
 
 ## W1. Hosted demo and staging
 
