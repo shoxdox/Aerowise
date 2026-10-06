@@ -4,6 +4,7 @@ import { IMPORT_FIELD_LABELS, IMPORT_FIELDS, type ImportDetail, type ImportField
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { OnboardingSummary } from "@/components/OnboardingSummary";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -137,6 +138,15 @@ export default function ImportPreviewPage() {
           <Link href="/customers">Go to customers</Link> or{" "}
           <Link href="/due">see what is due</Link>.
         </p>
+      )}
+      {imp.status === "committed" && (
+        <section className="stack">
+          <h2>What this import brought in</h2>
+          <OnboardingSummary importId={imp.id} />
+          <p>
+            <Link href="/import/summary">See the whole book</Link>
+          </p>
+        </section>
       )}
       {imp.status === "committed" && <Undo imp={imp} busy={busy} onUndo={() => run("/undo")} />}
       {imp.status === "undone" && imp.undoneAt && (
