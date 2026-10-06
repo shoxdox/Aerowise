@@ -97,7 +97,7 @@ class LiveSms implements SmsProvider {
   sent: SmsSendInput[] = [];
   async send(input: SmsSendInput) {
     this.sent.push(input);
-    return { providerMessageId: "SMlive", status: "queued" as const };
+    return { providerMessageId: "SMlive", status: "sent" as const };
   }
   verifyWebhook() {
     return false;
@@ -379,13 +379,15 @@ describe("the gates", () => {
     const demo = await company("Demo Co", true);
     const real = await company("Real Septic", false);
     const calls: string[] = [];
-    const liveBilling = Object.assign(new TestBillingProvider(), { kind: "stripe" as const });
-    const original = liveBilling.createCustomer.bind(liveBilling);
-    liveBilling.createCustomer = async (input) => {
-      calls.push(input.organizationId);
-      return original(input);
-    };
-    const billing = new DemoGatedBilling(liveBilling as never, new TestBillingProvider(), demoCheck(ctx.db));
+    // The stand-in, dressed as Stripe Billing and noting who it was asked for.
+    class LiveBilling extends TestBillingProvider {
+      override readonly kind = "stripe" as "test";
+      override async createCustomer(input: { organizationId: string; name: string; email: string | null }) {
+        calls.push(input.organizationId);
+        return super.createCustomer(input);
+      }
+    }
+    const billing = new DemoGatedBilling(new LiveBilling(), new TestBillingProvider(), demoCheck(ctx.db));
     await billing.createCustomer({ organizationId: demo.org.id, name: "Demo Co", email: null });
     await billing.createCustomer({ organizationId: real.org.id, name: "Real Septic", email: null });
     expect(calls).toEqual([real.org.id]);
