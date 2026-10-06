@@ -4,7 +4,7 @@ Walked on 2026-10-06 against main `3929897` (re-checked against `58cde2e`, which
 
 Before and after screenshots of the fixed items are in [`w11/`](w11/). The full set (every page, role and size) is in the project's shared folder under `Septic/next-phases/w11-screens/`; only the ones cited below are committed.
 
-**Status:** B1, B2 and C1 to C6 are fixed in W11.2 (PR for W11.1 to W11.3), each with an e2e check in `apps/web/e2e/polish.spec.ts` (C5 and C6 by review). K1 to K3 are fixed as a side effect; K4 is open.
+**Status:** B1, B2 and C1 to C6 are fixed in W11.2 (PR for W11.1 to W11.3), each with an e2e check in `apps/web/e2e/polish.spec.ts` (C5 and C6 by review). K1 to K3 are fixed as a side effect; K4 is open. The second walk, after W10, is [at the end](#second-walk-after-w10).
 
 ## Broken
 
@@ -79,3 +79,48 @@ Before the fixes, on main `3929897`. Local production build, Pixel 7 emulation, 
 - Folding the phone menu also cut office page requests from about 65 to about 30, since hidden links aren't prefetched.
 - New on phone after C2: axe "scrollable-region-focusable" on the Plans, Users and Licenses tables (a scrolling table has no focusable cell). Keyboard use on a phone is rare; left open.
 - Office pages make about 65 requests, mostly link prefetches for every header link. Not material at this size.
+
+## Second walk, after W10
+
+Walked on 2026-10-06 against main `94e6ee7` (all of W10 merged), run locally with `pnpm db:seed` (which now plays the five-minute demo story) and `DEMO_MODE=true`, production web build. Every nav page again as owner, office and technician at desktop and phone sizes, twice: signed in with the seeded logins, and in a visitor's own demo from "Try the demo" switching with "View as". Then the five-minute path by hand on both sizes: marketing page, sign-in, "Try the demo", inbox, the confirmed and the waiting filing, the site, a renewal, an invoice, and the technician's route and first stop.
+
+No console errors and no HTTP errors on any linked page. The round-one fixes held: no technician link opens a 403 (a technician typing an office URL still gets "Your role does not allow this action", which is right), dates and times read in Central, and the phone menu and table scrolling work for the visitor demo too.
+
+### Broken or confusing, fixed here
+
+**R1. A demo filing says it "cannot be filed" while showing Confirmed.** The demo story files under the fictional Example County, whose rules don't hold a filing for the maintenance provider's signature, so both filings went out unsigned. The signature panel still said "Report version 1 is not signed yet, so it cannot be filed, and the customer's copy is held until it is", next to a Confirmed badge and a county reference. A prospect reads that as the product contradicting itself.
+Steps: Try the demo, Filings, All, open either filing.
+Fix: the signing state now says whether this inspection's filing waits for the signature (`required`, from the same rule the filing uses). When it doesn't, the panel says the demo's example county rules don't hold the filing or the customer's copy for a signature, that a real report must be signed under 30 TAC 285.7(b)(3) before it is filed or sent, and that signing can still be tried. Real authorities are unchanged: the API test checks `required: true` under LCRA and the demo test checks the story's filings are `false`.
+Screens: [before](w11/r2-before-demo-signature-desktop.jpg), [after](w11/r2-after-demo-signature-desktop.jpg).
+
+**R2. On a phone, a filing page scrolls sideways.** The 64-character manifest SHA-256 under each submission doesn't wrap, so the page is 525 px wide on a 412 px phone.
+Fix: the hash wraps anywhere. Screen: [before](w11/r2-before-phone-filing-overflow.jpg).
+
+**R3 (W11.3). The schedule jumps on a phone.** Layout shift 0.30: the day's route columns drew first and the 30-day unscheduled list then arrived above them and pushed them off the screen. Fix: the page waits for the first answer of each list (technicians, unscheduled, the week, routes) before drawing. Now 0.01.
+
+### W11.4: "Try the demo" on the marketing page
+
+The hero has a "Try the demo" button next to "Ask for a demo", linking to `/demo`. It shows only when the API says this is the demo deployment (`/api/app-info` `demo: true`), the only place `/demo` answers; elsewhere it isn't drawn. A header link was tried and dropped: on a phone it wrapped the header to two rows and shifted the page (0.40). E2e covers both cases in `try-demo.spec.ts`. Screen: [phone](w11/r2-phone-marketing-try-demo.jpg).
+
+### Left open (cosmetic)
+
+- **K4** still: a system's "Installed" date and a few sentences built by the API ("ends 2026-10-26", "performed on 2026-10-05" in the signature statement) print ISO dates. The signature statement is the signed text, so it stays as is.
+- On the demo deployment, the demo banner appears above the marketing page after `/api/app-info` answers and moves it down 50 px on a first visit (layout shift 0.06; remembered on the device after that). Not on a real deployment.
+- Phone tables that scroll inside their box still have axe "scrollable-region-focusable".
+- A fourth "Try the demo" from the same address within an hour gets the demo page's own "too many demos" message, which reads fine.
+
+### Measurements after the second round
+
+Same method as above, on this branch.
+
+| Page | First paint | Largest paint | Layout shift | JS (KB) | Requests |
+| --- | --- | --- | --- | --- | --- |
+| `/` marketing | 468 ms | 468 ms | 0.059 | 247 | 16 |
+| `/login` | 440 ms | 1868 ms | 0.059 | 240 | 12 |
+| `/inbox` | 448 ms | 2352 ms | 0.01 | 267 | 36 |
+| `/due` | 416 ms | 1868 ms | 0.086 | 246 | 29 |
+| `/schedule` | 420 ms | 1968 ms | **0.01** (was 0.30) | 249 | 26 |
+| `/customers` | 424 ms | 1884 ms | 0.014 | 246 | 30 |
+| `/tech` | 440 ms | 2160 ms | 0.076 | 251 | 16 |
+
+JS is larger than in the first round on every page (about 250 KB against 140 to 280 KB) because W10's demo banner, intros and county panel ship with the shared layout. Every page is now under 0.1 layout shift ("good").

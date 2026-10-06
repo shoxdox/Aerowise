@@ -4,14 +4,17 @@ import type { PublicOverview } from "@aerowise/domain";
 import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { DemoRequestForm } from "@/components/marketing/DemoRequestForm";
-import { COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS } from "@/components/marketing/copy";
+import { COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO } from "@/components/marketing/copy";
 import { useLoad } from "@/components/useLoad";
+import { useDemoMode } from "@/lib/demo";
 import { money } from "@/lib/format";
 
 // The public marketing page. Signed-in users go straight to /inbox from sign-in; anyone
 // who lands here can reach the office with "Sign in".
 export default function MarketingPage() {
   const { data, error } = useLoad<PublicOverview>("/public/overview");
+  // /demo only answers on the demo deployment, so the link is shown only there.
+  const tryDemo = useDemoMode();
   return (
     <div className="marketing">
       <header className="topbar">
@@ -24,9 +27,16 @@ export default function MarketingPage() {
         <section className="hero stack">
           <h1>{HERO.title}</h1>
           <p className="lead">{HERO.body}</p>
-          <a className="button cta" href="#demo">
-            {DEMO.button}
-          </a>
+          <div className="cta-row">
+            <a className="button cta" href="#demo">
+              {DEMO.button}
+            </a>
+            {tryDemo && (
+              <a className="button secondary cta" href="/demo" data-testid="try-demo">
+                {TRY_DEMO.button}
+              </a>
+            )}
+          </div>
         </section>
 
         <section className="stack" aria-labelledby="problem">

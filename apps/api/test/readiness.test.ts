@@ -622,7 +622,7 @@ describe("maintenance provider signature (30 TAC 285.7(b)(3))", () => {
     await s.api.patch(`/credentials/${mt.id}`, { expiresOn: "2027-01-31" });
 
     const preview = (await s.api.get(sig)).json();
-    expect(preview).toMatchObject({ problems: [], holderName: "Owner Person", signature: null });
+    expect(preview).toMatchObject({ problems: [], holderName: "Owner Person", signature: null, required: true });
     expect(preview.statement).toContain("I, Owner Person, TCEQ licensed maintenance provider MP0001234, have reviewed this maintenance report (version 1)");
     expect(preview.statement).toContain("by technician user (TCEQ registered maintenance technician MT0005678), who is employed by Org A and works under my direct supervision");
     expect((await s.api.post(sig, { typedName: "Someone Else" })).json()).toMatchObject({ message: expect.stringContaining("Type your name as it appears on your MP license: Owner Person") });

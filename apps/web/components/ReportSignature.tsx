@@ -49,10 +49,17 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
         </>
       ) : (
         <>
-          <p className="small">
-            30 TAC 285.7(b)(3) requires the licensed maintenance provider to sign every maintenance report. Report version {data.version} is not signed yet, so it cannot be filed, and the customer&apos;s
-            copy is held until it is. Signing signs both.
-          </p>
+          {data.required ? (
+            <p className="small">
+              30 TAC 285.7(b)(3) requires the licensed maintenance provider to sign every maintenance report. Report version {data.version} is not signed yet, so it cannot be filed, and the
+              customer&apos;s copy is held until it is. Signing signs both.
+            </p>
+          ) : (
+            <p className="small">
+              Report version {data.version} is not signed. This demo&apos;s example county rules don&apos;t hold the filing or the customer&apos;s copy for a signature. A real report must be
+              signed by the licensed maintenance provider (30 TAC 285.7(b)(3)) before it is filed or sent; you can try signing here.
+            </p>
+          )}
           {data.provider && (
             <p className="small">
               Signs by default: <strong>{data.provider.name}</strong>, MP {data.provider.number} ({data.provider.source === "contract" ? "named on the site's contract" : "the organization's responsible MP"}).

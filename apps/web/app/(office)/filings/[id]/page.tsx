@@ -382,7 +382,7 @@ export default function FilingPage() {
                 </dl>
               </details>
             )}
-            <div className="muted small">Manifest SHA-256 {p.manifestSha256}</div>
+            <div className="muted small wrap-anywhere">Manifest SHA-256 {p.manifestSha256}</div>
           </div>
         ))}
       </section>

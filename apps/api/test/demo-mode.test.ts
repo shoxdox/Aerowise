@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { StripeBillingProvider, TestBillingProvider } from "@aerowise/billing";
-import { OutboxTransport, ProviderTransport, ResendEmailProvider } from "@aerowise/compliance";
+import { OutboxTransport, ProviderTransport, ResendEmailProvider, signatureRequiredForInspection } from "@aerowise/compliance";
 import { createDb, migrate, reseedDemo, type Database } from "@aerowise/db";
 import { sql } from "kysely";
 import { StripeProvider, TestPaymentProvider } from "@aerowise/payments";
@@ -230,8 +230,10 @@ describe("demo reseed", () => {
     expect(untouched).toEqual({ attempts: 0, completedAt: null, lockedBy: null });
     expect(await playDemoStory({ db: ctx.db, store })).toBe(false); // already played
 
-    const filings = await ctx.db.selectFrom("filings").select(["status", "confirmationReference"]).where("inspectionId", "is not", null).execute();
+    const filings = await ctx.db.selectFrom("filings").select(["organizationId", "inspectionId", "status", "confirmationReference"]).where("inspectionId", "is not", null).execute();
     expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
+    // The fictional county's rules don't hold a filing for the MP's signature (the page says so).
+    for (const f of filings) expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(false);
     expect(filings.find((f) => f.status === "confirmed")?.confirmationReference).toBe("EC-DEMO-0042");
     const counties = await ctx.db.selectFrom("sites").select("county").distinct().execute();
     expect(counties).toEqual([{ county: "Example County" }]);

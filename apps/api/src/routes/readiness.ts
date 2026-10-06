@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { openContractFiling, refreshFiling, updateContractFilingDeadline, contractBasisOf, customerCopy, SignatureError, UNSIGNED_CUSTOMER_COPY, signAuthorityReport, signingPreview, type ComplianceContext } from "@aerowise/compliance";
+import { openContractFiling, refreshFiling, updateContractFilingDeadline, contractBasisOf, customerCopy, SignatureError, signatureRequiredForInspection, UNSIGNED_CUSTOMER_COPY, signAuthorityReport, signingPreview, type ComplianceContext } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import {
   addDays,
@@ -306,6 +306,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       throw err;
     }
     const s = preview.existing;
+    const required = await signatureRequiredForInspection(db, organizationId, inspectionId);
     const customer = await db
       .selectFrom("reports as r")
       .leftJoin("reportSignatures as rs", (j) => j.onRef("rs.reportId", "=", "r.id").onRef("rs.organizationId", "=", "r.organizationId"))
@@ -321,6 +322,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       statement: s?.statement ?? preview.statement,
       holderName: preview.holderName,
       problems: preview.problems,
+      required,
       provider: preview.provider ? { name: preview.provider.holderName, number: preview.provider.number, source: preview.provider.source } : null,
       delegationRequired: Boolean(preview.delegatedFrom),
       customerCopy: customer ? { reportId: customer.id, version: customer.version, signed: Boolean(customer.signatureId) } : null,

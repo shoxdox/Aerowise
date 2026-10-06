@@ -97,7 +97,10 @@ export default function SchedulePage() {
     void run(() => api("/schedule/reorder", { method: "POST", body: { technicianId: s.technicianId, scheduledDate: s.scheduledDate, jobIds: ids } }));
   };
 
-  if (!selected || !monday) return <p className="muted">Loading…</p>;
+  // Wait for the first answer of each list, so the unscheduled list arriving last doesn't push
+  // the day's routes down under a thumb (a 0.3 layout shift on a phone, W11.3).
+  const settled = [techs, unscheduled, week, routes].every((l) => l.data || l.error);
+  if (!selected || !monday || !settled) return <p className="muted">Loading…</p>;
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const countFor = (d: string) => (week.data?.items ?? []).filter((s) => s.scheduledDate === d).length;
