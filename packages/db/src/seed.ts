@@ -68,6 +68,8 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
       .insertInto("organizations")
       .values({
         name: DEMO_ORG_NAME,
+        // Fictional: its email, texts, filings, payments and books only ever reach the stand-ins.
+        demo: true,
         phone: "(512) 555-0100",
         email: "office@example.com",
         addressLine1: "100 Example Pkwy",
@@ -140,7 +142,8 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
           siteId: null,
           name: `${first} ${last}`,
           email: `${first}.${last}${i}@example.com`.toLowerCase(),
-          phone: `(512) 555-${String(1000 + i * 7).slice(-4)}`,
+          // 555-0100 to 555-0199 is set aside for fiction; a demo company may hold no other number.
+          phone: `(512) 555-01${String(i + 1).padStart(2, "0")}`,
           type: "primary",
           consentEmail: true,
           consentSms: r.next() < 0.6,

@@ -25,6 +25,7 @@ import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { applyView, checkDraftRefs, invoiceBase, invoiceDetail, issueDraft, overdueFirst, queueSend, toListItem, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
 import { dateInZone, organizationToday } from "../lib/today.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 const VIEWS = ["unpaid", "overdue", "draft", "paid", "void", "all"] as const;
@@ -453,7 +454,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId } = req.requireAuth();
       const inv = await db.selectFrom("invoices").select(["number", "pdfStorageKey"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
       if (!inv) throw notFound("Invoice");
-      const data = inv.pdfStorageKey ? await store.get(inv.pdfStorageKey) : null;
+      const data = inv.pdfStorageKey ? await readForDownload(db, store, inv.pdfStorageKey) : null;
       if (!data) throw new HttpError(404, "not_ready", "The PDF is still being prepared");
       return reply
         .header("content-type", "application/pdf")

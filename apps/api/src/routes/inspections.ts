@@ -31,6 +31,7 @@ import { audit } from "../lib/audit.ts";
 import { forbidden, HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 import type { ObjectStore } from "@aerowise/storage";
+import { readForDownload } from "../lib/demo.ts";
 
 type Executor = Database | Transaction<DB>;
 
@@ -656,7 +657,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         .where("id", "=", req.params.id)
         .executeTakeFirst();
       if (!row || !signer.verify(row.organizationId, row.id, req.query.exp, req.query.sig, now().getTime())) throw notFound("File");
-      const data = await store.get(row.storageKey);
+      const data = await readForDownload(db, store, row.storageKey);
       if (!data) throw notFound("File");
       return reply.type(row.contentType).header("x-content-type-options", "nosniff").send(data);
     },

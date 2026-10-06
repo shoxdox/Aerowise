@@ -30,7 +30,7 @@ describe("TwilioSmsProvider", () => {
       calls.push({ url: String(url), init: init! });
       return new Response(JSON.stringify({ sid: "SM42", status: "queued" }), { status: 201 });
     });
-    const r = await twilio.send({ from: "+15125550100", to: "+15125550123", body: "Hello", statusCallback: "https://x.test/api/webhooks/sms/status" });
+    const r = await twilio.send({ organizationId: "org-1", from: "+15125550100", to: "+15125550123", body: "Hello", statusCallback: "https://x.test/api/webhooks/sms/status" });
     expect(r).toEqual({ providerMessageId: "SM42", status: "sent" });
     expect(calls[0]!.url).toBe("https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json");
     expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe(`Basic ${Buffer.from("AC123:secret").toString("base64")}`);
@@ -44,7 +44,7 @@ describe("TwilioSmsProvider", () => {
 
   it("tells a refusal that can be retried from one that cannot", async () => {
     const answer = (status: number, body: object) => new TwilioSmsProvider({ accountSid: "AC1", authToken: "t" }, async () => new Response(JSON.stringify(body), { status }));
-    const err = (p: TwilioSmsProvider) => p.send({ from: "+15125550100", to: "+15125550123", body: "x", statusCallback: null }).catch((e: SmsSendError) => e);
+    const err = (p: TwilioSmsProvider) => p.send({ organizationId: "org-1", from: "+15125550100", to: "+15125550123", body: "x", statusCallback: null }).catch((e: SmsSendError) => e);
     expect(await err(answer(400, { code: 21610, message: "unsubscribed" }))).toMatchObject({ code: "21610", permanent: true });
     expect(await err(answer(429, { code: 20429, message: "Too many requests" }))).toMatchObject({ permanent: false });
     expect(await err(answer(503, {}))).toMatchObject({ code: "http_503", permanent: false });
@@ -64,7 +64,7 @@ describe("RedirectingSmsProvider (staging)", () => {
     });
     const sms = new RedirectingSmsProvider(twilio, "+15125550199");
     expect(sms.kind).toBe("twilio");
-    await sms.send({ from: "+15125550100", to: "+15125550123", body: "Your service is tomorrow.", statusCallback: null });
+    await sms.send({ organizationId: "org-1", from: "+15125550100", to: "+15125550123", body: "Your service is tomorrow.", statusCallback: null });
     const sent = Object.fromEntries(new URLSearchParams(String(calls[0]!.init.body)));
     expect(sent).toMatchObject({ To: "+15125550199", From: "+15125550100", Body: "[Test, for +15125550123] Your service is tomorrow." });
   });

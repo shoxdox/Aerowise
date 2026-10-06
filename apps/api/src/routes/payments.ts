@@ -1,7 +1,7 @@
 import type { Database } from "@aerowise/db";
 import { amountDue, billingSettings, billingSettingsInput, invoiceSnapshot, publicInvoice, type BillingSettings, type PublicInvoice } from "@aerowise/domain";
-import { applyStripeEvent, TestPaymentProvider, WebhookSignatureError } from "@aerowise/payments";
-import { queueQuickBooksSync } from "@aerowise/tasks";
+import { applyStripeEvent, TestPaymentProvider, WebhookSignatureError, type WebhookEvent } from "@aerowise/payments";
+import { DemoGatedPayments, providerFor, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import { activatePaidRenewals } from "@aerowise/renewals";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -10,6 +10,7 @@ import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { canPayOnline, invoiceByToken, notFoundLink, openCheckout } from "../lib/checkout.ts";
 import type { PaymentsConfig } from "../lib/invoices.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
 const publicLimit = { max: 30, timeWindow: "1 minute" };
@@ -23,7 +24,8 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
   { db, now, store, payments, testCheckout },
 ) => {
   const { provider, appUrl } = payments;
-  const providerKind = (): BillingSettings["provider"] => (provider ? (provider.kind === "test" ? "test" : "stripe") : "none");
+  const providerKind = async (organizationId: string): Promise<BillingSettings["provider"]> =>
+    provider ? ((await providerFor(provider, organizationId)).kind === "test" ? "test" : "stripe") : "none";
 
   async function settings(organizationId: string): Promise<BillingSettings> {
     const o = await db
@@ -34,7 +36,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     return {
       invoiceTermsDays: o.invoiceTermsDays,
       defaultTaxRateBps: o.defaultTaxRateBps,
-      provider: providerKind(),
+      provider: await providerKind(organizationId),
       stripe: { accountId: o.stripeAccountId, chargesEnabled: o.stripeChargesEnabled, detailsSubmitted: o.stripeDetailsSubmitted },
     };
   }
@@ -152,7 +154,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         canPayOnline: canPayOnline(provider, inv),
         bankVerificationUrl: verify?.bankVerificationUrl ?? null,
         pdfReady: !!inv.pdfStorageKey,
-        testMode: provider?.kind === "test",
+        testMode: !!provider && (await providerFor(provider, inv.organizationId)).kind === "test",
       };
     },
   );
@@ -162,7 +164,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     { config: { public: true, rateLimit: publicLimit }, schema: { tags: ["pay"], summary: "The invoice PDF, for the customer", params: token } },
     async (req, reply) => {
       const inv = await byToken(req.params.token);
-      const data = inv.pdfStorageKey ? await store.get(inv.pdfStorageKey) : null;
+      const data = inv.pdfStorageKey ? await readForDownload(db, store, inv.pdfStorageKey) : null;
       if (!data) throw new HttpError(404, "not_ready", "The PDF is still being prepared. Try again in a minute.");
       const s = invoiceSnapshot.parse(inv.snapshot);
       return reply.header("content-type", "application/pdf").header("content-disposition", `inline; filename="${s.number}.pdf"`).send(data);
@@ -187,6 +189,18 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
 
   // ---- Stripe webhook ----
 
+  async function applyEvent(event: WebhookEvent) {
+    const outcome = await applyStripeEvent(db, event, now());
+    // A cleared payment goes on to QuickBooks.
+    const applied = await db.selectFrom("stripeEvents").select("organizationId").where("id", "=", event.id).executeTakeFirst();
+    if (applied?.organizationId) {
+      await queueQuickBooksSync(db, applied.organizationId, now());
+      // A renewal waiting on this payment becomes the next contract.
+      await activatePaidRenewals(db, { organizationId: applied.organizationId }, now());
+    }
+    return outcome;
+  }
+
   await app.register(async (hook) => {
     // The signature covers the exact bytes Stripe sent, so this route keeps the raw body.
     hook.removeContentTypeParser("application/json");
@@ -205,24 +219,20 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           if (err instanceof WebhookSignatureError) throw new HttpError(400, "bad_signature", "Stripe signature did not verify");
           throw err;
         }
-        const outcome = await applyStripeEvent(db, event, now());
-        // A cleared payment goes on to QuickBooks.
-        const applied = await db.selectFrom("stripeEvents").select("organizationId").where("id", "=", event.id).executeTakeFirst();
-        if (applied?.organizationId) {
-          await queueQuickBooksSync(db, applied.organizationId, now());
-          // A renewal waiting on this payment becomes the next contract.
-          await activatePaidRenewals(db, { organizationId: applied.organizationId }, now());
-        }
+        const outcome = await applyEvent(event);
         req.log.info({ stripeEvent: event.id, type: event.type, outcome }, "stripe webhook");
         return reply.send({ received: true, outcome });
       },
     );
   });
 
-  // ---- Test checkout (development and the demo only) ----
+  // ---- Test checkout (development, the demo deployment, and demo companies) ----
 
-  if (provider instanceof TestPaymentProvider && testCheckout) {
-    const test = provider;
+  // Where real Stripe is configured, a demo company's checkouts open on the stand-in behind the
+  // gate, and only a demo company's invoices can be finished here.
+  const gated = provider instanceof DemoGatedPayments && provider.standIn instanceof TestPaymentProvider ? provider.standIn : null;
+  const test = provider instanceof TestPaymentProvider && testCheckout ? provider : gated;
+  if (test) {
     app.post(
       "/pay/:token/test-checkout",
       {
@@ -242,10 +252,10 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const inv = await db
           .selectFrom("invoices as i")
           .innerJoin("organizations as o", "o.id", "i.organizationId")
-          .select(["i.id", "i.organizationId", "o.stripeAccountId"])
+          .select(["i.id", "i.organizationId", "o.stripeAccountId", "o.demo"])
           .where("i.publicToken", "=", req.params.token)
           .executeTakeFirst();
-        if (!inv?.stripeAccountId) throw notFoundLink();
+        if (!inv?.stripeAccountId || (gated && !inv.demo)) throw notFoundLink();
         const session = await db
           .selectFrom("checkoutSessions")
           .selectAll()
@@ -272,10 +282,8 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
                 ...(outcome === "ach_clears" ? [test.signedEvent("checkout.session.async_payment_succeeded", object(true), inv.stripeAccountId)] : []),
                 ...(outcome === "ach_fails" ? [test.signedEvent("checkout.session.async_payment_failed", object(false), inv.stripeAccountId)] : []),
               ];
-        for (const e of events) {
-          const res = await app.inject({ method: "POST", url: "/webhooks/stripe", payload: e.body, headers: { "content-type": "application/json", "stripe-signature": e.signature } });
-          if (res.statusCode !== 200) throw new Error(`test webhook failed: ${res.statusCode} ${res.body}`);
-        }
+        // Applied as the webhook would apply them, without the public webhook (which only takes Stripe's own).
+        for (const e of events) await applyEvent(e.event);
         return { ok: true, message: outcome === "card" ? "Payment received." : outcome === "ach_fails" ? "The bank payment failed." : outcome === "ach_clears" ? "The bank payment cleared." : "Bank payment started." };
       },
     );

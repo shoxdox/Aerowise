@@ -6,6 +6,7 @@ import { quickBooksFromEnv, TestQuickBooksProvider, TokenCipher, type QuickBooks
 import { geocoderFromEnv, TestGeocoder, type Geocoder } from "@aerowise/routing";
 import { isE164, smsFromEnv, TestSmsProvider, type SmsConfig } from "@aerowise/sms";
 import type { ObjectStore } from "@aerowise/storage";
+import { demoCheck, DemoGatedBilling, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport } from "./demo-gate.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -81,9 +82,37 @@ export interface Providers {
  * Picks each outside service from the environment. Outside demo mode: the real service when
  * its keys are set; otherwise the test stand-in outside production, and off in production.
  * In demo mode: the test stand-in, unless DEMO_LIVE_SERVICES names the service (test mode only).
- * New outside services belong here, with a stand-in.
+ * Either way, a demo company's calls only ever reach the stand-ins (see demo-gate.ts).
+ * New outside services belong here, with a stand-in and a gate.
  */
 export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: Env; production: boolean; now?: () => Date }): Providers {
+  const { db, store, now = () => new Date() } = opts;
+  const chosen = configuredProviders(opts);
+  // Demo companies (organizations.demo) only ever reach the stand-ins, whatever is configured
+  // above: each real service is wrapped in a gate that sends a demo company's calls to its stand-in.
+  const isDemo = demoCheck(db);
+  const outbox = new OutboxTransport(store, now);
+  const standIns = {
+    payments: new TestPaymentProvider(),
+    quickbooks: new TestQuickBooksProvider(db, now),
+    sms: new TestSmsProvider(),
+    billing: new TestBillingProvider(),
+  };
+  return {
+    ...chosen,
+    mail: chosen.mail instanceof OutboxTransport ? chosen.mail : new DemoGatedTransport(chosen.mail, outbox, isDemo),
+    payments: chosen.payments && chosen.payments.kind !== "test" ? new DemoGatedPayments(chosen.payments, standIns.payments, isDemo) : chosen.payments,
+    quickbooks:
+      chosen.quickbooks && chosen.quickbooks.provider.kind !== "test"
+        ? { ...chosen.quickbooks, provider: new DemoGatedQuickBooks(chosen.quickbooks.provider, standIns.quickbooks, isDemo) }
+        : chosen.quickbooks,
+    sms: chosen.sms && chosen.sms.provider.kind !== "test" ? { ...chosen.sms, provider: new DemoGatedSms(chosen.sms.provider, standIns.sms, isDemo) } : chosen.sms,
+    billing: chosen.billing && chosen.billing.kind !== "test" ? new DemoGatedBilling(chosen.billing, standIns.billing, isDemo) : chosen.billing,
+  };
+}
+
+/** What the deployment is configured to use, before demo companies are gated. */
+function configuredProviders(opts: { db: Database; store: ObjectStore; env: Env; production: boolean; now?: () => Date }): Providers {
   const { db, store, env, production, now = () => new Date() } = opts;
   const demo = demoModeFromEnv(env);
   if (demo) {

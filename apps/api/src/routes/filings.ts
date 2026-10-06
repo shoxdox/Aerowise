@@ -52,6 +52,7 @@ import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { organizationToday } from "../lib/today.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 
@@ -489,7 +490,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const row = await db.selectFrom("submissionPackages").select(["id", "organizationId", "documents"]).where("id", "=", packageId).executeTakeFirst();
       if (!row || !signer.verify(row.organizationId, req.params.file, req.query.exp, req.query.sig, now().getTime(), "package-files")) throw notFound("File");
       const doc = (row.documents as PackageDocument[])[Number(index)];
-      const data = doc && (await compliance.store.get(doc.storageKey));
+      const data = doc && (await readForDownload(db, compliance.store, doc.storageKey));
       if (!doc || !data) throw notFound("File");
       return reply.type(doc.contentType).header("content-disposition", `inline; filename="${doc.filename}"`).header("x-content-type-options", "nosniff").send(data);
     },

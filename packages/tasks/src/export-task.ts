@@ -1,5 +1,6 @@
 import type { Database, DB } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
+import { watermarkPdf } from "@aerowise/reports";
 import { zipSync } from "fflate";
 import { sql, type Transaction } from "kysely";
 import { enqueue } from "./queue.ts";
@@ -70,10 +71,14 @@ async function tableCsv(db: Database, organizationId: string, table: string, omi
   return { csv: `${lines.join("\r\n")}\r\n`, rows: rows.length };
 }
 
+export const DEMO_EXPORT_NOTICE = "DEMO: everything in this export is fictional, from an Aerowise demo company. Nothing in it was emailed, texted, filed or charged.";
+
 /** Builds the zip of an organization's data and documents, stores it, and marks the export ready. */
 export async function buildExport(db: Database, store: ObjectStore, organizationId: string, exportId: string, now: Date) {
   const exp = await db.selectFrom("dataExports").select("status").where("organizationId", "=", organizationId).where("id", "=", exportId).executeTakeFirst();
   if (!exp || exp.status !== "queued") return;
+  // A demo company's export says throughout that it is fictional.
+  const { demo } = await db.selectFrom("organizations").select("demo").where("id", "=", organizationId).executeTakeFirstOrThrow();
   const enc = new TextEncoder();
   const files: Record<string, Uint8Array> = {};
   const contents: { file: string; rows: number }[] = [];
@@ -93,13 +98,15 @@ export async function buildExport(db: Database, store: ObjectStore, organization
       const ext = /\.[a-z0-9]+$/i.exec(row.key)?.[0] ?? ".pdf";
       if (!body) missing.push(`${d.folder}/${row.name}${ext}`);
       else {
-        files[`${d.folder}/${row.name}${ext}`] = new Uint8Array(body);
+        const isPdf = body.subarray(0, 5).toString("latin1") === "%PDF-";
+        files[`${d.folder}/${row.name}${ext}`] = new Uint8Array(demo && isPdf ? await watermarkPdf(body) : body);
         documents++;
       }
     }
   }
   files["README.txt"] = enc.encode(
     [
+      ...(demo ? [DEMO_EXPORT_NOTICE, ""] : []),
       `Aerowise data export, made ${now.toISOString()}.`,
       "",
       "Each CSV file holds one kind of record, one row per record, with every column Aerowise keeps.",
@@ -110,6 +117,7 @@ export async function buildExport(db: Database, store: ObjectStore, organization
       "",
     ].join("\r\n"),
   );
+  if (demo) files["DEMO-FICTIONAL-DATA.txt"] = enc.encode(`${DEMO_EXPORT_NOTICE}\r\n`);
   // Documents are already compressed; level 6 is for the CSVs.
   const zip = Buffer.from(zipSync(files, { level: 6 }));
   const key = `${organizationId}/exports/${exportId}.zip`;

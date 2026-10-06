@@ -229,7 +229,7 @@ export async function deliverSms(
   }
 
   try {
-    const sent = await ctx.sms.provider.send({ from: s.smsFromNumber!, to: to.phone, body: msg.body, statusCallback: smsWebhookUrls(ctx.sms.webhookBaseUrl).status });
+    const sent = await ctx.sms.provider.send({ organizationId, from: s.smsFromNumber!, to: to.phone, body: msg.body, statusCallback: smsWebhookUrls(ctx.sms.webhookBaseUrl).status });
     const at = ctx.now();
     await db
       .updateTable("smsMessages")

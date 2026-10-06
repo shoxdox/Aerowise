@@ -28,6 +28,8 @@ type CreatedAt = ColumnType<Date, never, never>;
 export interface OrganizationsTable {
   id: Generated<string>;
   name: string;
+  /** A fictional demo company: only ever reaches the stand-ins, and holds made-up contact details. Fixed when made. */
+  demo: Generated<boolean>;
   phone: string | null;
   email: string | null;
   addressLine1: string | null;
