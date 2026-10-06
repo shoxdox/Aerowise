@@ -49,7 +49,7 @@ export async function checkDraftRefs(db: Database | Transaction<DB>, organizatio
   }
 }
 
-type NewLine = InvoiceLineInput & { contractId?: string | null; installment?: number | null; periodStart?: string | null; periodEnd?: string | null };
+type NewLine = InvoiceLineInput & { contractId?: string | null; installment?: number | null; periodStart?: string | null; periodEnd?: string | null; filingId?: string | null };
 
 /** Replaces a draft's lines and recomputes its totals. */
 export async function writeDraftLines(
@@ -60,10 +60,10 @@ export async function writeDraftLines(
   pricing: { discountCents: number; taxRateBps: number },
   now: Date,
 ) {
-  // A line sent back with its id keeps what it bills for; nothing else can claim an installment.
+  // A line sent back with its id keeps what it bills for; nothing else can claim an installment or a filing fee.
   const previous = await trx
     .selectFrom("invoiceLines")
-    .select(["id", "contractId", "installment", "periodStart", "periodEnd"])
+    .select(["id", "contractId", "installment", "periodStart", "periodEnd", "filingId"])
     .where("organizationId", "=", organizationId)
     .where("invoiceId", "=", invoiceId)
     .execute();
@@ -85,6 +85,7 @@ export async function writeDraftLines(
       installment: prior?.installment ?? l.installment ?? null,
       periodStart: prior?.periodStart ?? l.periodStart ?? null,
       periodEnd: prior?.periodEnd ?? l.periodEnd ?? null,
+      filingId: prior?.filingId ?? l.filingId ?? null,
     };
   });
   await trx.insertInto("invoiceLines").values(rows).execute();
@@ -305,6 +306,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       installment: l.installment,
       periodStart: l.periodStart,
       periodEnd: l.periodEnd,
+      filingId: l.filingId,
     })),
     payments: payments.map((p) => ({
       id: p.id,

@@ -227,6 +227,8 @@ export const invoiceLine = z.object({
   installment: z.number().int().nullable(),
   periodStart: date.nullable(),
   periodEnd: date.nullable(),
+  /** Set when the line bills an authority's filing fee (the company's setting). */
+  filingId: id.nullable(),
 });
 export type InvoiceLine = z.infer<typeof invoiceLine>;
 

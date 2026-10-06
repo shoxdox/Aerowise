@@ -70,6 +70,7 @@ export interface OrganizationsTable {
   logoStorageKey: ColumnType<string | null, string | null | undefined, string | null>;
   logoContentType: ColumnType<"image/png" | "image/jpeg" | null, "image/png" | "image/jpeg" | null | undefined, "image/png" | "image/jpeg" | null>;
   serviceCounties: ColumnType<string[], string[] | undefined, string[]>;
+  billFilingFees: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: CreatedAt;
 }
 
@@ -780,6 +781,7 @@ export interface InvoiceLinesTable {
   periodStart: string | null;
   periodEnd: string | null;
   jobId: string | null;
+  filingId: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface PaymentsTable {
