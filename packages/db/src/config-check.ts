@@ -62,6 +62,10 @@ export function configProblems(env: Env): string[] {
   if (deploy === "staging" && set("QUICKBOOKS_CLIENT_ID") && env.QUICKBOOKS_ENVIRONMENT?.trim() === "production") {
     problems.push('QUICKBOOKS_ENVIRONMENT must be "sandbox" on staging');
   }
+  // Staging's texts go to one test phone, never to a customer; production's never to one phone.
+  // (In demo mode Twilio's keys are unused unless DEMO_LIVE_SERVICES lists sms, which checks this itself.)
+  if (deploy === "staging" && set("TWILIO_ACCOUNT_SID") && env.DEMO_MODE?.trim().toLowerCase() !== "true") missing(["SMS_REDIRECT_TO"], "on staging when Twilio is configured, so test texts never reach a real customer");
+  if (deploy === "production" && set("SMS_REDIRECT_TO")) problems.push("SMS_REDIRECT_TO must be empty in production: it would send every customer's texts to one phone");
   if (deploy === "production" && set("DEMO_LIVE_SERVICES")) problems.push("DEMO_LIVE_SERVICES is for the staging demo only; leave it empty in production");
   if (deploy === "staging" && set("RESEND_API_KEY")) missing(["EMAIL_REDIRECT_TO"], "on staging when Resend is configured, so test email never reaches a real authority or customer");
   return problems;
