@@ -507,7 +507,7 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 
 1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
-2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Done in a follow-up: the contract form asks first, and the API refuses (409 `more_visits_required`) without `acceptVisits`. Imports still add the visits: they record contracts that already exist, and refusing would drop rows. The import summary does not list them yet.
 3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
 4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
 5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).

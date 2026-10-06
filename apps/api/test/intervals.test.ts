@@ -33,6 +33,15 @@ async function tenantIn(c: TestContext, county: string | null, customerType: "re
   return { ...t, plan };
 }
 
+/**
+ * Creates a contract the way the office does: look at the visits the site's authority needs
+ * and, if that is more than the plan has, agree to them (the office is warned first).
+ */
+async function agreed(t: { api: ReturnType<typeof client>; site: { id: string } }, body: { planId: string; startOn: string }) {
+  const preview = (await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${body.planId}&startOn=${body.startOn}`)).json();
+  return t.api.post(`/sites/${t.site.id}/contracts`, { ...body, acceptVisits: preview.warning ? preview.visitsPerTerm : undefined });
+}
+
 type Visit = { sequence: number; windowStart: string; dueOn: string };
 const windows = (contract: { obligations: Visit[] }) => contract.obligations.map((o) => [o.sequence, o.windowStart, o.dueOn]);
 
@@ -41,7 +50,7 @@ describe("contract visits follow the site's ruleset interval", () => {
     const t = await tenantIn(ctx, "Example County");
     for (const [term, visits] of [[12, 3], [24, 6]] as const) {
       const plan = await t.plan("residential", term, visits);
-      const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: term === 12 ? "2026-01-15" : "2027-01-15" })).json();
+      const contract = (await agreed(t, { planId: plan.id, startOn: term === 12 ? "2026-01-15" : "2027-01-15" })).json();
       expect(contract).toMatchObject({ termMonths: term, visitsPerTerm: visits, customerType: "residential" });
     }
   });
@@ -49,7 +58,7 @@ describe("contract visits follow the site's ruleset interval", () => {
   it("schedules quarterly visits where the authority requires them", async () => {
     const t = await tenantIn(ctx, QUARTERLY);
     const plan = await t.plan("residential");
-    const res = await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" });
+    const res = await agreed(t, { planId: plan.id, startOn: "2026-01-15" });
     expect(res.statusCode).toBe(201);
     const contract = res.json();
     expect(contract).toMatchObject({ termMonths: 12, visitsPerTerm: 4, endOn: "2027-01-14", priceCents: 27500 });
@@ -64,7 +73,7 @@ describe("contract visits follow the site's ruleset interval", () => {
   it("schedules monthly visits for a commercial site under a monthly commercial rule", async () => {
     const t = await tenantIn(ctx, COMMERCIAL_MONTHLY, "commercial");
     const plan = await t.plan("commercial");
-    const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-31" })).json();
+    const contract = (await agreed(t, { planId: plan.id, startOn: "2026-01-31" })).json();
     expect(contract).toMatchObject({ customerType: "commercial", visitsPerTerm: 12, endOn: "2027-01-30" });
     expect(windows(contract).slice(0, 3)).toEqual([
       [1, "2026-01-31", "2026-02-27"],
@@ -81,27 +90,27 @@ describe("contract visits follow the site's ruleset interval", () => {
   it("keeps a residential site under that rule on the 4-month default", async () => {
     const t = await tenantIn(ctx, COMMERCIAL_MONTHLY);
     const plan = await t.plan("residential");
-    const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" })).json();
+    const contract = (await agreed(t, { planId: plan.id, startOn: "2026-01-15" })).json();
     expect(contract).toMatchObject({ customerType: "residential", visitsPerTerm: 3 });
   });
 
   it("goes by the site's type, not the plan's", async () => {
     const t = await tenantIn(ctx, COMMERCIAL_MONTHLY);
     const commercialPlan = await t.plan("commercial");
-    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: commercialPlan.id, startOn: "2026-01-15" })).json()).toMatchObject({ customerType: "residential", visitsPerTerm: 3 });
+    expect((await agreed(t, { planId: commercialPlan.id, startOn: "2026-01-15" })).json()).toMatchObject({ customerType: "residential", visitsPerTerm: 3 });
     const u = await tenantIn(ctx, COMMERCIAL_MONTHLY, "commercial");
     const residentialPlan = await u.plan("residential");
-    expect((await u.api.post(`/sites/${u.site.id}/contracts`, { planId: residentialPlan.id, startOn: "2026-01-15" })).json()).toMatchObject({ customerType: "commercial", visitsPerTerm: 12 });
+    expect((await agreed(u, { planId: residentialPlan.id, startOn: "2026-01-15" })).json()).toMatchObject({ customerType: "commercial", visitsPerTerm: 12 });
   });
 
   it("keeps a plan that already visits often enough, and a site with no authority", async () => {
     const t = await tenantIn(ctx, QUARTERLY);
     const monthly = await t.plan("residential", 12, 12);
-    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: monthly.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(12);
+    expect((await agreed(t, { planId: monthly.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(12);
 
     const u = await tenantIn(ctx, null, "commercial");
     const plan = await u.plan("commercial");
-    expect((await u.api.post(`/sites/${u.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(3);
+    expect((await agreed(u, { planId: plan.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(3);
   });
 
   it("follows the rules in force when the contract starts, not when it was created", async () => {
@@ -111,8 +120,43 @@ describe("contract visits follow the site's ruleset interval", () => {
     await syncRulesets(ctx.db, [later]);
     const t = await tenantIn(ctx, "Later Fixture County");
     const plan = await t.plan("residential");
-    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(3);
-    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2027-01-15" })).json().visitsPerTerm).toBe(4);
+    expect((await agreed(t, { planId: plan.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(3);
+    expect((await agreed(t, { planId: plan.id, startOn: "2027-01-15" })).json().visitsPerTerm).toBe(4);
+  });
+});
+
+describe("the office is warned before visits are added", () => {
+  it("refuses a contract with fewer visits than the authority needs until the office agrees to the count", async () => {
+    const t = await tenantIn(ctx, QUARTERLY);
+    const plan = await t.plan("residential");
+    const preview = (await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${plan.id}&startOn=2026-01-15`)).json();
+    expect(preview).toEqual({
+      planVisits: 3,
+      visitsPerTerm: 4,
+      warning: "Quarterly Fixture County (fictional) requires an inspection at least every 3 months, so this contract needs 4 visits instead of the plan's 3, at the same price. Create it with 4 visits?",
+    });
+
+    const body = { planId: plan.id, startOn: "2026-01-15" };
+    const refused = await t.api.post(`/sites/${t.site.id}/contracts`, body);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({ error: "more_visits_required", message: preview.warning });
+    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { ...body, acceptVisits: 3 })).statusCode).toBe(409);
+    expect((await t.api.get(`/sites/${t.site.id}/contracts`)).json().items).toHaveLength(0);
+
+    const created = await t.api.post(`/sites/${t.site.id}/contracts`, { ...body, acceptVisits: 4 });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ visitsPerTerm: 4, priceCents: 27500 });
+
+    // Renewing onto a plan with too few visits asks again; renewing as is keeps the agreed visits.
+    expect((await t.api.post(`/contracts/${created.json().id}/renew`, { planId: plan.id })).json()).toMatchObject({ error: "more_visits_required" });
+    expect((await t.api.post(`/contracts/${created.json().id}/renew`, {})).json()).toMatchObject({ visitsPerTerm: 4 });
+  });
+
+  it("does not ask when the plan already has enough visits", async () => {
+    const t = await tenantIn(ctx, "Example County");
+    const plan = await t.plan("residential");
+    expect((await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${plan.id}&startOn=2026-01-15`)).json()).toEqual({ planVisits: 3, visitsPerTerm: 3, warning: null });
+    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" })).statusCode).toBe(201);
   });
 });
 
@@ -120,7 +164,7 @@ describe("the next inspection date on a filing", () => {
   it("uses the commercial interval for a commercial site", async () => {
     const t = await tenantIn(ctx, COMMERCIAL_MONTHLY, "commercial");
     const plan = await t.plan("commercial");
-    const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-01" })).json();
+    const contract = (await agreed(t, { planId: plan.id, startOn: "2026-01-01" })).json();
     const tech = await createUser(ctx.db, t.org.id, "technician");
     await ctx.db.updateTable("memberships").set({ technicianLicense: "MT-0001" }).where("userId", "=", tech.id).execute();
     const techApi = client(ctx.app, await login(ctx.app, tech.email));
