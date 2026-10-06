@@ -38,6 +38,11 @@ export interface BillingProvider {
   createInvoice(input: BillingInvoiceInput): Promise<{ invoiceId: string; status: BillingInvoiceStatus; hostedUrl: string | null }>;
   /** The card or bank account invoices are charged to, or null when none is saved. */
   paymentMethod(customerId: string): Promise<PaymentMethodSummary | null>;
+  /**
+   * Tries to collect a failed invoice again now, from the current payment method. A
+   * decline is not an error: the invoice simply stays unpaid.
+   */
+  retryInvoice(invoiceId: string): Promise<{ status: "paid" | "open" }>;
   /** A Stripe page where the owner adds or changes the payment method, returning to `returnUrl`. */
   managePaymentMethod(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
   /** Checks the signature and returns the event; throws if it was not signed by Stripe. */

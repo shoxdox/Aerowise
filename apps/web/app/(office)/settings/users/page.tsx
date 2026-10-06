@@ -4,7 +4,7 @@ import { canInviteRole, ROLES, type InvitationSent, type Role, type UsersOvervie
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { useSession } from "@/lib/session";
+import { canEdit, useSession } from "@/lib/session";
 
 const ROLE_LABELS: Record<Role, string> = { owner: "Owner", office: "Office", technician: "Technician", read_only: "Read-only" };
 
@@ -16,7 +16,10 @@ export default function UsersPage() {
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<InvitationSent | null>(null);
-  const roles = ROLES.filter((r) => canInviteRole(me.role, r));
+  // Nothing here changes while the plan is read-only or support is looking.
+  const editable = canEdit(me);
+  const owner = editable && me.role === "owner";
+  const roles = editable ? ROLES.filter((r) => canInviteRole(me.role, r)) : [];
 
   async function onInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +55,7 @@ export default function UsersPage() {
       <div className="row">
         <h1>Users</h1>
         <span className="spacer" />
-        <button onClick={() => setInviting((c) => !c)}>{inviting ? "Cancel" : "Invite someone"}</button>
+        {editable && <button onClick={() => setInviting((c) => !c)}>{inviting ? "Cancel" : "Invite someone"}</button>}
       </div>
 
       {sent && (
@@ -99,7 +102,7 @@ export default function UsersPage() {
             <th>Email</th>
             <th>Role</th>
             <th>Status</th>
-            {me.role === "owner" && <th />}
+            {owner && <th />}
           </tr>
         </thead>
         <tbody>
@@ -111,7 +114,7 @@ export default function UsersPage() {
               <td>
                 <span className={`badge ${m.active ? "active" : "inactive"}`}>{m.active ? "active" : "deactivated"}</span>
               </td>
-              {me.role === "owner" && (
+              {owner && (
                 <td>
                   {m.userId !== me.user.id && (
                     <button
@@ -159,7 +162,7 @@ export default function UsersPage() {
                     <span className={`badge ${i.status === "expired" ? "expired" : "upcoming"}`}>{i.status}</span>
                   </td>
                   <td>
-                    {canInviteRole(me.role, i.role) && (
+                    {editable && canInviteRole(me.role, i.role) && (
                       <span className="row">
                         <button className="link" onClick={() => resend(i.id)}>
                           Send again

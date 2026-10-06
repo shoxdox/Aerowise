@@ -51,4 +51,5 @@ export const subscriptionDefaults = z.object({
   designPartnerDays: z.number().int(),
   pricePerContractCents: z.number().int(),
   monthlyMinimumCents: z.number().int(),
+  pastDueGraceDays: z.number().int(),
 });

@@ -38,7 +38,8 @@ const ctx = {
   sms: providers.sms,
   geocoder: providers.geocoder,
   // Stripe Billing charges companies for Aerowise; without its key, the test stand-in outside
-  // production, and in production months are counted but not invoiced.
+  // production; in production without it, months are counted but not invoiced and free
+  // periods are not ended automatically.
   billing: { provider: providers.billing, config: subscriptionConfigFromEnv(process.env) },
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
