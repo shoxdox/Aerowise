@@ -15,6 +15,8 @@ const rid = (prefix: string) => `${prefix}_test_${randomBytes(12).toString("hex"
 export class TestPaymentProvider implements PaymentProvider {
   readonly kind = "test";
   private readonly webhooks = new Stripe("sk_test_aerowise_offline").webhooks;
+  /** Every checkout page asked for, as Stripe would have been asked. */
+  readonly checkouts: CheckoutInput[] = [];
 
   async createAccount() {
     return { accountId: rid("acct") };
@@ -30,6 +32,7 @@ export class TestPaymentProvider implements PaymentProvider {
 
   /** The test checkout page lives under the invoice's pay page, and returns where Stripe would. */
   async createCheckout(input: CheckoutInput) {
+    this.checkouts.push(input);
     const sessionId = rid("cs");
     const done = new URL(input.successUrl);
     return {

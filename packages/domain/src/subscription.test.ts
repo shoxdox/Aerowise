@@ -9,6 +9,8 @@ import {
   initialPlan,
   isReadOnly,
   monthlyCharge,
+  PLATFORM_FEE_MAX_BPS,
+  platformFeeCents,
   SUBSCRIPTION_STATES,
   subscriptionPlanInput,
   type SubscriptionState,
@@ -110,5 +112,15 @@ describe("monthly charge", () => {
 
   it("charges only paying states", () => {
     expect(SUBSCRIPTION_STATES.filter((s) => BILLABLE_STATES.includes(s))).toEqual(["active", "past_due"]);
+  });
+});
+
+describe("platform fee", () => {
+  it("is a share of the payment in basis points, rounded down, and 0 by default", () => {
+    expect(platformFeeCents(32500, 0)).toBe(0);
+    expect(platformFeeCents(32500, 250)).toBe(812);
+    expect(platformFeeCents(10000, PLATFORM_FEE_MAX_BPS)).toBe(1000);
+    expect(platformFeeCents(9, 1000)).toBe(0);
+    expect(platformFeeCents(0, 500)).toBe(0);
   });
 });

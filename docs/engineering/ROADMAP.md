@@ -43,8 +43,8 @@ Where two streams touch the same file, the dependency column says who goes first
 | W4.1 | Plan states and read-only mode | W2.1 | done (#35) |
 | W4.2 | Active-contract count and Stripe Billing provider | W4.1 | done (#38); needs Stripe Billing keys from Justin |
 | W4.3 | Owner subscription page | W4.2 | done (#41); needs the Stripe customer portal turned on |
-| W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | in progress (PR open) |
-| W4.5 | Platform fee on homeowner payments | W4.1 | not started |
+| W4.4 | Expiry reminders and the full plan lifecycle | W4.2, W4.3 | done (#45) |
+| W4.5 | Platform fee on homeowner payments | W4.1 | done (#59) |
 | W5.1 | Import: several sheets and saved column mappings | W2.1 | done |
 | W5.2 | Import: contracts, last inspection, permits, make and model | W5.1 | done |
 | W5.3 | Undo a committed import | W5.2 | done |
@@ -64,7 +64,7 @@ Where two streams touch the same file, the dependency column says who goes first
 | W7.3 | Twilio on a real account | W1.3 | done (#63): `DEMO_LIVE_SERVICES=sms` with `SMS_REDIRECT_TO` (one test phone), route and live steps in `INTEGRATIONS.md`; blocked on a paid, approved Twilio number (Justin chose to wait, 2026-10-06) |
 | W8.1 | Public marketing page | W6.5 | done (#37) |
 | W8.2 | Demo request form | W2.1, W8.1 | done (#40) |
-| W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | in progress (PR open); placeholder text until Justin supplies lawyer-reviewed text |
+| W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | done (#43); placeholder text until Justin supplies lawyer-reviewed text |
 
 ## W1. Hosted demo and staging
 
