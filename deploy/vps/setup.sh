@@ -91,6 +91,10 @@ for env in "${environments[@]}"; do
   [[ -d $root/$env/.git ]] || sudo -u deploy git clone --quiet "$repo" "$root/$env"
 done
 
+# Install templates from current main even when this host has an older checkout.
+sudo -u deploy git -C "$root/staging" fetch --quiet origin
+sudo -u deploy git -C "$root/staging" checkout --quiet --detach origin/main
+
 say "Writing the settings files in $etc"
 install -d -m 750 -o root -g deploy "$etc"
 secret() { openssl rand -hex 32; }
