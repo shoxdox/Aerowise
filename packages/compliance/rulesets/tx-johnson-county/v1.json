@@ -1,0 +1,105 @@
+{
+  "jurisdiction": {
+    "key": "tx-johnson-county",
+    "state": "TX",
+    "authorityName": "Johnson County Public Works, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Johnson County's Public Works and Development Services permit pages, 30 TAC 285.7 and TCEQ's OSSF maintenance page. The 'Rules of Johnson County for On-Site Sewage Facilities' are listed by name but could not be located or read. Johnson County publishes no way to submit maintenance reports. See docs/jurisdictions/tx-johnson-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "The Rules of Johnson County for On-Site Sewage Facilities could not be read, so their dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Johnson County: Public Works",
+        "url": "https://johnsoncountytx.org/departments/public-works",
+        "retrievedOn": "2026-10-06",
+        "note": "Public Works issues 'permits for On-Site Sewage Facilities (OSSF's) as part of the County's responsibility as the Designated Representative for Texas Commission of Environmental Quality (TCEQ).' Phone (817) 556-6380; Johnson County Annex, 2 N Mill St, Suite 305, Cleburne, Texas 76033. Nothing on maintenance reports or contracts."
+      },
+      {
+        "title": "Johnson County Development Services: Permit Applications and Information",
+        "url": "https://www.johnsoncountytx.org/departments/development-services/permit-applications-and-information",
+        "retrievedOn": "2026-10-06",
+        "note": "Lists 'Rules of Johnson County for On-Site Sewage Facilities' among septic documents; the document's link could not be read. Nothing on maintenance reports or contracts."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Johnson County publishes no way to submit maintenance inspection reports or contracts (no email, portal or mailing address for them), so inspection filings are held for review and contracts are filed by hand.",
+      "The Rules of Johnson County for On-Site Sewage Facilities could not be located or read, so any county-specific frequency, deadline, report contents, lab testing, fees and dates are unknown. Aerowise follows TCEQ's 30 TAC 285.7 until they are read.",
+      "Which addresses Johnson County covers (for example, cities running their own OSSF programs) is not published; every site needs a reviewed assignment.",
+      "Johnson County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Johnson"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Johnson County Public Works permits OSSFs as TCEQ's designated representative, but which areas it covers is not published. Check with Public Works at (817) 556-6380 that it holds the site's permit. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Johnson County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "30 TAC 285.7(d)(2) (read 2026-10-06): a copy of the signed contract goes to the permitting authority 30 days before the service policy or current contract expires. Johnson County publishes no address for it, so contracts are filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Johnson County's own rules could not be read."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Johnson County describes no reply to maintenance reports or contracts."
+  }
+}
