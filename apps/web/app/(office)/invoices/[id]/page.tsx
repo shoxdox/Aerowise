@@ -8,7 +8,7 @@ import { InvoiceStatusBadge } from "@/components/InvoiceBadges";
 import { InvoiceEditor } from "@/components/InvoiceEditor";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day, money, when } from "@/lib/format";
+import { day, money, today, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 const PAYMENT_STATE: Record<Payment["status"], string> = { pending: "clearing", succeeded: "received", failed: "failed" };
@@ -273,7 +273,7 @@ export default function InvoicePage() {
               </label>
               <label>
                 Received
-                <input name="receivedOn" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+                <input name="receivedOn" type="date" required defaultValue={today()} />
               </label>
               <label>
                 Check number or receipt

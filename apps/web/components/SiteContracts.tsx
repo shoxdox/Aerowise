@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 import { ContractFilingStatus } from "@/components/ContractFilingStatus";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day, money } from "@/lib/format";
+import { day, money, today } from "@/lib/format";
 
 /** Thrown to stop `run` without an error message or closing the form. */
 class Keep extends Error {}
@@ -107,7 +107,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               </label>
               <label>
                 Start date
-                <input name="startOn" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+                <input name="startOn" type="date" required defaultValue={today()} />
               </label>
               <label>
                 Price override ($)

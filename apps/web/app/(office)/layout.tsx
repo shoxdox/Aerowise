@@ -1,23 +1,28 @@
 "use client";
 
+import { roleHasPermission, type Permission } from "@aerowise/domain";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { LegalGate } from "@/components/legal/LegalGate";
 import { api } from "@/lib/api";
+import { clock } from "@/lib/format";
 import { canEdit, isReadOnlyAccount, isSupportView, SessionProvider, useSession } from "@/lib/session";
 
 function Shell({ children }: { children: ReactNode }) {
   const me = useSession();
   const path = usePathname();
+  // A link shows only to roles that can open its page (the API enforces this regardless).
+  const can = (permission: Permission) => roleHasPermission(me.role, permission);
   const nav = [
     { href: "/inbox", label: "Inbox" },
     { href: "/schedule", label: "Schedule" },
     { href: "/due", label: "Due" },
-    { href: "/filings", label: "Filings" },
+    ...(can("filings:read") ? [{ href: "/filings", label: "Filings" }] : []),
     { href: "/renewals", label: "Renewals" },
-    { href: "/invoices", label: "Invoices" },
-    ...(me.role !== "technician" ? [{ href: "/quickbooks", label: "QuickBooks" }, { href: "/sms", label: "Texts" }] : []),
+    ...(can("invoices:read") ? [{ href: "/invoices", label: "Invoices" }] : []),
+    ...(can("quickbooks:read") ? [{ href: "/quickbooks", label: "QuickBooks" }] : []),
+    ...(can("sms:read") ? [{ href: "/sms", label: "Texts" }] : []),
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },
@@ -32,6 +37,9 @@ function Shell({ children }: { children: ReactNode }) {
         ]
       : []),
   ];
+  const current = nav.find((item) => path.startsWith(item.href));
+  // On a phone the links fold behind a Menu button; choosing one folds them again.
+  const [menuOpen, setMenuOpen] = useState(false);
   async function endSupport() {
     await api("/admin/support/end", { method: "POST", body: {} });
     window.location.href = "/admin";
@@ -42,29 +50,35 @@ function Shell({ children }: { children: ReactNode }) {
   }
   return (
     <>
-      <header className="topbar">
+      <header className={menuOpen ? "topbar menu-open" : "topbar"}>
         <strong>Aerowise</strong>
-        <nav>
+        {current && <span className="current-page">{current.label}</span>}
+        <button className="secondary menu-toggle" aria-expanded={menuOpen} aria-controls="office-nav" onClick={() => setMenuOpen(!menuOpen)}>
+          {menuOpen ? "Close" : "Menu"}
+        </button>
+        <nav id="office-nav" aria-label="Main">
           {nav.map((item) => (
-            <Link key={item.href} href={item.href} className={path.startsWith(item.href) ? "active" : undefined}>
+            <Link key={item.href} href={item.href} className={item === current ? "active" : undefined} aria-current={item === current ? "page" : undefined} onClick={() => setMenuOpen(false)}>
               {item.label}
             </Link>
           ))}
         </nav>
         <span className="spacer" />
-        <span className="muted">
-          {me.user.name} · {me.organization.name}
+        <span className="account">
+          <span className="muted">
+            {me.user.name} · {me.organization.name}
+          </span>
+          {!isSupportView(me) && (
+            <button className="link" onClick={signOut}>
+              Sign out
+            </button>
+          )}
         </span>
-        {!isSupportView(me) && (
-          <button className="link" onClick={signOut}>
-            Sign out
-          </button>
-        )}
       </header>
       {me.support && (
         <p className="banner warn" role="status" data-testid="support-banner">
           Aerowise support view of {me.organization.name}: read-only, nothing can be changed. It ends at{" "}
-          {new Date(me.support.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.{" "}
+          {clock(me.support.expiresAt)}.{" "}
           <button className="link" onClick={endSupport}>
             End support view
           </button>

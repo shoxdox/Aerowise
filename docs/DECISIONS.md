@@ -603,3 +603,9 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Two authorities in one county.** Denton County covers unincorporated Denton County, and the City of Denton runs its own program (`tx-denton-county`, `tx-city-of-denton`). Both use a reviewed assignment, so a Denton site matched by county alone lists both and a person decides.
 - **A published report address is not a contract address.** Denton County's Testing and Reporting Form says to email completed forms to ossfinspections@dentoncounty.gov, but nothing says that address takes maintenance contracts. Rulesets can now set `contracts.submission: "unknown"`, which holds every contract filing for review with a reason saying so, the way `inspectionReports.submission: "unknown"` already does for reports. The office files those contracts by hand. Authorities without the field behave as before.
 - **Monitoring doesn't lengthen Denton County's schedule.** The county form says "Every 4 months" and doesn't mention electronic monitoring, so there's no 6-month schedule until the county says otherwise.
+
+## 2026-10-06 · W11 walkthrough fixes
+
+- **Times show in the company's time zone, not the device's.** The server already works out due dates and "today" in the organization's time zone, so the web app now formats every timestamp, and fills every "today" default, in that zone (`apps/web/lib/format.ts`, set from `/auth/me`). A laptop in another zone sees the same day and hour as the office and the PDFs. Before the session loads it assumes America/Chicago.
+- **Header links follow permissions.** A link shows only when the role's permissions (the `roleHasPermission` map the API uses) open its page; technicians no longer see Filings or Invoices. Pages opened by URL still get the API's refusal.
+- **On a phone the office header folds behind a Menu button**, and wide tables scroll inside their own box instead of widening the page.

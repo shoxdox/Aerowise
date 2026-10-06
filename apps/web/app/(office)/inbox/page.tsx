@@ -1,6 +1,6 @@
 "use client";
 
-import type { Inbox, InboxException } from "@aerowise/domain";
+import type { Inbox, InboxException, OnboardingChecklist as OnboardingChecklistData } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
@@ -126,11 +126,14 @@ export default function InboxPage() {
     if (technician) router.replace("/tech");
   }, [technician, router]);
   const { data, error, reload } = useLoad<Inbox>(technician ? null : "/inbox");
+  const setup = me.role === "owner" || me.role === "office";
+  const checklist = useLoad<OnboardingChecklistData>(setup ? "/onboarding" : null);
   const editable = canEdit(me);
 
   if (technician) return null;
   if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
+  // Wait for the checklist too (unless it failed), so it doesn't push the page down when it arrives.
+  if (!data || (setup && !checklist.data && !checklist.error)) return <p className="muted">Loading…</p>;
 
   const tiles = [
     { label: "Due this week", value: data.counts.dueThisWeek, href: "/due" },
@@ -158,7 +161,7 @@ export default function InboxPage() {
         <span className="muted">{day(data.today, { weekday: "long", month: "long", day: "numeric" })}</span>
       </div>
 
-      {(me.role === "owner" || me.role === "office") && <OnboardingChecklist />}
+      {setup && <OnboardingChecklist data={checklist.data} />}
 
       <div className="tiles">
         {tiles.map((t) => (
