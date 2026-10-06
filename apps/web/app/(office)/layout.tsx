@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { api } from "@/lib/api";
-import { canEdit, isReadOnlyAccount, SessionProvider, useSession } from "@/lib/session";
+import { canEdit, isReadOnlyAccount, isSupportView, SessionProvider, useSession } from "@/lib/session";
 
 function Shell({ children }: { children: ReactNode }) {
   const me = useSession();
@@ -21,8 +21,8 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },
     ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
-    ...(canEdit(me) ? [{ href: "/settings/users", label: "Users" }] : []),
-    ...(canEdit(me) ? [{ href: "/settings/company", label: "Company" }] : []),
+    ...(canEdit(me) || isSupportView(me) ? [{ href: "/settings/users", label: "Users" }] : []),
+    ...(canEdit(me) || isSupportView(me) ? [{ href: "/settings/company", label: "Company" }] : []),
     ...(me.role === "owner"
       ? [
           { href: "/settings/billing", label: "Billing" },
@@ -30,6 +30,10 @@ function Shell({ children }: { children: ReactNode }) {
         ]
       : []),
   ];
+  async function endSupport() {
+    await api("/admin/support/end", { method: "POST", body: {} });
+    window.location.href = "/admin";
+  }
   async function signOut() {
     await api("/auth/logout", { method: "POST", body: {} });
     window.location.href = "/login";
@@ -49,10 +53,21 @@ function Shell({ children }: { children: ReactNode }) {
         <span className="muted">
           {me.user.name} · {me.organization.name}
         </span>
-        <button className="link" onClick={signOut}>
-          Sign out
-        </button>
+        {!isSupportView(me) && (
+          <button className="link" onClick={signOut}>
+            Sign out
+          </button>
+        )}
       </header>
+      {me.support && (
+        <p className="banner warn" role="status" data-testid="support-banner">
+          Aerowise support view of {me.organization.name}: read-only, nothing can be changed. It ends at{" "}
+          {new Date(me.support.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.{" "}
+          <button className="link" onClick={endSupport}>
+            End support view
+          </button>
+        </p>
+      )}
       {isReadOnlyAccount(me) && (
         <p className="banner warn" role="status" data-testid="read-only-banner">
           This account is read-only because its Aerowise plan has lapsed. You can still see due inspections, filings and

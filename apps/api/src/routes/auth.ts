@@ -14,9 +14,12 @@ export const meResponse = z.object({
   organization: z.object({ id: z.uuid(), name: z.string(), timezone: z.string(), subscription: organizationSubscription }),
   role: z.enum(ROLES),
   organizations: z.array(z.object({ id: z.uuid(), name: z.string(), role: z.enum(ROLES) })),
+  /** Present when a platform admin is looking at the organization read-only for support. */
+  support: z.object({ adminName: z.string(), expiresAt: z.iso.datetime() }).optional(),
 });
 
-export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role">) {
+export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">) {
+  if (auth.support) return loadSupportMe(db, auth.organizationId, auth.support);
   const user = await db.selectFrom("users").select(["id", "name", "email"]).where("id", "=", auth.userId).executeTakeFirstOrThrow();
   const organizations = await db
     .selectFrom("memberships as m")
@@ -38,6 +41,27 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
     },
     role: auth.role,
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
+  };
+}
+
+/** Support sees the organization as its owner does, but signed in as themselves. */
+async function loadSupportMe(db: Database, organizationId: string, support: NonNullable<AuthContext["support"]>) {
+  const o = await db
+    .selectFrom("organizations")
+    .select(["id", "name", "timezone", "subscriptionState", "subscriptionEndsOn"])
+    .where("id", "=", organizationId)
+    .executeTakeFirstOrThrow();
+  return {
+    user: { id: support.adminId, name: `Aerowise support (${support.adminName})`, email: support.adminEmail },
+    organization: {
+      id: o.id,
+      name: o.name,
+      timezone: o.timezone,
+      subscription: { state: o.subscriptionState, endsOn: o.subscriptionEndsOn, readOnly: isReadOnly(o.subscriptionState) },
+    },
+    role: "owner" as const,
+    organizations: [{ id: o.id, name: o.name, role: "owner" as const }],
+    support: { adminName: support.adminName, expiresAt: support.expiresAt.toISOString() },
   };
 }
 

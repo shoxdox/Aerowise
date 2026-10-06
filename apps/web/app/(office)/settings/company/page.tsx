@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { isReadOnlyAccount, useSession } from "@/lib/session";
+import { canEdit, useSession } from "@/lib/session";
 
 export default function CompanySettingsPage() {
   const me = useSession();
-  // Only the owner edits, and nobody does while the Aerowise plan is read-only.
-  const owner = me.role === "owner" && !isReadOnlyAccount(me);
+  // Only the owner edits, and nobody does while the plan is read-only or support is looking.
+  const owner = me.role === "owner" && canEdit(me);
   const { data, reload } = useLoad<OrganizationSettings>("/organization/settings");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
