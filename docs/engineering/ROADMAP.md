@@ -316,8 +316,8 @@ Priority 1 is whatever the first design partner works in; it jumps the queue whe
 | W6.C4 | Comal County | 2 | draft (#71); filed by hand on the county's upload portal; its rules PDF is an unreadable scan; 4 questions in docs/jurisdictions/tx-comal-county.md |
 | W6.C5 | Bexar County | 2 | draft (#72); quarterly per the county page; held for review until the county names how reports are submitted; 5 questions in docs/jurisdictions/tx-bexar-county.md |
 | W6.C6 | Johnson County | 3 | draft (#73); held for review until the county names how reports are submitted; its OSSF rules could not be found; 3 questions in docs/jurisdictions/tx-johnson-county.md |
-| W6.C7 | Ellis County | 3 | paused: elliscountytx.gov timed out on 2026-10-06 |
-| W6.C8 | Collin County | 3 | draft profile (this PR); filed by hand through the county's report portal; every 4 months; 4 questions in docs/jurisdictions/tx-collin-county.md |
+| W6.C7 | Ellis County | 3 | draft profile (this PR); held for review until the county names how reports are submitted; its regulations were unreadable (host timed out); 7 questions in docs/jurisdictions/tx-ellis-county.md |
+| W6.C8 | Collin County | 3 | draft (#74); filed by hand through the county's report portal; every 4 months; 4 questions in docs/jurisdictions/tx-collin-county.md |
 | W6.C9 | Denton County (and the City of Denton) | 3 | not started |
 | W6.C10 | Kaufman County | 3 | not started |
 | W6.C11 | Bell County | 4 | not started |
