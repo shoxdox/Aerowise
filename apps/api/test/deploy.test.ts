@@ -38,6 +38,10 @@ describe("the self-hosted server's settings", () => {
   const read = (path: string) => readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), "utf8");
   const keys = (text: string, pattern: RegExp) => new Set([...text.matchAll(pattern)].map((m) => m[1]!));
 
+  it("health checks use 127.0.0.1: inside a container localhost can mean ::1, where the API (0.0.0.0) does not listen", () => {
+    expect(read("deploy/vps/app.compose.yaml")).not.toMatch(/http:\/\/localhost/);
+  });
+
   it("passes every setting in .env.example to the API and worker, unless it is listed as staying at its default", () => {
     const documented = keys(read(".env.example"), /^#? ?([A-Z][A-Z0-9_]+)=/gm);
     const passed = keys(read("deploy/vps/app.compose.yaml"), /^ {4}([A-Z][A-Z0-9_]+):/gm);
