@@ -239,20 +239,35 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     "/jobs",
     {
       config: { permission: "schedule:write" },
-      schema: { tags: ["schedule"], summary: "Schedule a due visit to a technician on a day", body: scheduleInput, response: { 201: stop } },
+      schema: { tags: ["schedule"], summary: "Schedule a due visit, or an extra retest visit, to a technician on a day", body: scheduleInput, response: { 201: stop } },
     },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
-      const { obligationId, technicianId, scheduledDate, notes } = req.body;
-      const ob = await db
-        .selectFrom("serviceObligations")
-        .select(["id", "siteId", "status"])
-        .where("organizationId", "=", organizationId)
-        .where("id", "=", obligationId)
-        .executeTakeFirst();
-      if (!ob) throw unprocessable("obligationId does not match a visit in this organization");
-      if (ob.status !== "open") throw unprocessable(`This visit is ${ob.status}`);
-      await assertWithinService(organizationId, ob.id, scheduledDate);
+      const { obligationId, retestOfInspectionId, technicianId, scheduledDate, notes } = req.body;
+      let ob: { id: string | null; siteId: string };
+      if (obligationId) {
+        const found = await db
+          .selectFrom("serviceObligations")
+          .select(["id", "siteId", "status"])
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", obligationId)
+          .executeTakeFirst();
+        if (!found) throw unprocessable("obligationId does not match a visit in this organization");
+        if (found.status !== "open") throw unprocessable(`This visit is ${found.status}`);
+        await assertWithinService(organizationId, found.id, scheduledDate);
+        ob = found;
+      } else {
+        // An extra visit to retest after a report: it uses none of the contract's visits.
+        const insp = await db
+          .selectFrom("inspections")
+          .select(["siteId", "status"])
+          .where("organizationId", "=", organizationId)
+          .where("id", "=", retestOfInspectionId!)
+          .executeTakeFirst();
+        if (!insp) throw unprocessable("retestOfInspectionId does not match an inspection in this organization");
+        if (insp.status !== "completed") throw unprocessable("Only a completed inspection can be retested");
+        ob = { id: null, siteId: insp.siteId };
+      }
       await assertAssignable(organizationId, technicianId);
       const position = await nextPosition(organizationId, technicianId, scheduledDate);
       const jobId = await db.transaction().execute(async (trx) => {

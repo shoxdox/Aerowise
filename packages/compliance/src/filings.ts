@@ -280,6 +280,28 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { 
   };
 }
 
+/**
+ * Where an authority counts report due dates from the contract's start (Hays 10.V.2), a
+ * contract visit's report is due by that visit's due date when that comes before the usual
+ * deadline. An extra visit (a retest) keeps the usual deadline.
+ */
+async function contractVisitDeadline<T extends { deadlineOn: string; deadlineBasis: string }>(db: Executor, organizationId: string, inspectionId: string, resolved: ResolvedJurisdiction, terms: T): Promise<T> {
+  const visit = await db
+    .selectFrom("inspections as i")
+    .innerJoin("jobs as j", (x) => x.onRef("j.id", "=", "i.jobId").onRef("j.organizationId", "=", "i.organizationId"))
+    .innerJoin("serviceObligations as o", (x) => x.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
+    .select(["o.dueOn", "o.sequence"])
+    .where("i.organizationId", "=", organizationId)
+    .where("i.id", "=", inspectionId)
+    .executeTakeFirst();
+  if (!visit || visit.dueOn >= terms.deadlineOn) return terms;
+  return {
+    ...terms,
+    deadlineOn: visit.dueOn,
+    deadlineBasis: `${resolved.authorityName} counts report due dates from the contract's start: visit ${visit.sequence}'s test and report are due by ${visit.dueOn}`,
+  };
+}
+
 /** The fee columns a filing records under a ruleset (all null when it sets no fee). */
 function feeColumns(rules: ResolvedJurisdiction["rules"], kind: FilingKind) {
   const fees = filingFees(rules, kind);
@@ -310,7 +332,8 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
   const completedOn = dateInZone(insp.completedAt ?? args.at, insp.timezone);
   const resolution = explainSite(await loadCatalog(trx), insp, completedOn);
   const resolved = resolution.resolved;
-  const terms = resolved ? termsFor(resolved, completedOn, await siteServiceBasis(trx, args.organizationId, insp.siteId, completedOn)) : null;
+  let terms = resolved ? termsFor(resolved, completedOn, await siteServiceBasis(trx, args.organizationId, insp.siteId, completedOn)) : null;
+  if (terms && resolved?.rules.service.contractVisits) terms = await contractVisitDeadline(trx, args.organizationId, insp.id, resolved, terms);
   const reviewReason = !resolved ? (resolution.reviewReason ?? NO_AUTHORITY) : !terms?.methodVersion ? NO_ADAPTER : reportsUnknown(resolved);
   const inserted = await trx
     .insertInto("filings")

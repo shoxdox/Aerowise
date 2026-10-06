@@ -1,0 +1,149 @@
+{
+  "jurisdiction": {
+    "key": "tx-hays-county",
+    "state": "TX",
+    "authorityName": "Hays County Development Services, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06: Hays County's OSSF Regulations (original PDF, TCEQ approval 2014-02-18), its maintenance affidavit, its 2026 fee schedule, its contact page, its Septic Permits page and FAQ, 30 TAC 285.7 and TCEQ's maintenance page. v2 counts visits from the contract's start and drops the six-month monitoring exception (W12.C2). Hays County publishes no way to submit maintenance reports. See docs/jurisdictions/tx-hays-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": "2014-02-18",
+      "basis": "Section 17: in force from its approval and the TCEQ's approval. Adopted by Commissioners Court 2013-06-04 (Findings 4; signature page); TCEQ Executive Director's approval issued 2014-02-18 (PDF pp. 1-2 of the county's copy, read directly 2026-10-06). Later amendments not checked."
+    },
+    "sources": [
+      {
+        "title": "Hays County On-Site Sewage Facility Regulations (with the TCEQ approval order)",
+        "url": "https://www.hayscountytx.gov/DocumentCenter/View/1893/Hays-County-On-Site-Sewage-Facility-Regulations-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "Original PDF read directly (22 pages; sha256 dc45dc3b...94fe; research packet docs/jurisdictions/research/2026-10-06). PDF pp. 1-2: TCEQ approval issued 2014-02-18; county adoption 2013-06-04. Section 10.V (PDF p. 19, checked by eye): V.2 tests and reports every four months 'unless otherwise specified on the permit'; the first test and report of each contract period within 14 days of the contract's start; later due dates 'determined from the start date of the contract'; the last 'within 14 days of the end of the contract period'; a renewal started with a different provider runs at least one year with four inspections including the initial one. V.3: providers register with Development Services each year, valid to December 31, renewals accepted from December 1, free; contracts accepted only from registered providers in good standing. V.4: a report showing less than the required chlorine residual, or a system not functioning properly, needs a fix, a retest and another report to the owner and the county within ten days of the previous report; extra reports do not alter or postpone the regular schedule. V.5: suspension for late testing or reports. V.6 (PDF p. 20): same-provider renewals not accepted until every report from the previous contract period is in. 10.K.3: contract contents. 10.W.6: flow meters for non-residential systems."
+      },
+      {
+        "title": "Hays County: On-Site Sewage Facility (OSSF) Maintenance Affidavit",
+        "url": "https://www.hayscountytx.gov/DocumentCenter/View/1896/On-Site-Sewage-Facility-OSSF-Maintenance-Affidavit-PDF",
+        "retrievedOn": "2026-10-06",
+        "note": "Undated. A new maintenance contract must be obtained at least 30 days before service ceases; on a transfer, a signed contract goes to Hays County Development Services within 30 days. Systems other than single-family residences may only be maintained by licensed providers."
+      },
+      {
+        "title": "Hays County Development Services 2026 Fee Schedule",
+        "url": "https://www.hayscountytx.gov/DocumentCenter/View/4797",
+        "retrievedOn": "2026-10-06",
+        "note": "Effective 2026-01-01 (PDF p. 1, checked by eye in the research packet). 'On-Site Sewage Facility Maintenance Contract Late Fee $50'; separately 'On-Site Sewage Facility Renewal Fee $600 (Single Family Residence) or $900 (Non-Single Family Residence)', a permit renewal, not a maintenance contract. Applications and documents are handled online through MyGovernmentOnline."
+      },
+      {
+        "title": "Hays County: Contact Us (Development Services)",
+        "url": "https://www.hayscountytx.gov/863/Contact-Us",
+        "retrievedOn": "2026-10-06",
+        "note": "Read as a browser excerpt in the research packet. Lists ossfmaintenance@hayscountytx.gov for OSSF maintenance inquiries, phone 512-393-2150 option 0. An inquiry contact: it does not say reports or contracts may be filed there."
+      },
+      {
+        "title": "Hays County: Septic Permits",
+        "url": "https://www.hayscountytx.gov/496/Septic-Permits",
+        "retrievedOn": "2026-10-06",
+        "note": "Covers unincorporated Hays County. Ongoing maintenance is required for all aerobic or advanced systems. Phone 512-393-2150; contact through MyGovernmentOnline. No submission address for maintenance reports."
+      },
+      {
+        "title": "Hays County: FAQ, septic",
+        "url": "https://www.hayscountytx.gov/m/faq?cat=51",
+        "retrievedOn": "2026-10-06",
+        "note": "A maintenance contract is required for all aerobic systems."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Hays County publishes no way to submit maintenance inspection reports or contracts. ossfmaintenance@hayscountytx.gov is listed for maintenance inquiries only, and the fee schedule sends applications and documents through MyGovernmentOnline; neither says recurring reports or contracts go there. Inspection filings are held for review and contracts are filed by hand.",
+      "Which addresses Hays County covers is set by other entities' orders, ordinances or resolutions, which the county does not list; every site needs a reviewed assignment.",
+      "Section 10.V.2 allows a permit to set another schedule ('unless otherwise specified on the permit'). Aerowise uses four months; a permit with another interval needs the office to adjust the contract.",
+      "'Within 14 days of the end of the contract period' is read as the 14 days before the end. Whether a visit after the end counts, and whether one visit can be both the last of a contract and the first of its renewal, are not stated.",
+      "'Report submittal due dates shall be determined from the start date of the contract' is read as: each visit's report is due by that visit's due date when that is sooner than 14 days after the inspection.",
+      "The corrective report is due 'within ten (10) days of the previous report'. Aerowise counts from the date the report was sent, or the report's own date until it is sent. 'Less than the required chlorine residual' has no number here; Aerowise flags a zero reading, a chlorine device needing service or any failed item.",
+      "Section 10.V.6 holds a same-provider renewal until every report from the previous period is in, but the renewal is due 30 days before the contract ends and the last report within its final 14 days. Aerowise counts only reports due by the day of filing.",
+      "Provider registration (10.V.3) is yearly and free, but its form and current procedure are not published, and Aerowise does not record a company's registration.",
+      "The 2026 fee schedule lists a $50 maintenance contract late fee without saying when it applies, so Aerowise charges nothing.",
+      "Hays County publishes no list of what a maintenance report must contain beyond 30 TAC 285.91(12) and no acknowledgment of a received report.",
+      "No lab testing (BOD, TSS) is published, so none is required here. Non-residential systems need flow meters (10.W.6), which Aerowise does not record.",
+      "Later amendments to the 2013 order were not checked."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Hays"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Hays County regulates all of Hays County except areas under another entity's OSSF order, ordinance or resolution; its permits page covers unincorporated Hays County. Check whether the address is inside a city that runs its own OSSF program. If unsure, call Hays County Development Services at 512-393-2150. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true,
+    "countyRegistration": {
+      "required": true,
+      "renews": "Yearly: valid from registration to December 31; next year's renewal accepted from December 1. Free.",
+      "note": "Hays County Regulations 10.V.3: new and renewal contracts are accepted only from providers whose county registration is current and in good standing. Aerowise does not record the registration; check it before filing."
+    }
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Hays County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Hays County's affidavit: a new contract at least 30 days before service ceases, and on a transfer a signed contract to Development Services within 30 days. 30 TAC 285.7(d)(2): a copy to the permitting authority 30 days before the current contract expires. 10.V.6: a same-provider renewal waits for the previous period's reports. 10.V.2: a renewal with a new provider runs a year with four inspections. No filing address is published, so contracts are filed by hand.",
+    "submission": "unknown",
+    "renewalNeedsPriorReports": true,
+    "newProviderMinimum": {
+      "termMonths": 12,
+      "visits": 4
+    }
+  },
+  "service": {
+    "intervalMonths": 4,
+    "contractVisits": {
+      "firstWithinDays": 14,
+      "lastWithinDaysOfEnd": 14,
+      "note": "Hays County Regulations 10.V.2: first test and report within 14 days of the contract's start, later due dates counted from the start, the last within 14 days of the end. A 12-month contract has four visits."
+    },
+    "correctiveReport": {
+      "withinDays": 10,
+      "note": "Hays County Regulations 10.V.4: low chlorine or a system not functioning properly needs a fix, a retest and another report within ten days of the previous report; extra reports do not move the regular schedule."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Hays County describes no reply to maintenance reports or contracts."
+  }
+}

@@ -225,7 +225,18 @@ export const rulesetRules = z.object({
    * for the filing, and (for inspection reports) an active MP license or maintenance
    * technician registration held by whoever did the inspection, on the inspection date.
    */
-  provider: z.object({ responsibleProviderRequired: z.boolean(), technicianCredentialRequired: z.boolean().optional() }).optional(),
+  provider: z
+    .object({
+      responsibleProviderRequired: z.boolean(),
+      technicianCredentialRequired: z.boolean().optional(),
+      /**
+       * The authority's own registration of maintenance providers, on top of the TCEQ
+       * license (Hays: yearly, ending December 31). Aerowise shows it; it does not yet track
+       * each company's registration.
+       */
+      countyRegistration: z.object({ required: z.literal(true), renews: z.string().max(200), note: z.string().max(1000) }).optional(),
+    })
+    .optional(),
   /**
    * Whether the authority has said how inspection reports reach it. `unknown` holds every
    * inspection filing in review: nothing is sent to a guessed address.
@@ -242,6 +253,16 @@ export const rulesetRules = z.object({
        * filing in review, even where reports have a published email: nothing is sent to it.
        */
       submission: z.enum(["supported", "unknown"]).optional(),
+      /**
+       * A renewal with the same provider is not accepted until every report from the
+       * previous term has been submitted (Hays 10.V.6): such a filing is held until they are sent.
+       */
+      renewalNeedsPriorReports: z.boolean().optional(),
+      /**
+       * The least a contract taken over from another provider may cover (Hays 10.V.2: at
+       * least a year and four inspections, counting the first).
+       */
+      newProviderMinimum: z.object({ termMonths: z.number().int().min(1).max(60), visits: z.number().int().min(1).max(60) }).optional(),
       note: z.string().max(1000).optional(),
     })
     .optional(),
@@ -294,6 +315,18 @@ export const rulesetRules = z.object({
      * electronic monitoring on record. Absent: monitoring changes nothing.
      */
     monitored: monitoredServiceRule.optional(),
+    /**
+     * Visits counted from the contract instead of split evenly across it (Hays 10.V.2): the
+     * first within `firstWithinDays` of the start, the next every `intervalMonths` from the
+     * start, and the last in the `lastWithinDaysOfEnd` days before the end.
+     */
+    contractVisits: z.object({ firstWithinDays: z.number().int().min(1).max(90), lastWithinDaysOfEnd: z.number().int().min(1).max(90), note: z.string().max(1000) }).optional(),
+    /**
+     * A report showing low chlorine or a system not working needs a fix, a retest and a new
+     * report within this many days of that report (Hays 10.V.4). The extra report never moves
+     * the regular visits.
+     */
+    correctiveReport: z.object({ withinDays: z.number().int().min(1).max(90), note: z.string().max(1000) }).optional(),
   }),
   /** Lab tests the authority requires on a schedule, such as annual BOD and TSS. */
   labTests: labTestRule.optional(),
