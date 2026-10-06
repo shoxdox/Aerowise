@@ -47,11 +47,13 @@ async function apply(trx: Transaction<DB>, organizationId: string, event: Webhoo
   const o = event.data.object;
   switch (event.type) {
     case "checkout.session.completed":
-      return checkoutPayment(trx, organizationId, o, o.payment_status === "paid" ? "succeeded" : "pending", now);
+      // Cards clear at checkout; a bank debit completes checkout unpaid and clears days later.
+      return o.payment_status === "paid" ? checkoutPayment(trx, organizationId, o, "succeeded", "card", now) : checkoutPayment(trx, organizationId, o, "pending", "ach", now);
+    // Only delayed methods (bank debits) send these, and the session reads "paid" by then.
     case "checkout.session.async_payment_succeeded":
-      return checkoutPayment(trx, organizationId, o, "succeeded", now);
+      return checkoutPayment(trx, organizationId, o, "succeeded", "ach", now);
     case "checkout.session.async_payment_failed":
-      return checkoutPayment(trx, organizationId, o, "failed", now);
+      return checkoutPayment(trx, organizationId, o, "failed", "ach", now);
     case "checkout.session.expired": {
       const res = await trx
         .updateTable("checkoutSessions")
@@ -77,7 +79,7 @@ async function apply(trx: Transaction<DB>, organizationId: string, event: Webhoo
   }
 }
 
-async function checkoutPayment(trx: Transaction<DB>, organizationId: string, session: Obj, status: PaymentRecordStatus, now: Date): Promise<string> {
+async function checkoutPayment(trx: Transaction<DB>, organizationId: string, session: Obj, status: PaymentRecordStatus, methodHint: "card" | "ach", now: Date): Promise<string> {
   const metadata = (session.metadata ?? {}) as Obj;
   const invoiceId = str(metadata.invoiceId);
   const paymentIntent = idOf(session.payment_intent);
@@ -99,8 +101,7 @@ async function checkoutPayment(trx: Transaction<DB>, organizationId: string, ses
   if (existing && existing.organizationId !== organizationId) return "ignored: payment belongs to another account";
   if (existing && (FINAL.includes(existing.status) || existing.status === status)) return `unchanged: payment already ${existing.status}`;
 
-  // Cards clear at checkout; a bank debit completes checkout unpaid and clears days later.
-  const method = existing?.method ?? (status === "succeeded" && session.payment_status === "paid" ? "card" : "ach");
+  const method = existing?.method ?? methodHint;
   const failureReason = status === "failed" ? "The bank payment did not go through" : null;
   const stamp = { succeededAt: status === "succeeded" ? now : null, failedAt: status === "failed" ? now : null };
   let paymentId: string;

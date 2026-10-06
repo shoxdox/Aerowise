@@ -54,6 +54,11 @@ export function configProblems(env: Env): string[] {
     if (!R2_KEYS.some(set)) missing(R2_KEYS, "in production (otherwise files stay on the server's disk)");
     if (set("EMAIL_REDIRECT_TO")) problems.push("EMAIL_REDIRECT_TO must be empty in production: it would send every customer's and authority's email to one inbox");
   }
+  // Staging may use Stripe, but only in test mode: its data is synthetic and its money must be too.
+  if (deploy === "staging" && set("STRIPE_SECRET_KEY") && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY!.trim())) {
+    problems.push("STRIPE_SECRET_KEY must be a test-mode key (sk_test_ or rk_test_) on staging");
+  }
+  if (deploy === "production" && set("DEMO_LIVE_SERVICES")) problems.push("DEMO_LIVE_SERVICES is for the staging demo only; leave it empty in production");
   if (deploy === "staging" && set("RESEND_API_KEY")) missing(["EMAIL_REDIRECT_TO"], "on staging when Resend is configured, so test email never reaches a real authority or customer");
   return problems;
 }
