@@ -1,0 +1,133 @@
+{
+  "jurisdiction": {
+    "key": "tx-bell-county-phd",
+    "state": "TX",
+    "authorityName": "Bell County Public Health District, On-Site Sewage Facilities",
+    "type": "district"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from the Bell County Public Health District's OSSF pages, its 'Additional Rules beyond Chapter 285' (posted as local order 2018), its 2024 permit application and fee schedule, 30 TAC 285.7 and TCEQ's OSSF maintenance page. The district publishes no way to submit maintenance reports or contracts. See docs/jurisdictions/tx-bell-county-phd.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "The district's Additional Rules beyond Chapter 285 say rules 1-13 were 'ORIGINALLY APPROVED DECEMBER 2006' and the homeowner-maintenance rule September 2007, but give no order number, adoption date of the 2018 version or TCEQ approval date. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Bell County Public Health District: On-Site Sewage Facilities",
+        "url": "https://www.bellcountyhealth.org/environmental_health/on-site_sewage_facilities/index.php",
+        "retrievedOn": "2026-10-06",
+        "note": "Links the local rules and a fee schedule 'NEW AS OF SEPTEMBER 1st, 2024'. 254-532-9800; 4236 Lowes Dr., Temple, TX 76502. Nothing on how reports or contracts are submitted."
+      },
+      {
+        "title": "Bell County Public Health District: Additional Rules beyond Chapter 285 (local order 2018)",
+        "url": "https://cms3.revize.com/revize/bellcountyhealthtx/Documents/Environmental%20Health/On%20Site%20Sewage%20Facilities/local%20order%202018.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Rule 14(A): 'All secondary treatment systems in Bell County require maintenance contracts and testing and reporting to be submitted to the Bell County Public Health District.' No channel or deadline. Rule 8: food-dealer-permit facilities 'a minimum of every three months', a chlorine or fecal coliform test each visit where disinfection is required, one BOD and TSS grab sample a year, and a water meter reading with each report. Read twice through a page summarizer with the same wording."
+      },
+      {
+        "title": "Bell County Public Health District: OSSF fee revisions effective September 1, 2024",
+        "url": "https://www.bellcountyhealth.org/Documents/Environmental%20Health/On%20Site%20Sewage%20Facilities/OSSF%20Process/Fee%20Revisions%20Sept_1_%202024.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "'Maintenance Inspection / Contract Verification (per contract year) $20'. Who pays it and how is not stated. Read through a page summarizer."
+      },
+      {
+        "title": "Bell County Public Health District: Application to construct (2024)",
+        "url": "https://www.bellcountyhealth.org/Documents/Environmental%20Health/On%20Site%20Sewage%20Facilities/BCPHD_APP_2024_FILLABLE_UPDATED.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Aerobic notice: 'This OSSF must be covered by a continuous maintenance contract' and 'a signed maintenance contract must be submitted to the Bell County Public Health District within 30 days after the property has been transferred.' Read through a page summarizer."
+      },
+      {
+        "title": "Bell County Public Health District: About Us",
+        "url": "https://www.bellcountyhealth.org/about_us/index.php",
+        "retrievedOn": "2026-10-06",
+        "note": "Members: 'Bell County, Temple, Killeen, Belton, Harker Heights, Holland, Little River/Academy, Morgan's Point Resort, Rogers, Troy, and the Village of Salado.' Read through a page summarizer."
+      },
+      {
+        "title": "Bell County Public Health District: File a Complaint",
+        "url": "https://www.bellcountyhealth.org/environmental_health/on-site_sewage_facilities/file_a_complaint.php",
+        "retrievedOn": "2026-10-06",
+        "note": "'Regarding On-Site Sewer Facility complaints please send to ossf@bellcountyhealth.org'. Published for complaints only, not as a report or contract channel."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "The district says reports and contracts are 'submitted to the Bell County Public Health District' (Rule 14(A)) but publishes no channel. ossf@bellcountyhealth.org is published for complaints only, so inspection filings are held for review and contracts are filed by hand.",
+      "No local report deadline is published; Aerowise uses TCEQ's 14 days after the test.",
+      "Food-dealer-permit facilities need a visit at least every three months, a chlorine or fecal coliform test each visit, one BOD and TSS grab sample a year and a water meter reading with each report (Rule 8). Aerowise can't tell a food-dealer site from other commercial sites, so the office schedules those by hand; no numeric limits are published.",
+      "The $20 'Maintenance Inspection / Contract Verification (per contract year)' fee (effective 2024-09-01) is not recorded on filings: who is billed and how it's paid isn't stated. A Rule 10 re-license fee has no published amount.",
+      "Whether the district covers non-member areas (Nolanville, Bell County's part of Bartlett, Fort Cavazos) and whether any member city runs its own program is not published; every site needs a reviewed assignment.",
+      "Whether electronic monitoring allows 6 months between visits is not addressed locally; Aerowise follows TCEQ's 30 TAC 285.7(e).",
+      "The local rules give no order number, adoption date for the 2018 version or TCEQ approval date.",
+      "The district publishes no acknowledgment of a received report or contract, and no maintenance report form."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Bell"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "The Bell County Public Health District runs OSSF permits for Bell County and its member cities (Temple, Killeen, Belton, Harker Heights, Holland, Little River-Academy, Morgan's Point Resort, Rogers, Troy, Salado). Coverage of non-member areas such as Nolanville, Bell County's part of Bartlett and Fort Cavazos is not published. If unsure, call the district at 254-532-9800. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "The Bell County Public Health District publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Bell County Public Health District (read 2026-10-06): contracts go to the district (Rule 14(A)), and within 30 days after a property transfer (permit application). No channel or renewal lead time is published; renewal timing from 30 TAC 285.7(d)(2), 30 days before the current contract expires. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. The district's rules don't address it."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "The Bell County Public Health District describes no reply to maintenance reports or contracts."
+  }
+}
