@@ -211,6 +211,9 @@ export async function packageProblems(db: Executor, f: PackageFiling, resolved: 
   if (f.kind === "inspection_report" && rules.inspectionReports?.submission === "unknown") {
     problems.push(`${resolved.authorityName} has not published how inspection reports are submitted, so this report cannot be filed through Aerowise`);
   }
+  if (f.kind === "contract" && rules.contracts?.submission === "unknown") {
+    problems.push(`${resolved.authorityName} has not published how maintenance contracts are submitted, so this contract cannot be filed through Aerowise`);
+  }
   return problems;
 }
 

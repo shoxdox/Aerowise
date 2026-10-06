@@ -14,6 +14,13 @@ Each of these is open in `profile.unresolved`. The Ellis County Department of De
 6. **Is there a county form or field list for maintenance reports?**
 7. **What are the current regulations' order number and adoption date?**
 
+## Evidence gaps and conflicts
+
+- elliscountytx.gov (and co.ellis.tx.us) timed out on 2026-10-06, on the first try and on one bounded retry. The Septic Regulations (DocumentCenter 6592), the DoD Master Fee Schedule effective 2023-09-01 (7503) and the OSSF affidavit application (24166) were not read. Frequency, deadline, contract timing and fees are therefore TCEQ defaults, not county rules.
+- TCEQ's authorized-agent lookup, which would show which cities run their own program, also timed out.
+- dod@elliscountytx.gov is the department's general contact address. Nothing says it takes maintenance reports or contracts, so it isn't used.
+- Everything else comes from ellispermits.com, read directly. Nothing came through a summary.
+
 ## Identity
 
 - key: `tx-ellis-county`, ruleset v1
