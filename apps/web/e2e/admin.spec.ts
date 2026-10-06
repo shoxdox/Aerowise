@@ -76,6 +76,7 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await record.getByRole("combobox", { name: "Open question it answers" }).selectOption({ index: 1 });
   expect(await firstOpen.textContent()).toMatch(/cover sheet/);
   await record.getByRole("combobox", { name: "Topic", exact: true }).selectOption("receipt_acceptance");
+  await record.getByRole("combobox", { name: "Outcome", exact: true }).selectOption("confirms");
   await record.getByLabel("Answer", { exact: true }).fill("LCRA replied 'received' to the provider.");
   await record.getByRole("button", { name: "Save evidence" }).click();
   const open = page.getByRole("region", { name: "Open questions" }).getByRole("article").first();
