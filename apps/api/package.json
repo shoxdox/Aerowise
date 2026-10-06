@@ -8,7 +8,8 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "openapi": "tsx src/print-openapi.ts"
+    "openapi": "tsx src/print-openapi.ts",
+    "demo-story": "tsx src/demo-story-cli.ts"
   },
   "dependencies": {
     "@aerowise/billing": "workspace:*",
