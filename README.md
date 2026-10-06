@@ -15,6 +15,7 @@ The product spec lives alongside the code: start with [PRODUCT-SPEC.md](PRODUCT-
 | Customers, contacts, sites, wastewater systems (API + office screens) | Done |
 | Append-only audit log | Done |
 | Public marketing page at `/`: the problem, how it works, county coverage read from the rulesets (verified ones badged), design-partner pricing from configuration, and a demo request form that lands in `/admin` and emails Aerowise (rate-limited, with a spam trap); placeholder copy | Done |
+| Terms of service and privacy policy pages (placeholder text), each owner's acceptance recorded with version and time, and asked again when a version changes | Done; **needs lawyer-reviewed text** |
 | Platform admin console (`/admin`): separate admin sign-in, create organizations, list them with usage, invite an organization's first owner, platform audit log | Done |
 | User invitations: owner and office invite by email with a role (office cannot invite an owner); single-use links that expire after 7 days; accepting sets a password and signs in | Done |
 | Password reset by email (single-use, one-hour links, rate-limited, never says whether an email exists) and deactivating a user (signed out at once) | Done |

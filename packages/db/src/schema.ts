@@ -612,6 +612,17 @@ export type EmailSendStatus = "sending" | "accepted" | "failed" | "needs_review"
 export type EmailDeliveryStatus = "delayed" | "delivered" | "bounced" | "complained" | "failed" | "suppressed";
 export type EmailEventType = "sent" | EmailDeliveryStatus;
 
+/** W8.3: append-only; each owner's acceptance of a terms or privacy version. */
+export interface LegalAcceptancesTable {
+  id: Generated<string>;
+  organizationId: string;
+  userId: string;
+  document: "terms" | "privacy";
+  version: string;
+  acceptedAt: Date;
+  requestId: string | null;
+}
+
 /** W8.2: platform-wide, no organization_id (a prospect is not an organization yet). */
 export interface DemoRequestsTable {
   id: Generated<string>;
@@ -1250,6 +1261,7 @@ export interface DB {
   emailEvents: EmailEventsTable;
   platformAdmins: PlatformAdminsTable;
   demoRequests: DemoRequestsTable;
+  legalAcceptances: LegalAcceptancesTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   supportSessions: SupportSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;

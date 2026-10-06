@@ -34,6 +34,8 @@ describe("read-only support access", () => {
     const me = (await api.get("/auth/me")).json();
     expect(me).toMatchObject({ role: "owner", organization: { id: t.org.id }, user: { name: "Aerowise support (Founder)" }, support: { adminName: "Founder", expiresAt: body.expiresAt } });
     expect(me.organizations).toHaveLength(1);
+    // The owner has not accepted the terms, but support is not asked to accept them for the owner (W8.3).
+    expect(me.legalDue).toEqual([]);
     expect((await api.get("/customers")).json().items.map((c: { displayName: string }) => c.displayName)).toEqual(["Org A customer"]);
     expect((await api.get("/users")).statusCode).toBe(200);
     // The support view lasts an hour.
