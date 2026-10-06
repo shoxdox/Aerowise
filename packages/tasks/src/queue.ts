@@ -55,6 +55,8 @@ export async function claimNext(db: Database, workerId: string, now: Date = new 
       where completed_at is null and failed_at is null and run_at <= ${now}
         and (locked_at is null or locked_at < ${now}::timestamptz - ${LOCK_TIMEOUT}::interval)
         ${onlyOrg}
+        -- A visitor's demo company (W10.2) does nothing more once it has ended.
+        and not exists (select 1 from organizations o where o.id = background_tasks.organization_id and o.demo_expires_at <= ${now})
       order by run_at
       for update skip locked
       limit 1

@@ -3,7 +3,8 @@ import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
 import { DEMO_VISIT_HOURS } from "../src/routes/demo-visits.ts";
-import { setupTestApp } from "./helpers.ts";
+import { claimNext, checkQueue } from "@aerowise/tasks";
+import { createOrg, createUser, login, setupTestApp } from "./helpers.ts";
 
 // "Try the demo" (W10.2): each visitor gets a demo company of their own, signed in as its
 // owner, with no password anyone could share; limits per visitor and overall; gone after a day.
@@ -135,5 +136,51 @@ describe("visitor demos", () => {
       expect(await ctx.db.selectFrom("memberships").select("userId").where("organizationId", "=", id).execute()).toEqual([]);
     }
     expect(await ctx.db.selectFrom("demoVisits").select("id").execute()).toHaveLength(1);
+  });
+
+  it("ending visitor A's demo touches only A: not visitor B, nor a separate sandbox company, nor their queued work", async () => {
+    const a = await app({ perHour: 2, maxLive: 3 });
+    const visitorA = await start(a, "203.0.113.10");
+    const visitorB = await start(a, "203.0.113.11");
+    const [orgA, orgB] = [visitorA.json().organizationId as string, visitorB.json().organizationId as string];
+    const [cookieA, cookieB] = [cookieOf(visitorA), cookieOf(visitorB)];
+    // A company made by hand on the same server (as staging's sandbox is): not a visitor demo.
+    const sandbox = await createOrg(ctx.db, "Sandbox company");
+    const sandboxOwner = await createUser(ctx.db, sandbox.id, "owner");
+    const sandboxCookie = await login(a, sandboxOwner.email);
+
+    const queue = async (organizationId: string) =>
+      ctx.db
+        .insertInto("backgroundTasks")
+        .values({ organizationId, kind: "email.send", payload: "{}", dedupeKey: null, runAt: new Date(0), lockedAt: null, lockedBy: null, lastError: null, completedAt: null, failedAt: null })
+        .returning("id")
+        .executeTakeFirstOrThrow();
+    const [taskA, taskB, taskSandbox] = [await queue(orgA), await queue(orgB), await queue(sandbox.id)];
+
+    // Visitor A's day is over (their session row has not run out yet).
+    await sql`update organizations set demo_expires_at = now() - interval '1 hour' where id = ${orgA}`.execute(ctx.db);
+
+    // A is let in nowhere, and nothing queued for A runs or counts as a stalled queue.
+    expect((await a.inject({ method: "GET", url: "/auth/me", headers: { cookie: cookieA } })).statusCode).toBe(401);
+    expect((await a.inject({ method: "POST", url: "/demo/switch", payload: { role: "office" }, headers: { cookie: cookieA } })).statusCode).toBe(401);
+    expect(await claimNext(ctx.db, "test", new Date(), orgA)).toBeNull();
+    const health = await checkQueue(ctx.db, new Date(Date.now() + 3600_000));
+    expect(health.alerts.some((x) => JSON.stringify(x).includes(orgA))).toBe(false);
+    // B and the sandbox company carry on.
+    expect((await a.inject({ method: "GET", url: "/auth/me", headers: { cookie: cookieB } })).statusCode).toBe(200);
+    expect((await a.inject({ method: "GET", url: "/auth/me", headers: { cookie: sandboxCookie } })).statusCode).toBe(200);
+    expect((await claimNext(ctx.db, "test", new Date(), orgB))?.id).toBe(taskB.id);
+
+    // The next start empties A only.
+    expect((await start(a, "203.0.113.12")).statusCode).toBe(200);
+    expect(await ctx.db.selectFrom("customers").select("id").where("organizationId", "=", orgA).execute()).toEqual([]);
+    expect(await ctx.db.selectFrom("backgroundTasks").select("id").where("id", "=", taskA.id).execute()).toEqual([]);
+    expect((await ctx.db.selectFrom("customers").select("id").where("organizationId", "=", orgB).execute()).length).toBeGreaterThan(0);
+    expect((await a.inject({ method: "GET", url: "/auth/me", headers: { cookie: cookieB } })).statusCode).toBe(200);
+    expect((await a.inject({ method: "GET", url: "/auth/me", headers: { cookie: sandboxCookie } })).statusCode).toBe(200);
+    const sandboxTask = await ctx.db.selectFrom("backgroundTasks").select(["attempts", "lockedBy", "completedAt"]).where("id", "=", taskSandbox.id).executeTakeFirstOrThrow();
+    expect(sandboxTask).toEqual({ attempts: 0, lockedBy: null, completedAt: null });
+    // The sandbox company is not a visitor demo: it cannot switch people.
+    expect((await a.inject({ method: "POST", url: "/demo/switch", payload: { role: "office" }, headers: { cookie: sandboxCookie } })).statusCode).toBe(403);
   });
 });

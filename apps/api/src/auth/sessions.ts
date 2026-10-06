@@ -46,6 +46,8 @@ export async function findSession(db: Database, token: string): Promise<AuthCont
     .where("s.expiresAt", ">", new Date())
     .where("u.active", "=", true)
     .where("m.active", "=", true)
+    // A visitor's demo company (W10.2) lets no one in once it has ended, whatever the session says.
+    .where((eb) => eb.or([eb("o.demoExpiresAt", "is", null), eb("o.demoExpiresAt", ">", new Date())]))
     .executeTakeFirst();
   return row ?? null;
 }

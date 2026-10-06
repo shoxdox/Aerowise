@@ -46,6 +46,8 @@ export async function checkQueue(db: Database, now: Date, opts: { stallAfterMs?:
     .where("failedAt", "is", null)
     .where("runAt", "<=", stalledBefore)
     .where((eb) => eb.or([eb("lockedAt", "is", null), eb("lockedAt", "<", sql<Date>`${now}::timestamptz - interval '10 minutes'`)]))
+    // An ended visitor demo's tasks are never run (claimNext), so they are not a stall.
+    .where(sql<boolean>`not exists (select 1 from organizations o where o.id = background_tasks.organization_id and o.demo_expires_at <= ${now})`)
     .executeTakeFirstOrThrow();
   const failing = await db
     .selectFrom("backgroundTasks")
