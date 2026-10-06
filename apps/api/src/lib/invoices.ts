@@ -319,6 +319,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       reference: p.reference,
       note: p.note,
       failureReason: p.failureReason,
+      awaitingBankVerification: p.status === "pending" && p.bankVerificationUrl !== null,
       createdAt: p.createdAt.toISOString(),
       refunds: refunds
         .filter((r) => r.paymentId === p.id)

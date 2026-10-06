@@ -64,6 +64,15 @@ async function apply(trx: Transaction<DB>, organizationId: string, event: Webhoo
         .executeTakeFirst();
       return Number(res.numUpdatedRows) ? "checkout expired" : "ignored: checkout not open";
     }
+    // A bank payment entered by hand (not through instant verification) can't be taken until
+    // the customer confirms two small deposits (or a code) on a Stripe page.
+    case "payment_intent.requires_action":
+      return bankVerificationNeeded(trx, organizationId, o, now);
+    case "payment_intent.processing":
+      return bankVerificationDone(trx, organizationId, o, now);
+    // A bank payment whose account was never verified, or that otherwise could not go ahead.
+    case "payment_intent.payment_failed":
+      return pendingPaymentFailed(trx, organizationId, o, now);
     case "refund.created":
     case "refund.updated":
       return refundEvent(trx, organizationId, o, now);
@@ -95,7 +104,8 @@ async function checkoutPayment(trx: Transaction<DB>, organizationId: string, ses
     .executeTakeFirst();
   if (!invoice) return "ignored: invoice not found";
 
-  await trx.updateTable("checkoutSessions").set({ status: "complete" }).where("organizationId", "=", organizationId).where("providerSessionId", "=", String(session.id)).execute();
+  const sessionId = str(session.id);
+  if (sessionId) await trx.updateTable("checkoutSessions").set({ status: "complete" }).where("organizationId", "=", organizationId).where("providerSessionId", "=", sessionId).execute();
 
   const existing = await trx.selectFrom("payments").selectAll().where("providerPaymentId", "=", paymentIntent).forUpdate().executeTakeFirst();
   if (existing && existing.organizationId !== organizationId) return "ignored: payment belongs to another account";
@@ -106,7 +116,8 @@ async function checkoutPayment(trx: Transaction<DB>, organizationId: string, ses
   const stamp = { succeededAt: status === "succeeded" ? now : null, failedAt: status === "failed" ? now : null };
   let paymentId: string;
   if (existing) {
-    await trx.updateTable("payments").set({ status, failureReason, ...stamp, updatedAt: now }).where("id", "=", existing.id).execute();
+    // A payment that cleared or failed has nothing left to verify.
+    await trx.updateTable("payments").set({ status, failureReason, ...stamp, bankVerificationUrl: null, updatedAt: now }).where("id", "=", existing.id).execute();
     paymentId = existing.id;
   } else {
     const row = await trx
@@ -119,7 +130,7 @@ async function checkoutPayment(trx: Transaction<DB>, organizationId: string, ses
         source: "stripe",
         status,
         providerPaymentId: paymentIntent,
-        providerSessionId: str(session.id),
+        providerSessionId: sessionId,
         receivedOn: null,
         reference: null,
         note: null,
@@ -190,3 +201,70 @@ async function refundEvent(trx: Transaction<DB>, organizationId: string, r: Obj,
   }
   return `refund ${status}`;
 }
+
+/** Stripe's hosted microdeposit page for this PaymentIntent, if that is what it waits on. */
+function verificationUrlOf(pi: Obj): string | null {
+  const next = (pi.next_action ?? null) as Obj | null;
+  if (!next || next.type !== "verify_with_microdeposits") return null;
+  const url = str(((next.verify_with_microdeposits ?? {}) as Obj).hosted_verification_url);
+  if (!url) return null;
+  // Only ever send the customer to Stripe.
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && (u.hostname === "stripe.com" || u.hostname.endsWith(".stripe.com")) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The PaymentIntent seen as the checkout session that made it, for checkoutPayment. */
+const asSession = (pi: Obj): Obj => ({ id: null, metadata: pi.metadata, payment_intent: pi.id, amount_total: pi.amount });
+
+async function bankVerificationNeeded(trx: Transaction<DB>, organizationId: string, pi: Obj, now: Date): Promise<string> {
+  const url = verificationUrlOf(pi);
+  const piId = str(pi.id);
+  if (!url || !piId) return "ignored: not a bank account verification";
+  let payment = await trx.selectFrom("payments").select(["id", "status", "invoiceId", "bankVerificationUrl"]).where("organizationId", "=", organizationId).where("providerPaymentId", "=", piId).executeTakeFirst();
+  if (!payment) {
+    // Ahead of checkout.session.completed: record the bank payment now, as that event would.
+    const outcome = await checkoutPayment(trx, organizationId, asSession(pi), "pending", "ach", now);
+    if (!outcome.startsWith("payment pending")) return outcome;
+    payment = await trx.selectFrom("payments").select(["id", "status", "invoiceId", "bankVerificationUrl"]).where("organizationId", "=", organizationId).where("providerPaymentId", "=", piId).executeTakeFirstOrThrow();
+  }
+  if (payment.status !== "pending") return `unchanged: payment already ${payment.status}`;
+  if (payment.bankVerificationUrl === url) return "unchanged: already waiting on bank verification";
+  await trx.updateTable("payments").set({ bankVerificationUrl: url, updatedAt: now }).where("id", "=", payment.id).execute();
+  await invoiceEvent(trx, {
+    organizationId,
+    invoiceId: payment.invoiceId,
+    eventType: "payment_needs_verification",
+    summary: "Bank payment waiting for the customer to verify their bank account",
+    paymentId: payment.id,
+    at: now,
+  });
+  return "payment waiting on bank verification";
+}
+
+async function bankVerificationDone(trx: Transaction<DB>, organizationId: string, pi: Obj, now: Date): Promise<string> {
+  const piId = str(pi.id);
+  if (!piId) return "ignored: no payment";
+  const res = await trx
+    .updateTable("payments")
+    .set({ bankVerificationUrl: null, updatedAt: now })
+    .where("organizationId", "=", organizationId)
+    .where("providerPaymentId", "=", piId)
+    .where("bankVerificationUrl", "is not", null)
+    .executeTakeFirst();
+  return Number(res.numUpdatedRows) ? "bank account verified; payment clearing" : "unchanged: nothing waiting on verification";
+}
+
+async function pendingPaymentFailed(trx: Transaction<DB>, organizationId: string, pi: Obj, now: Date): Promise<string> {
+  const piId = str(pi.id);
+  if (!piId) return "ignored: no payment";
+  // A card declined at checkout never became a payment; only a bank payment we recorded can fail here.
+  const existing = await trx.selectFrom("payments").select(["status"]).where("organizationId", "=", organizationId).where("providerPaymentId", "=", piId).executeTakeFirst();
+  if (!existing) return "ignored: no payment recorded";
+  if (existing.status !== "pending") return `unchanged: payment already ${existing.status}`;
+  return checkoutPayment(trx, organizationId, asSession(pi), "failed", "ach", now);
+}
+

@@ -59,9 +59,9 @@ Where two streams touch the same file, the dependency column says who goes first
 | W6.6 | Ruleset coverage page in `/admin` | W2.1, W6.5 | done (#42) |
 | W6.7 | Justin's answers on the county rules (DECISIONS.md, 2026-10-05) | W6.1–W6.4 | in progress: site type (#52), visit warning (#57), lab limits and report (#64), filing fees on invoices (this PR); county rulesets follow |
 | W6.C* | County rulesets, one authority per PR | W6.1, W6.2 | not started |
-| W7.1 | Stripe Connect live readiness | W1.3 | done (#54); keys set on staging by Codex, the recorded run is next |
-| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | done (#60); keys set on staging by Codex, the recorded sandbox sync is next |
-| W7.3 | Twilio on a real account | W1.3 | code done (PR open): `DEMO_LIVE_SERVICES=sms` with `SMS_REDIRECT_TO` (one test phone), route and live steps in `INTEGRATIONS.md`; blocked on a paid, approved Twilio number (Justin chose to wait, 2026-10-06) |
+| W7.1 | Stripe Connect live readiness | W1.3 | done (#54); staging run: onboarding, card, refund and webhooks passed; ACH needed microdeposit verification on the pay page (fix PR open), to re-run |
+| W7.2 | QuickBooks against an Intuit sandbox | W1.3 | done (#60); staging connected to the sandbox company; review, invoice, payment and conflict runs pending |
+| W7.3 | Twilio on a real account | W1.3 | done (#63): `DEMO_LIVE_SERVICES=sms` with `SMS_REDIRECT_TO` (one test phone), route and live steps in `INTEGRATIONS.md`; blocked on a paid, approved Twilio number (Justin chose to wait, 2026-10-06) |
 | W8.1 | Public marketing page | W6.5 | done (#37) |
 | W8.2 | Demo request form | W2.1, W8.1 | done (#40) |
 | W8.3 | Terms and privacy pages with recorded acceptance | W2.1 | done (#43); placeholder text until Justin supplies lawyer-reviewed text |

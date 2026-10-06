@@ -339,7 +339,7 @@ export default function InvoicePage() {
                     ))}
                   </td>
                   <td>
-                    <span className={`badge ${p.status === "succeeded" ? "ok" : p.status === "failed" ? "danger" : "upcoming"}`}>{PAYMENT_STATE[p.status]}</span>
+                    <span className={`badge ${p.status === "succeeded" ? "ok" : p.status === "failed" ? "danger" : "upcoming"}`}>{p.awaitingBankVerification ? "waiting on customer to verify bank" : PAYMENT_STATE[p.status]}</span>
                     {p.failureReason && <div className="error small">{p.failureReason}</div>}
                   </td>
                   <td>

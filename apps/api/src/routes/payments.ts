@@ -121,6 +121,15 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     async (req): Promise<PublicInvoice> => {
       const inv = await byToken(req.params.token);
       const s = invoiceSnapshot.parse(inv.snapshot);
+      const verify = await db
+        .selectFrom("payments")
+        .select("bankVerificationUrl")
+        .where("organizationId", "=", inv.organizationId)
+        .where("invoiceId", "=", inv.id)
+        .where("status", "=", "pending")
+        .where("bankVerificationUrl", "is not", null)
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
       return {
         number: s.number,
         status: inv.status,
@@ -140,6 +149,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         pendingCents: inv.pendingCents,
         amountDueCents: amountDue(inv),
         canPayOnline: canPayOnline(provider, inv),
+        bankVerificationUrl: verify?.bankVerificationUrl ?? null,
         pdfReady: !!inv.pdfStorageKey,
         testMode: provider?.kind === "test",
       };
