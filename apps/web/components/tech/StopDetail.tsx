@@ -3,7 +3,7 @@ import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { api, ApiError } from "@/lib/api";
 import type { LocalInspection } from "@/lib/offline/db";
-import { day } from "@/lib/format";
+import { clock, day } from "@/lib/format";
 import { stopStatus } from "./StopList";
 
 export function StopDetail({ stop, inspection, canStart, onStart }: { stop: Stop; inspection: LocalInspection | undefined; canStart: boolean; onStart: () => void }) {
@@ -98,7 +98,7 @@ const OUTCOME_TEXT: Record<SmsQueueResult["outcome"], string> = {
 
 /** Tells the customer the technician is heading over. Needs signal; one text per visit. */
 function OnTheWay({ stop }: { stop: Stop }) {
-  const [result, setResult] = useState<string | null>(stop.onTheWayAt ? `On the way since ${new Date(stop.onTheWayAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : null);
+  const [result, setResult] = useState<string | null>(stop.onTheWayAt ? `On the way since ${clock(stop.onTheWayAt)}` : null);
   const [busy, setBusy] = useState(false);
   async function send() {
     setBusy(true);

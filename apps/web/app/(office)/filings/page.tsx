@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
-import { day } from "@/lib/format";
+import { day, dayOf } from "@/lib/format";
 
 const VIEWS = [
   { key: "attention", label: "Needs attention" },
@@ -15,7 +15,7 @@ const VIEWS = [
   { key: "all", label: "All" },
 ] as const;
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—");
+const when = dayOf;
 
 /** What the office should know about a filing, in a few words. */
 function note(f: FilingListItem) {

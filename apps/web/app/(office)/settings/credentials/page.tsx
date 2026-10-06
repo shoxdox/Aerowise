@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day } from "@/lib/format";
+import { day, today } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
 /**
@@ -55,7 +55,7 @@ export default function CredentialsPage() {
     }, "Added");
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const todayOn = today();
   const responsible = data.items.find((c) => c.responsible);
   return (
     <div className="stack">
@@ -118,7 +118,7 @@ export default function CredentialsPage() {
               <td>{c.number}</td>
               <td>
                 {c.expiresOn ? day(c.expiresOn) : "—"}
-                {c.expiresOn && c.expiresOn < today && <span className="badge expired">Expired</span>}
+                {c.expiresOn && c.expiresOn < todayOn && <span className="badge expired">Expired</span>}
               </td>
               <td className="small">{c.verifiedOn ? `${day(c.verifiedOn)}, ${c.verificationSource}` : <span className="muted">Not recorded</span>}</td>
               <td>

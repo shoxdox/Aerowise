@@ -7,6 +7,7 @@ import { StopDetail } from "@/components/tech/StopDetail";
 import { StopList } from "@/components/tech/StopList";
 import { SyncBanner } from "@/components/tech/SyncBanner";
 import { api } from "@/lib/api";
+import { setDisplayTimeZone } from "@/lib/format";
 import { allInspections, allOps, saveInspection, type LocalInspection } from "@/lib/offline/db";
 import { currentPosition, loadActiveTemplate, loadMe, loadRoute } from "@/lib/offline/data";
 import { startBackgroundSync, subscribe, syncNow, type SyncState } from "@/lib/offline/sync";
@@ -51,6 +52,7 @@ export default function TechApp() {
       return;
     }
     setNeedsSignIn(m.signedOut);
+    if (m.data) setDisplayTimeZone(m.data.organization.timezone);
     setMe(m.data ?? null);
     if (r.route) setRoute(r.route);
     setFetchedAt(r.fetchedAt);

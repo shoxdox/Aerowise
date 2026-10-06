@@ -1,7 +1,7 @@
 import type { Stop } from "@aerowise/domain";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import type { LocalInspection } from "@/lib/offline/db";
-import { day } from "@/lib/format";
+import { clock, day } from "@/lib/format";
 
 export function stopStatus(stop: Stop, insp: LocalInspection | undefined): { label: string; tone: "" | "ok" | "warn" } {
   if (insp?.status === "completed") return insp.server?.status === "completed" ? { label: "Done", tone: "ok" } : { label: "Done · not sent yet", tone: "warn" };
@@ -39,7 +39,7 @@ export function StopList({
           <h1>{day(route.date)}</h1>
           <p className="muted small">
             {done} of {route.items.length} stops done
-            {fetchedAt && ` · route updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+            {fetchedAt && ` · route updated ${clock(fetchedAt)}`}
           </p>
         </div>
         <span className="spacer" />
