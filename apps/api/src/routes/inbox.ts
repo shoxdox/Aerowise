@@ -257,28 +257,43 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     });
   }
 
-  /** Lab tests (BOD, TSS) the site's authority requires that are past their due date. */
-  async function lateLabTests(organizationId: string, today: string): Promise<InboxException[]> {
-    const late = (await labTestStatuses(db, organizationId, today)).filter((t) => t.state === "late").slice(0, PER_KIND);
-    if (late.length === 0) return [];
+  /**
+   * Lab tests (BOD, TSS) the site's authority requires that are past their due date, and
+   * latest results above the authority's limits.
+   */
+  async function labTestItems(organizationId: string, today: string): Promise<InboxException[]> {
+    const statuses = await labTestStatuses(db, organizationId, today);
+    const late = statuses.filter((t) => t.state === "late").slice(0, PER_KIND);
+    const over = statuses.filter((t) => t.overLimit.length > 0).slice(0, PER_KIND);
+    if (late.length === 0 && over.length === 0) return [];
     const rows = await sites(organizationId)
       .select(["s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
-      .where("s.id", "in", late.map((t) => t.siteId))
+      .where("s.id", "in", [...late, ...over].map((t) => t.siteId))
       .execute();
-    return late.map((t) => {
-      const r = rows.find((x) => x.siteId === t.siteId)!;
-      return {
-        key: `lab_test_late:${t.siteId}`,
-        kind: "lab_test_late" as const,
-        severity: "high" as const,
-        title: `${t.analytes.map((a) => LAB_ANALYTE_LABELS[a]).join(" and ")} lab test overdue`,
-        detail: `${t.authorityName} requires one every ${t.everyMonths} months; due ${t.dueOn} (${t.dueBasis})`,
-        dueOn: t.dueOn,
-        site: site(r),
-        customer: customer(r),
-        target: { type: "site" as const, id: t.siteId },
-      };
-    });
+    const at = (siteId: string) => rows.find((x) => x.siteId === siteId)!;
+    const lateItems = late.map((t) => ({
+      key: `lab_test_late:${t.siteId}`,
+      kind: "lab_test_late" as const,
+      severity: "high" as const,
+      title: `${t.analytes.map((a) => LAB_ANALYTE_LABELS[a]).join(" and ")} lab test overdue`,
+      detail: `${t.authorityName} requires one every ${t.everyMonths} months; due ${t.dueOn} (${t.dueBasis})`,
+      dueOn: t.dueOn,
+      site: site(at(t.siteId)),
+      customer: customer(at(t.siteId)),
+      target: { type: "site" as const, id: t.siteId },
+    }));
+    const overItems = over.map((t) => ({
+      key: `lab_result_over_limit:${t.siteId}`,
+      kind: "lab_result_over_limit" as const,
+      severity: "high" as const,
+      title: `${t.overLimit.map((o) => LAB_ANALYTE_LABELS[o.analyte]).join(" and ")} above ${t.authorityName}'s limit`,
+      detail: `Sample of ${t.lastSampledOn}: ${t.overLimit.map((o) => `${LAB_ANALYTE_LABELS[o.analyte]} ${o.value} mg/L (limit ${o.limit})`).join(", ")}`,
+      dueOn: null,
+      site: site(at(t.siteId)),
+      customer: customer(at(t.siteId)),
+      target: { type: "site" as const, id: t.siteId },
+    }));
+    return [...lateItems, ...overItems];
   }
 
   async function openIssues(organizationId: string): Promise<InboxException[]> {
@@ -627,7 +642,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           incompleteInspections(organizationId),
           filingExceptions(organizationId, today),
           lateNextVisits(organizationId, today),
-          lateLabTests(organizationId, today),
+          labTestItems(organizationId, today),
           openIssues(organizationId),
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),
