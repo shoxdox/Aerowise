@@ -22,7 +22,8 @@ describe("the marketing page's overview", () => {
   it("needs no sign-in and lists every real bundled authority, never the fictional one", async () => {
     const res = await overview();
     expect(res.statusCode).toBe(200);
-    const real = bundledRulesets().filter((r) => profileStatus(r) !== "fictional");
+    // One entry per authority, from its newest version.
+    const real = [...new Map(bundledRulesets().filter((r) => profileStatus(r) !== "fictional").map((r) => [r.jurisdiction.key, r])).values()];
     const coverage = res.json().coverage as { key: string; status: string; verified: unknown; counties: string[] }[];
     expect(coverage.map((c) => c.key).sort()).toEqual(real.map((r) => r.jurisdiction.key).sort());
     expect(coverage.map((c) => c.key)).not.toContain("tx-example-county");

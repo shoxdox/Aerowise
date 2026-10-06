@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, buildTermSchedule, contractState, visitsWithin } from "./schedule.ts";
+import { addMonths, anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, contractState, termEndOn, visitsWithin } from "./schedule.ts";
 
 describe("addMonths", () => {
   it("clamps to the end of shorter months", () => {
@@ -68,5 +68,47 @@ describe("visitsWithin", () => {
   it("falls back to monthly visits when nothing coarser divides the term", () => {
     expect(visitsWithin(7, 1, 2)).toBe(7);
     expect(visitsWithin(1, 1, 1)).toBe(1);
+  });
+});
+
+// Hays County Regulations 10.V.2: visits counted from the contract's start.
+describe("buildAnchoredSchedule", () => {
+  const HAYS = { firstWithinDays: 14, lastWithinDaysOfEnd: 14 };
+
+  it("puts the first visit within 14 days of the start, the middle ones every 4 months from it and the last in the final 14 days", () => {
+    const s = buildAnchoredSchedule("2026-01-15", 12, 4, HAYS);
+    expect(s.endOn).toBe("2027-01-14");
+    expect(s.visits).toEqual([
+      { sequence: 1, windowStart: "2026-01-15", windowEnd: "2026-01-29", dueOn: "2026-01-29" },
+      { sequence: 2, windowStart: "2026-01-30", windowEnd: "2026-05-15", dueOn: "2026-05-15" },
+      { sequence: 3, windowStart: "2026-05-16", windowEnd: "2026-09-15", dueOn: "2026-09-15" },
+      { sequence: 4, windowStart: "2026-12-31", windowEnd: "2027-01-14", dueOn: "2027-01-14" },
+    ]);
+  });
+
+  it("counts every due date from the start, not from the visit before", () => {
+    const s = buildAnchoredSchedule("2026-08-31", 24, 7, HAYS);
+    expect(s.visits.map((v) => v.dueOn)).toEqual(["2026-09-14", "2026-12-31", "2027-04-30", "2027-08-31", "2027-12-31", "2028-04-30", "2028-08-30"]);
+    expect(s.endOn).toBe(termEndOn("2026-08-31", 24));
+  });
+
+  it("rejects visit counts that do not fit the term", () => {
+    expect(() => buildAnchoredSchedule("2026-01-01", 12, 6, HAYS)).toThrow();
+    expect(() => buildAnchoredSchedule("2026-01-01", 12, 1, HAYS)).toThrow();
+    // A one-month term has no room for a first visit and a separate last one.
+    expect(() => buildAnchoredSchedule("2026-01-01", 1, 2, { firstWithinDays: 14, lastWithinDaysOfEnd: 21 })).toThrow();
+  });
+});
+
+describe("anchoredVisitsWithin", () => {
+  it("adds the visit at the start to the visits every 4 months", () => {
+    expect(anchoredVisitsWithin(12, 3, 4)).toBe(4);
+    expect(anchoredVisitsWithin(24, 6, 4)).toBe(7);
+    expect(anchoredVisitsWithin(6, 2, 4)).toBe(3);
+  });
+
+  it("never removes a plan's visits", () => {
+    expect(anchoredVisitsWithin(12, 13, 4)).toBe(13);
+    expect(anchoredVisitsWithin(12, 12, 4)).toBe(13);
   });
 });

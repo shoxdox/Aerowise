@@ -71,6 +71,55 @@ export function buildTermSchedule(startOn: string, termMonths: number, visitsPer
   return { endOn: addDays(addMonths(startOn, termMonths), -1), visits };
 }
 
+/** The last day of a term starting on `startOn`. */
+export const termEndOn = (startOn: string, termMonths: number) => addDays(addMonths(startOn, termMonths), -1);
+
+/** Visits counted from the contract's start, for authorities that set them that way (Hays 10.V.2). */
+export interface ContractVisitRule {
+  /** The first visit is due within this many days of the start. */
+  firstWithinDays: number;
+  /** The last visit falls in this many days before the end. */
+  lastWithinDaysOfEnd: number;
+}
+
+/**
+ * The fewest visits, at least `visitsPerTerm`, for a schedule counted from the contract's
+ * start: one at the start, one every whole number of months no more than
+ * `maxIntervalMonths` apart, and one at the end. A 12-month contract under a 4-month rule
+ * has 4 (start, +4, +8, end); a 24-month one has 7.
+ */
+export function anchoredVisitsWithin(termMonths: number, visitsPerTerm: number, maxIntervalMonths: number): number {
+  let visits = Math.max(visitsPerTerm, 2);
+  // Always ends: termMonths + 1 visits are one a month.
+  while (termMonths % (visits - 1) !== 0 || termMonths / (visits - 1) > maxIntervalMonths) visits++;
+  return visits;
+}
+
+/**
+ * A term's visits counted from its start (Hays 10.V.2): the first due within
+ * `firstWithinDays` of the start, the middle ones due every `termMonths / (visits - 1)`
+ * months from the start, and the last in the `lastWithinDaysOfEnd` days before the end.
+ * A 12-month contract starting 2026-01-15 with 4 visits is due 2026-01-29, 2026-05-15,
+ * 2026-09-15, and in 2027-01-01 to 2027-01-14.
+ */
+export function buildAnchoredSchedule(startOn: string, termMonths: number, visitsPerTerm: number, rule: ContractVisitRule): TermSchedule {
+  if (!Number.isInteger(termMonths) || termMonths < 1) throw new Error("termMonths must be a positive integer");
+  if (!Number.isInteger(visitsPerTerm) || visitsPerTerm < 2) throw new Error("a schedule counted from the start has at least 2 visits");
+  if (termMonths % (visitsPerTerm - 1) !== 0) throw new Error("termMonths must divide evenly into visitsPerTerm - 1");
+  const step = termMonths / (visitsPerTerm - 1);
+  const endOn = termEndOn(startOn, termMonths);
+  const lastStart = addDays(endOn, -rule.lastWithinDaysOfEnd);
+  const firstDue = addDays(startOn, rule.firstWithinDays);
+  if (firstDue >= lastStart) throw new Error("the term is too short for a first and a last visit");
+  const visits: VisitWindow[] = [{ sequence: 1, windowStart: startOn, windowEnd: firstDue, dueOn: firstDue }];
+  for (let k = 1; k <= visitsPerTerm - 2; k++) {
+    const dueOn = addMonths(startOn, k * step);
+    visits.push({ sequence: k + 1, windowStart: addDays(visits[k - 1]!.dueOn, 1), windowEnd: dueOn, dueOn });
+  }
+  visits.push({ sequence: visitsPerTerm, windowStart: lastStart, windowEnd: endOn, dueOn: endOn });
+  return { endOn, visits };
+}
+
 /**
  * The fewest visits, at least `visitsPerTerm`, that split the term into equal whole-month
  * windows no longer than `maxIntervalMonths`. A 12-month plan with 3 visits stays at 3

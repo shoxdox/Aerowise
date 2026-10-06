@@ -98,6 +98,12 @@ const siteFields = z.object({
   lat: z.number().min(-90).max(90).nullish(),
   lng: z.number().min(-180).max(180).nullish(),
   permitNumber: optionalText(100),
+  /**
+   * The longest time between inspections set by the site's own permit, where its authority
+   * lets the permit decide (Hays County). Needs a note saying where it was read.
+   */
+  permitIntervalMonths: z.number().int().min(1).max(24).nullish(),
+  permitIntervalNote: optionalText(500),
   accessNotes: optionalText(2000),
   gateCode: optionalText(50),
   safetyFlags: z.array(z.enum(SAFETY_FLAGS)).max(SAFETY_FLAGS.length),
@@ -130,6 +136,8 @@ export const site = z.object({
   /** `not_found`: the address could not be found on the map. */
   geocodeStatus: z.enum(["not_found"]).nullable(),
   permitNumber: z.string().nullable(),
+  permitIntervalMonths: z.number().int().nullable(),
+  permitIntervalNote: z.string().nullable(),
   accessNotes: z.string().nullable(),
   gateCode: z.string().nullable(),
   safetyFlags: z.array(z.enum(SAFETY_FLAGS)),

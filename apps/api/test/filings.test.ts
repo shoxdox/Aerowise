@@ -284,8 +284,9 @@ describe("rulesets", () => {
       else expect(r.profile?.status).toMatch(/^(draft|verified)$/);
     }
     // The real authorities are drafts with their open questions listed, so none files on its own.
+    // Every version counts: a corrected draft adds one beside the one it replaces.
     const real = bundledRulesets().filter((r) => r.profile);
-    expect(real.map((r) => r.jurisdiction.key).sort()).toEqual(["tx-bastrop-county", "tx-bell-county-phd", "tx-bexar-county", "tx-brazoria-county", "tx-city-of-denton", "tx-collin-county", "tx-comal-county", "tx-denton-county", "tx-ellis-county", "tx-grimes-county", "tx-harris-county-oce", "tx-hays-county", "tx-hill-county", "tx-johnson-county", "tx-kaufman-county", "tx-lcra-ossf", "tx-mclennan-county", "tx-montgomery-county", "tx-sjra-ossf", "tx-travis-county", "tx-williamson-county"]);
+    expect([...new Set(real.map((r) => r.jurisdiction.key))].sort()).toEqual(["tx-bastrop-county", "tx-bell-county-phd", "tx-bexar-county", "tx-brazoria-county", "tx-city-of-denton", "tx-collin-county", "tx-comal-county", "tx-denton-county", "tx-ellis-county", "tx-grimes-county", "tx-harris-county-oce", "tx-hays-county", "tx-hill-county", "tx-johnson-county", "tx-kaufman-county", "tx-lcra-ossf", "tx-mclennan-county", "tx-montgomery-county", "tx-sjra-ossf", "tx-travis-county", "tx-williamson-county"]);
     for (const r of real) {
       expect(r.profile!.status).toBe("draft");
       expect(r.profile!.unresolved.length).toBeGreaterThan(0);
