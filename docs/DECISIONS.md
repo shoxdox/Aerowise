@@ -461,6 +461,16 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Owner only (`data:export`), and allowed while read-only.** Routes opt out of the read-only write block with `config.allowedWhenReadOnly` (added by W4.3 for saving a payment method); asking for an export uses it too. Downloads are GETs and work anyway.
 - **Not done here:** expiring old exports from storage, and emailing the owner when an export is ready.
 
+## 2026-10-05 · W5.6 Organization data deletion and data-handling page
+
+- **What goes:** every row of every table with an `organization_id` (read from the database, so a later table is covered without a code change), every stored file under the organization's prefix, and the people who belonged to no other organization. Someone who also works for another company keeps their account; a user row another record still points at is emptied (name, email, phone, password) instead of deleted.
+- **What stays:** the organization row, as a tombstone with only its name, plan and billing customer id, marked `data_deleted_at`/`data_deleted_by`. The platform audit log points at it and records who deleted what (row counts per table, users, files). The audit record has no tenant data in it beyond the company name. The billing customer id stays so a final invoice or refund can still be found at the billing provider; deleting the customer there is a manual step.
+- **Append-only tables** (audit events, reports, signed documents) refuse deletes through triggers. The erase switches those triggers off inside its own transaction only (`alter table … disable trigger user`, which briefly locks those tables) and back on before committing. Acceptable for a rare, deliberate admin action.
+- **Order:** records first in one transaction, files after it commits. A file failure leaves only unreachable files and writes `organization.files_delete_failed` to the platform audit log so they can be removed by hand. The reverse order could leave records pointing at deleted files.
+- **Confirmation:** the admin types the organization's exact name. The organization goes read-only (billing stops), its plan can no longer be changed and no one can be invited to it. Deletion cannot be undone. The screen asks the admin to have the owner download an export first.
+- **Data-handling page** (`/data-handling`, linked from the marketing page footer): placeholder text describing what the software does today. Justin supplies the statement.
+- **Open:** whether the company name should also be blanked in the tombstone (kept now so the admin can tell which company was deleted); how long the platform audit record of a deletion is kept.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.

@@ -252,7 +252,7 @@ export async function buildApp({
   const transport = mail ?? new OutboxTransport(store, now);
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription, store });
   await app.register(adminSupportRoutes, { db, production });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
