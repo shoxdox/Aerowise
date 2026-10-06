@@ -46,6 +46,7 @@ export default function RulesetCoveragePage() {
                 </td>
                 <td>
                   <Status item={i} />
+                  {!i.verified && i.profileStatus !== "fictional" && <div className="muted small">{i.confirmation}</div>}
                 </td>
                 <td>{i.sourcesCheckedOn ? `${day(i.sourcesCheckedOn)} (${i.sourceCount} source${i.sourceCount === 1 ? "" : "s"})` : <span className="muted">—</span>}</td>
                 <td>
