@@ -18,3 +18,20 @@ test("a visitor starts their own demo company and lands in the owner's inbox", a
   await page.waitForURL("**/tech**");
   expect((await (await page.request.get("/api/auth/me")).json()).role).toBe("technician");
 });
+
+// W11.4: the marketing page offers "Try the demo" only where /demo answers.
+test("the marketing page links to Try the demo on the demo deployment", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("try-demo").click();
+  await page.waitForURL("**/demo");
+  await expect(page.getByRole("button", { name: "Start my demo" })).toBeVisible();
+});
+
+test("the marketing page hides Try the demo off the demo deployment", async ({ page }) => {
+  await page.route("**/api/app-info", (route) => route.fulfill({ json: { demo: false, demoCompany: false, demoVisitor: false } }));
+  const answered = page.waitForResponse("**/api/app-info");
+  await page.goto("/");
+  await answered;
+  await expect(page.getByRole("link", { name: "Ask for a demo" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Try the demo" })).toHaveCount(0);
+});

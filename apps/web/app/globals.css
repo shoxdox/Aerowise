@@ -191,6 +191,7 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 /* Customer portal */
 .ok-text { color: #17603f; }
 .portal-url { word-break: break-all; font-size: 0.85rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.wrap-anywhere { overflow-wrap: anywhere; }
 .notice { background: var(--warn-bg); color: var(--warn-text); padding: 8px 12px; border-radius: 8px; margin: 0; }
 
 .route-map { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; }
@@ -214,6 +215,7 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .marketing form.card { max-width: 520px; }
 .message { white-space: pre-wrap; margin: 0; }
 .marketing .cta { align-self: flex-start; }
+.marketing .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 fieldset.answer-fields { min-width: 0; }
 fieldset.answer-fields select { max-width: 100%; }

@@ -160,6 +160,8 @@ export const reportSigning = z.object({
   holderName: z.string().nullable(),
   /** Why this person cannot sign now. Empty when they can. */
   problems: z.array(z.string()),
+  /** The filing and customer copy wait for this signature. False only under a fictional demo ruleset. */
+  required: z.boolean(),
   /** The MP who signs this site's reports by default: the one named on the contract, else the organization's responsible MP. */
   provider: z.object({ name: z.string(), number: z.string(), source: z.enum(["contract", "organization"]) }).nullable(),
   /** This person is not that MP, so signing needs a documented delegation and supervision. */

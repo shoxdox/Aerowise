@@ -43,6 +43,11 @@ export const PRICING = {
 export const RESPONSIBILITY =
   "Aerowise prepares and tracks filings. The licensed maintenance provider reviews and is responsible for every report sent to an authority.";
 
+/** "Try the demo": shown only on the demo deployment, where /demo answers (W11.4). */
+export const TRY_DEMO = {
+  button: "Try the demo",
+};
+
 export const DEMO = {
   title: "Ask for a demo",
   intro: "Tell us about your company and we will set up a walkthrough with your own counties.",

@@ -62,3 +62,17 @@ test("on a phone the office menu folds away, tables scroll in place, and owner-o
   await page.goto("/schedule");
   await expect(page.getByLabel("Day", { exact: true })).toBeVisible();
 });
+
+test("second walk: a demo filing reads consistently and fits a phone", async ({ page }) => {
+  await signIn(page, "office@example.com");
+  await page.goto("/filings");
+  await page.getByRole("button", { name: "All" }).click();
+  await page.locator("table tbody tr a[href^='/filings/']").first().click();
+  // R1: the fictional county's rules don't wait for the signature, and the panel says so.
+  const panel = page.locator("section", { has: page.getByRole("heading", { name: "Maintenance provider signature" }) });
+  await expect(panel).toContainText("example county rules don't hold the filing");
+  await expect(panel).not.toContainText("so it cannot be filed");
+  // R2: the manifest hash wraps instead of widening the page.
+  await expect(page.getByText(/Manifest SHA-256/).first()).toBeVisible();
+  expect(await sideways(page)).toBeLessThanOrEqual(0);
+});
