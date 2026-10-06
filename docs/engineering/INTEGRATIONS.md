@@ -1,0 +1,84 @@
+# Integrations
+
+How each outside service Aerowise talks to is set up, tried on staging and switched to production. One section per service; W7 adds QuickBooks (W7.2) and Twilio (W7.3).
+
+| Service | What for | Code | Staging | Production |
+| --- | --- | --- | --- | --- |
+| Stripe Connect | Homeowners paying a company's invoices online | `packages/payments` | Test mode, with `DEMO_LIVE_SERVICES=stripe` | Live keys |
+| QuickBooks Online | Invoices and payments into the company's books | `packages/quickbooks` | Stand-in (W7.2) | — |
+| Twilio | Reminder texts and replies | `packages/sms` | Stand-in (W7.3) | — |
+
+Stripe Billing (what companies pay Aerowise, W4) is a separate Stripe relationship with its own keys (`STRIPE_BILLING_*`); nothing here touches it.
+
+## Real services on the staging demo
+
+Staging runs the demo (`DEMO_MODE=true`): every outside service is a test stand-in whatever keys are set, and the data is reset every night at 09:00 UTC. To try a service end to end, `DEMO_LIVE_SERVICES` in `/etc/aerowise/staging.env` names the services the demo uses for real anyway, comma-separated. Each one is allowed only in a mode where nothing real happens, and the API and worker refuse to start otherwise:
+
+- `stripe`: `STRIPE_SECRET_KEY` must be a test-mode key (`sk_test_` or `rk_test_`). No money moves.
+
+Everything not listed stays a stand-in. The settings check also refuses a live Stripe key on staging at all, and any `DEMO_LIVE_SERVICES` in production.
+
+After editing the settings file, redeploy staging so the containers pick it up:
+
+```sh
+sudo -u deploy aerowise-deploy staging $(sudo -u deploy git -C /opt/aerowise/staging ls-remote origin refs/heads/main | cut -f1)
+```
+
+The API's first log line says which services are live: `docker logs aerowise-staging-api-1 2>&1 | grep "demo mode"`.
+
+## Stripe Connect
+
+**How it works.** Each company has its own Stripe account (Express), created from **Settings > Billing > Set up online payments**. Homeowners pay on Stripe Checkout as a direct charge on that account, so the money settles to the company and Aerowise takes no fee. Card payments clear at checkout; bank (ACH) payments show as processing and clear or fail days later. Refunds are made from the invoice in Aerowise, or in the company's Stripe dashboard (Aerowise picks those up too). Every webhook is signature-checked, stored once by event id in `stripe_events` with what it did, and applied so that replays and out-of-order events end in the same state.
+
+### Setting up Stripe for staging (test mode)
+
+In the Stripe dashboard, with **Test mode** on:
+
+1. **Connect:** open Connect and finish the platform setup it asks for (platform profile, and loss responsibility for Express accounts). Under **Settings > Connect > Branding**, set a business name and icon; Express onboarding needs them.
+2. **Bank payments:** under **Settings > Connect > Payment methods**, turn on **ACH Direct Debit** for connected accounts (cards are on by default).
+3. **Webhook:** **Developers > Webhooks > Add endpoint**:
+   - URL `https://staging.deshain.com/api/webhooks/stripe`
+   - **Listen to events on Connected accounts**
+   - API version `2026-09-30.endive` (the version Aerowise's Stripe library uses), if offered
+   - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `account.updated`
+4. **Settings file** on the server (`/etc/aerowise/staging.env`), never in chat:
+   - `STRIPE_SECRET_KEY=` the test secret key (`sk_test_...`, **Developers > API keys**)
+   - `STRIPE_WEBHOOK_SECRET=` the endpoint's signing secret (`whsec_...`)
+   - `DEMO_LIVE_SERVICES=stripe`
+5. Redeploy staging (above).
+
+### The staging run
+
+Signed in to staging as the demo owner:
+
+1. **Onboarding.** **Settings > Billing > Set up online payments** opens Stripe's onboarding. Use Stripe's test values: phone `000 000 0000` and code `000000`, SSN `000-00-0000`, bank routing `110000000` and account `000123456789`. Back in Aerowise the page says online payments are on.
+2. **Card.** Issue an invoice to a customer, open its pay link and pay with card `4242 4242 4242 4242` (any future date, any CVC). The invoice shows paid.
+3. **Bank (ACH).** On a second invoice, pay by US bank account with routing `110000000` and account `000123456789`. It shows processing, then paid once Stripe clears it (minutes in test mode). Account `000111111116` fails instead, and the inbox flags it.
+4. **Refund.** Refund part of the card payment from its invoice. It shows the refund pending, then done.
+5. **Webhooks.** On the server, the events Aerowise received and what each did:
+
+   ```sh
+   docker exec aerowise-staging-db-1 psql -U aerowise -d aerowise -c "select received_at, type, livemode, outcome from stripe_events order by received_at"
+   ```
+
+   Every line should have `livemode` false and an outcome other than `ignored: not a connected account we know`. Stripe's own view is the endpoint's page under **Developers > Webhooks**.
+
+The nightly reset removes the demo company's link to its Stripe test account, so the next day's run starts again at onboarding. Old test accounts stay in Stripe; they cost nothing.
+
+Run log (newest last):
+
+| Date | Who | Onboarding | Card | ACH | Refund | Webhooks | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| — | — | — | — | — | — | — | Not run yet: waiting on the test-mode setup above. |
+
+### Switching production to live keys
+
+1. In Stripe with **Test mode off**, repeat setup steps 1–3 for live mode, with the URL `https://app.deshain.com/api/webhooks/stripe`. Stripe asks for the platform's business details before live Connect accounts can be created.
+2. In `/etc/aerowise/production.env`: `STRIPE_SECRET_KEY=sk_live_...` and `STRIPE_WEBHOOK_SECRET=` the live endpoint's secret. Leave `DEMO_LIVE_SERVICES` empty (production refuses it).
+3. Deploy production. Each company then sets up its own account from **Settings > Billing**; until it has, its invoices offer no online payment.
+4. Rotating the webhook secret: Stripe keeps the old secret valid for a while after **Roll secret**; list both, comma-separated, in `STRIPE_WEBHOOK_SECRET` until the old one expires.
+
+### Fixed during W7.1
+
+- Checkout pages asked Stripe for exactly 24 hours of life, Stripe's maximum counted on its own clock, so a server clock a little ahead got the page refused. They now last 23 hours.
+- A bank payment whose "cleared" event arrived before its "checkout completed" event was recorded as a card payment. Delayed-payment events now always mean a bank payment.

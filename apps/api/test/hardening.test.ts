@@ -72,9 +72,18 @@ describe("boot-time configuration check", () => {
     expect(configProblems({ ...staging, QUICKBOOKS_CLIENT_ID: "id", QUICKBOOKS_CLIENT_SECRET: "s", QUICKBOOKS_TOKEN_KEY: "aerowise-development-only-quickbooks-key" })).toEqual([
       "QUICKBOOKS_TOKEN_KEY must not be the development key",
     ]);
-    expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_live_x" })).toEqual(["STRIPE_WEBHOOK_SECRET is required when Stripe is configured"]);
+    expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_test_x" })).toEqual(["STRIPE_WEBHOOK_SECRET is required when Stripe is configured"]);
     expect(configProblems({ ...staging, STRIPE_BILLING_SECRET_KEY: "sk_live_x" })).toEqual(["STRIPE_BILLING_WEBHOOK_SECRET is required when Stripe Billing is configured"]);
     expect(configProblems({ ...staging, TWILIO_ACCOUNT_SID: "AC1" })).toEqual(["TWILIO_AUTH_TOKEN is required together"]);
+  });
+
+  it("keeps staging's Stripe in test mode, and the demo's live services off production", () => {
+    expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([]);
+    expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "rk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([]);
+    expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_live_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([
+      "STRIPE_SECRET_KEY must be a test-mode key (sk_test_ or rk_test_) on staging",
+    ]);
+    expect(configProblems({ ...production, DEMO_LIVE_SERVICES: "stripe" })).toEqual(["DEMO_LIVE_SERVICES is for the staging demo only; leave it empty in production"]);
   });
 
   it("keeps staging email in a test inbox, and production email out of one", () => {
