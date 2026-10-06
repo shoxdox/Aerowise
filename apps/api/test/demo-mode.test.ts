@@ -13,7 +13,7 @@ import { IntuitQuickBooksProvider, TestQuickBooksProvider } from "@aerowise/quic
 import { CensusGeocoder, TestGeocoder } from "@aerowise/routing";
 import { TestSmsProvider, TwilioSmsProvider } from "@aerowise/sms";
 import { LocalDiskStore } from "@aerowise/storage";
-import { demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
+import { demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { testDatabaseUrl } from "./db-url.ts";
@@ -54,6 +54,25 @@ describe("demo mode providers", () => {
       expect(p.geocoder).toBeInstanceOf(TestGeocoder);
       expect(p.billing).toBeInstanceOf(TestBillingProvider);
     }
+  });
+
+  it("uses real Stripe in demo mode only when DEMO_LIVE_SERVICES names it and the key is test mode", () => {
+    const testKeys = { ...realKeys, STRIPE_SECRET_KEY: "sk_test_not_a_real_key", DEMO_MODE: "true" };
+    const p = providersFromEnv({ db: ctx.db, store, env: { ...testKeys, DEMO_LIVE_SERVICES: " Stripe " }, production: true });
+    expect(p.demoLive).toEqual(["stripe"]);
+    expect(p.payments).toBeInstanceOf(StripeProvider);
+    // Everything else stays a stand-in.
+    expect(p.mail).toBeInstanceOf(OutboxTransport);
+    expect(p.quickbooks?.provider).toBeInstanceOf(TestQuickBooksProvider);
+    expect(p.sms?.provider).toBeInstanceOf(TestSmsProvider);
+    expect(p.billing).toBeInstanceOf(TestBillingProvider);
+    // Not listed: the stand-in, whatever key is set.
+    expect(providersFromEnv({ db: ctx.db, store, env: testKeys, production: true }).payments).toBeInstanceOf(TestPaymentProvider);
+    // A live key, a missing key or an unknown service refuses to start.
+    expect(() => providersFromEnv({ db: ctx.db, store, env: { ...realKeys, DEMO_MODE: "true", DEMO_LIVE_SERVICES: "stripe" }, production: true })).toThrow(/test-mode key/);
+    expect(() => demoLiveServicesFromEnv({ DEMO_LIVE_SERVICES: "stripe" })).toThrow(/test-mode key/);
+    expect(() => demoLiveServicesFromEnv({ DEMO_LIVE_SERVICES: "stripe,resend", STRIPE_SECRET_KEY: "sk_test_x" })).toThrow(/unknown service "resend"/);
+    expect([...demoLiveServicesFromEnv({ DEMO_LIVE_SERVICES: "" })]).toEqual([]);
   });
 
   it("uses the real services when demo mode is off", () => {

@@ -514,3 +514,11 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Without Stripe Billing keys nothing moves on its own.** Reminders still go out, but a free period past its end stays as it is until an admin changes it in `/admin`, since nothing can be collected.
 - **Every automatic change is in the platform audit log** as `organization.plan_changed` with no admin and a reason; a change the owner triggered from the subscription page is also in the company's own audit log.
 - **A lapsed company's automatic sends keep going**, as Justin decided in W4.3: nothing in the lifecycle pauses queued filings or homeowner reminders.
+
+## 2026-10-06 · W7.1 Stripe Connect on staging
+
+- **Staging stays the demo; named services go live in test mode.** Staging runs `DEMO_MODE=true` (stand-ins for everything, nightly reset), and W7 needs real accounts there. Rather than a third environment, `DEMO_LIVE_SERVICES` lists the services the demo uses for real. Each is allowed only in a mode where nothing real happens, checked at startup: Stripe only with a test-mode key. QuickBooks (sandbox only) and Twilio (texts redirected to one test phone) join the list in W7.2 and W7.3. The banner's "Nothing is sent" stays true for Stripe test mode.
+- **Staging refuses live Stripe keys outright**, with or without demo mode, and production refuses `DEMO_LIVE_SERVICES`.
+- **One Connect webhook endpoint.** With direct charges every event Aerowise reads (checkout, refunds, `account.updated`) happens on a connected account, so only the "Connected accounts" endpoint is needed; `STRIPE_WEBHOOK_SECRET` still takes several secrets for rotation.
+- **Checkout pages last 23 hours, not 24.** Stripe's 24-hour maximum is counted on its clock.
+- **The recorded run is a manual checklist plus the `stripe_events` table.** No Claude session can reach staging or Stripe from its sandbox, so Justin runs the steps in `INTEGRATIONS.md` and the webhook log on the server is the record.
