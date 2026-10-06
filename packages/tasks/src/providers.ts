@@ -22,7 +22,7 @@ export function demoModeFromEnv(env: Env): boolean {
 }
 
 /** Outside services that DEMO_LIVE_SERVICES may switch back to their real (test-mode) accounts. */
-export const DEMO_LIVE_SERVICE_NAMES = ["stripe"] as const;
+export const DEMO_LIVE_SERVICE_NAMES = ["stripe", "quickbooks"] as const;
 export type DemoLiveService = (typeof DEMO_LIVE_SERVICE_NAMES)[number];
 
 /** A Stripe key that can only move test-mode money. */
@@ -31,7 +31,8 @@ export const isStripeTestKey = (key: string | undefined) => /^(sk|rk)_test_/.tes
 /**
  * DEMO_LIVE_SERVICES (comma-separated, staging only) lets the named services use their real
  * accounts in demo mode, so they can be tried end to end on staging. Each must be in a mode
- * where nothing real happens: Stripe only with a test-mode key. Anything else refuses to start.
+ * where nothing real happens: Stripe only with a test-mode key, QuickBooks only against Intuit's
+ * sandbox. Anything else refuses to start.
  */
 export function demoLiveServicesFromEnv(env: Env): Set<DemoLiveService> {
   const names = (env.DEMO_LIVE_SERVICES ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -44,6 +45,12 @@ export function demoLiveServicesFromEnv(env: Env): Set<DemoLiveService> {
   }
   if (live.has("stripe") && !isStripeTestKey(env.STRIPE_SECRET_KEY)) {
     throw new Error("DEMO_LIVE_SERVICES lists stripe, so STRIPE_SECRET_KEY must be a test-mode key (sk_test_ or rk_test_)");
+  }
+  if (live.has("quickbooks")) {
+    if (!env.QUICKBOOKS_CLIENT_ID?.trim() || !env.QUICKBOOKS_CLIENT_SECRET?.trim()) {
+      throw new Error("DEMO_LIVE_SERVICES lists quickbooks, so QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET must be set");
+    }
+    if (env.QUICKBOOKS_ENVIRONMENT?.trim() !== "sandbox") throw new Error('DEMO_LIVE_SERVICES lists quickbooks, so QUICKBOOKS_ENVIRONMENT must be "sandbox"');
   }
   return live;
 }
@@ -83,7 +90,9 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
       mail: new OutboxTransport(store, now),
       mailProvider: null,
       payments: live.has("stripe") ? stripeFromEnv(env) : new TestPaymentProvider(),
-      quickbooks: { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher(env.QUICKBOOKS_TOKEN_KEY || undefined) },
+      quickbooks: live.has("quickbooks")
+        ? quickBooksFromEnv(db, env, production, now)
+        : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher(env.QUICKBOOKS_TOKEN_KEY || undefined) },
       sms: { provider: new TestSmsProvider(), webhookBaseUrl: smsWebhookBaseUrl(env) },
       geocoder: new TestGeocoder(),
       billing: new TestBillingProvider(),
