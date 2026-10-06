@@ -1,0 +1,7 @@
+                  id                  |           name            | demo | customers | sites | users 
+--------------------------------------+---------------------------+------+-----------+-------+-------
+ e22b379b-9249-43f1-b259-10de7f06550d | Example Septic LLC (demo) | t    |         0 |     0 |     0
+ 60438479-b881-4fa2-9c80-8ac1b20b2266 | Example Septic LLC        | f    |         0 |     0 |     0
+ 39d9e732-86ec-43b7-9145-9b8815d5a210 | Example Septic LLC (demo) | t    |        50 |    55 |     3
+(3 rows)
+

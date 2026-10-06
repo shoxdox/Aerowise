@@ -1,0 +1,5 @@
+ inspections | attachments | completions | filings 
+-------------+-------------+-------------+---------
+           4 |           8 |           4 |       4
+(1 row)
+

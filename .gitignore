@@ -19,3 +19,4 @@ playwright-report
 # Local browser walkthrough tooling; reviewed evidence belongs in docs/engineering.
 .playwright-cli/
 output/playwright/
+output/pdf/

@@ -1,8 +1,18 @@
 # Aerowise — current demo and pilot handoff
 
+## Live staging result — October 6, 2026
+
+**Ready for a guided public demo. Personalized prospect demos still need fixes.** Send https://staging.deshain.com. Click **Try the demo → Start my demo**; access is password-free, with Owner / Office / Technician switches. No shared demo passwords are required. Admin credentials are stored privately outside Git.
+
+Passed: HTTPS/API/web/worker health; owner pages and filing proof; office scheduling, synthetic import/summary/undo; phone-sized technician inspection/photos and offline reload/reconnect with exactly-once retry; local-outbox reset/invite mail; real-contact rejection; PDF/ZIP demo labeling; prospect name/logo, clean trial conversion and deletion; backup/scratch restore (73 tables, 1,328 rows, 59 files). DEMO_MODE is on, Twilio/Resend and all external service credentials are off. Production was left untouched.
+
+Open **P1**: nightly reseed also wipes prospect demos/trials; GitHub account restrictions block CI deployment (manual deploy succeeded). Open **P2**: ended technician demos retain cached routes; prospect sites remain fictional Example County despite Comal/Hays metadata; logo setup and technician access require owner settings/role switching; ruleset v2 is a reviewed proposal, with no live apply/revert; no app call-sheet PDF action; detached CSVs lack demo labels. Open **P3**: outbox notification badge says Emailed; exported PDF spacing needs polish. Physical-phone offline use remains untested. A manual printable call sheet was generated and visually checked; its Codex preview request is queued.
+
+Justin: no DNS, new account, paid service or keys are needed for this public demo. Resolve GitHub's payment/spending restriction to enable automatic deployment. Use public demo entry until personalized lifecycle is fixed; do not promise county acceptance. [Full walkthrough, screenshots and issues](engineering/STAGING-WALKTHROUGH-2026-10.md), [repeatable deploy record](engineering/RUNBOOK.md#staging-deployment-and-walkthrough--october-6-2026), [printable call sheet](engineering/staging-walkthrough-2026-10/aerowise-pilot-call-sheet.pdf).
+
 Updated October 6, 2026, after PR #90. Application baseline: `d646512b00327017736434fdd9ebb58a95509f8f`; migrations through `0046`. Later documentation commits may advance main without changing that application baseline.
 
-**Call: ready for a controlled demo and pilot preparation. Real deployment and authority acceptance still need evidence.** W10, W11 and the W12 implementation work have merged. The pilot call sheet is prepared; its first authority is not yet selected. No coding worker needs to restart the old kickoff.
+**Prior build handoff: ready for controlled demo and pilot preparation. Live staging evidence is recorded above; authority acceptance remains unconfirmed.** W10, W11 and the W12 implementation work have merged. The pilot call sheet is prepared; its first authority is not yet selected. No coding worker needs to restart the old kickoff.
 
 This document supersedes PilotBuildBrief.txt, the Oct 5 Pilot Build Brief, Aerowise-Next-Phases-2026-10-06.md and the pre-build Fable proposal. Those are history, not work orders. GitHub main is authoritative for code. This handoff, README and the pilot worksheet are authoritative for current status and next steps. Original research remains unchanged and retains its baseline labels; use current rulesets and jurisdiction docs for implemented behavior.
 
@@ -20,7 +30,7 @@ The real-authority library remains draft coverage. Harris v2 and LCRA acceptance
 
 1. **Choose one pilot provider and actual permitting authority.** County name alone is insufficient: a parcel may be under a city or river authority. Start with one office user, one technician and about 10–20 sites, alongside the provider's current process.
 2. **Obtain a small redacted sample pack.** Current site permits, signed maintenance contracts with dates/special conditions, a previously accepted report and receipt, and state/county provider credentials. The [pilot worksheet](PILOT-CALL-SHEET.md) lists exactly what to ask for.
-3. **Deploy and verify the finished code on controlled staging/demo infrastructure.** Check actual configured host, commit, migrations, health, isolation, real-device offline close/reopen/reconnect, backup and restore. No deployment was performed by this handoff. Keep public demo organizations separate from controlled real-service integration tests.
+3. **Finish field-device validation and staging lifecycle fixes.** Live staging, browser offline retry, isolation and scratch restore are verified above. Test physical-device close/reopen/reconnect and fix prospect persistence before treating this as pilot infrastructure. Keep public demo organizations separate from controlled real-service integration tests.
 4. **Compare one generated report and schedule with the provider pack.** AI can map fields, explain differences, find primary-source answers, prepare a sample and draft the precise remaining questions. Justin/provider approves any real records, contact, filing or charge.
 5. **Confirm only the pilot's unresolved acceptance details.** Ask the authority where the sample format/signatures, filing destinations, attachments or receipt process remain uncertain. Log each answer and its scope, then review a proposed new version if warranted. No statewide calling campaign is needed before the demo.
 6. **Before real operation:** review terms/privacy and pricing, configure and validate only the integrations the pilot will actually use, establish provider good standing and retain the existing filing/payment procedure until the pilot proves its replacement.
@@ -31,7 +41,7 @@ A county call/email is needed only where public sources and provider documents c
 
 - Who is the first provider/design partner, and who can supply the small sample pack?
 - What authority actually issued the sample sites' permits? If unknown, send redacted permits and we can identify it together.
-- When should the finished demo/staging deployment be prepared for review? Sending prospect invitations is a separate decision.
+- When should the live public staging demo be reviewed with the first provider? Personalized demo persistence remains open.
 
 You do not need to decide future features or answer every county's questions now. The [pilot worksheet](PILOT-CALL-SHEET.md) turns these choices into a short, concrete next step.
 

@@ -1,0 +1,10 @@
+ inspections 
+-------------
+           3
+(1 row)
+
+ attachments 
+-------------
+           6
+(1 row)
+

@@ -1,0 +1,82 @@
+staging: backed up to /var/backups/aerowise/staging/db-20261006T233953Z.dump and files-20261006T233953Z.tar.gz
+staging: restoring /var/backups/aerowise/staging/db-20261006T233953Z.dump into a scratch database
+
+table                                  backup       live
+attachments                                12         12
+audit_events                               45         45
+authority_evidence                          0          0
+authority_evidence_answers                  0          0
+background_tasks                           31         31
+billing_events                              0          0
+billing_periods                             2          2
+checkout_sessions                           2          2
+compliance_events                          40         40
+contacts                                  100        100
+contract_documents                          0          0
+contracts                                 104        104
+customer_deliveries                         0          0
+customers                                 100        100
+data_exports                                1          1
+demo_access_links                           0          0
+demo_requests                               1          1
+demo_visits                                 1          1
+email_events                                0          0
+email_sends                                 0          0
+filing_attempts                             6          6
+filings                                     6          6
+import_mappings                             1          1
+import_rows                                 2          2
+imports                                     1          1
+inspection_templates                        1          1
+inspection_values                         112        112
+inspections                                 6          6
+invitations                                 1          1
+invoice_events                             14         14
+invoice_lines                               8          8
+invoices                                    4          4
+issues                                      0          0
+jobs                                       23         23
+jurisdiction_rulesets                      30         30
+jurisdictions                              22         22
+lab_tests                                   0          0
+legal_acceptances                           4          4
+memberships                                 6          6
+organizations                               5          5
+password_reset_tokens                       1          1
+payments                                    2          2
+plan_reminders                              0          0
+plans                                       4          4
+platform_admin_sessions                     1          1
+platform_admins                             1          1
+platform_audit_events                       9          9
+portal_links                                0          0
+provider_credentials                        4          4
+quickbooks_connections                      0          0
+quickbooks_links                            0          0
+quickbooks_test_companies                   0          0
+refunds                                     0          0
+renewal_addons                              0          0
+renewals                                    4          4
+report_signatures                           0          0
+reports                                    12         12
+schema_migrations                          49         49
+service_obligations                       312        312
+service_requests                            0          0
+sessions                                    4          4
+signed_documents                            0          0
+site_authority_assignments                  0          0
+site_authority_identifiers                  0          0
+sites                                     110        110
+sms_messages                                0          0
+sms_opt_outs                                0          0
+stripe_events                               2          2
+submission_packages                         6          6
+support_sessions                            0          0
+system_monitoring                           0          0
+users                                       6          6
+wastewater_systems                        110        110
+
+counted at backup time: 1328 rows (db-20261006T233953Z.counts)
+files: /var/backups/aerowise/staging/files-20261006T233953Z.tar.gz reads back, 59 files
+
+RESTORE CHECK PASSED staging 2026-10-06 dump=db-20261006T233953Z.dump tables=73 rows=1328 organizations=5 migration=0046_prospect_demos.sql

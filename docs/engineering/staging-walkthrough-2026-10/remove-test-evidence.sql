@@ -1,0 +1,13 @@
+BEGIN;
+LOCK TABLE authority_evidence, authority_evidence_answers IN ACCESS EXCLUSIVE MODE;
+CREATE TEMP TABLE test_evidence AS SELECT e.id FROM authority_evidence e JOIN jurisdictions j ON j.id=e.jurisdiction_id JOIN platform_admins p ON p.id=e.recorded_by WHERE j.key='tx-bastrop-county' AND p.email='walkthrough.admin@example.com' AND e.note='TEST STAGING WALKTHROUGH 2026-10-06 - fabricated answer; no authority was contacted. Delete after test.';
+DO $$ BEGIN IF (SELECT count(*) FROM test_evidence) <> 1 THEN RAISE EXCEPTION 'Expected exactly one TEST note'; END IF; END $$;
+ALTER TABLE authority_evidence_answers DISABLE TRIGGER authority_evidence_answers_immutable;
+ALTER TABLE authority_evidence DISABLE TRIGGER authority_evidence_immutable;
+DELETE FROM authority_evidence_answers WHERE evidence_id IN (SELECT id FROM test_evidence);
+DELETE FROM authority_evidence WHERE id IN (SELECT id FROM test_evidence);
+ALTER TABLE authority_evidence_answers ENABLE TRIGGER authority_evidence_answers_immutable;
+ALTER TABLE authority_evidence ENABLE TRIGGER authority_evidence_immutable;
+COMMIT;
+SELECT count(*) AS remaining_test_notes FROM authority_evidence WHERE note LIKE 'TEST STAGING WALKTHROUGH 2026-10-06%';
+SELECT tgname,tgenabled FROM pg_trigger WHERE tgname IN ('authority_evidence_immutable','authority_evidence_answers_immutable');

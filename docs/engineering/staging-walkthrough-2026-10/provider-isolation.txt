@@ -1,0 +1,2 @@
+{"DEMO_MODE":"true","liveServices":"","configuredExternalCredentials":[],"mail":"outbox","sms":"test"}
+{"DEMO_MODE":"true","liveServices":"","configuredExternalCredentials":[],"mail":"outbox","sms":"test"}
