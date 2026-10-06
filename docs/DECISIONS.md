@@ -447,6 +447,12 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **What blocks it: any row anywhere that points at what the import created**, found from the database's own foreign keys, so a table added later is checked without anyone listing it. Examples are a scheduled visit, an inspection, a report, an invoice, a filing, a renewal, a portal link, a text message, an authority assignment, a site or contract added later to an imported customer or site. Edits to imported records (a renamed customer, a note) do not block it. The page and the 409 name each blocker with a count. Undo is all or nothing: there is no partial undo of the rows that are free.
 - **Who:** anyone who can import (`crm:write`). The check and the delete run in one transaction holding the import row; work added in between makes the delete fail on its foreign key, which is reported as a 409 instead of a 500.
 
+## 2026-10-05 · W5.4 Onboarding summary
+
+- **Two scopes, one definition.** `GET /onboarding/summary` counts the whole organization, and `?importId=` counts what one saved import created (its sites, and the contracts and visits on them). The import page shows the second right after saving; `/import/summary` shows the first.
+- **Definitions.** An active contract is one in force today (`contractState`). Expiring in 30, 60 or 90 days counts active contracts whose last day falls within that many days, each count including the shorter windows. Overdue inspections are open visits due before today. Due this month are open visits due from today to the month's last day. A site has no authority when the catalog resolves none for it today, whether no ruleset covers its county or several do and nobody has chosen. Missing permit means the site has no permit number. Customers counts customers with at least one service site in scope.
+- **Lists to fix from.** The first ten sites with no authority and the first ten missing a permit are listed with links, sorted by customer name.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -509,10 +515,17 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Every automatic change is in the platform audit log** as `organization.plan_changed` with no admin and a reason; a change the owner triggered from the subscription page is also in the company's own audit log.
 - **A lapsed company's automatic sends keep going**, as Justin decided in W4.3: nothing in the lifecycle pauses queued filings or homeowner reminders.
 
+## 2026-10-06 · W7.1 Stripe Connect on staging
+
+- **Staging stays the demo; named services go live in test mode.** Staging runs `DEMO_MODE=true` (stand-ins for everything, nightly reset), and W7 needs real accounts there. Rather than a third environment, `DEMO_LIVE_SERVICES` lists the services the demo uses for real. Each is allowed only in a mode where nothing real happens, checked at startup: Stripe only with a test-mode key. QuickBooks (sandbox only) and Twilio (texts redirected to one test phone) join the list in W7.2 and W7.3. The banner's "Nothing is sent" stays true for Stripe test mode.
+- **Staging refuses live Stripe keys outright**, with or without demo mode, and production refuses `DEMO_LIVE_SERVICES`.
+- **One Connect webhook endpoint.** With direct charges every event Aerowise reads (checkout, refunds, `account.updated`) happens on a connected account, so only the "Connected accounts" endpoint is needed; `STRIPE_WEBHOOK_SECRET` still takes several secrets for rotation.
+- **Checkout pages last 23 hours, not 24.** Stripe's 24-hour maximum is counted on its clock.
+- **The recorded run is a manual checklist plus the `stripe_events` table.** No Claude session can reach staging or Stripe from its sandbox, so Justin runs the steps in `INTEGRATIONS.md` and the webhook log on the server is the record.
+
 ## 2026-10-06 · W4.5 Platform fee on homeowner payments
 
 - **A percentage, in basis points, per company.** `organizations.platform_fee_bps` (migration 0032), 0 by default, at most 1000 (10%). An Aerowise admin sets it in the plan form in `/admin` (`PUT /admin/organizations/:id/platform-fee`), audited as `organization.platform_fee_changed`. No fixed per-payment fee: a percentage is what Stripe Connect platforms usually charge and is easy to explain; a fixed part can be added later if Justin wants one.
 - **Taken as a Stripe Connect application fee** on the direct charge (`payment_intent_data.application_fee_amount`), so it applies the same way to card and bank (ACH) payments. Rounded down to the cent; when it rounds to 0 no fee is sent at all. Stripe's own processing fee is separate and still comes out of the company's share.
 - **Fixed when the payment page opens.** Each `checkout_sessions` row keeps the fee it was opened with. A homeowner pressing Pay again reuses a page only when the fee has not changed since; after a change they get a new page at the new fee. A page opened before the change and paid anyway keeps its old fee.
 - **Open question: refunds.** Refunds do not give the fee back yet (Stripe's default for application fees). Recommended: refund the fee in proportion (`refund_application_fee`) once a company has a fee, so a company is never charged a fee on money it returned. Not needed while every fee is 0.
-

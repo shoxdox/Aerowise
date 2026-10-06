@@ -1,8 +1,11 @@
 import Stripe from "stripe";
 import { refundStatusOf, WebhookSignatureError, type CheckoutInput, type PaymentProvider, type RefundInput, type WebhookEvent } from "./provider.ts";
 
-/** Checkout pages stay payable for a day, Stripe's longest. */
-const CHECKOUT_LIFETIME_SECONDS = 24 * 60 * 60;
+/**
+ * Checkout pages stay payable for 23 hours. Stripe's limit is 24 hours after it creates the
+ * session, counted on its own clock, so asking for exactly 24 is refused when ours runs ahead.
+ */
+export const CHECKOUT_LIFETIME_SECONDS = 23 * 60 * 60;
 
 /**
  * Stripe Connect with direct charges: each provider has its own Stripe account (Express),
@@ -14,8 +17,9 @@ export class StripeProvider implements PaymentProvider {
   private readonly stripe: Stripe;
   private readonly webhookSecrets: string[];
 
-  constructor(opts: { secretKey: string; webhookSecrets: string[] }) {
-    this.stripe = new Stripe(opts.secretKey, { maxNetworkRetries: 2, appInfo: { name: "Aerowise" } });
+  /** `httpClient` is for tests, to see the requests without reaching Stripe. */
+  constructor(opts: { secretKey: string; webhookSecrets: string[]; httpClient?: Stripe.HttpClient }) {
+    this.stripe = new Stripe(opts.secretKey, { maxNetworkRetries: 2, appInfo: { name: "Aerowise" }, httpClient: opts.httpClient });
     this.webhookSecrets = opts.webhookSecrets;
   }
 
