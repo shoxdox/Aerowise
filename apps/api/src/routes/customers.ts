@@ -63,6 +63,7 @@ export const SITE_COLUMNS = [
   "safetyFlags",
   "schedulingNotes",
   "customerType",
+  "useCategory",
   "active",
   "createdAt",
   "updatedAt",

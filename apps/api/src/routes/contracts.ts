@@ -273,8 +273,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const site = await db.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
       if (!site) throw notFound("Site");
       const terms = await activePlanTerms(organizationId, req.query.planId);
-      const { terms: t, added } = await siteVisitTerms(db, organizationId, site.id, req.query.startOn, terms);
-      return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null };
+      const { terms: t, added, scheduleNotice } = await siteVisitTerms(db, organizationId, site.id, req.query.startOn, terms);
+      return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null, scheduleNotice };
     },
   );
 

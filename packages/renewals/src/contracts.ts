@@ -1,6 +1,6 @@
 import { loadCatalog, resolveSite, siteMonitoredOn, type CatalogEntry } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, serviceIntervalMonths, visitsWithin, type ContractVisitRule } from "@aerowise/domain";
+import { anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, serviceIntervalMonths, siteScheduleProblem, visitsWithin, type ContractVisitRule } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -47,26 +47,34 @@ export async function siteVisitTerms<T extends VisitTerms>(
   startOn: string,
   terms: T,
   catalog?: CatalogEntry[],
-): Promise<{ terms: T; added: AddedVisits | null; contractVisits: (ContractVisitRule & { unconfirmed?: string }) | null }> {
+): Promise<{
+  terms: T;
+  added: AddedVisits | null;
+  contractVisits: (ContractVisitRule & { unconfirmed?: string }) | null;
+  /** Why the authority's schedule for this site isn't settled (see `siteScheduleProblem`). */
+  scheduleNotice: string | null;
+}> {
   const site = await db
     .selectFrom("sites")
-    .select(["county", "state", "jurisdictionId", "customerType", "permitIntervalMonths"])
+    .select(["county", "state", "jurisdictionId", "customerType", "permitIntervalMonths", "useCategory"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", siteId)
     .executeTakeFirstOrThrow();
   terms = { ...terms, customerType: site.customerType };
   const resolved = resolveSite(catalog ?? (await loadCatalog(db)), site, startOn);
-  if (!resolved) return { terms, added: null, contractVisits: null };
+  if (!resolved) return { terms, added: null, contractVisits: null, scheduleNotice: null };
+  const scheduleNotice = siteScheduleProblem(resolved.rules, resolved.authorityName, site);
   // Monitoring only matters where the authority allows a longer interval for it.
   const monitored = resolved.rules.service.monitored ? await siteMonitoredOn(db, organizationId, siteId, startOn) : false;
-  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored, site.permitIntervalMonths);
+  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored, site.permitIntervalMonths, site.useCategory);
   const contractVisits = resolved.rules.service.contractVisits ?? null;
   const visitsPerTerm = contractVisits ? anchoredVisitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths) : visitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths);
-  if (visitsPerTerm === terms.visitsPerTerm) return { terms, added: null, contractVisits };
+  if (visitsPerTerm === terms.visitsPerTerm) return { terms, added: null, contractVisits, scheduleNotice };
   return {
     terms: { ...terms, visitsPerTerm },
     added: { planVisits: terms.visitsPerTerm, visitsPerTerm, authorityName: resolved.authorityName, intervalMonths, ...(contractVisits ? { contractVisits } : {}) },
     contractVisits,
+    scheduleNotice,
   };
 }
 

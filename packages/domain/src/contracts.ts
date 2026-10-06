@@ -59,6 +59,8 @@ export const contractTermsPreview = z.object({
   visitsPerTerm: z.number().int(),
   /** Set when the site's authority needs more visits than the plan has: say so before creating. */
   warning: z.string().nullable(),
+  /** Set when the authority's schedule for this site isn't settled yet (Montgomery food establishments). */
+  scheduleNotice: z.string().nullable(),
 });
 
 export const renewInput = z.object({

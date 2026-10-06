@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, CREDENTIAL_LABELS, type ContractFilingBasis, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, type SubmissionMethod } from "@aerowise/domain";
+import { addDays, CREDENTIAL_LABELS, type ContractFilingBasis, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, siteScheduleProblem, type SubmissionMethod } from "@aerowise/domain";
 import { fillPdfForm, renderCoverSheet } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
@@ -215,6 +215,11 @@ export async function packageProblems(db: Executor, f: PackageFiling, resolved: 
     problems.push(`${resolved.authorityName} has not published how maintenance contracts are submitted, so this contract cannot be filed through Aerowise`);
   }
   if (f.kind === "contract" && f.contractId) problems.push(...(await contractTermProblems(db, f.organizationId, f.contractId, resolved, facts.today)));
+  if (rules.service.categoryTerms || rules.labTests?.useCategories) {
+    const site = await db.selectFrom("sites").select(["useCategory", "permitIntervalMonths"]).where("organizationId", "=", f.organizationId).where("id", "=", f.siteId).executeTakeFirstOrThrow();
+    const schedule = siteScheduleProblem(rules, resolved.authorityName, site);
+    if (schedule) problems.push(schedule);
+  }
   return problems;
 }
 

@@ -2,18 +2,20 @@
 
 Status: **draft**. Written 2026-10-06 from the research packet `/mnt/project-files/Septic/pilot-build/county-research/tx-grimes-county.md` (Southeast Texas research thread). The county's main OSSF page and its OSSF order could not be read. No way to submit maintenance reports is published, so Grimes inspection filings are held for review and never sent, and contracts are filed by hand.
 
+v2 (W12.C3, same day) reads the county's certified 2024 OSSF order, its adoption minutes, TCEQ's notice to proceed and the original 2024 affidavit from [the 2026-10-06 research packet](research/2026-10-06/authorities/tx-grimes-county.md) (findings G1–G4). It follows the order's four months with no monitoring exception and requires its sludge, pH and spray-area answers. The order's final TCEQ approval is still missing (question 2).
+
 ## Questions for Justin
 
 Each of these is open in `profile.unresolved`. Grimes County Environmental Permits can answer them: (936) 873-4495 (Mon-Thu 7:30-4:30, Fri 7:30-11:30).
 
 1. **How should providers submit aerobic inspection reports: email (which address), portal, mail to 270 FM 149 W, or in person?** This is the blocker for sending.
-2. **What are the title, adoption date and TCEQ approval date of the current OSSF order (reportedly updated 2023-08-16), and can the county send a readable copy?**
-3. **How often must residential and commercial aerobic systems be inspected, and does monitoring allow 6 months?**
+2. **When did TCEQ give final approval to the 2024 OSSF order?** The Commissioners Court adopted it 2024-08-21 (certified copy, PDF p. 1; minutes). The TCEQ letter of 2024-07-29 is a notice to proceed on the draft, not final approval, and Section 16 makes the order effective only on TCEQ approval. Until then Aerowise claims no effective date and applies the order's stricter rules from 2026-10-06.
+3. **Does the county ever allow six months with electronic monitoring?** Section 9.C.1 says every four months and names no exception, so v2 has none.
 4. **What is the report deadline?**
 5. **Is there a county report form or extra fields?**
 6. **Do any systems need lab tests, and at what limits?**
-7. **May single-family owners maintain their own systems, and what makes a maintenance company "approved"?**
-8. **How and when are renewal contracts filed?**
+7. **How does the Designated Representative approve a maintenance company, and how does a homeowner file the Section 9.B evidence?** Section 9.B (PDF p. 4) lets a licensed or registered owner, or one who passed the TEEX homeowner class, maintain their own system.
+8. **How and when are renewal contracts filed?** The original affidavit asks for the signed contract within 30 days after a transfer, a renewal or a change of provider; Aerowise uses TCEQ's 30 days before expiry.
 9. **Are there fees for reports or contracts, or late fees?**
 10. **Does the county acknowledge reports or contracts?**
 11. **Which cities run their own program or need their own filings, like Todd Mission's city septic permit? For Todd Mission sites, do reports go to the county, the city or both?**
@@ -29,11 +31,14 @@ Each of these is open in `profile.unresolved`. Grimes County Environmental Permi
 
 ## Identity
 
-- key: `tx-grimes-county`, ruleset v1
+- key: `tx-grimes-county`, ruleset v2 (v1 kept as published; v2 applies from the same day, 2026-10-06)
 - state: TX
 - authority: Grimes County Environmental Permits, On-Site Sewage Facilities
-- requirement in effect: unknown (question 2), so `requirementEffective.date` is null. Aerowise applies the ruleset from 2026-10-06. Grimes inspections and contracts dated earlier are held for review.
+- requirement in effect: unknown. The 2024 order was adopted 2024-08-21, but its final TCEQ approval was not found (question 2), so `requirementEffective.date` is null. Aerowise applies the ruleset from 2026-10-06. Grimes inspections and contracts dated earlier are held for review.
 - source links (all read 2026-10-06):
+  - 2024 OSSF Order, certified copy: https://grimescountytx.granicus.com/MetaViewer.php?clip_id=272&meta_id=23091&view_id=1 (Section 9.B PDF p. 4; Section 9.C.1 PDF pp. 4–5; Section 16 PDF p. 6)
+  - Adoption minutes, 2024-08-21: https://grimescountytx.granicus.com/MinutesViewer.php?clip_id=272&doc_id=e49df8a5-649c-11ef-9b71-005056a89546&view_id=1
+  - TCEQ notice to proceed, 2024-07-29: https://grimescountytx.granicus.com/MetaViewer.php?clip_id=272&meta_id=22568&view_id=1
   - Environmental Permits: https://grimescountytexas.gov/permits
   - TCEQ On-Site Sewage Facilities page (not readable): https://grimescountytexas.gov/index.asp?DE=DE2DB1C7-211D-4F70-A422-2891027B6ED5&SEC=51D0BA70-3EF0-4E47-86C8-5613AD1C8E1A
   - Affidavit to the Public (2024): https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/OSSF_Affidavit_(2024).pdf
@@ -47,7 +52,7 @@ Grimes County Environmental Permits issues OSSF permits countywide. Todd Mission
 
 ## Service frequency
 
-Every 4 months, or every 6 months with electronic monitoring on record (30 TAC 285.7(e)). See question 3.
+Every 4 months (order Section 9.C.1), with no six-month schedule for monitoring. v1 allowed six under 30 TAC 285.7(e); v2 drops it. See question 3.
 
 ## Lab tests
 
@@ -59,7 +64,7 @@ None in the readable sources.
 
 ## Required inspection fields
 
-None beyond the template's own (which include the chlorine residual).
+Order Section 9.C.1(b): "A report of the sludge levels in the pump tank, the pH (potential hydrogen) levels in the pump tank, and the condition of the spray area." v2 requires `pump_tank_sludge` (inches), `pump_tank_ph` and `spray_area` (with "Not a spray system" for systems without one). The order sets no pH range or sludge limit, so Aerowise records the readings without judging them.
 
 ## Required attachments/photos
 
@@ -98,7 +103,8 @@ None published (question 7).
 `apps/api/test/grimes.test.ts` covers these cases:
 - a valid inspection: due 14 days later, next visit in 4 months, held for review and never sent
 - a missing chlorine residual, which keeps the inspection a draft
-- the 6-month schedule with monitoring on record
+- 4 months between visits even with monitoring on record (v2)
+- sludge, pH and spray area required, and any pH on the scale accepted (v2)
 - a Grimes site never matched by county alone
 
 ## Verification

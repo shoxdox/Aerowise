@@ -52,7 +52,8 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
     };
     void run(async () => {
       const preview = await api<ContractTermsPreview>(`/sites/${siteId}/contract-terms?planId=${v.planId}&startOn=${v.startOn}`);
-      if (preview.warning) {
+      // Said before the contract is made: more visits than the plan, or a schedule the authority hasn't settled.
+      if (preview.warning || preview.scheduleNotice) {
         setMoreVisits({ body, preview });
         throw new Keep();
       }
@@ -119,10 +120,13 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               </label>
               {moreVisits ? (
                 <div className="wide stack" role="alert">
-                  <p className="restriction">{moreVisits.preview.warning}</p>
+                  {moreVisits.preview.warning && <p className="restriction">{moreVisits.preview.warning}</p>}
+                  {moreVisits.preview.scheduleNotice && (
+                    <p className="restriction">{moreVisits.preview.scheduleNotice}. Until then its filings are held for review.</p>
+                  )}
                   <div className="row">
                     <button type="button" onClick={createWithMoreVisits}>
-                      Start contract with {moreVisits.preview.visitsPerTerm} visits
+                      {moreVisits.preview.warning ? `Start contract with ${moreVisits.preview.visitsPerTerm} visits` : "Start contract anyway"}
                     </button>
                     <button type="button" className="link" onClick={() => setMoreVisits(null)}>
                       Change the plan

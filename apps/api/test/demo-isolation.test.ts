@@ -417,6 +417,8 @@ describe("a demo company's contact details", () => {
     expect((await demo.api.post("/invitations", { email: "friend@gmail.com", role: "office" })).statusCode).toBe(422);
     expect((await demo.api.post("/invitations", { email: "friend@example.com", role: "office" })).statusCode).toBe(201);
     expect((await demo.api.patch("/organization/settings", { email: "me@realseptic.com" })).statusCode).toBe(422);
+    expect((await demo.api.patch("/organization/settings", { emergencyPhone: "(512) 867-5309" })).statusCode).toBe(422);
+    expect((await demo.api.patch("/organization/settings", { emergencyPhone: "(512) 555-0111" })).statusCode).toBe(200);
 
     // Straight to the database too: a person with a real address cannot join, and a member cannot take one.
     const person = await ctx.db.insertInto("users").values({ name: "Real", email: "real@gmail.com", phone: null, passwordHash: "x" }).returning("id").executeTakeFirstOrThrow();

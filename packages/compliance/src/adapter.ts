@@ -1,6 +1,7 @@
 import type { Database } from "@aerowise/db";
 import {
   applyRequirements,
+  DEFAULT_TEMPLATE,
   validateInspection,
   type InspectionValues,
   type RulesetRules,
@@ -11,6 +12,9 @@ import type { ObjectStore } from "@aerowise/storage";
 import type { EmailTransport } from "./email.ts";
 import { requirementsOf, type ResolvedJurisdiction } from "./rulesets.ts";
 
+/** A required field's name as the built-in form labels it. */
+const fieldName = (key: string) => DEFAULT_TEMPLATE.definition.fields.find((f) => f.key === key)?.label ?? key;
+
 // The JurisdictionAdapter interface from COMPLIANCE-ENGINE.md. An adapter turns a
 // completed inspection into what one authority needs, using that authority's ruleset.
 
@@ -19,6 +23,7 @@ export interface SiteContext {
   county: string | null;
   state: string;
   permitNumber: string | null;
+  customerType: "residential" | "commercial";
 }
 
 export interface Requirements {
@@ -140,8 +145,13 @@ export class EmailManualAdapter implements JurisdictionAdapter {
   }
 
   async validate(insp: CanonicalInspection): Promise<ValidationResult> {
-    const def = applyRequirements(insp.definition, requirementsOf(this.resolved));
+    const req = requirementsOf(this.resolved, insp.site.customerType);
+    const def = applyRequirements(insp.definition, req);
     const problems = validateInspection(def, insp.values, insp.photoCounts).map((p) => p.message);
+    // A form made before the authority's requirement (or a company's own form) may not ask at all.
+    const asked = new Set(insp.definition.fields.map((f) => f.key));
+    const unasked = req.requiredFields.filter((k) => !asked.has(k));
+    if (unasked.length) problems.push(`${this.resolved.authorityName} requires ${unasked.map(fieldName).join(", ")}, which this inspection's form does not ask for`);
     if (this.rules.inspection.technicianLicenseRequired && !insp.technicianLicense) problems.push("The technician's license number is missing");
     if (this.rules.submission.method === "email" && !this.rules.submission.email) problems.push("The ruleset has no email destination");
     return { ok: problems.length === 0, problems };
