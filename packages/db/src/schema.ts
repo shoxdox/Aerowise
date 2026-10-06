@@ -63,6 +63,9 @@ export interface OrganizationsTable {
   routeDayMinutes: Generated<number>;
   routeSpeedMph: Generated<number>;
   responsibleCredentialId: ColumnType<string | null, string | null | undefined, string | null>;
+  logoStorageKey: ColumnType<string | null, string | null | undefined, string | null>;
+  logoContentType: ColumnType<"image/png" | "image/jpeg" | null, "image/png" | "image/jpeg" | null | undefined, "image/png" | "image/jpeg" | null>;
+  serviceCounties: ColumnType<string[], string[] | undefined, string[]>;
   createdAt: CreatedAt;
 }
 
@@ -83,6 +86,8 @@ export interface MembershipsTable {
   technicianLicense: string | null;
   active: Generated<boolean>;
   createdAt: CreatedAt;
+  deactivatedAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  deactivatedBy: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface SessionsTable {
@@ -132,6 +137,7 @@ export interface SitesTable {
   gateCode: string | null;
   safetyFlags: Generated<string[]>;
   schedulingNotes: string | null;
+  customerType: Generated<"residential" | "commercial">;
   jurisdictionId: ColumnType<string | null, string | null | undefined, string | null>;
   authorityAssignmentId: ColumnType<string | null, string | null | undefined, string | null>;
   importId: ColumnType<string | null, string | null | undefined, never>;
@@ -249,6 +255,7 @@ export interface ServiceObligationsTable {
   dueOn: string;
   status: Generated<"open" | "completed" | "cancelled">;
   completedAt: Timestamp | null;
+  completedByImport: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -657,7 +664,7 @@ export interface ImportsTable {
   id: Generated<string>;
   organizationId: string;
   filename: string;
-  status: Generated<"preview" | "committed" | "failed" | "discarded">;
+  status: Generated<"preview" | "committed" | "failed" | "discarded" | "undone">;
   headers: ColumnType<unknown, string, string>;
   mapping: ColumnType<unknown, string, string>;
   createdBy: string;
@@ -668,6 +675,8 @@ export interface ImportsTable {
   sheets: ColumnType<unknown, string, never>;
   sheetIndex: Generated<number>;
   mappingSource: Generated<"detected" | "saved" | "edited">;
+  undoneAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  undoneBy: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface ImportRowsTable {
@@ -1072,6 +1081,17 @@ export interface PlatformAdminsTable {
   createdAt: CreatedAt;
 }
 
+export interface SupportSessionsTable {
+  id: Generated<string>;
+  tokenHash: Buffer;
+  adminId: string;
+  organizationId: string;
+  reason: string;
+  startedAt: CreatedAt;
+  expiresAt: Timestamp;
+  endedAt: Timestamp | null;
+}
+
 export interface PlatformAdminSessionsTable {
   id: Generated<string>;
   tokenHash: Buffer;
@@ -1146,6 +1166,15 @@ export interface InvitationsTable {
   revokedAt: Timestamp | null;
 }
 
+export interface PasswordResetTokensTable {
+  id: Generated<string>;
+  userId: string;
+  tokenHash: Buffer;
+  createdAt: CreatedAt;
+  expiresAt: Timestamp;
+  usedAt: Timestamp | null;
+}
+
 export interface DB {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -1206,9 +1235,11 @@ export interface DB {
   platformAdmins: PlatformAdminsTable;
   demoRequests: DemoRequestsTable;
   platformAdminSessions: PlatformAdminSessionsTable;
+  supportSessions: SupportSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
   billingPeriods: BillingPeriodsTable;
   billingEvents: BillingEventsTable;
   planReminders: PlanRemindersTable;
   invitations: InvitationsTable;
+  passwordResetTokens: PasswordResetTokensTable;
 }

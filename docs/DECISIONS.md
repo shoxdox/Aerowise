@@ -284,6 +284,36 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Someone who already has an Aerowise login** (the email is global) accepts by entering that login's password, not by choosing a new one. Otherwise anyone holding the link could take over another organization's account. Their existing memberships and password stay as they were.
 - **Passwords for new users are at least 10 characters**; platform admins need 12.
 
+## 2026-10-05 · W2.3 Password reset and user deactivation
+
+- **Reset links belong to the login, not an organization.** A person's login is shared by every organization they belong to, so `password_reset_tokens` references `users` only (like `sessions` it is not a tenant table). The email is sent under their oldest active membership's organization; a login with no active membership gets no email.
+- **The request always answers 202**, known email or not. It is rate-limited per IP and email (5 a minute, keyed after the body is parsed), and at most one email goes out per person per 15 minutes however often it is asked for. The token is minted by the worker task, so it never sits in the queue; only its hash is stored. Links work once, for an hour.
+- **A reset spends every open link of that person and ends all their sessions** in every organization. They sign in again with the new password rather than being signed in by the link, so a leaked link cannot become a session silently.
+- **Deactivation is per organization.** An owner deactivates a person's membership; their sessions in that organization are revoked and `findSession` already refuses inactive memberships, so the next request fails. Their other organizations are untouched. Owners cannot deactivate themselves, and a deactivated person comes back by reactivation, not by a new invitation (which office staff could otherwise use to undo an owner's decision).
+
+## 2026-10-05 · W2.4 Organization settings
+
+- **The MP license is the existing credential.** The settings page shows the responsible TCEQ maintenance provider chosen on the licenses page (`organizations.responsible_credential_id`, from #17) and links there, instead of a second license field that could disagree with what reports are signed and filed under.
+- **The logo is content-addressed.** It is stored at `<org>/logos/<sha256>.png|jpg`, and each report snapshot records that key (`provider.logoKey`). A report made before the logo changed redraws with its own logo, and removing the logo never deletes the file. PNG and JPEG only (checked by their first bytes), up to 1 MB. It is drawn at the top right of customer and authority inspection reports. When a signed copy is redrawn, the logo and, on the customer copy, the photos are now loaded too; before this, a signed customer copy was drawn without its photos.
+- **Invoices and renewal agreements do not show the logo yet.** Their PDFs are separate renderers; adding the logo there is a small follow-up if Justin wants it.
+- **Service counties are free text**, one per line, trimmed and de-duplicated without regard to case. Sites already store their county as typed, so a fixed list would not match imported data. W2.5's checklist only needs at least one.
+- **Who can change what:** everyone signed in can read the company settings (they appear on the documents everyone sends); only owners (`org:manage`) can change them or the logo.
+
+## 2026-10-05 · W2.5 First-run checklist
+
+- **Nothing is ticked by hand.** `GET /onboarding` works each step out from the company's records every time the office home loads, so a step cannot read "done" when it is not, and one can reopen (a technician's license expires, a new technician joins without one). The checklist hides once every required step is done; there is no "dismiss" button.
+- **What each step checks.** Company details: phone, street, city, state and ZIP. Responsible MP: the license chosen on the licenses page is an active, unexpired MP license. Technicians: at least one active member holds an active, unexpired inspecting license, and every active technician has one; an owner who inspects with their own MP license counts, so a one-person company can finish it. Service counties: at least one. Customers: at least one, imported or added by hand. Stripe: the connected account can take charges. QuickBooks: connected, and optional.
+- **Who sees it:** owners and office staff (`users:read`). Technicians land in the tech app and read-only users have nothing to set up.
+- **The demo company shows it.** The seeded demo company has no service counties, licenses or Stripe account, so the hosted demo shows the checklist with two of six steps done. **Open:** whether the demo should be seeded complete instead.
+
+## 2026-10-05 · W2.6 Read-only support access
+
+- **Support sees the company as its owner does, signed in as themselves.** "View read-only" in `/admin` asks for a reason and sets a separate `aw_support_session` cookie for one hour. Requests carry the owner's role, so every page the owner can read opens, but `/auth/me` names "Aerowise support (admin name)" and the office shows a banner with an "End support view" button. It needs an active owner to look through; a company whose owner has not joined yet is refused with "no owner yet".
+- **Every write is refused in the auth plugin**, before any route runs: any method other than GET, HEAD or OPTIONS, and the one GET that changes data (the QuickBooks OAuth callback, marked `changesState`). Each refused attempt is written to the platform audit log as `support.write_refused`. A test sends every write route in the OpenAPI description through a support session and checks each is refused and nothing in the company's audit log changed.
+- **Audited in both logs.** `support.started` (with the reason and expiry) and `support.ended` go to the platform audit log and to the company's own audit log (with no user as actor), so the company can see when Aerowise looked and why. Opening a second company ends the first, so one admin has at most one support view. A view that simply runs out its hour has no "ended" event; its start event records when it expired.
+- **Precedence:** a live support cookie wins over a tenant sign-in in the same browser, so a write can never fall through to the tenant session. Support sessions stop working as soon as the admin is deactivated or the view is ended.
+- **Not built:** a way for the company to turn support access off, or to be emailed when support opens it. **Open:** whether Justin wants either.
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
@@ -402,6 +432,21 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **All wording is placeholder** and lives in one file, `apps/web/components/marketing/copy.ts`, for Justin to edit. It states the brief's key point that the licensed provider reviews and is responsible for every filing.
 - **The price after the free period is shown publicly** (Justin, 2026-10-05): it builds trust and filters out poor fits. It is read from the billing config, never typed into the copy.
 
+## 2026-10-05 · W5.2 Import: contracts, last inspection, permits, make and model
+
+- **New columns:** contract end and last inspection. Permit number, unit make and model were already read. A contract needs an active plan and either date. The missing date comes from the plan's term.
+- **The end date wins.** When both dates are given and don't fit the plan's term, the contract keeps the spreadsheet's end date and its start is moved to fit. Renewals run on the end date, and that is the date a provider's records are most likely to have right. The preview says so on the row.
+- **Visits before Aerowise.** The last inspection counts for the visit window it falls in and for every earlier window of the contract. Those visits are marked completed by the import (`service_obligations.completed_by_import`), dated the last inspection, with no inspection record. Later windows stay open, so a missed visit shows as overdue at once. Without a last inspection date, every window that has already closed shows as overdue. Aerowise does not assume a visit happened, and the preview notes this.
+- **A contract that already ended** is imported so it shows in the customer's history and can be renewed by hand, but its visits are cancelled by the import. Nobody can make those visits, and they would only fill the overdue list. The renewal pipeline only counts contracts that have not ended yet, as before.
+- **Today-dependent remarks are notes, not warnings** (`notes` on a preview row). A row stays "ready" when the only remark is that its contract has ended or has no last inspection. Otherwise a typical file with no last-inspection column would mark every contract row as a warning.
+- **A last inspection without a contract** is not stored. With no contract there are no visits to schedule from it. W5.4's summary counts those sites as having no contract.
+
+## 2026-10-05 · W5.3 Undo a committed import
+
+- **What undo deletes:** the customers and sites the import created, the contracts it created and their visits, and the contacts and unit details of those customers and sites, even ones added after the import (they describe the record, they are not work). A site the import added to a customer already on file is deleted; that customer stays. The import itself is kept, marked `undone` with who and when, and the audit log records the counts. The file can be imported again.
+- **What blocks it: any row anywhere that points at what the import created**, found from the database's own foreign keys, so a table added later is checked without anyone listing it. Examples are a scheduled visit, an inspection, a report, an invoice, a filing, a renewal, a portal link, a text message, an authority assignment, a site or contract added later to an imported customer or site. Edits to imported records (a renamed customer, a note) do not block it. The page and the 409 name each blocker with a count. Undo is all or nothing: there is no partial undo of the rows that are free.
+- **Who:** anyone who can import (`crm:write`). The check and the delete run in one transaction holding the import row; work added in between makes the delete fail on its foreign key, which is reported as a 409 instead of a 500.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -434,10 +479,29 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **"Today" is the UTC date** for the platform view. Organizations' own time zones only matter within a day of a version change.
 - **The coverage table scrolls inside its box on a phone,** using the `.table-scroll` wrapper W8.2 added for the organizations table, so the page stays screen-wide.
 
+## 2026-10-05 · W3.5 Backups and restore runbook
+
+- **Off the server, to R2, checked.** The nightly `pg_dump` and files tarball (W1's `backup.sh`) are copied to `backups/<env>/` in the R2 bucket by `deploy/vps/offsite.sh`, which runs rclone in a container (nothing installed on the server) and then downloads each copy and compares it byte for byte. A failed or mismatched copy fails the backup. Copies are kept 35 days in R2 (14 on the server). Old copies are deleted only after a new one checked out, so the newest is never pruned.
+- **Same bucket by default, separate credentials possible.** Backups use the app's `R2_*` unless `BACKUP_R2_BUCKET` / `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` are set. Open: with the app's token, a compromised app could delete its own backups; a second bucket with a token the app never holds would prevent that (Justin's call, a few minutes in Cloudflare).
+- **Restores are tested every week, not once.** `restore-check.sh` restores a dump into a throwaway Postgres (data in memory) and compares every table's row count with the live database; cron runs it on production's newest copy in R2 every Sunday. The first record in `docs/engineering/RUNBOOK.md` is a local run of the scripts against synthetic data; the run on the real staging server is listed for Justin.
+- **A missed backup alerts** through an optional dead man's switch (`BACKUP_HEARTBEAT_URL`, e.g. Healthchecks.io), pinged only when the dump, tarball and checked off-server copy all succeeded. The worker's alerts (W3.4) cannot see the host's cron, and an uptime check does not notice a backup that silently stopped.
+- **Dumps are not encrypted beyond R2's own encryption at rest.** The bucket is private and the token is scoped to it. Client-side encryption (age or gpg) would add a key Justin must not lose; left for later.
+- **Open:** photos and signed PDFs in R2 have no second copy (R2 has no object versioning here). A nightly copy of the bucket to the server's disk, keeping deleted objects for 35 days, would cover a bug or a leaked token deleting them.
+
+## 2026-10-05 · Justin's answers on the county rules questions
+
+Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
+
+1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
+4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
+5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
+
 ## 2026-10-05 · W4.4 Expiry reminders and the full plan lifecycle
 
 - **The worker's hourly billing run moves the plan first, then counts the month.** `runPlanLifecycle` (packages/billing) runs before `runMonthlyBilling` in the same task, so a month is counted in the state the company is actually in. It is safe to run any number of times.
-- **Reminders 14, 7 and 1 days before a free period ends**, to every active owner, from `ACCOUNT_EMAIL_FROM`. `plan_reminders` (migration 0028) keeps one row per organization, end date and threshold, so each goes out once; a period that starts inside the window gets one reminder, not several. Extending a trial (a new end date) starts the reminders over. The email says the price that follows and whether a payment method is already saved.
+- **Reminders 14, 7 and 1 days before a free period ends**, to every active owner, from `ACCOUNT_EMAIL_FROM`. `plan_reminders` (migration 0031) keeps one row per organization, end date and threshold, so each goes out once; a period that starts inside the window gets one reminder, not several. Extending a trial (a new end date) starts the reminders over. The email says the price that follows and whether a payment method is already saved.
 - **When a free period ends:** active from the next day if a payment method is saved, read-only if not. The rest of that month stays free (it was counted on the 1st during the trial); the first invoice is the next 1st. Design-partner periods end the same way as trials.
 - **A failed payment makes an active company past due** for `AEROWISE_PAST_DUE_GRACE_DAYS` (14). Past due can still work; Stripe's own retry schedule and customer emails keep trying the card. Once the grace period has passed with the invoice still unpaid, the company goes read-only.
 - **Back to active** when a paid invoice leaves nothing failed (Stripe's webhook), or when the owner returns from Stripe with a new card: the subscription page calls `POST /subscription/refresh`, which charges each failed invoice again right away and reactivates once nothing is unpaid. The hourly run does not keep charging a declined card; that is Stripe's retry schedule. A read-only company with a saved card and nothing unpaid is reactivated by the hourly run too, so an admin who wants a company locked should not leave it with a working card (none of the pilot needs that).

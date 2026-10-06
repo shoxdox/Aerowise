@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
+import { drainTasks } from "@aerowise/tasks";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 
 const ctx = setupTestApp();
@@ -218,6 +219,151 @@ describe("customer import", () => {
         ],
       },
     ]);
+  });
+
+  it("imports contracts mid-term so renewals and overdue visits show at once", async () => {
+    const t = await tenant(ctx);
+    // Today is 2026-03-01. The plan is 12 months with a visit every 4 months.
+    const csv = [
+      "Name,Address,City,Plan,Contract End,Last Inspection,Start Date,Permit #,Make,Model",
+      // Ends in 20 days; every visit of its term was done before Aerowise.
+      "Renew Soon,1 R St,Austin,Annual Aerobic,3/21/2026,12/10/2025,,p-1,Aqua,AS-500",
+      // Last inspected 5 months ago in its first window; the second window closed yesterday.
+      "Over Due,2 O St,Austin,Annual Aerobic,,10/1/2025,7/1/2025,,,",
+      // Ended a month ago.
+      "Long Gone,3 E St,Austin,Annual Aerobic,1/31/2026,,,,,",
+      // Starts today.
+      "Brand New,4 N St,Austin,Annual Aerobic,,,3/1/2026,,,",
+    ].join("\n");
+    const imp = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    expect(imp.mapping).toMatchObject({ contractEnd: 4, lastInspection: 5, contractStart: 6, permitNumber: 7, manufacturer: 8, model: 9 });
+    expect(imp.rows.map((r) => [r.record.contractStart, r.record.contractEnd])).toEqual([
+      ["2025-03-22", "2026-03-21"],
+      ["2025-07-01", "2026-06-30"],
+      ["2025-02-01", "2026-01-31"],
+      ["2026-03-01", "2027-02-28"],
+    ]);
+    const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    expect(done.result).toEqual({ customers: 4, sites: 4, contracts: 4 });
+
+    // The contract ending in 20 days is waiting for its renewal; the ended one is not.
+    expect((await t.api.get("/renewals")).json().notStarted).toBe(1);
+    const created = (await t.api.post("/renewals/campaign", {})).json().created;
+    expect(created).toBe(1);
+
+    // Only the visit missed since the last inspection is overdue.
+    const overdue = (await t.api.get("/obligations/due?overdueOnly=true")).json();
+    expect(overdue.items).toMatchObject([{ dueOn: "2026-02-28", overdue: true, customer: { displayName: "Over Due" } }]);
+    const due = (await t.api.get("/obligations/due?through=2027-03-01")).json();
+    expect(due.items.map((o: { customer: { displayName: string }; dueOn: string }) => `${o.customer.displayName} ${o.dueOn}`).sort((a: string, b: string) => a.slice(-10).localeCompare(b.slice(-10)) || a.localeCompare(b))).toEqual([
+      "Over Due 2026-02-28",
+      "Brand New 2026-06-30",
+      "Over Due 2026-06-30",
+      "Brand New 2026-10-31",
+      "Brand New 2027-02-28",
+    ]);
+    const visits = await ctx.db
+      .selectFrom("serviceObligations as o")
+      .innerJoin("customers as c", (j) => j.on((eb) => eb.exists(eb.selectFrom("sites as s").select("s.id").whereRef("s.id", "=", "o.siteId").whereRef("s.customerId", "=", "c.id"))))
+      .select(["c.displayName", "o.status", "o.completedByImport"])
+      .orderBy("c.displayName")
+      .orderBy("o.sequence")
+      .execute();
+    const byCustomer = (name: string) => visits.filter((v) => v.displayName === name).map((v) => `${v.status}${v.completedByImport === imp.id ? " by import" : ""}`);
+    expect(byCustomer("Renew Soon")).toEqual(["completed by import", "completed by import", "completed by import"]);
+    expect(byCustomer("Over Due")).toEqual(["completed by import", "open", "open"]);
+    expect(byCustomer("Long Gone")).toEqual(["cancelled by import", "cancelled by import", "cancelled by import"]);
+    expect(byCustomer("Brand New")).toEqual(["open", "open", "open"]);
+
+    const site = await ctx.db.selectFrom("sites").select(["id", "permitNumber"]).where("addressLine1", "=", "1 R St").executeTakeFirstOrThrow();
+    expect(site.permitNumber).toBe("P-1");
+    expect(await ctx.db.selectFrom("wastewaterSystems").select(["manufacturer", "model"]).where("siteId", "=", site.id).execute()).toEqual([{ manufacturer: "Aqua", model: "AS-500" }]);
+  });
+
+  it("undoes a saved import while nothing has been done with it", async () => {
+    const t = await tenant(ctx);
+    const existing = (await t.api.post("/customers", { displayName: "Ann Lee" })).json();
+    await t.api.post(`/customers/${existing.id}/contacts`, { name: "Ann Lee", phone: "(512) 555-0100" });
+    const before = { customers: await count(ctx, "customers"), sites: await count(ctx, "sites"), contacts: await count(ctx, "contacts"), systems: await count(ctx, "wastewater_systems") };
+    const csv = "Name,Address,City,Phone,Make,Plan,Start Date,Last Inspection\nAnn Lee,9 Elm Rd,Austin,512.555.0100,Aqua,Annual Aerobic,7/1/2025,10/1/2025\nBo Diaz,5 Pine Ln,Austin,512.555.0111,,Annual Aerobic,3/1/2026,\n";
+    const imp = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    // Nothing to undo before it is saved.
+    expect((await t.api.get(`/imports/${imp.id}/undo`)).json()).toMatchObject({ canUndo: false, reason: "Only a saved import can be undone" });
+    await t.api.post(`/imports/${imp.id}/commit`, {});
+    await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now });
+
+    expect((await t.api.get(`/imports/${imp.id}/undo`)).json()).toEqual({ canUndo: true, reason: null, removes: { customers: 1, sites: 2, contracts: 2, visits: 6 }, blockers: [] });
+    // Editing what was imported is not work that blocks undo.
+    const bo = (await t.api.get("/customers?search=Bo%20Diaz")).json().items[0];
+    await t.api.patch(`/customers/${bo.id}`, { notes: "prefers texts" });
+
+    const undone = (await t.api.post(`/imports/${imp.id}/undo`, {})).json() as Detail;
+    expect(undone).toMatchObject({ status: "undone", result: { customers: 1, sites: 2, contracts: 2 } });
+    expect(undone.rows.every((r) => r.result === null)).toBe(true);
+    expect({ customers: await count(ctx, "customers"), sites: await count(ctx, "sites"), contacts: await count(ctx, "contacts"), systems: await count(ctx, "wastewater_systems") }).toEqual(before);
+    expect(await count(ctx, "contracts")).toBe(0);
+    expect((await t.api.post(`/imports/${imp.id}/undo`, {})).statusCode).toBe(409);
+    expect((await t.api.get("/imports")).json().items).toMatchObject([{ id: imp.id, status: "undone" }]);
+    const audit = await ctx.db.selectFrom("auditEvents").select(["action", "changes"]).where("entityId", "=", imp.id).where("action", "=", "import.undone").execute();
+    expect(audit).toMatchObject([{ changes: { customers: 1, sites: 2, contracts: 2, visits: 6 } }]);
+    // The same file can be imported again.
+    const again = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    expect(again.summary).toMatchObject({ ready: 2, duplicate: 0 });
+  });
+
+  it("lists exactly the work that stops an undo", async () => {
+    const s = await tenant(ctx);
+    const csv = "Name,Address,City,Plan,Start Date\nAnn Lee,9 Elm Rd,Austin,Annual Aerobic,12/1/2025\nBo Diaz,5 Pine Ln,Austin,,\nCy Moss,7 Oak Dr,Austin,Annual Aerobic,1/15/2026\n";
+    const imp = (await s.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    const saved = (await s.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    const [ann, bo, cy] = saved.rows.map((r) => r.result as { customerId: string; siteId: string; contractId: string | null });
+    const check = async () => (await s.api.get(`/imports/${imp.id}/undo`)).json();
+
+    // A visit scheduled and inspected.
+    const tech = await createUser(ctx.db, s.org.id, "technician");
+    const techApi = client(ctx.app, await login(ctx.app, tech.email));
+    const visit = (await s.api.get(`/contracts/${ann!.contractId}`)).json().obligations[0];
+    const job = (await s.api.post("/jobs", { obligationId: visit.id, technicianId: tech.id, scheduledDate: "2026-03-01" })).json();
+    const template = (await techApi.get("/inspection-template")).json();
+    expect(
+      (
+        await techApi.put("/inspections/sync", {
+          clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d01",
+          jobId: job.jobId,
+          templateId: template.id,
+          status: "draft",
+          arrivedAt: "2026-03-01T15:00:00Z",
+          values: { aerator: "pass" },
+        })
+      ).statusCode,
+    ).toBeLessThan(300);
+    // An invoice, a site added to an imported customer, and a renewal of an imported contract.
+    await s.api.post("/invoices", { customerId: bo!.customerId, lines: [{ description: "Pump out", unitPriceCents: 30000 }] });
+    await s.api.post(`/customers/${bo!.customerId}/sites`, { addressLine1: "6 Pine Ln", city: "Austin" });
+    expect((await s.api.post(`/contracts/${cy!.contractId}/renewal`, { send: false })).statusCode).toBeLessThan(300);
+
+    const blocked = await check();
+    expect(blocked).toMatchObject({ canUndo: false, reason: null });
+    expect(Object.fromEntries(blocked.blockers.map((b: { table: string; label: string }) => [b.table, b.label]))).toEqual({
+      jobs: "1 scheduled visit",
+      inspections: "1 inspection",
+      invoices: "1 invoice",
+      sites: "1 site added to an imported customer",
+      renewals: "1 renewal",
+    });
+    const res = await s.api.post(`/imports/${imp.id}/undo`, {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toContain("1 scheduled visit");
+    expect(await count(ctx, "contracts")).toBe(2);
+
+    // A filing on an imported site blocks it too.
+    for (const table of ["inspection_values", "inspections", "jobs", "invoice_lines", "invoices", "renewals"]) await sql`delete from ${sql.table(table)}`.execute(ctx.db);
+    await ctx.db.deleteFrom("sites").where("addressLine1", "=", "6 Pine Ln").execute();
+    expect((await check()).blockers).toEqual([]);
+    // A contract filing: the authority is told about an imported contract.
+    await sql`insert into filings (organization_id, site_id, contract_id, kind, status, state_machine_version)
+      values (${s.org.id}, ${cy!.siteId}, ${cy!.contractId}, 'contract', 'pending', 1)`.execute(ctx.db);
+    expect((await check()).blockers).toEqual([{ table: "filings", label: "1 filing", count: 1 }]);
   });
 
   it("lets the office fix the mapping and choose rows", async () => {

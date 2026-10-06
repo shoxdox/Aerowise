@@ -11,6 +11,7 @@ import {
   importMappingInput,
   importRowsInput,
   importSheetInput,
+  importUndoCheck,
   importUpload,
   mappingScore,
   MAX_IMPORT_BYTES,
@@ -30,6 +31,8 @@ import { audit } from "../lib/audit.ts";
 import { insertContract, type Terms } from "../lib/contracts.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { parseSpreadsheet } from "../lib/import-parse.ts";
+import { deleteImportRecords, importRecords, undoBlockers } from "../lib/import-undo.ts";
+import { organizationToday } from "../lib/today.ts";
 import { jsonRow } from "../lib/json.ts";
 
 const params = z.object({ id });
@@ -48,7 +51,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   async function findImport(organizationId: string, importId: string) {
     const row = await db
       .selectFrom("imports")
-      .select(["id", "filename", "status", "sheets", "sheetIndex", "headers", "mapping", "mappingSource", "createdAt", "committedAt", "error", "result"])
+      .select(["id", "filename", "status", "sheets", "sheetIndex", "headers", "mapping", "mappingSource", "createdAt", "committedAt", "undoneAt", "error", "result"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", importId)
       .executeTakeFirst();
@@ -122,7 +125,8 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     return {
       customers: customers.map((c) => ({ ...c, ...(byCustomer.get(c.id) ?? { phones: [], emails: [] }) })),
       sites,
-      plans: [...plans.keys()],
+      plans: [...plans.values()].map((p) => ({ name: p.planName, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm })),
+      today: await organizationToday(db, organizationId, now()),
     };
   }
 
@@ -147,7 +151,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     rows.forEach((r, i) => {
       if (r.customerId && r.siteId) analyzed[i]!.result = { customerId: r.customerId, siteId: r.siteId, contractId: r.contractId };
     });
-    return { rows: analyzed, plans };
+    return { rows: analyzed, plans, today: existing.today };
   }
 
   async function detail(organizationId: string, importId: string) {
@@ -378,12 +382,12 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const { organizationId } = req.requireAuth();
       const imp = await findImport(organizationId, req.params.id);
       requirePreview(imp, true);
-      const { rows, plans } = await analyze(organizationId, imp);
+      const { rows, plans, today } = await analyze(organizationId, imp);
       const included = rows.filter((r) => r.include);
       if (included.length === 0) throw unprocessable("No rows are included");
       try {
         await db.transaction().execute(async (trx) => {
-          const result = await saveRows(trx, organizationId, imp.id, imp.sheetIndex, included, plans);
+          const result = await saveRows(trx, organizationId, imp.id, imp.sheetIndex, included, plans, today);
           const done = await trx
             .updateTable("imports")
             .set({ status: "committed", committedAt: new Date(), error: null, result: JSON.stringify(result) })
@@ -430,6 +434,67 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     },
   );
 
+  async function undoCheck(q: Database | Transaction<DB>, organizationId: string, imp: { id: string; status: string }) {
+    const records = await importRecords(q, organizationId, imp.id);
+    const removes = { customers: records.customers.length, sites: records.sites.length, contracts: records.contracts.length, visits: records.service_obligations.length };
+    if (imp.status !== "committed") {
+      const reason = imp.status === "undone" ? "This import was already undone" : "Only a saved import can be undone";
+      return { records, check: { canUndo: false, reason, removes, blockers: [] } };
+    }
+    const blockers = await undoBlockers(q, organizationId, records);
+    return { records, check: { canUndo: blockers.length === 0, reason: null, removes, blockers } };
+  }
+
+  app.get(
+    "/imports/:id/undo",
+    {
+      config: { permission: "crm:write" },
+      schema: { tags: ["imports"], summary: "What undoing a saved import would delete, and any work that stops it", params, response: { 200: importUndoCheck } },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const imp = await findImport(organizationId, req.params.id);
+      return (await undoCheck(db, organizationId, imp)).check;
+    },
+  );
+
+  app.post(
+    "/imports/:id/undo",
+    {
+      config: { permission: "crm:write" },
+      schema: {
+        tags: ["imports"],
+        summary: "Delete everything a saved import created",
+        description: "Only while nothing has been done with those records (no visits scheduled, inspections, invoices, filings, renewals and so on); otherwise 409 names what blocks it.",
+        params,
+        response: { 200: importDetail },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const imp = await findImport(organizationId, req.params.id);
+      await db.transaction().execute(async (trx) => {
+        // Hold the import while checking and deleting, so two undos cannot interleave.
+        await trx.selectFrom("imports").select("id").where("id", "=", imp.id).forUpdate().execute();
+        const current = await trx.selectFrom("imports").select("status").where("id", "=", imp.id).executeTakeFirstOrThrow();
+        const { records, check } = await undoCheck(trx, organizationId, { id: imp.id, status: current.status });
+        if (check.reason) throw new HttpError(409, "import_closed", check.reason);
+        if (!check.canUndo) throw new HttpError(409, "import_in_use", `This import can't be undone because work was done on its records: ${check.blockers.map((b) => b.label).join(", ")}`);
+        try {
+          await deleteImportRecords(trx, organizationId, records);
+        } catch (err) {
+          // Work added between the check and the delete.
+          if ((err as { code?: string }).code === "23503") throw new HttpError(409, "import_in_use", "Work was just added to this import's records; check again");
+          throw err;
+        }
+        await trx.updateTable("importRows").set({ customerId: null, siteId: null, contractId: null }).where("importId", "=", imp.id).execute();
+        await trx.updateTable("imports").set({ status: "undone", undoneAt: now(), undoneBy: userId }).where("id", "=", imp.id).execute();
+        await audit(trx, req, { action: "import.undone", entityType: "import", entityId: imp.id, changes: check.removes });
+      });
+      return detail(organizationId, imp.id);
+    },
+  );
+
   app.post(
     "/imports/:id/discard",
     {
@@ -450,7 +515,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 };
 
 /** Inserts everything the included rows describe, in the caller's transaction. */
-async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, Terms>) {
+async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, Terms>, today: string) {
   const customerIds = new Map<string, string>();
   const customers: Insertable<DB["customers"]>[] = [];
   const contacts: Insertable<DB["contacts"]>[] = [];
@@ -496,6 +561,8 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
       accessNotes: r.accessNotes,
       gateCode: r.gateCode,
       schedulingNotes: null,
+      // The plan named on the row is the only hint the import has; the office can change it on the site.
+      customerType: (r.planName ? plans.get(r.planName)?.customerType : undefined) ?? "residential",
       importId,
     });
     if (r.manufacturer || r.model || r.serial) systems.push({ organizationId, siteId, manufacturer: r.manufacturer, model: r.model, serial: r.serial });
@@ -507,14 +574,28 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
   for (const part of chunks(sites)) await trx.insertInto("sites").values(part).execute();
   for (const part of chunks(systems)) await trx.insertInto("wastewaterSystems").values(part).execute();
 
+  // Contracts, with the visits the provider already did before Aerowise marked done.
   let contracts = 0;
-  // Each contract's visits follow its site's authority; load the authorities once.
   const catalog = await loadCatalog(trx);
   for (const [i, row] of rows.entries()) {
-    const terms = row.record.planName ? plans.get(row.record.planName) : undefined;
-    if (!terms || !row.record.contractStart) continue;
-    results[i]!.contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: row.record.contractStart, terms, autoRenew: false }, { catalog });
+    const r = row.record;
+    const terms = r.planName ? plans.get(r.planName) : undefined;
+    if (!terms || !r.contractStart) continue;
+    const contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: r.contractStart, terms, autoRenew: false }, { catalog });
+    results[i]!.contractId = contractId;
     contracts++;
+    const visits = trx.updateTable("serviceObligations").where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("status", "=", "open");
+    if (r.lastInspection) {
+      // The window holding the last inspection, and every window before it, was covered.
+      await visits
+        .set({ status: "completed", completedAt: new Date(`${r.lastInspection}T12:00:00Z`), completedByImport: importId, updatedAt: new Date() })
+        .where("windowStart", "<=", r.lastInspection)
+        .execute();
+    }
+    // A contract that already ended is kept for renewal, not for visits nobody can make.
+    if (r.contractEnd && r.contractEnd < today) {
+      await visits.set({ status: "cancelled", completedByImport: importId, updatedAt: new Date() }).execute();
+    }
   }
 
   for (const part of chunks(results)) {

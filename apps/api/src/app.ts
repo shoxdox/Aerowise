@@ -14,6 +14,7 @@ import {
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
 import { adminRoutes } from "./routes/admin.ts";
+import { adminSupportRoutes } from "./routes/admin-support.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
@@ -39,6 +40,9 @@ import { routingRoutes } from "./routes/routing.ts";
 import { smsRoutes } from "./routes/sms.ts";
 import { emailRoutes } from "./routes/email.ts";
 import { userRoutes } from "./routes/users.ts";
+import { passwordResetRoutes } from "./routes/password-reset.ts";
+import { onboardingRoutes } from "./routes/onboarding.ts";
+import { organizationRoutes } from "./routes/organization.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
@@ -63,6 +67,8 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Sign-in attempts allowed per IP and email per minute. */
   loginRateLimit?: number;
+  /** Password reset requests allowed per IP and email per minute. */
+  passwordResetRateLimit?: number;
   /**
    * Which proxies in front of the API to believe about the client's address (Fastify's
    * `trustProxy`: true, or the proxies' addresses and ranges). Rate limits key on that
@@ -127,6 +133,7 @@ export async function buildApp({
   demo = false,
   logger = false,
   loginRateLimit = 10,
+  passwordResetRateLimit = 5,
   trustProxy = false,
   reporter = new NoopReporter(),
   now = () => new Date(),
@@ -245,7 +252,11 @@ export async function buildApp({
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
+  await app.register(adminSupportRoutes, { db, production });
   await app.register(userRoutes, { db, now, production, invitations });
+  await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
+  await app.register(organizationRoutes, { db, store });
+  await app.register(onboardingRoutes, { db, now });
   await app.register(customerRoutes, { db, now });
   await app.register(siteRoutes, { db, now });
   await app.register(contractRoutes, { db, now });

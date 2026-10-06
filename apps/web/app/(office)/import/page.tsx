@@ -18,7 +18,7 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-const STATUS_CLASS: Record<ImportListItem["status"], string> = { preview: "upcoming", committed: "ok", failed: "danger", discarded: "cancelled" };
+const STATUS_CLASS: Record<ImportListItem["status"], string> = { preview: "upcoming", committed: "ok", failed: "danger", discarded: "cancelled", undone: "cancelled" };
 
 export default function ImportPage() {
   const router = useRouter();
@@ -54,7 +54,7 @@ export default function ImportPage() {
         </p>
         <p className="muted">
           Useful columns: customer name, phone, email, service address, city, ZIP, county, permit number, gate code, unit make, model and serial, plan
-          and contract start. Up to 5,000 rows. In a workbook with several sheets you choose the sheet in the preview, and the column choices you
+          and contract start or end date, and the last inspection date, so renewals and overdue visits show up right away. Up to 5,000 rows. In a workbook with several sheets you choose the sheet in the preview, and the column choices you
           make are remembered for your next import.
         </p>
         <label className="row">

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
+import { addDays, addMonths } from "./schedule.ts";
 
 // Importing customers and sites from a provider's spreadsheet: which column is which,
 // how values are cleaned, and what the preview shows before anything is saved.
@@ -24,6 +25,8 @@ export const IMPORT_FIELDS = [
   "serial",
   "planName",
   "contractStart",
+  "contractEnd",
+  "lastInspection",
 ] as const;
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
@@ -47,6 +50,8 @@ export const IMPORT_FIELD_LABELS: Record<ImportField, string> = {
   serial: "Unit serial",
   planName: "Plan",
   contractStart: "Contract start",
+  contractEnd: "Contract end",
+  lastInspection: "Last inspection",
 };
 
 /** Header words that identify each field, after lowercasing and dropping punctuation. */
@@ -70,6 +75,8 @@ const SYNONYMS: Record<ImportField, string[]> = {
   serial: ["serial", "serial number", "serial no", "sn", "s n", "unit serial"],
   planName: ["plan", "service plan", "contract type", "plan name"],
   contractStart: ["contract start", "start date", "start", "contract date", "effective date", "contract start date"],
+  contractEnd: ["contract end", "end date", "end", "contract end date", "expiration", "expiration date", "expires", "expiry", "contract expiration", "contract expires", "renewal date"],
+  lastInspection: ["last inspection", "last inspection date", "last inspected", "last service", "last service date", "last visit", "last visit date", "inspection date"],
 };
 
 const normHeader = (h: string) =>
@@ -226,7 +233,7 @@ export function normalizeDate(raw: string): string | null {
 
 // API shapes.
 
-export const IMPORT_STATUSES = ["preview", "committed", "failed", "discarded"] as const;
+export const IMPORT_STATUSES = ["preview", "committed", "failed", "discarded", "undone"] as const;
 export const IMPORT_ROW_STATUSES = ["ready", "warning", "duplicate", "error"] as const;
 export type ImportRowStatus = (typeof IMPORT_ROW_STATUSES)[number];
 
@@ -248,7 +255,11 @@ export const importRecord = z.object({
   model: z.string().nullable(),
   serial: z.string().nullable(),
   planName: z.string().nullable(),
+  /** The contract's first and last day. With a plan, a missing one is worked out from the plan's term. */
   contractStart: z.string().nullable(),
+  contractEnd: z.string().nullable(),
+  /** The last inspection before Aerowise; visits up to it count as done. */
+  lastInspection: z.string().nullable(),
 });
 export type ImportRecord = z.infer<typeof importRecord>;
 
@@ -259,6 +270,8 @@ export const importRow = z.object({
   include: z.boolean(),
   record: importRecord,
   messages: z.array(z.string()),
+  /** What the import will do with the row that depends on today's date; never changes its status. */
+  notes: z.array(z.string()),
   /** Where an existing customer will get this site, instead of a new customer. */
   existingCustomer: z.object({ id, displayName: z.string() }).nullable(),
   duplicateOf: z.object({ kind: z.enum(["row", "site"]), rowNo: z.number().int().nullable(), siteId: id.nullable(), label: z.string() }).nullable(),
@@ -294,11 +307,22 @@ export const importDetail = z.object({
   summary: importSummary,
   createdAt: z.iso.datetime({ offset: true }),
   committedAt: z.iso.datetime({ offset: true }).nullable(),
+  undoneAt: z.iso.datetime({ offset: true }).nullable(),
   error: z.string().nullable(),
   result: z.object({ customers: z.number().int(), sites: z.number().int(), contracts: z.number().int() }).nullable(),
   rows: z.array(importRow),
 });
 export type ImportDetail = z.infer<typeof importDetail>;
+
+/** What undoing a committed import would delete, and the work that stops it. */
+export const importUndoCheck = z.object({
+  canUndo: z.boolean(),
+  /** Why it cannot be undone when that is not about work done (not committed, already undone). */
+  reason: z.string().nullable(),
+  removes: z.object({ customers: z.number().int(), sites: z.number().int(), contracts: z.number().int(), visits: z.number().int() }),
+  blockers: z.array(z.object({ table: z.string(), label: z.string(), count: z.number().int() })),
+});
+export type ImportUndoCheck = z.infer<typeof importUndoCheck>;
 
 export const importListItem = importDetail
   .pick({ id: true, filename: true, status: true, createdAt: true, committedAt: true, result: true })
@@ -332,8 +356,10 @@ export const importRowsInput = z.object({
 export interface ExistingRecords {
   customers: { id: string; displayName: string; phones: string[]; emails: string[] }[];
   sites: { id: string; addressLine1: string; city: string; permitNumber: string | null }[];
-  /** Active plan names, matched without regard to case. */
-  plans: string[];
+  /** Active plans, matched by name without regard to case. */
+  plans: { name: string; termMonths: number; visitsPerTerm: number }[];
+  /** Today in the organization's time zone. */
+  today: string;
 }
 
 export interface AnalyzedRow extends ImportRow {
@@ -380,9 +406,12 @@ function recordFrom(raw: string[], mapping: ColumnMapping, messages: string[]): 
     else messages.push(`ZIP "${rawZip}" is not a ZIP code and was left out`);
   }
 
-  const rawStart = text("contractStart");
-  const contractStart = rawStart ? normalizeDate(rawStart) : null;
-  if (rawStart && !contractStart) messages.push(`Contract start "${rawStart}" is not a date`);
+  const date = (field: "contractStart" | "contractEnd" | "lastInspection") => {
+    const raw = text(field);
+    const value = raw ? normalizeDate(raw) : null;
+    if (raw && !value) messages.push(`${IMPORT_FIELD_LABELS[field]} "${raw}" is not a date`);
+    return value;
+  };
 
   return {
     customerName: name,
@@ -401,7 +430,9 @@ function recordFrom(raw: string[], mapping: ColumnMapping, messages: string[]): 
     model: text("model"),
     serial: text("serial"),
     planName: text("planName"),
-    contractStart,
+    contractStart: date("contractStart"),
+    contractEnd: date("contractEnd"),
+    lastInspection: date("lastInspection"),
   };
 }
 
@@ -421,7 +452,7 @@ export function analyzeImport(
   }
   const sitesByKey = new Map(existing.sites.map((s) => [addressKey(s.addressLine1, s.city), s]));
   const sitesByPermit = new Map(existing.sites.filter((s) => s.permitNumber).map((s) => [s.permitNumber!.toUpperCase(), s]));
-  const plans = new Map(existing.plans.map((p) => [p.toLowerCase(), p]));
+  const plans = new Map(existing.plans.map((p) => [p.name.toLowerCase(), p]));
 
   const rowsByKey = new Map<string, number>();
   const rowsByPermit = new Map<string, number>();
@@ -435,12 +466,8 @@ export function analyzeImport(
     if (!record.addressLine1) errors.push("No service address");
     if (!record.city) errors.push("No city");
 
-    if (record.planName) {
-      const plan = plans.get(record.planName.toLowerCase());
-      if (!plan) messages.push(`No active plan named "${record.planName}"; no contract will be created`);
-      else if (!record.contractStart) messages.push("No contract start date; no contract will be created");
-      record.planName = plan ?? record.planName;
-    } else if (record.contractStart) messages.push("Contract start given without a plan; no contract will be created");
+    const notes: string[] = [];
+    contractTerms(record, plans, existing.today, messages, notes);
 
     // Which customer this row belongs to.
     const nameKey = (record.customerName ?? "").toLowerCase();
@@ -483,12 +510,50 @@ export function analyzeImport(
       include: status === "error" ? false : (include ?? status !== "duplicate"),
       record,
       messages: [...errors, ...messages],
+      notes,
       existingCustomer,
       duplicateOf,
       result: null,
       customerKey,
     };
   });
+}
+
+/**
+ * Settles the contract a row describes: the plan, both dates (one may be worked out from
+ * the plan's term), and what its visits will look like.
+ */
+function contractTerms(record: ImportRecord, plans: Map<string, ExistingRecords["plans"][number]>, today: string, messages: string[], notes: string[]) {
+  const dated = record.contractStart || record.contractEnd;
+  const plan = record.planName ? plans.get(record.planName.toLowerCase()) : undefined;
+  if (record.planName) record.planName = plan?.name ?? record.planName;
+  if (!record.planName) {
+    if (dated) messages.push("Contract dates given without a plan; no contract will be created");
+  } else if (!plan) messages.push(`No active plan named "${record.planName}"; no contract will be created`);
+  else if (!dated) messages.push("No contract start or end date; no contract will be created");
+
+  if (!plan || !dated) {
+    if (record.lastInspection) messages.push("Last inspection is only used with a contract; no visits are scheduled from it");
+    return;
+  }
+
+  // The end date is what renewals run on, so when both are given and disagree, it wins.
+  const fromEnd = record.contractEnd ? addMonths(addDays(record.contractEnd, 1), -plan.termMonths) : null;
+  const startOn = fromEnd ?? record.contractStart!;
+  const endOn = addDays(addMonths(startOn, plan.termMonths), -1);
+  if (record.contractStart && fromEnd && fromEnd !== record.contractStart) {
+    messages.push(`Contract start ${record.contractStart} does not fit a ${plan.termMonths}-month plan ending ${endOn}; the contract starts ${startOn}`);
+  }
+  record.contractStart = startOn;
+  record.contractEnd = endOn;
+
+  if (record.lastInspection && record.lastInspection > today) {
+    messages.push(`Last inspection ${record.lastInspection} is in the future and was left out`);
+    record.lastInspection = null;
+  }
+  const firstVisitDue = addDays(addMonths(startOn, plan.termMonths / plan.visitsPerTerm), -1);
+  if (endOn < today) notes.push(`Contract ended on ${endOn}; it is imported for renewal and its visits are not scheduled`);
+  else if (!record.lastInspection && firstVisitDue < today) notes.push("No last inspection date; visits due since the contract started will show as overdue");
 }
 
 export function summarize(rows: Pick<ImportRow, "status" | "include">[]) {

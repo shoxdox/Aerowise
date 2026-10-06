@@ -18,7 +18,7 @@ export async function labTestStatuses(db: Executor, organizationId: string, toda
   let q = db
     .selectFrom("contracts as k")
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "k.siteId").onRef("s.organizationId", "=", "k.organizationId"))
-    .select(["s.id as siteId", "s.county", "s.state", "s.jurisdictionId", "k.customerType"])
+    .select(["s.id as siteId", "s.county", "s.state", "s.jurisdictionId", "s.customerType"])
     .select((eb) =>
       eb
         .selectFrom("contracts as first")

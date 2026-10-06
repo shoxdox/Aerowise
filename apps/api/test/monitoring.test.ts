@@ -29,8 +29,10 @@ async function siteIn(c: TestContext, county: string, name = "Org A") {
   expect((await t.api.patch(`/sites/${t.site.id}`, { county })).statusCode).toBe(200);
   // Two visits a year: a six-month schedule, if the site may have one.
   const plan = async (customerType = "residential") => (await t.api.post("/plans", { name: `${customerType} 12/2`, customerType, termMonths: 12, visitsPerTerm: 2, priceCents: 20000 })).json();
-  const contract = async (startOn = "2026-01-15", customerType = "residential") =>
-    (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: (await plan(customerType)).id, startOn })).json();
+  const contract = async (startOn = "2026-01-15", customerType = "residential") => {
+    await t.api.patch(`/sites/${t.site.id}`, { customerType });
+    return (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: (await plan(customerType)).id, startOn })).json();
+  };
   return { ...t, contract };
 }
 
