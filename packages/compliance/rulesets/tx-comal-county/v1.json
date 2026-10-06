@@ -1,0 +1,119 @@
+{
+  "jurisdiction": {
+    "key": "tx-comal-county",
+    "state": "TX",
+    "authorityName": "Comal County Engineer's Office, Environmental Health",
+    "type": "county"
+  },
+  "version": 1,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile, sources read 2026-10-06, from Comal County's Environmental Health and OSSF Information pages, its homeowner-maintenance FAQ, its 2019 fee schedule, 30 TAC 285.7 and TCEQ's OSSF maintenance page. Comal County's OSSF rules (PDF) could not be read: the copy is a scan with no text. See docs/jurisdictions/tx-comal-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "Comal County's Rules for OSSF are published as a scanned PDF with no readable text, so their adoption and effective dates are unknown. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Comal County: Environmental Health",
+        "url": "https://www.comalcounty.gov/274/Environmental-Health",
+        "retrievedOn": "2026-10-06",
+        "note": "Maintenance reports are uploaded at https://comalcountyengineersoffice.files.com/u/maintenance-reports and contracts at https://comalcountyengineersoffice.files.com/u/maintenance-contracts, signing in with 'your name, email and TCEQ License number'. 195 David Jonas Dr, New Braunfels, TX 78132; phone 830-608-2090; fax 830-608-2078."
+      },
+      {
+        "title": "Comal County: OSSF Information (homeowner maintenance FAQ)",
+        "url": "https://www.comalcounty.gov/276/OSSF-Information",
+        "retrievedOn": "2026-10-06",
+        "note": "Licensed maintenance providers submit testing reports to Comal County; 'The reporting requirements for licensed maintenance providers have not changed.' Homeowners maintaining their own single-family system submit no reports. Only single-family owners may maintain their own aerobic OSSF; everyone else uses a licensed maintenance provider. No deadline, format or address beyond the portal."
+      },
+      {
+        "title": "Comal County: Rules for OSSF (PDF)",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2141/",
+        "retrievedOn": "2026-10-06",
+        "note": "Could not be read: the PDF is a scan with no machine-readable text. Its coverage area, dates and any maintenance provisions are unknown."
+      },
+      {
+        "title": "Comal County Environmental Health Department Fees (effective 2019-01-01)",
+        "url": "https://www.comalcounty.gov/DocumentCenter/View/2142/",
+        "retrievedOn": "2026-10-06",
+        "note": "No fee for maintenance reports, maintenance contracts or late reports."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Comal County's Rules for OSSF could not be read (a scanned PDF with no text), so any county-specific frequency, deadline, report contents or lab testing is unknown. Aerowise follows TCEQ's 30 TAC 285.7 until they are read.",
+      "Which addresses Comal County covers is not published outside those rules (cities with their own OSSF programs are unknown); every site needs a reviewed assignment.",
+      "Reports and contracts are uploaded to two separate county portals, which Aerowise cannot use for the office. The office downloads the report, uploads it and records it as sent. File naming or format rules for the portal are not published.",
+      "The adoption and effective dates of Comal County's rules are unknown.",
+      "Comal County publishes no acknowledgment of an uploaded report or contract.",
+      "No lab testing (BOD, TSS) or commercial-specific schedule is published in the readable sources, so none is required here."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Comal"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Comal County's Engineer's Office permits OSSFs in Comal County, but which cities run their own programs is not published in a readable source. Check with the Engineer's Office at 830-608-2090 or its septic records search (https://cceo.comalcounty.gov/permit-search) that it holds the site's permit. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Uploaded by the office to Comal County's maintenance reports portal, signing in with the provider's name, email and TCEQ license number."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Comal County takes contracts on a separate portal: https://comalcountyengineersoffice.files.com/u/maintenance-contracts (read 2026-10-06). Timing from 30 TAC 285.7(d)(2): a copy goes to the permitting authority 30 days before the service policy or current contract expires. The office uploads it by hand."
+  },
+  "service": {
+    "intervalMonths": 4,
+    "monitored": {
+      "intervalMonths": 6,
+      "appliesTo": [
+        "residential",
+        "commercial"
+      ],
+      "note": "30 TAC 285.7(e) and TCEQ's maintenance page: twice a year with an electronic monitor that notifies the provider of failures and monitors disinfection. Comal County's own rules could not be read."
+    }
+  },
+  "inspection": {
+    "requiredFields": [],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": "https://comalcountyengineersoffice.files.com/u/maintenance-reports"
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Comal County describes no reply to an uploaded report or contract. Record any acknowledgment it sends."
+  }
+}
