@@ -1,4 +1,4 @@
-import { billingPeriodsFor, countActiveContracts, ensureBillingCustomer, type BillingProvider } from "@aerowise/billing";
+import { billingPeriodsFor, countActiveContracts, ensureBillingCustomer, runPlanLifecycle, type BillingProvider } from "@aerowise/billing";
 import type { Database } from "@aerowise/db";
 import {
   BILLABLE_STATES,
@@ -7,6 +7,7 @@ import {
   effectivePrice,
   isReadOnly,
   monthlyCharge,
+  SUBSCRIPTION_STATES,
   subscriptionOverview,
   type SubscriptionConfig,
 } from "@aerowise/domain";
@@ -110,9 +111,38 @@ export const subscriptionRoutes: FastifyPluginAsyncZod<{
       if (!provider) throw unprocessable("Paying for Aerowise online is not set up on this server yet (STRIPE_BILLING_SECRET_KEY)");
       const org = await loadOrg(organizationId);
       const customerId = await ensureBillingCustomer(db, provider, org);
-      const page = await provider.managePaymentMethod({ customerId, returnUrl: `${appUrl.replace(/\/$/, "")}/settings/subscription` });
+      const page = await provider.managePaymentMethod({ customerId, returnUrl: `${appUrl.replace(/\/$/, "")}/settings/subscription?payment=done` });
       await audit(db, req, { action: "subscription.payment_method_opened", entityType: "organization", entityId: organizationId });
       return page;
+    },
+  );
+
+  app.post(
+    "/subscription/refresh",
+    {
+      // Coming back from Stripe with a working payment method is how a lapsed company reactivates.
+      config: { permission: "subscription:manage", allowedWhenReadOnly: true },
+      schema: {
+        tags: ["subscription"],
+        summary: "Check the plan again after the payment method changed",
+        description:
+          "Ends a finished free period, retries failed invoices with the new payment method, and reactivates a past due or read-only company once nothing is unpaid.",
+        body: z.object({}).optional(),
+        response: { 200: z.object({ state: z.enum(SUBSCRIPTION_STATES), changed: z.boolean() }) },
+      },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const result = await runPlanLifecycle({ db, provider, config, now: now(), retryFailed: true }, organizationId);
+      if (result.changedFrom) {
+        await audit(db, req, {
+          action: "subscription.plan_changed",
+          entityType: "organization",
+          entityId: organizationId,
+          changes: { from: result.changedFrom, to: result.state },
+        });
+      }
+      return { state: result.state, changed: result.changedFrom !== null };
     },
   );
 };

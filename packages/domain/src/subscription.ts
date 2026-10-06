@@ -48,6 +48,8 @@ export interface SubscriptionConfig {
   designPartnerDays: number;
   pricePerContractCents: number;
   monthlyMinimumCents: number;
+  /** How long a company stays past due after a failed payment before it goes read-only. */
+  pastDueGraceDays: number;
 }
 
 export const DEFAULT_SUBSCRIPTION_CONFIG: SubscriptionConfig = {
@@ -55,13 +57,18 @@ export const DEFAULT_SUBSCRIPTION_CONFIG: SubscriptionConfig = {
   designPartnerDays: 90,
   pricePerContractCents: 150,
   monthlyMinimumCents: 9900,
+  pastDueGraceDays: 14,
 };
+
+/** Reminders go out this many days before a trial or design-partner period ends. */
+export const PLAN_REMINDER_DAYS = [14, 7, 1] as const;
 
 const CONFIG_ENV: Record<keyof SubscriptionConfig, string> = {
   trialDays: "AEROWISE_TRIAL_DAYS",
   designPartnerDays: "AEROWISE_DESIGN_PARTNER_DAYS",
   pricePerContractCents: "AEROWISE_PRICE_PER_CONTRACT_CENTS",
   monthlyMinimumCents: "AEROWISE_MONTHLY_MINIMUM_CENTS",
+  pastDueGraceDays: "AEROWISE_PAST_DUE_GRACE_DAYS",
 };
 
 /** Aerowise's own prices and free-period lengths from the environment; unset values use the defaults. */
