@@ -662,3 +662,9 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 
 - **Two intros, kept on the person, not the company.** The office intro (owner, office and read-only people, on the inbox) explains how work flows from due visits to filings, renewals and invoices; the technician intro (on the route) explains a visit on the phone. Closing one is stored in `users.intros_dismissed`, so it stays closed on every device and in every company that person works for. It folds into a "Show the introduction" link in the same place, which opens it again. Support never sees them, and they can be closed while a plan is read-only. A phone with an account cached before intros existed shows the technician intro once more.
 - **An empty list says what it is for and what fills it**, through one `EmptyState` component, instead of "Nothing here". Filtered searches still say "No customers found".
+
+## 2026-10-06 · W10.5 What the authority asks, on the site
+
+- **The site's authority panel says what the authority asks in five plain lines**: inspection interval, report deadline, how reports are sent, whether contracts are filed, and how a filing is acknowledged. They are worked out from the ruleset by one function (`authorityRequirements`), so the panel never says more than the rules do. A line above them says where they come from: example rules, the authority's public sources (not confirmed with it), or confirmed with the authority.
+- **An unpublished channel is said plainly.** Where the authority has not said how reports reach it, the line reads "Not published" and that filings wait for review; a draft authority's emailed reports are "released by the office", never "sent automatically".
+- Each line has a stable key so W12.V4 can add a per-line confirmation status; until then nothing shows a line as partly confirmed.

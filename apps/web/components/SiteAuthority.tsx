@@ -174,6 +174,17 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
       {data.identifiers.map((i) => (
         <IdentifierRow key={i.key} identifier={i} editable={editable} onSave={(v) => void saveIdentifier(i.key, v)} />
       ))}
+      {data.profile && data.profile.requirements.length > 0 && (
+        <>
+          <dt>What it asks</dt>
+          <dd className="muted small" data-testid="requirements-source">
+            {data.profile.requirementsSource}
+          </dd>
+          {data.profile.requirements.map((r) => (
+            <RequirementRow key={r.key} label={r.label} value={r.value} />
+          ))}
+        </>
+      )}
       {data.profile && data.profile.unresolved.length > 0 && (
         <>
           <dt>Open questions</dt>
@@ -190,6 +201,15 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
         </>
       )}
     </dl>
+  );
+}
+
+function RequirementRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </>
   );
 }
 
