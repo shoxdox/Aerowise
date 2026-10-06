@@ -21,6 +21,19 @@ Each of these is open in `profile.unresolved`. Denton County Environmental Healt
 - The form is linked as the "Homeowners Inspection Form", but its text covers maintenance companies as well ("If a maintenance company is performing the maintenance test…").
 - The county form asks for a CL2 grab result, complaint response dates and lid security in its own layout. Aerowise's report records chlorine residual and complaints but doesn't reproduce the county form.
 
+## Reconciliation with the saved form (W12.C7, 2026-10-06)
+
+The 2026-10-06 research pass could not fetch Denton's documents again (HTTP 429, then a Cloudflare check; its eight `access_blocked` entries mean only that). Instead, the saved original `4eafacc1-Homeowners-Inspection-Form-PDF.pdf` from the prior-source export (SHA-256 `7f32068bd5a8c0f201cb915fce9570eb461e8671badc2ad313f0ec499408983e`, footed "Rev 3/9/2021", source https://www.dentoncounty.gov/DocumentCenter/View/1439/Homeowners-Inspection-Form-PDF) was read directly. It matches this draft and #76:
+
+| The form says | This draft |
+|---|---|
+| "Required frequency of maintenance check and test: Every 4 months" | `service.intervalMonths` 4, no monitoring allowance |
+| "please mail, fax or email this form to … Email: ossfinspections@dentoncounty.gov" | reports drafted to that address; the office presses Send |
+| Nothing about contracts | contract filings held for review (`contracts.submission: unknown`), as #76 split them |
+| CL2 (grab) result and test method; dates responded to owner complaints; lids secure before and after service; sprayfield vegetation "if applicable" | Aerowise's report carries the chlorine residual, complaint responses and, from form v2, the spray area's condition, in its own layout. Lid security has no field of its own. |
+
+No rule changes, so there is no Denton v2. Whether the county accepts Aerowise's layout instead of its form, and the other open questions above, stay open.
+
 ## Identity
 
 - key: `tx-denton-county`, ruleset v1
