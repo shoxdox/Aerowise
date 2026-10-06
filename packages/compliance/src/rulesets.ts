@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Database, DB } from "@aerowise/db";
-import { profileStatus, rulesetRules, type InspectionRequirements, type RulesetRules } from "@aerowise/domain";
+import { profileStatus, requiredFieldsFor, rulesetRules, type InspectionRequirements, type RulesetRules } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -25,7 +25,8 @@ export function bundledRulesets(dir = RULESET_DIR): RulesetRules[] {
       if (rules.profile?.status === "fictional" && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} is fictional but does not say so`);
       // An authority's own layout must show every answer the authority requires.
       const laidOut = new Set(rules.report?.sections.flatMap((x) => x.fields.map((f) => f.key)) ?? []);
-      const missing = rules.report ? rules.inspection.requiredFields.filter((k) => !laidOut.has(k)) : [];
+      const required = [...rules.inspection.requiredFields, ...(rules.inspection.scopedRequiredFields ?? []).flatMap((x) => x.fields)];
+      const missing = rules.report ? required.filter((k) => !laidOut.has(k)) : [];
       if (missing.length) throw new Error(`ruleset ${key}/${file} requires ${missing.join(", ")} but its report layout leaves them off`);
       out.push(rules);
     }
@@ -193,12 +194,13 @@ export function resolveSite(catalog: CatalogEntry[], site: { county: string | nu
   return explainSite(catalog, site, onDate).resolved;
 }
 
-export function requirementsOf(resolved: ResolvedJurisdiction): InspectionRequirements {
+/** What the authority adds to an inspection at a site of this type. */
+export function requirementsOf(resolved: ResolvedJurisdiction, customerType: "residential" | "commercial"): InspectionRequirements {
   return {
     jurisdictionKey: resolved.key,
     authorityName: resolved.authorityName,
     rulesetVersion: resolved.rules.version,
-    requiredFields: resolved.rules.inspection.requiredFields,
+    requiredFields: requiredFieldsFor(resolved.rules, customerType),
     requiredPhotos: resolved.rules.inspection.requiredPhotos,
   };
 }
@@ -207,11 +209,12 @@ export function requirementsOf(resolved: ResolvedJurisdiction): InspectionRequir
 export async function resolveSiteById(db: Executor, organizationId: string, siteId: string, onDate: string) {
   const site = await db
     .selectFrom("sites")
-    .select(["county", "state", "jurisdictionId"])
+    .select(["county", "state", "jurisdictionId", "customerType"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", siteId)
     .executeTakeFirstOrThrow();
-  return resolveSite(await loadCatalog(db), site, onDate);
+  const resolved = resolveSite(await loadCatalog(db), site, onDate);
+  return resolved ? { ...resolved, customerType: site.customerType } : null;
 }
 
 /**
@@ -221,5 +224,5 @@ export async function resolveSiteById(db: Executor, organizationId: string, site
 export async function siteRequirements(db: Executor, organizationId: string, siteId: string, at: Date): Promise<InspectionRequirements | null> {
   const org = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
   const resolved = await resolveSiteById(db, organizationId, siteId, dateInZone(at, org.timezone));
-  return resolved ? requirementsOf(resolved) : null;
+  return resolved ? requirementsOf(resolved, resolved.customerType) : null;
 }

@@ -15,6 +15,8 @@ export interface ReportSnapshot {
   provider: {
     name: string;
     phone: string | null;
+    /** The provider's emergency phone (authority copy only). */
+    emergencyPhone?: string | null;
     email: string | null;
     address: string | null;
     /** Storage key of the company logo when the report was made (content-addressed, so it never changes). */
@@ -22,7 +24,15 @@ export interface ReportSnapshot {
   };
   customer: { name: string };
   site: { address: string; county: string | null; permitNumber: string | null };
-  system: { manufacturer: string | null; model: string | null; serial: string | null; disposalType: string | null; chlorinationMethod: string | null } | null;
+  system: {
+    manufacturer: string | null;
+    model: string | null;
+    serial: string | null;
+    disposalType: string | null;
+    chlorinationMethod: string | null;
+    /** Set when the system record and what the technician found disagree (the inspection answer wins). */
+    conflict?: string | null;
+  } | null;
   technician: {
     name: string;
     license: string | null;
@@ -52,6 +62,11 @@ export interface ReportSnapshot {
     validationStatus: string;
     overrideReason: string | null;
     accessIssue: string | null;
+    /**
+     * Authority copy only: when the site's previous inspection in Aerowise was completed
+     * (null: none on record). Some authorities require the preceding inspection's date (SJRA 7(a)(10)(D)(ii)).
+     */
+    previousCompletedAt?: string | null;
   };
   template: { id: string; name: string; version: number };
   /**
@@ -128,4 +143,22 @@ export function reportIssues(issues: { type: string; severity: string; descripti
   return issues
     .filter((i) => audience === "customer" || !AUTHORITY_OMITTED_ISSUES.includes(i.type))
     .map((i) => ({ type: ISSUE_LABELS[i.type as keyof typeof ISSUE_LABELS] ?? i.type, severity: i.severity, description: i.description }));
+}
+
+const CHLORINATOR_FOUND: Record<string, string> = { working: "Working", needs_service: "Needs service" };
+
+/**
+ * What the report says when the system on record disagrees with what the technician found
+ * about chlorination: a system recorded with none where a chlorine device was found, or
+ * one recorded with tablets or liquid where none was found.
+ */
+export function chlorinationConflict(method: string | null, chlorinator: InspectionValues[string] | undefined): string | null {
+  if (!method || typeof chlorinator !== "string") return null;
+  if (method === "none" && CHLORINATOR_FOUND[chlorinator]) {
+    return `The system record says there is no chlorination, but the technician found a chlorine device (${CHLORINATOR_FOUND[chlorinator]}). The inspection answers are what was found on site.`;
+  }
+  if (method !== "none" && chlorinator === "not_present") {
+    return `The system record says chlorination by ${method}, but the technician found no chlorine device. The inspection answers are what was found on site.`;
+  }
+  return null;
 }

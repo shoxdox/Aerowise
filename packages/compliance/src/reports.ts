@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import { CREDENTIAL_LABELS, dateInZone, LAB_ANALYTE_LABELS, labResultsOverLimit, labTestRequirement, validateInspection, type CredentialKind, type LabAnalyte, type LabTestRule, type InspectionValues, type ReportedResponse, type RulesetRules, type TemplateDefinition } from "@aerowise/domain";
-import { layoutSections, renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
+import { chlorinationConflict, layoutSections, renderReport, reportIssues, reportSections, type Audience, type ReportSnapshot } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
 
@@ -58,6 +58,7 @@ async function loadInspection(db: Executor, organizationId: string, inspectionId
       "i.accessIssue",
       "org.name as orgName",
       "org.phone as orgPhone",
+      "org.emergencyPhone as orgEmergencyPhone",
       "org.email as orgEmail",
       "org.addressLine1 as orgAddress1",
       "org.city as orgCity",
@@ -282,6 +283,19 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
     audience === "authority" ? responsesForInspection(db, organizationId, inspectionId) : null,
     audience === "authority" ? filingRules(db, organizationId, inspectionId) : null,
   ]);
+  const previous =
+    audience === "authority"
+      ? await db
+          .selectFrom("inspections")
+          .select("completedAt")
+          .where("organizationId", "=", organizationId)
+          .where("siteId", "=", insp.siteId)
+          .where("status", "=", "completed")
+          .where("completedAt", "<", insp.completedAt)
+          .orderBy("completedAt", "desc")
+          .limit(1)
+          .executeTakeFirst()
+      : null;
   const layout = filed?.rules.report ? { rule: filed.rules.report, jurisdictionKey: filed.jurisdictionKey, rulesetVersion: filed.rules.version } : null;
   const site = filed?.rules.labTests?.onReport
     ? await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", insp.siteId).executeTakeFirstOrThrow()
@@ -310,6 +324,8 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
     provider: {
       name: insp.orgName,
       phone: insp.orgPhone,
+      // Only the authority copy carries the emergency number.
+      emergencyPhone: audience === "authority" ? insp.orgEmergencyPhone : null,
       email: insp.orgEmail,
       address: joinAddress([insp.orgAddress1, insp.orgCity, [insp.orgState, insp.orgPostal].filter(Boolean).join(" ")]),
       logoKey: insp.logoStorageKey,
@@ -320,7 +336,7 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
       county: insp.county,
       permitNumber: insp.permitNumber,
     },
-    system: system ?? null,
+    system: system ? { ...system, conflict: chlorinationConflict(system.chlorinationMethod, answers.chlorinator) } : null,
     technician: { name: insp.technicianName, license: insp.technicianLicense, credentials },
     responsibleProvider: audience === "authority" ? provider : null,
     responses: responses?.reported.map(({ requestId: _r, ...rest }) => rest),
@@ -334,6 +350,7 @@ async function buildSnapshot(db: Executor, store: ObjectStore, organizationId: s
       validationStatus: insp.validationStatus,
       overrideReason: insp.overrideReason,
       accessIssue: insp.accessIssue,
+      ...(audience === "authority" ? { previousCompletedAt: previous?.completedAt?.toISOString() ?? null } : {}),
     },
     template: { id: insp.templateId, name: insp.templateName, version: insp.templateVersion },
     layout: layout ? { title: layout.rule.title, formReference: layout.rule.formReference, jurisdictionKey: layout.jurisdictionKey, rulesetVersion: layout.rulesetVersion } : null,

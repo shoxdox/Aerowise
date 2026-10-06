@@ -19,6 +19,8 @@ Status: **draft**. Written 2026-10-04 from LCRA's public pages. Nothing is sent 
 
 LCRA regulates OSSFs only inside its mapped area around the Highland Lakes. **The county never decides it.** Burnet, Llano and Travis are listed only so sites there are held for review (`assignment: "reviewed"`); the office looks the address up on LCRA's map and records what it checked. Other counties that touch the lakes are not listed: sites there match no authority and also go to review.
 
+What the map shows (W12.C4, 2026-10-06, from LCRA's order and fee schedule, Section 6, in [the 2026-10-06 research packet](research/2026-10-06/authorities/tx-travis-county.md), finding T2): around Lake Travis, LCRA's restricted zone is the area below the 691-foot contour, and its water quality zone runs 2,000 horizontal feet from the restricted zone's outer boundary, inside the lake's drainage area. Travis County's non-residential checklist (PDF p. 4, item 21) also says 2,000 feet. The 1,000 feet on Travis County's enforcement page is not used. The permit or LCRA's map decides a site, not distance from today's shoreline. LCRA's ruleset makes no distance claim, so it is unchanged (still v1); Travis County v2 carries the corrected text.
+
 ## Service frequency and deadline
 
 TCEQ: at least every four months, reported to the permitting authority and the owner within 14 days after the test (30 TAC 285.7, 2022 adoption). Deadline basis on each filing: "14 days after the inspection". **The six-month option for systems with electronic monitoring and automatic notification is not available**: Aerowise does not record whether a system qualifies, so every site is held to four months.

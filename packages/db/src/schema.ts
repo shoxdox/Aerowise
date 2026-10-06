@@ -31,6 +31,7 @@ export interface OrganizationsTable {
   /** A fictional demo company: only ever reaches the stand-ins, and holds made-up contact details. Fixed when made. */
   demo: Generated<boolean>;
   phone: string | null;
+  emergencyPhone: ColumnType<string | null, string | null | undefined, string | null>;
   email: string | null;
   addressLine1: string | null;
   addressLine2: string | null;

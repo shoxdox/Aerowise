@@ -24,6 +24,9 @@ export const completeValues = () => {
   return { ...values, chlorinator: "working", chlorine_level: 1.5, odor: "none", pumping_needed: false };
 };
 
+/** `completeValues` plus the report fields some authorities require (form v2): sludge, pH, spray area, alterations. */
+export const countyValues = () => ({ ...completeValues(), pump_tank_sludge: 6, pump_tank_ph: 7.2, spray_area: "acceptable", unauthorized_alterations: "none_found" });
+
 export type Setup = Awaited<ReturnType<typeof setup>>;
 
 export function payload(s: Setup, overrides: Record<string, unknown> = {}) {

@@ -27,6 +27,7 @@ export default function CompanySettingsPage() {
         body: {
           name: v.name ?? "",
           phone: v.phone ?? "",
+          emergencyPhone: v.emergencyPhone ?? "",
           email: v.email ?? "",
           addressLine1: v.addressLine1 ?? "",
           addressLine2: v.addressLine2 ?? "",
@@ -78,6 +79,11 @@ export default function CompanySettingsPage() {
         <label>
           Phone
           <input name="phone" type="tel" defaultValue={data.phone ?? ""} disabled={!owner} />
+        </label>
+        <label>
+          Emergency phone
+          <input name="emergencyPhone" type="tel" defaultValue={data.emergencyPhone ?? ""} disabled={!owner} />
+          <span className="muted small">Printed on reports to authorities that require one (Travis County, SJRA).</span>
         </label>
         <label>
           Email

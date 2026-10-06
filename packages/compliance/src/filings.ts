@@ -217,7 +217,7 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
     .innerJoin("inspectionTemplates as t", "t.id", "i.templateId")
     .innerJoin("memberships as m", (j) => j.onRef("m.userId", "=", "i.technicianUserId").onRef("m.organizationId", "=", "i.organizationId"))
-    .select(["i.id", "i.siteId", "i.templateId", "i.validationStatus", "i.completedAt", "t.definition", "m.technicianLicense", "s.county", "s.state", "s.permitNumber"])
+    .select(["i.id", "i.siteId", "i.templateId", "i.validationStatus", "i.completedAt", "t.definition", "m.technicianLicense", "s.county", "s.state", "s.permitNumber", "s.customerType"])
     .where("i.organizationId", "=", organizationId)
     .where("i.id", "=", inspectionId)
     .executeTakeFirstOrThrow();
@@ -236,7 +236,7 @@ export async function loadCanonicalInspection(db: Executor, organizationId: stri
   return {
     organizationId,
     id: insp.id,
-    site: { siteId: insp.siteId, county: insp.county, state: insp.state, permitNumber: insp.permitNumber },
+    site: { siteId: insp.siteId, county: insp.county, state: insp.state, permitNumber: insp.permitNumber, customerType: insp.customerType },
     templateId: insp.templateId,
     definition: insp.definition as TemplateDefinition,
     // Answers corrected on a later report version count over the originals.

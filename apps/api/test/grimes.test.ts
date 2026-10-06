@@ -4,7 +4,7 @@ import { mayAutoSubmit } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { countyValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 // W6.C17: Grimes County's draft profile (packages/compliance/rulesets/tx-grimes-county).
 const ctx = setupTestApp();
@@ -13,7 +13,7 @@ const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now
 const KEY = "tx-grimes-county";
 const VISIT_DAY = "2026-10-07";
 
-const grimes = () => bundledRulesets().find((r) => r.jurisdiction.key === KEY)!;
+const grimes = () => bundledRulesets().filter((r) => r.jurisdiction.key === KEY).at(-1)!;
 const AUTODIALER = { method: "autodialer", description: "Acme AD-200 on the control panel", notifies: "The maintenance provider, by phone call", startedOn: "2026-09-01", checkedOn: "2026-09-15" };
 
 /** A Grimes County site the county holds the permit for, under contract, with a visit on 2026-10-07. */
@@ -57,10 +57,16 @@ describe("Grimes County's draft profile", () => {
     expect(r.inspectionReports?.submission).toBe("unknown");
     expect(r.submission).toMatchObject({ method: "manual_export" });
     expect(r.submission.email).toBeUndefined();
-    expect(r.service).toMatchObject({ intervalMonths: 4, monitored: { intervalMonths: 6 } });
+    // v2 (W12.C3): the 2024 order's four months, with no monitoring exception, and its report fields.
+    expect(r.version).toBe(2);
+    expect(r.service).toEqual({ intervalMonths: 4 });
     expect(r.filing.deadlineDays).toBe(14);
     expect(r.contracts).toMatchObject({ filingRequired: true, renewalDaysBeforePreviousEnd: 30 });
-    expect(r.inspection.requiredFields).toEqual([]);
+    expect(r.inspection.requiredFields).toEqual(["pump_tank_sludge", "pump_tank_ph", "spray_area"]);
+    // Adopted 2024-08-21, but no final TCEQ approval was found: no effective date is claimed.
+    expect(r.profile!.requirementEffective.basis).toContain("2024-08-21");
+    expect(r.profile!.sources[0]!.note).toContain("PDF pp. 4-5, Section 9.C.1");
+    expect(r.profile!.unresolved.join(" ")).toContain("final TCEQ approval was not found");
     expect(r.labTests).toBeUndefined();
   });
 
@@ -74,7 +80,7 @@ describe("Grimes County's draft profile", () => {
   it("dates a valid inspection's filing 14 days out with the next visit in 4 months, and holds it for review", async () => {
     mail.mode = "ok";
     const { s, complete } = await grimesVisit(ctx);
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
     await runWorker(ctx);
     const [f] = await filingsOf(s);
     expect(f).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07", jurisdiction: { key: KEY }, status: "needs_review" });
@@ -85,17 +91,30 @@ describe("Grimes County's draft profile", () => {
 
   it("keeps an inspection without a chlorine residual as a draft", async () => {
     const { complete } = await grimesVisit(ctx);
-    const values = { ...completeValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
     delete values.chlorine_level;
     const res = (await complete(values)).json();
     expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
     expect(res.validationProblems.map((p: { key: string }) => p.key)).toContain("chlorine_level");
   });
 
-  it("allows six months between visits where electronic monitoring is on record", async () => {
+  it("keeps four months between visits even where electronic monitoring is on record (order 9.C.1)", async () => {
     const { s, complete } = await grimesVisit(ctx, { monitored: true });
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
     await runWorker(ctx);
-    expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-04-07" });
+    expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07" });
+  });
+
+  it("asks for the pump tank's sludge and pH and the spray area's condition, without judging the readings", async () => {
+    const { complete } = await grimesVisit(ctx);
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    delete values.pump_tank_sludge;
+    delete values.pump_tank_ph;
+    delete values.spray_area;
+    const res = (await complete(values)).json();
+    expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect(res.validationProblems.map((p: { key: string }) => p.key).sort()).toEqual(["pump_tank_ph", "pump_tank_sludge", "spray_area"]);
+    // No pH range is published, so any reading on the scale is accepted.
+    expect((await complete({ ...countyValues(), air_pressure: 4.5, pump_tank_ph: 11.5, pump_tank_sludge: 30 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
   });
 });

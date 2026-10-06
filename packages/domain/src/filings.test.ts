@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, filingFees, labTestRequirement, lateFeeOwed, mayAutoSubmit, rulesetRules, serviceIntervalMonths, verifiedWith } from "./filings.ts";
+import { applyRequirements, canTransitionFiling, deadlineState, FILING_STATE_MACHINE, FILING_STATUSES, filingFees, labTestRequirement, lateFeeOwed, mayAutoSubmit, requiredFieldsFor, rulesetRules, serviceIntervalMonths, verifiedWith } from "./filings.ts";
 import { DEFAULT_TEMPLATE, validateInspection } from "./inspections.ts";
 import { labResultsOverLimit } from "./lab-tests.ts";
 
@@ -218,5 +218,35 @@ describe("verification", () => {
     expect(mayAutoSubmit(rules({ status: "verified", verification: VERIFICATION }))).toBe(true);
     expect(mayAutoSubmit(rules({ status: "verified", verification: VERIFICATION }, false))).toBe(false);
     expect(mayAutoSubmit(rules(undefined))).toBe(true);
+  });
+});
+
+describe("requiredFieldsFor", () => {
+  const rules = (inspection: Record<string, unknown>) =>
+    rulesetRules.parse({
+      jurisdiction: { key: "tx-fixture", state: "TX", authorityName: "Fixture (fictional)", type: "county" },
+      version: 1,
+      effectiveFrom: "2020-01-01",
+      effectiveTo: null,
+      sourceReference: "FICTIONAL",
+      applicability: { counties: ["Fixture County"] },
+      service: { intervalMonths: 4 },
+      inspection,
+      filing: { deadlineDays: 14, warningDays: 5 },
+      submission: { method: "manual_export" },
+      customerCopy: { required: true },
+      confirmation: { mode: "manual_reference" },
+    });
+
+  it("adds fields scoped to the site's type, once each", () => {
+    const r = rules({ requiredFields: ["dispersal_field", "spray_area"], scopedRequiredFields: [{ appliesTo: ["residential"], fields: ["unauthorized_alterations", "spray_area"], note: "single-family only" }] });
+    expect(requiredFieldsFor(r, "residential")).toEqual(["dispersal_field", "spray_area", "unauthorized_alterations"]);
+    expect(requiredFieldsFor(r, "commercial")).toEqual(["dispersal_field", "spray_area"]);
+  });
+
+  it("leaves a ruleset without scoped fields exactly as parsed, so published hashes don't change", () => {
+    const r = rules({ requiredFields: ["dispersal_field"] });
+    expect("scopedRequiredFields" in r.inspection).toBe(false);
+    expect(requiredFieldsFor(r, "residential")).toEqual(["dispersal_field"]);
   });
 });

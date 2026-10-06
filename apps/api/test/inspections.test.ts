@@ -8,7 +8,7 @@ const ctx = setupTestApp();
 describe("inspection templates", () => {
   it("serves the built-in aerobic template until the organization saves its own version", async () => {
     const s = await setup(ctx);
-    expect(s.template).toMatchObject({ key: "aerobic-standard", version: 1, builtIn: true });
+    expect(s.template).toMatchObject({ key: "aerobic-standard", version: 2, builtIn: true });
 
     const custom = { ...DEFAULT_TEMPLATE.definition, photos: [{ key: "overview", label: "Overview", minCount: 2 }] };
     const saved = await s.api.post("/inspection-templates", { name: "Our inspection", definition: custom });

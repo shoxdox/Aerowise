@@ -23,6 +23,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Database; store: Ob
       .select([
         "o.name",
         "o.phone",
+        "o.emergencyPhone",
         "o.email",
         "o.addressLine1",
         "o.addressLine2",

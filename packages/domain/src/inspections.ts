@@ -160,7 +160,9 @@ export const DEFAULT_TEMPLATE_KEY = "aerobic-standard";
 export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; definition: TemplateDefinition } = {
   key: DEFAULT_TEMPLATE_KEY,
   // Bump when the built-in definition changes; inspections keep the version they used.
-  version: 1,
+  // v2 (W12.C3): pump-tank sludge and pH, spray area and unauthorized alterations, which
+  // Williamson, Grimes, Travis and SJRA require on the report.
+  version: 2,
   name: "Aerobic maintenance inspection",
   definition: {
     fields: [
@@ -176,6 +178,18 @@ export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; def
       passFail("lids_openings", "Lids / openings", "Tanks"),
       passFail("tank_condition", "Tank condition", "Tanks"),
       passFail("effluent_pump", "Effluent pump / filter", "Tanks"),
+      {
+        key: "pump_tank_sludge",
+        label: "Sludge in pump tank",
+        section: "Tanks",
+        type: "number",
+        unit: "in",
+        min: 0,
+        max: 120,
+        required: false,
+        help: "Depth of settled sludge measured in the pump tank, in inches.",
+      },
+      { key: "pump_tank_ph", label: "pH in pump tank", section: "Tanks", type: "number", min: 0, max: 14, required: false },
       {
         key: "chlorinator",
         label: "Chlorine device",
@@ -212,6 +226,27 @@ export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; def
       passFail("dispersal_field", "Dispersal / spray field", "Dispersal"),
       { key: "field_pressure", label: "Field pressure", section: "Dispersal", type: "number", unit: "psi", min: 0, max: 100, required: false },
       {
+        key: "spray_area",
+        label: "Spray area condition",
+        section: "Dispersal",
+        type: "select",
+        required: false,
+        options: [
+          { value: "acceptable", label: "Acceptable" },
+          { value: "needs_attention", label: "Needs attention" },
+          { value: "not_spray", label: "Not a spray system" },
+        ],
+      },
+      {
+        key: "spray_area_detail",
+        label: "What needs attention in the spray area",
+        section: "Dispersal",
+        type: "text",
+        maxLength: 2000,
+        required: true,
+        showWhen: { field: "spray_area", in: ["needs_attention"] },
+      },
+      {
         key: "odor",
         label: "Odor",
         section: "Dispersal",
@@ -226,6 +261,26 @@ export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; def
       { key: "ph", label: "pH", section: "Lab values", type: "number", min: 0, max: 14, required: false },
       { key: "tss", label: "TSS", section: "Lab values", type: "number", unit: "mg/L", min: 0, required: false },
       { key: "bod", label: "BOD", section: "Lab values", type: "number", unit: "mg/L", min: 0, required: false },
+      {
+        key: "unauthorized_alterations",
+        label: "Unauthorized alterations",
+        section: "Wrap-up",
+        type: "select",
+        required: false,
+        options: [
+          { value: "none_found", label: "None found" },
+          { value: "found", label: "Found" },
+        ],
+      },
+      {
+        key: "unauthorized_alterations_detail",
+        label: "Alterations found",
+        section: "Wrap-up",
+        type: "text",
+        maxLength: 2000,
+        required: true,
+        showWhen: { field: "unauthorized_alterations", in: ["found"] },
+      },
       { key: "pumping_needed", label: "Pumping needed", section: "Wrap-up", type: "boolean", required: true },
       { key: "repairs_made", label: "Repairs made", section: "Wrap-up", type: "text", maxLength: 2000, required: false },
       { key: "notes", label: "Notes for the customer", section: "Wrap-up", type: "text", maxLength: 5000, required: false, audiences: ["customer"] },

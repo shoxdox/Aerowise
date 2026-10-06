@@ -4,7 +4,7 @@ import { mayAutoSubmit } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { countyValues, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 // W6.C2: Travis County's draft profile (packages/compliance/rulesets/tx-travis-county).
 const ctx = setupTestApp();
@@ -13,7 +13,7 @@ const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now
 const KEY = "tx-travis-county";
 const VISIT_DAY = "2026-10-07";
 
-const travis = () => bundledRulesets().find((r) => r.jurisdiction.key === KEY)!;
+const travis = () => bundledRulesets().filter((r) => r.jurisdiction.key === KEY).at(-1)!;
 const AUTODIALER = { method: "autodialer", description: "Acme AD-200 on the control panel", notifies: "The maintenance provider, by phone call", startedOn: "2026-09-01", checkedOn: "2026-09-15" };
 
 /** A Travis County site the office has checked is outside Austin and LCRA's area, under contract, with a visit on 2026-10-07. */
@@ -60,6 +60,21 @@ describe("Travis County's draft profile", () => {
     expect(r.service).toMatchObject({ intervalMonths: 4, monitored: { intervalMonths: 6 } });
     expect(r.filing.deadlineDays).toBe(14);
     expect(r.contracts).toMatchObject({ filingRequired: true, renewalDaysBeforePreviousEnd: 30 });
+    // v2 (W12.C3/C4): 448.034(e) report fields, scoped by 448.034(a) to single-family systems.
+    expect(r.version).toBe(2);
+    expect(r.inspection.requiredFields).toEqual(["dispersal_field"]);
+    expect(r.inspection.scopedRequiredFields).toEqual([{ appliesTo: ["residential"], fields: ["unauthorized_alterations", "spray_area"], note: expect.stringContaining("448.034(a)") }]);
+  });
+
+  it("uses LCRA's 2,000-foot Lake Travis zone, not 1,000 feet, and leaves the decision to the permit or LCRA's map", () => {
+    const r = travis();
+    expect(r.applicability.howToDecide).toContain("within 2,000 horizontal feet of the area below the 691-foot contour");
+    expect(r.applicability.howToDecide).toContain("not distance from the shoreline");
+    expect(r.applicability.howToDecide).not.toContain("1,000");
+    expect(r.profile!.unresolved.join(" ")).not.toMatch(/within 1,000 feet/);
+    // The county page's 1,000-foot figure is kept only as the source that says it, marked as not used.
+    expect(r.profile!.sources.find((x) => x.title.startsWith("Travis County TNR"))!.note).toContain("Aerowise does not use it");
+    expect(r.profile!.sources.map((x) => x.title)).toEqual(expect.arrayContaining(["Travis County: Non-residential OSSF checklist", "LCRA OSSF order and fee schedule"]));
   });
 
   it("does not match a Travis site by county alone: LCRA and Travis County each cover part", async () => {
@@ -72,7 +87,7 @@ describe("Travis County's draft profile", () => {
   it("dates a valid inspection's filing 14 days out with the next visit in 4 months, and holds it for review", async () => {
     mail.mode = "ok";
     const { s, complete } = await travisVisit(ctx);
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed", validationStatus: "valid" });
     await runWorker(ctx);
     const [f] = await filingsOf(s);
     expect(f).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-02-07", jurisdiction: { key: KEY }, status: "needs_review" });
@@ -81,9 +96,24 @@ describe("Travis County's draft profile", () => {
     expect(mail.calls).toBe(calls);
   });
 
-  it("keeps an inspection without the spray area's condition as a draft", async () => {
+  it("asks a single-family site for unauthorized alterations and the spray area, but not a commercial one", async () => {
+    const res = async (customerType: "residential" | "commercial") => {
+      const { s, complete } = await travisVisit(ctx);
+      if (customerType === "commercial") expect((await s.api.patch(`/sites/${s.site.id}`, { customerType })).statusCode).toBe(200);
+      const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
+      delete values.unauthorized_alterations;
+      delete values.spray_area;
+      return (await complete(values)).json();
+    };
+    const home = await res("residential");
+    expect(home).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect(home.validationProblems.map((p: { key: string }) => p.key).sort()).toEqual(["spray_area", "unauthorized_alterations"]);
+    expect(await res("commercial")).toMatchObject({ status: "completed", validationStatus: "valid" });
+  });
+
+  it("keeps an inspection without the dispersal field's condition as a draft", async () => {
     const { complete } = await travisVisit(ctx);
-    const values = { ...completeValues(), air_pressure: 4.5 } as Record<string, unknown>;
+    const values = { ...countyValues(), air_pressure: 4.5 } as Record<string, unknown>;
     delete values.dispersal_field;
     const res = (await complete(values)).json();
     expect(res).toMatchObject({ status: "draft", validationStatus: "invalid" });
@@ -92,7 +122,7 @@ describe("Travis County's draft profile", () => {
 
   it("allows six months between visits where electronic monitoring is on record", async () => {
     const { s, complete } = await travisVisit(ctx, { monitored: true });
-    expect((await complete({ ...completeValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
+    expect((await complete({ ...countyValues(), air_pressure: 4.5 })).json()).toMatchObject({ status: "completed" });
     await runWorker(ctx);
     expect((await filingsOf(s))[0]).toMatchObject({ deadlineOn: "2026-10-21", nextDueOn: "2027-04-07" });
   });

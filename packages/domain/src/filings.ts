@@ -351,6 +351,14 @@ export const rulesetRules = z.object({
   inspection: z.object({
     /** Template fields the authority requires an answer for, on top of the template's own rules. */
     requiredFields: z.array(fieldKey).default([]),
+    /**
+     * Fields the authority requires only at some kinds of site (Travis §448.034(a) scopes its
+     * report contents to single-family systems). Added to `requiredFields` for a site of a
+     * listed type.
+     */
+    scopedRequiredFields: z
+      .array(z.object({ appliesTo: z.array(z.enum(["residential", "commercial"])).min(1), fields: z.array(fieldKey).min(1), note: z.string().max(1000) }))
+      .optional(),
     /** Minimum photos per template photo key. A list, not a map: jsonb keys would be camel-cased on read. */
     requiredPhotos: z.array(z.object({ key: fieldKey, minCount: z.number().int().min(1).max(20) })).default([]),
     technicianLicenseRequired: z.boolean().default(false),
@@ -433,6 +441,12 @@ export function filingFees(rules: RulesetRules, kind: FilingKind) {
 
 /** The late fee owed when a filing first reaches the authority on `sentOn`. */
 export const lateFeeOwed = (lateFeeRuleCents: number | null, deadlineOn: string | null, sentOn: string) => (deadlineOn && sentOn > deadlineOn ? (lateFeeRuleCents ?? 0) : 0);
+
+/** The fields an authority requires an answer for at a site of this type. */
+export function requiredFieldsFor(rules: RulesetRules, customerType: "residential" | "commercial") {
+  const scoped = (rules.inspection.scopedRequiredFields ?? []).filter((s) => s.appliesTo.includes(customerType)).flatMap((s) => s.fields);
+  return [...new Set([...rules.inspection.requiredFields, ...scoped])];
+}
 
 /** What a jurisdiction adds to an inspection, as sent to the technician's phone. */
 export const inspectionRequirements = z.object({

@@ -129,7 +129,9 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   const photos = visiblePhotos(def, insp.values);
   const counts: Record<string, number> = {};
   for (const p of insp.photos) counts[p.photoKey] = (counts[p.photoKey] ?? 0) + 1;
-  const problemFor = (key: string) => problems.find((p) => p.key === key);
+  // An answer out of range (a negative chlorine reading) is flagged as it is typed, not only at Finish.
+  const invalidNow = readOnly ? [] : validateInspection(def, insp.values, counts).filter((p) => p.problem === "invalid");
+  const problemFor = (key: string) => problems.find((p) => p.key === key) ?? invalidNow.find((p) => p.key === key);
   const sections = [...new Set(fields.map((f) => f.section))];
 
   const setValue = (key: string, v: InspectionValue) => {

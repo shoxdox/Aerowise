@@ -1,0 +1,135 @@
+{
+  "jurisdiction": {
+    "key": "tx-grimes-county",
+    "state": "TX",
+    "authorityName": "Grimes County Environmental Permits, On-Site Sewage Facilities",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06. v1's sources plus Grimes County's certified 2024 OSSF order, its adoption minutes, TCEQ's notice to proceed and the original 2024 affidavit, from the 2026-10-06 county research packet (docs/jurisdictions/research/2026-10-06) (findings G1 to G4). See docs/jurisdictions/tx-grimes-county.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "The Commissioners Court adopted the 2024 OSSF order on 2024-08-21 (certified copy, PDF p. 1; minutes). Section 16 makes it effective 'upon the approval of TCEQ'. The TCEQ letter of 2024-07-29 is a notice to proceed on the proposed draft, not final approval, so no effective date is set. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "Grimes County 2024 OSSF Order (certified copy)",
+        "url": "https://grimescountytx.granicus.com/MetaViewer.php?clip_id=272&meta_id=23091&view_id=1",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF p. 4, Section 9.B: homeowner maintenance after licensing or registration, or the TEEX homeowner course with evidence to the Designated Representative; 9.B.3: eligibility lost for failed or late reports, falsification or violations. PDF pp. 4-5, Section 9.C.1: reports to the Designated Representative 'every four (4) months', containing 'the sludge levels in the pump tank, the pH (potential hydrogen) levels in the pump tank, and the condition of the spray area'. PDF p. 6, Section 16: effective upon TCEQ approval."
+      },
+      {
+        "title": "Grimes County Commissioners Court minutes, 2024-08-21",
+        "url": "https://grimescountytx.granicus.com/MinutesViewer.php?clip_id=272&doc_id=e49df8a5-649c-11ef-9b71-005056a89546&view_id=1",
+        "retrievedOn": "2026-10-06",
+        "note": "Motion to adopt the OSSF order passed."
+      },
+      {
+        "title": "TCEQ notice to proceed, 2024-07-29",
+        "url": "https://grimescountytx.granicus.com/MetaViewer.php?clip_id=272&meta_id=22568&view_id=1",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF p. 1: permission to proceed with the proposed order, not final approval of the adopted one."
+      },
+      {
+        "title": "Grimes County: Affidavit to the Public, OSSF (2024), original",
+        "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/OSSF_Affidavit_(2024).pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "PDF p. 1, read from the original: continuous maintenance, and a signed maintenance contract submitted within 30 days after the property is transferred, upon renewal, or upon changing providers. No channel."
+      },
+      {
+        "title": "Grimes County: Environmental Permits",
+        "url": "https://grimescountytexas.gov/permits",
+        "retrievedOn": "2026-10-06",
+        "note": "Staff includes a 'Designated Representative'. 1170 CR 280, Annex Bldg., Suite ENV105, Anderson; mailing 270 FM 149 W, Anderson, TX 77830; (936) 873-4495. No email, and nothing on maintenance contracts or reports. Read through a page summarizer."
+      },
+      {
+        "title": "Grimes County: TCEQ On-Site Sewage Facilities, Environmental Services",
+        "url": "https://grimescountytexas.gov/index.asp?DE=DE2DB1C7-211D-4F70-A422-2891027B6ED5&SEC=51D0BA70-3EF0-4E47-86C8-5613AD1C8E1A",
+        "retrievedOn": "2026-10-06",
+        "note": "Could not be read: robots.txt blocks automated fetching. Likely the county's main OSSF page."
+      },
+      {
+        "title": "Grimes County: Seven Steps to Obtaining a Permit",
+        "url": "https://grimescountytexas.gov/vertical/sites/%7B958238D0-27E6-4F6C-919E-F1D98542C5FD%7D/uploads/Seven_Steps_to_Obtaining_a_Permit.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Permit fees only (residential $420, commercial $624). Nothing on maintenance contracts or reports. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "Grimes County publishes no way to submit maintenance inspection reports or contracts; inspection filings are held for review and contracts are filed by hand.",
+      "The 2024 order's final TCEQ approval was not found. Aerowise applies its four-month schedule and its sludge, pH and spray-area fields now because they ask more than TCEQ's rule, not because the order is confirmed in force; which earlier records it covers is not decided.",
+      "Section 9.C.1 sets no pH range or sludge limit, so Aerowise records the readings without judging them.",
+      "The affidavit asks for the signed contract within 30 days after a transfer, a renewal or a change of provider; how that relates to TCEQ's 30 days before expiry, and where it goes, is not published. Aerowise uses 30 days before expiry.",
+      "How the Designated Representative approves a maintenance company, and how a homeowner's evidence under Section 9.B is filed, is not published.",
+      "The City of Todd Mission requires its own septic permit on top of the county's; who receives maintenance reports for Todd Mission sites, and whether other cities run their own program, is not published. Every site needs a reviewed assignment.",
+      "The complaint form on the county's page is for complaints, not maintenance filings.",
+      "Grimes County publishes no acknowledgment of a received report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Grimes"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "Grimes County Environmental Permits issues OSSF permits in Grimes County; Todd Mission also requires a city septic permit, and other cities are not published. If unsure, call the county at (936) 873-4495. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "unknown",
+    "note": "Grimes County publishes no way to submit maintenance inspection reports."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "Grimes County's 2024 affidavit (read 2026-10-06): a continuous contract, and a signed contract 'submitted to Grimes County within 30 days after the property has been transferred'. No channel or renewal timing is published; timing from 30 TAC 285.7(d)(2), 30 days before the current contract expires. Filed by hand."
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": [
+      "pump_tank_sludge",
+      "pump_tank_ph",
+      "spray_area"
+    ],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "Grimes County describes no reply to maintenance reports or contracts."
+  }
+}

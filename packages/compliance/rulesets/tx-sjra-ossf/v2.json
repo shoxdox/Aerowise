@@ -1,0 +1,123 @@
+{
+  "jurisdiction": {
+    "key": "tx-sjra-ossf",
+    "state": "TX",
+    "authorityName": "San Jacinto River Authority, Lake Conroe Division, On-Site Sewage Facilities",
+    "type": "river_authority"
+  },
+  "version": 2,
+  "effectiveFrom": "2026-10-06",
+  "effectiveTo": null,
+  "sourceReference": "DRAFT profile v2, sources read 2026-10-06. v1's sources, with SJRA's signed order read page by page as images (physical pages cited), reconciled in the 2026-10-06 county research packet (docs/jurisdictions/research/2026-10-06). See docs/jurisdictions/tx-sjra-ossf.md.",
+  "profile": {
+    "status": "draft",
+    "sourcesCheckedOn": "2026-10-06",
+    "requirementEffective": {
+      "date": null,
+      "basis": "SJRA's order was passed 2015-12-10 and says it takes effect 'as of and after June 1, 2016, subject only to the prior approval of this Order by the TCEQ'; the TCEQ approval date isn't given. Aerowise applies the ruleset from 2026-10-06, the day it was written."
+    },
+    "sources": [
+      {
+        "title": "SJRA: Order Adopting Rules for On-Site Sewage Facilities Within 2,075 Feet of Lake Conroe, Texas (signed copy)",
+        "url": "https://www.sjra.net/wp-content/uploads/2015/01/Order-Adopting-Rules-for-On-Site-Sewage-Facilities-Within-2075-feet-of-Lake-Conroe-Texas_121015.pdf.pdf",
+        "retrievedOn": "2026-10-06",
+        "note": "Signed and sealed 2015-12-10; read as page images. PDF p. 1: the order number is handwritten and reads '2015-O-04' or '2015-0-04' (the middle character cannot be told apart from a zero). PDF p. 3 and others: '384053.4' is a document footer, not the order number. PDF p. 4 (printed -2-), Section 5: 'all the area lying within 2,075 feet of Lake Conroe', except areas under a predecessor rule or inside a municipality's corporate limits. PDF p. 5 (printed -3-), Section 7(a)(10)(A): systems needing secondary treatment are inspected 'at least once every four calendar months', reports filed within fourteen calendar days. PDF p. 6 (printed -4-), Section 7(a)(10)(D): every report also includes the inspection date, the date of the preceding inspection, any unauthorized alterations, the spray area's condition if applicable, the OSSF's permit number, the provider's TCEQ license number, the OSSF's physical address, the printed name and signature, and the provider's physical address, business address, business phone and emergency phone 'if applicable'. Not limited to single-family systems."
+      },
+      {
+        "title": "SJRA: Maintaining My On-Site Sewage Facility Adjacent to Lake Conroe",
+        "url": "https://www.sjra.net/lakeconroe/maintaining-my-ossf/",
+        "retrievedOn": "2026-10-06",
+        "note": "Aerobic units must be inspected and maintained 'by a maintenance provider, licensed by the TCEQ, under a written contract'. Points to the customer portal for submissions. Read through a page summarizer."
+      },
+      {
+        "title": "SJRA customer portal: How Do I Submit an OSSF Inspection Report (KA-01056)",
+        "url": "https://customerportal.sjra.net/helpfulresources/article/KA-01056/en-us",
+        "retrievedOn": "2026-10-06",
+        "note": "'From the Portal page find the OSSF Inspection and click Submit'; pick the maintenance provider company, the customer and the site address, and complete every field marked with a red asterisk. Read twice through a page summarizer."
+      },
+      {
+        "title": "SJRA customer portal: How Do I Submit an OSSF Contract (KA-01057)",
+        "url": "https://customerportal.sjra.net/helpfulresources/article/KA-01057/en-us",
+        "retrievedOn": "2026-10-06",
+        "note": "Contracts are a new case with Case Type 'Contract' and Subject 'OSSF Submit Contract', with the contract uploaded as a file. Read through a page summarizer."
+      },
+      {
+        "title": "SJRA: Permitting My On Site Septic Facility",
+        "url": "https://www.sjra.net/lakeconroe/licensing-permitting/permitting-my-on-site-septic-facility/",
+        "retrievedOn": "2026-10-06",
+        "note": "Sites within 2,075 feet of the reservoir are SJRA's; check a site on SJRA's OSSF Data Viewer. SJRA, 1577 Dam Site Road, Conroe, TX 77304, 936-588-3111. Read through a page summarizer."
+      },
+      {
+        "title": "30 TAC 285.7, Maintenance Requirements (Cornell LII)",
+        "url": "https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-285-7",
+        "retrievedOn": "2026-10-06",
+        "note": "Last amended effective 2023-07-06. (d)(2): the owner provides a copy of the signed contract to the permitting authority 30 days before the service policy or contract expires. (e): reports to the permitting authority and owner within 14 days after the test; electronic monitoring allows two checks a year instead of four."
+      },
+      {
+        "title": "TCEQ OSSF maintenance requirements",
+        "url": "https://www.tceq.texas.gov/permitting/ossf/ossfmaintenance.html",
+        "retrievedOn": "2026-10-06",
+        "note": "Last modified 2026-03-03. Every four months, or six with an electronic monitor that notifies the provider of failures and monitors disinfection; reports within 14 days after the test."
+      }
+    ],
+    "unresolved": [
+      "The order number on the signed order is handwritten and reads '2015-O-04' or '2015-0-04'; the middle character could be the letter O or a zero. '384053.4' on SJRA's PDFs is a document footer, not the order number. The TCEQ approval date isn't given.",
+      "Section 7(a)(10)(D)(ii) asks for the date of the preceding inspection. Aerowise prints the site's previous inspection in Aerowise, or 'None on record in Aerowise' for a site's first one; an earlier provider's date must be added by hand.",
+      "Section 7(a)(10)(D)(ix) asks for the provider's physical and business addresses. Aerowise prints the company's one address.",
+      "SJRA's order says every four calendar months with no electronic-monitoring exception, so Aerowise allows no 6-month schedule here (TCEQ would allow two a year).",
+      "How the 2,075 feet is measured and which counties the band covers aren't published; the office checks each address on SJRA's OSSF Data Viewer. Walker County's part of Lake Conroe isn't listed until SJRA confirms it, and areas under a predecessor rule aren't mapped in the order.",
+      "The order authorizes report, contract and late filing fees, but the posted fee schedule (08-20-15) lists only permit, re-inspection and transfer fees, so no filing fee is recorded.",
+      "Whether the portal is the only accepted channel, whether a provider needs its own portal account, and whether the provider's own report PDF can be attached aren't published.",
+      "Self-maintaining homeowners must still report to SJRA (Section 7(a)(10)(B)), unlike TCEQ's rule; Aerowise serves providers, so this matters only if a customer switches.",
+      "Beyond the portal's own confirmation screen, SJRA publishes no acknowledgment of a filed report or contract."
+    ]
+  },
+  "applicability": {
+    "counties": [
+      "Montgomery"
+    ],
+    "assignment": "reviewed",
+    "howToDecide": "SJRA permits OSSFs within 2,075 feet of Lake Conroe (order Section 5), except areas under a predecessor rule and inside any city's corporate limits. Look the address up on SJRA's OSSF Data Viewer (https://experience.arcgis.com/experience/cbe6b4e04f724678a34ce7456bf157c5) or call SJRA at 936-588-3111. Record what you checked."
+  },
+  "provider": {
+    "responsibleProviderRequired": true,
+    "technicianCredentialRequired": true
+  },
+  "inspectionReports": {
+    "submission": "supported",
+    "note": "Entered by the office on SJRA's customer portal (OSSF Inspection form, help article KA-01056)."
+  },
+  "contracts": {
+    "filingRequired": true,
+    "renewalDaysBeforePreviousEnd": 30,
+    "note": "SJRA takes contracts on its customer portal as a case with Case Type 'Contract' (help article KA-01057). SJRA publishes no renewal timing; from 30 TAC 285.7(d)(2), 30 days before the current contract expires. The office uploads it by hand."
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": [
+      "unauthorized_alterations",
+      "spray_area"
+    ],
+    "requiredPhotos": [],
+    "technicianLicenseRequired": false
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": false
+  },
+  "submission": {
+    "method": "manual_export",
+    "fallback": "manual_export",
+    "portalUrl": "https://customerportal.sjra.net/"
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "none_published",
+    "note": "SJRA's portal shows a confirmation and dashboard after an inspection is submitted; no other acknowledgment is published. Record what the portal shows."
+  }
+}
