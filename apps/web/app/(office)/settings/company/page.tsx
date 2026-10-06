@@ -108,7 +108,7 @@ export default function CompanySettingsPage() {
           <textarea name="serviceCounties" rows={3} defaultValue={data.serviceCounties.join("\n")} disabled={!owner} placeholder={"Travis County\nHays County"} />
           <span className="muted small">One per line. These are the counties you work in.</span>
         </label>
-        <label className="wide row">
+        <label className="wide check">
           <input type="checkbox" name="billFilingFees" defaultChecked={data.billFilingFees} disabled={!owner} />
           Add the county&apos;s filing fees to the homeowner&apos;s contract invoices
         </label>
