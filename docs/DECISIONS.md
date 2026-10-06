@@ -474,3 +474,12 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Dumps are not encrypted beyond R2's own encryption at rest.** The bucket is private and the token is scoped to it. Client-side encryption (age or gpg) would add a key Justin must not lose; left for later.
 - **Open:** photos and signed PDFs in R2 have no second copy (R2 has no object versioning here). A nightly copy of the bucket to the server's disk, keeping deleted objects for 35 days, would cover a bug or a leaked token deleting them.
 
+## 2026-10-05 · Justin's answers on the county rules questions
+
+Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
+
+1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
+4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
+5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).

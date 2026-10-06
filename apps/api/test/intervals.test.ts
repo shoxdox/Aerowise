@@ -23,9 +23,11 @@ afterAll(async () => {
   await syncRulesets(ctx.db);
 });
 
-async function tenantIn(c: TestContext, county: string | null) {
+async function tenantIn(c: TestContext, county: string | null, customerType: "residential" | "commercial" = "residential") {
   const t = await createTenant(c, "Org A");
   if (county) expect((await t.api.patch(`/sites/${t.site.id}`, { county })).statusCode).toBe(200);
+  // "Commercial" is set on the site (Justin, 2026-10-05); the plan's type is only a label.
+  if (customerType === "commercial") expect((await t.api.patch(`/sites/${t.site.id}`, { customerType })).json()).toMatchObject({ customerType });
   const plan = async (customerType: "residential" | "commercial", termMonths = 12, visitsPerTerm = 3) =>
     (await t.api.post("/plans", { name: `${customerType} ${termMonths}/${visitsPerTerm}`, customerType, termMonths, visitsPerTerm, priceCents: 27500 })).json();
   return { ...t, plan };
@@ -60,7 +62,7 @@ describe("contract visits follow the site's ruleset interval", () => {
   });
 
   it("schedules monthly visits for a commercial site under a monthly commercial rule", async () => {
-    const t = await tenantIn(ctx, COMMERCIAL_MONTHLY);
+    const t = await tenantIn(ctx, COMMERCIAL_MONTHLY, "commercial");
     const plan = await t.plan("commercial");
     const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-31" })).json();
     expect(contract).toMatchObject({ customerType: "commercial", visitsPerTerm: 12, endOn: "2027-01-30" });
@@ -71,7 +73,7 @@ describe("contract visits follow the site's ruleset interval", () => {
     ]);
     expect(windows(contract).at(-1)).toEqual([12, "2026-12-31", "2027-01-30"]);
 
-    // The renewal keeps the contract's type, so it is monthly too.
+    // The renewal follows the site's type, so it is monthly too.
     const renewed = (await t.api.post(`/contracts/${contract.id}/renew`, {})).json();
     expect(renewed).toMatchObject({ customerType: "commercial", visitsPerTerm: 12, startOn: "2027-01-31" });
   });
@@ -83,12 +85,21 @@ describe("contract visits follow the site's ruleset interval", () => {
     expect(contract).toMatchObject({ customerType: "residential", visitsPerTerm: 3 });
   });
 
+  it("goes by the site's type, not the plan's", async () => {
+    const t = await tenantIn(ctx, COMMERCIAL_MONTHLY);
+    const commercialPlan = await t.plan("commercial");
+    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: commercialPlan.id, startOn: "2026-01-15" })).json()).toMatchObject({ customerType: "residential", visitsPerTerm: 3 });
+    const u = await tenantIn(ctx, COMMERCIAL_MONTHLY, "commercial");
+    const residentialPlan = await u.plan("residential");
+    expect((await u.api.post(`/sites/${u.site.id}/contracts`, { planId: residentialPlan.id, startOn: "2026-01-15" })).json()).toMatchObject({ customerType: "commercial", visitsPerTerm: 12 });
+  });
+
   it("keeps a plan that already visits often enough, and a site with no authority", async () => {
     const t = await tenantIn(ctx, QUARTERLY);
     const monthly = await t.plan("residential", 12, 12);
     expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: monthly.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(12);
 
-    const u = await tenantIn(ctx, null);
+    const u = await tenantIn(ctx, null, "commercial");
     const plan = await u.plan("commercial");
     expect((await u.api.post(`/sites/${u.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" })).json().visitsPerTerm).toBe(3);
   });
@@ -107,7 +118,7 @@ describe("contract visits follow the site's ruleset interval", () => {
 
 describe("the next inspection date on a filing", () => {
   it("uses the commercial interval for a commercial site", async () => {
-    const t = await tenantIn(ctx, COMMERCIAL_MONTHLY);
+    const t = await tenantIn(ctx, COMMERCIAL_MONTHLY, "commercial");
     const plan = await t.plan("commercial");
     const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-01" })).json();
     const tech = await createUser(ctx.db, t.org.id, "technician");

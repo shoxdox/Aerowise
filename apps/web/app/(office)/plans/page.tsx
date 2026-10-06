@@ -56,7 +56,7 @@ export default function PlansPage() {
             Name
             <input name="name" required placeholder="Residential annual" />
           </label>
-          <label>
+          <label title="A label for the plan. The county's schedule follows the site's own residential or commercial setting.">
             Customer type
             <select name="customerType" defaultValue="residential">
               <option value="residential">Residential</option>

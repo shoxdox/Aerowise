@@ -498,6 +498,8 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
       accessNotes: r.accessNotes,
       gateCode: r.gateCode,
       schedulingNotes: null,
+      // The plan named on the row is the only hint the import has; the office can change it on the site.
+      customerType: (r.planName ? plans.get(r.planName)?.customerType : undefined) ?? "residential",
       importId,
     });
     if (r.manufacturer || r.model || r.serial) systems.push({ organizationId, siteId, manufacturer: r.manufacturer, model: r.model, serial: r.serial });

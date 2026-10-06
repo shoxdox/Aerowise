@@ -57,6 +57,7 @@ export const SITE_COLUMNS = [
   "gateCode",
   "safetyFlags",
   "schedulingNotes",
+  "customerType",
   "active",
   "createdAt",
   "updatedAt",
