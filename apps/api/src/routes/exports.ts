@@ -91,9 +91,10 @@ export const exportRoutes: FastifyPluginAsyncZod<{ db: Database; store: ObjectSt
       const data = await store.get(row.storageKey);
       if (!data) throw notFound("Export file");
       const day = row.requestedAt.toISOString().slice(0, 10);
+      const { demo } = await db.selectFrom("organizations").select("demo").where("id", "=", organizationId).executeTakeFirstOrThrow();
       return reply
         .type("application/zip")
-        .header("content-disposition", `attachment; filename="aerowise-export-${day}.zip"`)
+        .header("content-disposition", `attachment; filename="aerowise-${demo ? "DEMO-" : ""}export-${day}.zip"`)
         .header("x-content-type-options", "nosniff")
         .send(data);
     },

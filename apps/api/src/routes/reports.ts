@@ -5,6 +5,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { notFound } from "../lib/errors.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
+import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 
@@ -55,7 +56,7 @@ export const reportRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     async (req, reply) => {
       const row = await db.selectFrom("reports").select(["id", "organizationId", "storageKey", "audience", "inspectionId"]).where("id", "=", req.params.id).executeTakeFirst();
       if (!row || !signer.verify(row.organizationId, row.id, req.query.exp, req.query.sig, now().getTime(), "report-files")) throw notFound("File");
-      const data = await store.get(row.storageKey);
+      const data = await readForDownload(db, store, row.storageKey);
       if (!data) throw notFound("File");
       return reply
         .type("application/pdf")

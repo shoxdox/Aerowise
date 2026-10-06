@@ -73,7 +73,7 @@ To roll back, deploy the earlier commit. Migrations are forward-only and are not
 
 ## Staging is the demo
 
-Staging runs with `DEMO_MODE=true`: every outside service is its test stand-in whatever keys are set, the fictional example county rules load, and every screen shows "Demo data. Nothing is sent." The sign-in page lists the demo users: `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`. Every night at 09:00 UTC cron runs `pnpm db:reseed-demo`, which empties everything except the authority rules and platform admins, removes stored files and seeds again. To reset it now:
+Staging runs with `DEMO_MODE=true`: every outside service is its test stand-in whatever keys are set, the fictional example county rules load, and every screen shows "Fictional demo company. Nothing is emailed, texted, filed or charged, and the data is reset regularly." (also shown to anyone signed in to a demo company on any deployment, W10.1) The sign-in page lists the demo users: `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`. Every night at 09:00 UTC cron runs `pnpm db:reseed-demo`, which empties everything except the authority rules and platform admins, removes stored files and seeds again. To reset it now:
 
 ```sh
 docker exec aerowise-staging-api-1 pnpm db:reseed-demo

@@ -1,4 +1,5 @@
 import type { Database } from "@aerowise/db";
+import { providerFor } from "@aerowise/tasks";
 import {
   id,
   QUICKBOOKS_ENTITY_TYPES,
@@ -85,7 +86,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       attention += Number(r.attention);
     }
     return {
-      provider: quickbooks ? quickbooks.provider.kind : "none",
+      provider: quickbooks ? (await providerFor(quickbooks.provider, organizationId)).kind : "none",
       connection: c
         ? {
             environment: c.environment,
@@ -126,7 +127,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       const c = ctx();
-      return { url: c.provider.authorizeUrl({ state: c.cipher.signState({ organizationId, userId }, now()), redirectUri, organizationId }) };
+      return { url: (await providerFor(c.provider, organizationId)).authorizeUrl({ state: c.cipher.signState({ organizationId, userId }, now()), redirectUri, organizationId }) };
     },
   );
 
@@ -150,7 +151,9 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       if (req.query.error || !req.query.code || !req.query.realmId) return back("error=declined");
       const realmId = req.query.realmId;
       try {
-        if (c.provider.kind === "test") {
+        // A demo company always connects to the stand-in company, whatever QuickBooks is configured.
+        const provider = await providerFor(c.provider, organizationId);
+        if (provider.kind === "test") {
           // The stand-in company starts with near-copies of a few customers, so the review has something to decide.
           const sample = await db.selectFrom("customers").select("id").where("organizationId", "=", organizationId).orderBy("createdAt").limit(4).execute();
           const payloads = await customerPayloads(db, organizationId, sample.map((s) => s.id));
@@ -161,10 +164,10 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
             sample.map((s) => payloads.get(s.id)!).map((p) => ({ name: p.displayName, email: p.email, phone: p.phone })),
           );
         }
-        const tokens = await c.provider.exchangeCode({ code: req.query.code, realmId, redirectUri });
-        const companyName = await c.provider.company(realmId, tokens.accessToken).companyName().catch(() => null);
+        const tokens = await c.provider.exchangeCode({ code: req.query.code, realmId, redirectUri, organizationId });
+        const companyName = await c.provider.company(realmId, tokens.accessToken, organizationId).companyName().catch(() => null);
         await saveConnection(c, { organizationId, userId, realmId, companyName, tokens, syncFrom: await organizationToday(db, organizationId, now()) });
-        await audit(db, req, { action: "quickbooks.connected", entityType: "organization", entityId: organizationId, changes: { realmId, companyName, environment: c.provider.environment } });
+        await audit(db, req, { action: "quickbooks.connected", entityType: "organization", entityId: organizationId, changes: { realmId, companyName, environment: provider.environment } });
       } catch (err) {
         req.log.warn({ err }, "quickbooks connect failed");
         return back("error=connect");

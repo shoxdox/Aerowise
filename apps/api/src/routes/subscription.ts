@@ -77,7 +77,7 @@ export const subscriptionRoutes: FastifyPluginAsyncZod<{
           amountCents: monthlyCharge(activeContracts, price).totalCents,
           charged: BILLABLE_STATES.includes(org.subscriptionState),
         },
-        paymentMethod: provider && org.billingCustomerId ? await provider.paymentMethod(org.billingCustomerId) : null,
+        paymentMethod: provider && org.billingCustomerId ? await provider.paymentMethod(org.billingCustomerId, organizationId) : null,
         provider: provider ? provider.kind : ("none" as const),
         invoices: periods.map((p) => ({
           id: p.id,
@@ -111,7 +111,7 @@ export const subscriptionRoutes: FastifyPluginAsyncZod<{
       if (!provider) throw unprocessable("Paying for Aerowise online is not set up on this server yet (STRIPE_BILLING_SECRET_KEY)");
       const org = await loadOrg(organizationId);
       const customerId = await ensureBillingCustomer(db, provider, org);
-      const page = await provider.managePaymentMethod({ customerId, returnUrl: `${appUrl.replace(/\/$/, "")}/settings/subscription?payment=done` });
+      const page = await provider.managePaymentMethod({ organizationId, customerId, returnUrl: `${appUrl.replace(/\/$/, "")}/settings/subscription?payment=done` });
       await audit(db, req, { action: "subscription.payment_method_opened", entityType: "organization", entityId: organizationId });
       return page;
     },

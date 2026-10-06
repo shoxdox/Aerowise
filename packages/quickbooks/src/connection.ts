@@ -21,6 +21,11 @@ function sealed(ctx: QuickBooksContext, t: Tokens) {
   };
 }
 
+/** The QuickBooks this company uses: behind the demo gate, a demo company's is the stand-in. */
+async function providerOf(ctx: QuickBooksContext, organizationId: string) {
+  return ctx.provider.forOrganization ? ctx.provider.forOrganization(organizationId) : ctx.provider;
+}
+
 /**
  * Saves a new connection. Reconnecting the same company keeps every link and the review
  * already done; connecting a different company starts over, since its ids mean nothing here.
@@ -31,13 +36,14 @@ export async function saveConnection(
 ) {
   await ctx.db.transaction().execute(async (trx) => {
     const prev = await trx.selectFrom("quickbooksConnections").selectAll().where("organizationId", "=", input.organizationId).forUpdate().executeTakeFirst();
-    const sameCompany = prev?.realmId === input.realmId && prev.environment === ctx.provider.environment;
+    const environment = (await providerOf(ctx, input.organizationId)).environment;
+    const sameCompany = prev?.realmId === input.realmId && prev.environment === environment;
     if (prev && !sameCompany) {
       await trx.deleteFrom("quickbooksLinks").where("organizationId", "=", input.organizationId).execute();
       await trx.deleteFrom("quickbooksConnections").where("organizationId", "=", input.organizationId).execute();
     }
     const values = {
-      environment: ctx.provider.environment,
+      environment,
       realmId: input.realmId,
       companyName: input.companyName,
       ...sealed(ctx, input.tokens),
@@ -72,20 +78,21 @@ export async function markNeedsReauth(db: Database, organizationId: string, mess
 export async function openCompany(ctx: QuickBooksContext, organizationId: string): Promise<QuickBooksCompany> {
   const conn = await ctx.db.selectFrom("quickbooksConnections").selectAll().where("organizationId", "=", organizationId).executeTakeFirst();
   if (!conn || conn.status !== "connected" || !conn.accessTokenEnc || !conn.refreshTokenEnc) throw new QuickBooksError("auth", "QuickBooks is not connected");
-  if (conn.environment !== ctx.provider.environment) throw new QuickBooksError("auth", `This server talks to QuickBooks ${ctx.provider.environment}, but the connection is to ${conn.environment}. Connect again.`);
+  const provider = await providerOf(ctx, organizationId);
+  if (conn.environment !== provider.environment) throw new QuickBooksError("auth", `This server talks to QuickBooks ${provider.environment}, but the connection is to ${conn.environment}. Connect again.`);
   const fresh = conn.accessExpiresAt && conn.accessExpiresAt.getTime() - ctx.now().getTime() > REFRESH_MARGIN_MS;
-  if (fresh) return ctx.provider.company(conn.realmId, ctx.cipher.decrypt(conn.accessTokenEnc));
+  if (fresh) return provider.company(conn.realmId, ctx.cipher.decrypt(conn.accessTokenEnc), organizationId);
   try {
     const access = await ctx.db.transaction().execute(async (trx) => {
       const locked = await trx.selectFrom("quickbooksConnections").selectAll().where("organizationId", "=", organizationId).forUpdate().executeTakeFirstOrThrow();
       if (locked.accessExpiresAt && locked.accessTokenEnc && locked.accessExpiresAt.getTime() - ctx.now().getTime() > REFRESH_MARGIN_MS) {
         return ctx.cipher.decrypt(locked.accessTokenEnc);
       }
-      const t = await ctx.provider.refresh(ctx.cipher.decrypt(locked.refreshTokenEnc!));
+      const t = await provider.refresh(ctx.cipher.decrypt(locked.refreshTokenEnc!), organizationId);
       await trx.updateTable("quickbooksConnections").set({ ...sealed(ctx, t), updatedAt: ctx.now() }).where("organizationId", "=", organizationId).execute();
       return t.accessToken;
     });
-    return ctx.provider.company(conn.realmId, access);
+    return provider.company(conn.realmId, access, organizationId);
   } catch (err) {
     if (err instanceof QuickBooksError && err.kind === "auth") await markNeedsReauth(ctx.db, organizationId, err.message, ctx.now());
     throw err;
@@ -98,7 +105,7 @@ export async function disconnect(ctx: QuickBooksContext, organizationId: string)
   if (!conn) return;
   if (conn.refreshTokenEnc) {
     try {
-      await ctx.provider.revoke(ctx.cipher.decrypt(conn.refreshTokenEnc));
+      await (await providerOf(ctx, organizationId)).revoke(ctx.cipher.decrypt(conn.refreshTokenEnc), organizationId);
     } catch {
       // Revoking is a courtesy; the tokens are deleted here regardless.
     }
