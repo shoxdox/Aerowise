@@ -1,6 +1,6 @@
 "use client";
 
-import type { Inbox, InboxException, OnboardingChecklist as OnboardingChecklistData } from "@aerowise/domain";
+import type { Inbox, InboxException, OnboardingChecklist as OnboardingChecklistData, Technician } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
@@ -78,6 +78,48 @@ function HandledButton({ e, onDone }: { e: InboxException; onDone: () => void })
       </button>
       {error && <span className="error">{error}</span>}
     </>
+  );
+}
+
+/** Book the extra retest visit a corrective report needs; it uses none of the contract's visits. */
+function RetestAction({ e, today, onDone }: { e: InboxException; today: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const techs = useLoad<{ items: Technician[] }>(open ? "/technicians" : null);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    setError(null);
+    try {
+      await api("/jobs", { method: "POST", body: { retestOfInspectionId: e.target.id, technicianId: v.technicianId, scheduledDate: v.scheduledDate } });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not book the retest");
+    }
+  }
+  if (!open) {
+    return (
+      <button className="secondary" onClick={() => setOpen(true)}>
+        Book retest
+      </button>
+    );
+  }
+  return (
+    <form className="row" onSubmit={submit}>
+      <select name="technicianId" required aria-label="Technician">
+        {techs.data?.items.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      <input name="scheduledDate" type="date" required defaultValue={today} min={today} aria-label="Retest date" />
+      <button type="submit">Book</button>
+      <button type="button" className="link" onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      {error && <span className="error">{error}</span>}
+    </form>
   );
 }
 
@@ -179,7 +221,8 @@ export default function InboxPage() {
           <ul className="exceptions">
             {data.items.map((e) => {
               const link = href(e);
-              const inline = editable && (e.target.type === "inspection" || e.target.type === "issue" || e.target.type === "service_request");
+              const retest = editable && e.kind === "corrective_report_due" && !e.detail?.includes("Retest booked");
+              const inline = editable && e.kind !== "corrective_report_due" && (e.target.type === "inspection" || e.target.type === "issue" || e.target.type === "service_request");
               return (
                 <li key={e.key} className="card">
                   <div className="row">
@@ -188,6 +231,7 @@ export default function InboxPage() {
                     {e.dueOn && <span className="muted small">{day(e.dueOn)}</span>}
                     <span className="spacer" />
                     {inline && <InlineAction e={e} onDone={() => void reload()} />}
+                    {retest && <RetestAction e={e} today={data.today} onDone={() => void reload()} />}
                     {editable && e.target.type === "sms_message" && <HandledButton e={e} onDone={() => void reload()} />}
                     {link && (
                       <Link href={link} className="button secondary">

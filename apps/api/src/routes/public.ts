@@ -1,4 +1,4 @@
-import { loadCatalog, rulesetOn } from "@aerowise/compliance";
+import { confirmationsFor, loadCatalog, loadConfirmations, rulesetOn } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import { dateInZone, profileStatus, publicOverview, verifiedWith, type CoverageItem, type PublicOverview, type SubscriptionConfig } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -24,7 +24,8 @@ export const publicRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     async (): Promise<PublicOverview> => {
       const today = dateInZone(now(), PUBLIC_TIMEZONE);
       const coverage: CoverageItem[] = [];
-      for (const entry of await loadCatalog(db)) {
+      const [catalog, confirmations] = await Promise.all([loadCatalog(db), loadConfirmations(db)]);
+      for (const entry of catalog) {
         if (!entry.jurisdiction.active) continue;
         const rs = rulesetOn(entry, today) ?? entry.rulesets[0];
         if (!rs) continue;
@@ -39,6 +40,12 @@ export const publicRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           // A verified profile without its record never gets the badge, so it reads as a draft.
           status: verified ? "verified" : "draft",
           verified,
+          // Only what the authority itself confirmed; partial answers and other evidence stay off the public page.
+          confirmedWithAuthority: verified
+            ? []
+            : confirmationsFor(confirmations, entry.jurisdiction.id)
+                .filter((f) => f.state === "authority_confirmed")
+                .map((f) => f.label),
         });
       }
       // Verified authorities first, then by name.

@@ -13,6 +13,12 @@ export const coverageItem = z.object({
   /** `verified`: confirmed with the authority; `draft`: built from public sources, still being confirmed. */
   status: z.enum(["verified", "draft"]),
   verified: verificationBadge.nullable(),
+  /**
+   * For a draft: the filing questions the authority itself has confirmed (where reports go,
+   * format, signature, where contracts go, receipt). Nothing else counts, so a provider's
+   * document or a published rule never shows here.
+   */
+  confirmedWithAuthority: z.array(z.string()),
 });
 export type CoverageItem = z.infer<typeof coverageItem>;
 

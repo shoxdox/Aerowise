@@ -214,7 +214,7 @@ export const QUESTION_STATE_LABELS: Record<QuestionState, string> = {
   open: "Open",
 };
 
-type Answered = Pick<EvidenceAnswer, "outcome" | "evidenceClass" | "obtainedOn" | "topic">;
+export type EvidenceAnswered = Pick<EvidenceAnswer, "outcome" | "evidenceClass" | "obtainedOn" | "topic">;
 
 /**
  * Whether one answer, on its own, settles the question it answers: the authority's own
@@ -222,13 +222,13 @@ type Answered = Pick<EvidenceAnswer, "outcome" | "evidenceClass" | "obtainedOn" 
  * rules say. A provider's permit, contract or accepted report never settles a ruleset
  * question: it shows one site's facts and what worked, not what the authority accepts.
  */
-export function settles(a: Answered): boolean {
+export function settles(a: EvidenceAnswered): boolean {
   if (a.outcome !== "confirms") return false;
   if (a.evidenceClass === "authority") return true;
   return a.evidenceClass === "public_rule" && isPublicRuleTopic(a.topic);
 }
 
-export function questionState(answers: Answered[]): QuestionState {
+export function questionState(answers: EvidenceAnswered[]): QuestionState {
   const authority = answers.filter((a) => a.evidenceClass === "authority" && a.outcome !== "no_answer").sort((a, b) => b.obtainedOn.localeCompare(a.obtainedOn));
   // The authority's most recent answer decides what the authority has said.
   const latest = authority[0];
@@ -241,6 +241,56 @@ export function questionState(answers: Answered[]): QuestionState {
   if (supports("public_rule")) return "public_rule";
   return "open";
 }
+
+/**
+ * W12.V4: the fields shown as partly confirmed on the coverage page, the marketing page and
+ * the site's authority panel: where reports go, plus everything in ACCEPTANCE_TOPICS. Only
+ * the authority's own answer confirms any of them.
+ */
+export const CONFIRMATION_TOPICS = ["report_channel", ...ACCEPTANCE_TOPICS] as const satisfies readonly QuestionTopic[];
+
+export const fieldConfirmation = z.object({ topic: z.enum(QUESTION_TOPICS), label: z.string(), state: z.enum(QUESTION_STATES) });
+export type FieldConfirmation = z.infer<typeof fieldConfirmation>;
+
+/** Each confirmation field's state from every answer recorded for the authority, of any version. */
+export function fieldConfirmations(answers: EvidenceAnswered[]): FieldConfirmation[] {
+  return CONFIRMATION_TOPICS.map((topic) => ({ topic, label: QUESTION_TOPIC_LABELS[topic], state: questionState(answers.filter((a) => a.topic === topic)) }));
+}
+
+const SUMMARY_WORDS: Record<QuestionState, string> = {
+  authority_confirmed: "confirmed by the authority",
+  authority_partial: "partly confirmed by the authority",
+  conflict: "conflicting",
+  public_rule_settled: "settled by a published rule",
+  provider_evidence: "provider evidence only",
+  public_rule: "published rule only",
+  open: "open",
+};
+
+/** One line per authority, such as "Where reports go confirmed by the authority; report format, signature, where contracts go and receipt and acceptance open". */
+export function confirmationSummary(fields: FieldConfirmation[]): string {
+  if (fields.every((f) => f.state === "open")) return "Nothing recorded with the authority yet";
+  const parts = QUESTION_STATES.flatMap((state) => {
+    const labels = fields.filter((f) => f.state === state).map((f) => f.label.toLowerCase());
+    if (!labels.length) return [];
+    const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+    return [`${list} ${SUMMARY_WORDS[state]}`];
+  });
+  const line = parts.join("; ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+/**
+ * What a signed-in office sees about how far an authority's filing questions are
+ * confirmed. Contacts and evidence stay on the platform admin page.
+ */
+export const authorityConfirmation = z.object({
+  jurisdictionId: z.uuid(),
+  key: z.string(),
+  fields: z.array(fieldConfirmation),
+  summary: z.string(),
+});
+export type AuthorityConfirmation = z.infer<typeof authorityConfirmation>;
 
 export const rulesetEvidencePage = z.object({
   key: z.string(),

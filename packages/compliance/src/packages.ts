@@ -214,7 +214,72 @@ export async function packageProblems(db: Executor, f: PackageFiling, resolved: 
   if (f.kind === "contract" && rules.contracts?.submission === "unknown") {
     problems.push(`${resolved.authorityName} has not published how maintenance contracts are submitted, so this contract cannot be filed through Aerowise`);
   }
+  if (f.kind === "contract" && f.contractId) problems.push(...(await contractTermProblems(db, f.organizationId, f.contractId, resolved, facts.today)));
   return problems;
+}
+
+/**
+ * What an authority asks of a contract's terms on top of 30 TAC 285.7 (Hays 10.V.2 and
+ * 10.V.6): a renewal waits for the previous term's reports, and a contract taken over from
+ * another provider covers a minimum term and number of visits.
+ */
+async function contractTermProblems(db: Executor, organizationId: string, contractId: string, resolved: ResolvedJurisdiction, today: string): Promise<string[]> {
+  const rules = resolved.rules.contracts;
+  if (!rules?.renewalNeedsPriorReports && !rules?.newProviderMinimum) return [];
+  const k = await db
+    .selectFrom("contracts")
+    .select(["previousContractId", "filingBasis", "termMonths", "visitsPerTerm"])
+    .where("organizationId", "=", organizationId)
+    .where("id", "=", contractId)
+    .executeTakeFirstOrThrow();
+  const problems: string[] = [];
+  if (rules.renewalNeedsPriorReports && k.previousContractId) {
+    const missing = await unsentPriorReports(db, organizationId, k.previousContractId, today);
+    if (missing > 0) {
+      problems.push(
+        `${resolved.authorityName} accepts a renewal with the same provider only after every report from the previous contract has been submitted; ${missing} visit${missing === 1 ? " is" : "s are"} due by now without a sent report`,
+      );
+    }
+  }
+  const min = rules.newProviderMinimum;
+  // A renewal or replacement with no earlier contract in Aerowise may follow another provider's.
+  if (min && !k.previousContractId && (k.filingBasis === "renewal" || k.filingBasis === "replacement") && (k.termMonths < min.termMonths || k.visitsPerTerm < min.visits)) {
+    problems.push(
+      `If the previous contract was with another provider, ${resolved.authorityName} requires this one to run at least ${min.termMonths} months with ${min.visits} inspections, counting the first; it runs ${k.termMonths} months with ${k.visitsPerTerm}`,
+    );
+  }
+  return problems;
+}
+
+/**
+ * Visits of a contract that were due by `today` (or done) without a report that has gone to
+ * the authority. Visits completed by an import were reported outside Aerowise and count as done.
+ */
+async function unsentPriorReports(db: Executor, organizationId: string, contractId: string, today: string): Promise<number> {
+  const rows = await db
+    .selectFrom("serviceObligations as o")
+    .select("o.id")
+    .where("o.organizationId", "=", organizationId)
+    .where("o.contractId", "=", contractId)
+    .where("o.status", "<>", "cancelled")
+    .where("o.completedByImport", "is", null)
+    .where((eb) => eb.or([eb("o.status", "=", "completed"), eb("o.dueOn", "<=", today)]))
+    .where(({ not, exists, selectFrom }) =>
+      not(
+        exists(
+          selectFrom("jobs as j")
+            .innerJoin("inspections as i", (x) => x.onRef("i.jobId", "=", "j.id").onRef("i.organizationId", "=", "j.organizationId"))
+            .innerJoin("filings as f", (x) => x.onRef("f.inspectionId", "=", "i.id").onRef("f.organizationId", "=", "i.organizationId"))
+            .select("f.id")
+            .whereRef("j.obligationId", "=", "o.id")
+            .whereRef("j.organizationId", "=", "o.organizationId")
+            .where("f.kind", "=", "inspection_report")
+            .where("f.status", "in", ["sent", "confirmed"]),
+        ),
+      ),
+    )
+    .execute();
+  return rows.length;
 }
 
 async function documentsFor(db: Executor, f: PackageFiling): Promise<PackageDocument[]> {
