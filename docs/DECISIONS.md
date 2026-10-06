@@ -299,6 +299,13 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Service counties are free text**, one per line, trimmed and de-duplicated without regard to case. Sites already store their county as typed, so a fixed list would not match imported data. W2.5's checklist only needs at least one.
 - **Who can change what:** everyone signed in can read the company settings (they appear on the documents everyone sends); only owners (`org:manage`) can change them or the logo.
 
+## 2026-10-05 · W2.5 First-run checklist
+
+- **Nothing is ticked by hand.** `GET /onboarding` works each step out from the company's records every time the office home loads, so a step cannot read "done" when it is not, and one can reopen (a technician's license expires, a new technician joins without one). The checklist hides once every required step is done; there is no "dismiss" button.
+- **What each step checks.** Company details: phone, street, city, state and ZIP. Responsible MP: the license chosen on the licenses page is an active, unexpired MP license. Technicians: at least one active member holds an active, unexpired inspecting license, and every active technician has one; an owner who inspects with their own MP license counts, so a one-person company can finish it. Service counties: at least one. Customers: at least one, imported or added by hand. Stripe: the connected account can take charges. QuickBooks: connected, and optional.
+- **Who sees it:** owners and office staff (`users:read`). Technicians land in the tech app and read-only users have nothing to set up.
+- **The demo company shows it.** The seeded demo company has no service counties, licenses or Stripe account, so the hosted demo shows the checklist with two of six steps done. **Open:** whether the demo should be seeded complete instead.
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
