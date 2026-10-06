@@ -9,7 +9,7 @@
 #
 #   deploy/vps/offsite.sh <env> push <file>...      copy, then download each copy and compare
 #   deploy/vps/offsite.sh <env> list                the copies in R2, oldest first
-#   deploy/vps/offsite.sh <env> fetch <name|latest> <dir>   download a dump (and its files tarball)
+#   deploy/vps/offsite.sh <env> fetch <name|latest> <dir>   download a dump (with its row counts and files tarball)
 #
 # Exits 3 when R2 is not configured for this environment, so callers can tell "off" from "failed".
 set -eu
@@ -69,7 +69,7 @@ push)
   done
   # Old copies go after BACKUP_OFFSITE_KEEP_DAYS. Only after a copy that checked out, so the
   # newest copy in R2 is always fresh, even if backups stop for longer than that.
-  rclone "" delete "$remote" --min-age "${keep}d" --include 'db-*.dump' --include 'files-*.tar.gz'
+  rclone "" delete "$remote" --min-age "${keep}d" --include 'db-*.dump' --include 'db-*.counts' --include 'files-*.tar.gz'
   ;;
 list)
   rclone "" lsf "$remote" --include 'db-*.dump' --include 'files-*.tar.gz' | sort
@@ -85,7 +85,7 @@ fetch)
   out=$(cd "$out" && pwd)
   stamp=${which#db-}
   stamp=${stamp%.dump}
-  rclone "-v $out:/out" copy "$remote" /out --include "$which" --include "files-$stamp.tar.gz"
+  rclone "-v $out:/out" copy "$remote" /out --include "$which" --include "db-$stamp.counts" --include "files-$stamp.tar.gz"
   echo "$out/$which"
   ;;
 *)
