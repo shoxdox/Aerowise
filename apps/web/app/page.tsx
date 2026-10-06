@@ -95,9 +95,13 @@ export default function MarketingPage() {
           <DemoRequestForm />
         </section>
 
-                <footer className="muted small stack">
+        <footer className="muted small stack">
           <span>{RESPONSIBILITY}</span>
-          <Link href="/data-handling">How we handle your data</Link>
+          <span className="row">
+            <Link href="/terms">Terms of service</Link>
+            <Link href="/privacy">Privacy policy</Link>
+            <Link href="/data-handling">How we handle your data</Link>
+          </span>
         </footer>
       </main>
     </div>
