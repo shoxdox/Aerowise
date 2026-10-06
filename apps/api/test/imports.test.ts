@@ -51,6 +51,48 @@ function messyCsv() {
   return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`${lines.join("\r\n")}\r\n`)]);
 }
 
+/**
+ * A provider's whole book, 500 rows, as messy as messyCsv, with contract dates and last
+ * inspections. Today is 2026-03-01 and the plan is 12 months with a visit every 4 months.
+ * Each row's kind is i % 10:
+ * 0 ends 2026-03-21, every visit done (last inspection 2025-12-10)
+ * 1 ends 2026-04-25, every visit done (last inspection 2026-01-05)
+ * 2 ends 2026-05-20, no last inspection: 2 visits overdue
+ * 3 started 2025-07-01, last inspected 2025-10-01: 1 visit overdue
+ * 4 started 2025-04-01, last inspected 2025-09-15: 1 visit due 2026-03-31, ends that day
+ * 5 ended 2026-01-31
+ * 6 starts 2026-04-01
+ * 7, 8, 9 no contract
+ * Rows i % 100 === 42 have no address and i % 100 === 77 repeat the row before, so neither
+ * is imported. A third of the rows name Example County (an authority); a quarter have a permit.
+ */
+function bookCsv() {
+  const KINDS: [plan: boolean, start: string, end: string, last: string][] = [
+    [true, "", "3/21/2026", "12/10/2025"],
+    [true, "", "2026-04-25", "1/5/26"],
+    [true, "", "05/20/2026", ""],
+    [true, "7/1/2025", "", "2025-10-01"],
+    [true, "4/1/2025", "", "9/15/2025"],
+    [true, "", "1/31/2026", ""],
+    [true, "4/1/2026", "", ""],
+    [false, "", "", ""],
+    [false, "", "", ""],
+    [false, "", "", ""],
+  ];
+  const lines = ["Account Name,Property Address,City,County,Permit No,Make,Model,Plan,Contract Start,Expires,Last Service"];
+  for (let i = 0; i < 500; i++) {
+    const [plan, start, end, last] = KINDS[i % 10]!;
+    const address = i % 100 === 42 ? "" : i % 100 === 77 ? ` ${200 + i - 1} Cedar Rd. ` : `${200 + i} Cedar Road`;
+    lines.push(
+      [` Owner ${i} `, address, i % 2 ? "Austin" : "austin", i % 3 === 0 ? "example county" : "", i % 4 === 0 ? `ex-${pad(i)}` : "", i % 3 === 1 ? "Aqua-Safe" : "", i % 3 === 1 ? "AS 500" : "", plan ? (i % 2 ? "annual aerobic" : "Annual Aerobic") : "", start, end, last]
+        .map(csvCell)
+        .join(","),
+    );
+    if (i % 125 === 0) lines.push(",,,,,,,,,,");
+  }
+  return Buffer.from(`${lines.join("\r\n")}\r\n`);
+}
+
 type Detail = {
   id: string;
   status: string;
@@ -364,6 +406,42 @@ describe("customer import", () => {
     await sql`insert into filings (organization_id, site_id, contract_id, kind, status, state_machine_version)
       values (${s.org.id}, ${cy!.siteId}, ${cy!.contractId}, 'contract', 'pending', 1)`.execute(ctx.db);
     expect((await check()).blockers).toEqual([{ table: "filings", label: "1 filing", count: 1 }]);
+  });
+
+  it("shows the onboarding summary of a messy 500-row book", async () => {
+    const t = await tenant(ctx);
+    const imp = (await t.upload("book.csv", bookCsv())).json() as Detail;
+    expect(imp.mapping).toMatchObject({ customerName: 0, addressLine1: 1, city: 2, county: 3, permitNumber: 4, manufacturer: 5, model: 6, planName: 7, contractStart: 8, contractEnd: 9, lastInspection: 10 });
+    expect(imp.summary).toMatchObject({ rows: 500, error: 5, duplicate: 5, included: 490 });
+    // What the import and the summary should say, from the rules the book was built with.
+    const imported = Array.from({ length: 500 }, (_, i) => i).filter((i) => i % 100 !== 42 && i % 100 !== 77);
+    const kinds = (...ks: number[]) => imported.filter((i) => ks.includes(i % 10)).length;
+    const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    expect(done.result).toEqual({ customers: 490, sites: 490, contracts: kinds(0, 1, 2, 3, 4, 5, 6) });
+    const summary = (await t.api.get(`/onboarding/summary?importId=${imp.id}`)).json();
+    expect(summary).toMatchObject({
+      importId: imp.id,
+      today: "2026-03-01",
+      customers: 490,
+      sites: 490,
+      activeContracts: kinds(0, 1, 2, 3, 4),
+      expiring: { within30: kinds(0, 4), within60: kinds(0, 1, 4), within90: kinds(0, 1, 2, 4) },
+      overdueVisits: 2 * kinds(2) + kinds(3),
+      dueThisMonth: kinds(4),
+      sitesWithoutAuthority: imported.filter((i) => i % 3 !== 0).length,
+      sitesWithoutPermit: imported.filter((i) => i % 4 !== 0).length,
+    });
+    expect(summary.examples.withoutAuthority).toHaveLength(10);
+    expect(summary.examples.withoutPermit[0]).toMatchObject({ customerName: "Owner 1", addressLine1: "201 Cedar Road" });
+
+    // The whole organization also counts what was there before.
+    const all = (await t.api.get("/onboarding/summary")).json();
+    expect(all).toMatchObject({ importId: null, sites: 491, customers: 491, activeContracts: summary.activeContracts });
+
+    // Another organization sees neither the import nor its records.
+    const b = await tenant(ctx, "Org B");
+    expect((await b.api.get(`/onboarding/summary?importId=${imp.id}`)).statusCode).toBe(404);
+    expect((await b.api.get("/onboarding/summary")).json()).toMatchObject({ sites: 1, activeContracts: 0, overdueVisits: 0 });
   });
 
   it("lets the office fix the mapping and choose rows", async () => {
