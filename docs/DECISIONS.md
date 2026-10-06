@@ -530,3 +530,10 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **One Connect webhook endpoint.** With direct charges every event Aerowise reads (checkout, refunds, `account.updated`) happens on a connected account, so only the "Connected accounts" endpoint is needed; `STRIPE_WEBHOOK_SECRET` still takes several secrets for rotation.
 - **Checkout pages last 23 hours, not 24.** Stripe's 24-hour maximum is counted on its clock.
 - **The recorded run is a manual checklist plus the `stripe_events` table.** No Claude session can reach staging or Stripe from its sandbox, so Justin runs the steps in `INTEGRATIONS.md` and the webhook log on the server is the record.
+
+## 2026-10-06 · Restore check on a production with no companies yet
+
+- The first run on the real server failed production's restore check only because it required at least one organization, which a new production cannot have. That rule was a stand-in for "the backup is missing data".
+- **Now:** `backup.sh` records every table's row count just before the dump (`db-<stamp>.counts`, kept and copied to R2 with the dump), and `restore-check.sh` fails when a table that had rows then has none restored. Empty-at-backup tables are fine; a company created after the backup does not fail the check either. Comparing with the live database alone would fail on any table whose first row arrived after the backup.
+- The counts are taken a moment before `pg_dump`'s own snapshot, not in it. A table emptied in that moment (say, its last expired session deleted) would show as missing; that is rare and clears on the next backup, so it was preferred over holding an exported snapshot open across the dump.
+
