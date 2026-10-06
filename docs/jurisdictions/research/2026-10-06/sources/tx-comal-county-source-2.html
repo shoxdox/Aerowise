@@ -1,0 +1,2232 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+	<meta http-equiv="Content-type" content="text/html; charset=UTF-8" />
+<!-- Google Tag Manager for GA4 -->
+				<script>(function(w,d,s,l,i){w.GAMeasurementID='G-ZG0Q0L0SC7';w[l]=w[l]||[];w[l].push({'gtm.start':
+				new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+				j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+				'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+				})(window,document,'script','cpDataLayerGA4','GTM-K73C5PS');</script>
+				<!-- End Google Tag Manager for GA4 -->
+				<script type='text/javascript'>
+					var enableTelemetry = 'false'
+					var aiConfig = {
+					instrumentationKey: '1cde048e-3185-4906-aa46-c92a7312b60f'						
+					}
+					var appInsights = window.appInsights || function (a) { function b(a) { c[a] = function () { var b = arguments; c.queue.push(function () { c[a].apply(c, b) }) } } var c = { config: a }, d = document, e = window; setTimeout(function () { var b = d.createElement('script'); b.src = a.url || 'https://js.monitor.azure.com/scripts/a/ai.0.js', d.getElementsByTagName('script')[0].parentNode.appendChild(b) }); try { c.cookie = d.cookie } catch (a) { } c.queue = []; for (var f = ['Event', 'Exception', 'Metric', 'PageView', 'Trace', 'Dependency']; f.length;)b('track' + f.pop()); if (b('setAuthenticatedUserContext'), b('clearAuthenticatedUserContext'), b('startTrackEvent'), b('stopTrackEvent'), b('startTrackPage'), b('stopTrackPage'), b('flush'), !a.disableExceptionTracking) { f = 'onerror', b('_' + f); var g = e[f]; e[f] = function (a, b, d, e, h) { var i = g && g(a, b, d, e, h); return !0 !== i && c['_' + f](a, b, d, e, h), i } } return c }(aiConfig);
+					window.appInsights = appInsights, appInsights.queue && 0 === appInsights.queue.length;
+					// Add telemetry initializer
+					appInsights.queue.push(function() {
+						appInsights.context.addTelemetryInitializer(function(envelope) {
+							var telemetryItem = envelope.data.baseData;
+							// To check the telemetry item’s type:
+							if (!false)
+							{
+								//If the telemetry is not enabled, we still want to capture Google map custom event, so only allow that
+								if (envelope.name.indexOf('.Event') == -1)
+									return false;
+							}
+						});
+					});						
+					appInsights.trackPageView();
+				</script>
+	<script>
+		function populateAntiForgery(token) {
+			var input = document.createElement("input");
+			input.name = "__RequestVerificationToken";
+			input.type = "hidden";
+			input.value = token;
+			var absPat = /^https?:\/\/|^\/\//i;
+			var forms = document.getElementsByTagName("form");
+			for (var i = 0; i < forms.length; i++) {
+				if (forms[i].method == "post" &&
+					!forms[i].querySelector('[name="__RequestVerificationToken"]') &&
+					!absPat.test(forms[i].getAttribute("action"))) {
+					forms[i].appendChild(input.cloneNode());
+				}
+			}
+		}
+
+		function getAntiForgeryToken(callback, error) {
+			var xhr = new XMLHttpRequest();
+			xhr.open("GET", "/antiforgery");
+			xhr.addEventListener("load", function() {
+				try {
+					if (this.status !== 200) {
+						throw Error("Invalid status. Could not retrieve antiforgery token.");
+					}
+					var obj = JSON.parse(this.responseText);
+					callback(obj.token);
+				} catch (e) {
+					typeof error === "function" && error(e);
+				}
+			});
+			xhr.send();
+		}
+
+		getAntiForgeryToken(function(token) {
+			if (document.readyState === "complete"
+				|| document.readyState === "loaded" 
+				|| document.readyState === "interactive") {
+				populateAntiForgery(token);
+				return;
+			}
+			document.addEventListener("DOMContentLoaded", function() {
+				populateAntiForgery(token);
+			}, false);
+		}, console.error);
+	</script>
+			
+
+	<script type="text/javascript">
+		window.departmentHeader = {"DepartmentHeaderId":191,"DepartmentHeaderName":"Engineer's Office"};
+		window.pageSectionTracker = {"PageSectionTrackerId":191,"PageSectionTrackerName":"Engineer's Office"};
+		window.isResponsiveEnabled = true;
+		window.isRemoveSetHeights= true;
+		if (window.isRemoveSetHeights) {
+			document.documentElement.className += ' removeSetHeights';
+		}
+		window.mainMenuMediaQuery = 'screen and (max-width: 40em)';
+		window.isMobileBrowserIncludingTablets = false;
+		window.fixedResponsiveMenu = false;
+		window.fullWidthResponsiveMenu = true;
+		window.responsiveMenuHeight = '';
+		window.responsiveMenuFontSize = '';
+		window.isContentAdvisor = false;
+		(function () {
+			window.setSizeCookie = function () {
+				document.cookie = "dpi=" + window.devicePixelRatio + "; path=/";
+				document.cookie = "viewportWidth=" + window.innerWidth + "; path=/";
+				document.cookie = "viewportHeight=" + window.innerHeight + "; path=/";
+				if (screen && screen.width && screen.height) {
+					document.cookie = "screenWidth=" + screen.width + "; path=/";
+					document.cookie = "screenHeight=" + screen.height + "; path=/";
+				}
+				document.cookie = "responsiveGhost=1; path=/";
+			};
+
+			setSizeCookie();
+		}());
+	</script>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<script async src="https://docaccess.com/docbox.js"></script>
+	
+	<meta name="category0" content="Home" />
+<meta name="category1" content="Government" />
+<meta name="category2" content="County Offices" />
+<meta name="category3" content="Engineer&#39;s Office" />
+<meta name="category4" content="Departments" />
+<meta name="category5" content="Environmental Health" />
+<meta name="category6" content="OSSF Information" />
+
+	
+	<meta name="theme-color" content="rgb(1, 110, 166)">
+	<link rel="icon" href="/images/favicon.ico" type="image/x-icon" />
+	<link rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon" />
+		<title>OSSF Information | Comal County, TX </title>
+
+		<meta name="description" content="About 45,000 on-site wastewater treatment systems are installed annually in Texas to treat wastewater from rural and suburban homes as well as from small businesses. An on-site wastewater treatment system collects, treats and applies wastewater to the soil.">
+			<script src="/Assets/Scripts/jQuery/jquery-3.7.1.min.js"></script>
+	<script src="/Assets/Scripts/jQuery/jquery-migrate-3.6.0.min.js" type="text/javascript"></script>
+	
+
+	<!--[if IE 6]><script language="JavaScript" type="text/javascript"> var isie6 = true; </script><![endif]-->
+	<!--[if IE 7]><script language="JavaScript" type="text/javascript"> var isie7 = true; </script><![endif]-->
+	<!--[if IE 8]><script language="JavaScript" type="text/javascript"> var isie8 = true; </script><![endif]-->
+	<!--[if IE 9]><script language="JavaScript" type="text/javascript"> var isie8 = true; </script><![endif]-->
+	<script type="text/javascript"><!--
+	var intCountryCode = 840;
+	var order = '';
+//--></script>
+	
+<link href="/-681783051.css" rel="stylesheet" type="text/css" />	<link href="/-2140275272.css" rel="stylesheet" type="text/css" />	<link href="/-1323509377.css" rel="stylesheet" type="text/css" />
+
+	<link rel="stylesheet" type="text/css" href="/Assets/Styles/Print.css" media="print">
+	<script type="text/javascript">
+		window.Pages = window.Pages || {};
+		// FrontEnd RWD initialization
+		window.Pages.rwdReady = $.Deferred();
+		window.Pages.toolBarDeferred = $.Deferred();
+		window.Pages.rwdSetupComplete = $.Deferred();
+		window.Pages.megaMenuLoaded = $.Deferred();
+		window.Pages.angularToolbarComplete = $.Deferred();
+		window.Pages.frontEndToolbarComplete = $.Deferred();
+	</script>
+	<!--CPHeadContent-->
+	<script src="/739942322.js" type="text/javascript"></script>
+	
+	
+	
+	
+
+
+
+
+	<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/App_Themes/ie8.css"><![endif]-->
+	<!--[if lte IE 7]><link rel="stylesheet" type="text/css" href="/App_Themes/ie7.css"><![endif]-->
+	<!--[if lte IE 6]><link rel="stylesheet" type="text/css" href="/App_Themes/ie6.css"><![endif]-->
+	<!--[if lt IE 9]><script type="text/javascript" src="/Scripts/html5.js"></script><![endif]-->
+
+	<script type="text/javascript">
+		setEditorVariables(false, 840);
+		function getPrintPreviewType() { return 0; } function printPreview() {pPreview(getPrintPreviewType()); }
+	</script>
+	<script src="/Assets/Scripts/AlpineJS/3.14.1/alpine.min.js" type="text/javascript" defer="defer"></script>
+</head>
+<body class="wide " >
+
+    <script>jQuery(document).click(function (event) {
+	var target = jQuery(event.target);
+	if (target.attr('src') && target.parents('.image').length && target.parents('.widget').length) {
+		var text = target.attr('title');
+		
+		if (!text.length) {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Image',
+				eventAction: 'Image - ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.is('button') || target.hasClass('button') || target.parents().hasClass('button')) {
+		var text = "";
+		if (target.parents('.button')[0]) {
+			text = target.parents('.button').first().text();
+		} else if (target.text().length) {
+			text = target.text();
+		} else if (target.attr('title').length) {
+			text = target.attr('title');
+		}
+		if (!text.length) {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Button',
+				eventAction: 'Button - ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.widgetCustomHtml').length) {
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Custom Html',
+				eventAction: 'Custom Html Clicked',
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.editor').length) {
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Editor',
+				eventAction: 'Editor Link Clicked',
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.GraphicLinks').length) {
+		var text = "";
+		var targetGraphicLink = target;
+		if (target.hasClass('widgetGraphicLinksLink')) {
+			targetGraphicLink = jQuery(target.children()[0]);
+		}
+		if (targetGraphicLink.hasClass('text')) {
+			text = targetGraphicLink.text();
+		} else if (targetGraphicLink.attr('src').length) {
+			if (targetGraphicLink.attr('alt').length) {
+				text = targetGraphicLink.attr('alt');
+			} else {
+				text = targetGraphicLink.attr('src');
+			}
+		} else {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Graphic Links',
+				eventAction: 'Graphic Link - ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.InfoAdvanced').length) {
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Info Advanced',
+				eventAction: 'Info Advanced Clicked',
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.list').length) {
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'List',
+				eventAction: 'List Clicked',
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.megaMenuItem').length || target.parents('.topMenuItem').length) {
+		var megaMenuText = jQuery('.topMenuItem.mouseover').find('span').text();
+		var breadCrumbs = [];
+		jQuery('.breadCrumbs > li').each(function () {
+			 breadCrumbs.push(this.textContent);
+		});
+		var pageTitle = breadCrumbs.join('>');
+		var subTitleText = target.parents('.megaMenuItem').children('.widgetTitle').children().text();
+		var text = "";
+		if (pageTitle) {
+			text += pageTitle + " | ";
+		} else {
+			text += document.title + ' - ';
+		}
+		if (target.text() == "" && megaMenuText == "") {
+			text += "N/A";
+		} else if (target.text().length && megaMenuText.length) {
+			if (megaMenuText == target.text()) {
+				text += megaMenuText;
+			} else {
+				text += megaMenuText + " - " + subTitleText + " - " + target.text();
+			}
+		} else if (target.text() == "") {
+			text += megaMenuText;
+		} else {
+			text += target.text();
+		}
+		if (!text.length) {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Mega Menu',
+				eventAction: 'Mega Menu : ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.widgetNewsFlash').length && target.parents('.widgetItem').length) {
+		var text = jQuery(target.parents('.widgetItem')[0]).find('.widgetTitle').children().text();
+		if (!text.length) {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'News Flash',
+				eventAction: 'News Flash - ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.hasClass('widgetQuickLinksLink') || target.find('.widgetQuickLinksLink').length) {
+		var text = target.text();
+		if (!text.length) {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Quick Links',
+				eventAction: 'Quick Links - ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.attr('src') && target.parents('.cpSlideshow').length) {
+		var text = target.attr('title');
+		if (!text.length) {
+			text = "N/A";
+		}
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Slideshow',
+				eventAction: 'Slideshow - ' + text,
+				eventLabel: window.location.href
+			});
+	}
+	if (target.parents('.widgetText').length) {
+		ga('send',
+			{
+				hitType: 'event',
+				eventCategory: 'Text',
+				eventAction: 'Text Link Clicked',
+				eventLabel: window.location.href
+			});
+	}
+});</script>
+	<div id="popoverModal" class="cp-PopOver cp-PopOver--modal cp-AdminWrap" style="position: fixed; display: none;">
+	<div class="cp-PopOver-header">
+		<h3 class="cp-PopOver-title"></h3>
+		<button class="cp-Btn cp-PopOver-close" onclick="closePopOverModal(event)">
+			<svg class="cp-Icon--close" alt="close" title="close">
+				<use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#iconClose"></use>
+			</svg>
+		</button>
+	</div>
+	<div id="cpPopOverBody" class="cp-PopOver-body">
+		<form id="cpPopOverForm" name="cpPopOverForm" novalidate></form>
+	</div>
+	<div id="cpPopOverFooter" class="cp-PopOver-footer">
+		<div class="cp-BtnGroup" id="actionButtons">
+			<!-- Action buttons will be dynamically added here -->
+		</div>
+	</div>
+</div>
+    <div id="fb-root"></div>
+<div id=skipToContentLinks>
+<a href="#cc5f8c90dc-b4cb-431b-90ee-10648f8df655" target="_self" class="skipToContentLink">Skip to Main Content</a>
+</div>
+    <form id="frmReferenceFormForTelerikEditorDialogs"></form>
+
+        <input type="hidden" id="GoogleMapsKey" value="AIzaSyDWUuE-ifkbhxblF920N8MjpBdTg1Wt784" />
+
+
+
+    <input type="hidden" id="cpcDomain" value="https://cp-civicplusuniversity2.civicplus.com">
+    <input type="hidden" id="hdnStructureID" value="1" />
+    <input type="hidden" id="hdnContentCollectionID" value="06c69626-3e34-412f-8f17-24908448202a" />
+    <input type="hidden" id="hdnWorkingCopyID" value="e98c5cb3-4906-4548-84ec-0f092a9883fe" />
+    <input type="hidden" id="hdnThemeID" value="19" />
+    <input type="hidden" id="pageIsFrontEnd" value="true" />
+    <input type="hidden" id="pageModuleID" />
+    <input type="hidden" id="pagePageID" value="276" />
+
+    <div id="stickyPlaceholder"></div>
+    <div id="outer-wrap" class="outer-wrap">
+        <div id="inner-wrap" class="inner-wrap">
+                <div id="divToolbars" class="cpToolbars newCP mui-fixed" style="">
+                    
+
+
+
+<!-- Begin Signed Out Bar -->
+<div class="cpToolbar user public">
+    <div class="inner selfClear">
+        <p class="dropdown"><a href="/MyAccount/ProfileCreate" class="myConnections" id="signedOutToolbarCreateProfileButton">Create a Website Account</a> <span class="welcomeMessage">- Manage notification subscriptions, save form progress and more. &nbsp;&nbsp;</span></p>
+        <ul class="nav secondary">
+	        <li><a href="/MyAccount" class="button" id="loggedOutToolbarSignInButton">Website Sign In</a></li>
+        </ul>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+        $('#signedOutToolbarCreateProfileButton').click(function (event) {
+            event.preventDefault();
+            window.location.href = '/MyAccount/ProfileCreate?from=url&url=/&dn=' + window.location.origin;
+        });
+
+			
+				$('#loggedOutToolbarSignInButton').click(function (event) {
+					event.preventDefault();
+					window.location.href = '/MyAccount/?from=url&url=' + encodeURIComponent(window.location.href.replace(window.location.origin, '')) + '&dn=' + window.location.host;
+				});
+			
+
+		if ('False' == 'True') {
+            $('#loggedOutToolbarSignInButton').hide();
+		}
+    })
+</script>
+<!-- End Signed Out Bar -->
+
+                </div>
+            <div id="bodyWrapper">
+                <div id="mainNavHolderMobile" class="mainNavHolderMobile"></div>
+                
+<div data-cpRole="structuralContainer" id="bodyContainerTS">
+<!-- Header Container --><header data-cpRole="structuralContainer" id="headerContainerTS" class="fixedTopTS">
+<div class="siteWrap10" id="flexHeaderTS"><div data-cpRole="structuralContainer" id="bannerLogoWrapperTS">
+<div data-cpRole="banner" id="bannerLogoTS" class="bannerLogoTS empty">
+
+
+
+
+				<a id="bannerLogoTS-66" style="			display: block; text-align: center;
+" class="bannerObject" href="/191" target="_self"><img alt="Comal County TX Homepage Engineers Office" class="bannerObject" height="258" src="/ImageRepository/Document?documentID=2460" width="170" /></a>
+</div>
+</div><nav data-cpRole="nav" id="mainNav" class="siteNav mainNav" role="navigation">
+<ol id="mainNavMenu" data-parent="191" class="rootNavMenu" role="menu"><!--
+--><li id="MainItem266" class="topMenuItem" role="none" data-pageid="266" data-displaymegamenu="True"><!--
+			--><!--
+			--> <a role = "menuitem"  aria-haspopup=true aria-expanded='false' aria-controls="mainNavMegaMenu266" id = "mainNavDepartments" class="navMainItem mainNavItem mainNavItem1 " href="/266/Departments" target = "_self" >   Departments  </a>			<!--
+			--><!--
+			--></li><!----><li id="MainItem267" class="topMenuItem" role="none" data-pageid="267" data-displaymegamenu="True"><!--
+			--><!--
+			--> <a role = "menuitem"  aria-haspopup=true aria-expanded='false' aria-controls="mainNavMegaMenu267" id = "mainNavContactUs" class="navMainItem mainNavItem mainNavItem2 " href="/267/Contact-Us" target = "_self" >   Contact Us  </a>			<!--
+			--><!--
+			--></li><!----><li id="MainItem265" class="topMenuItem" role="none" data-pageid="265" data-displaymegamenu="True"><!--
+			--><!--
+			--> <a role = "menuitem"  aria-haspopup=true aria-expanded='false' aria-controls="mainNavMegaMenu265" id = "mainNavHowDoI" class="navMainItem mainNavItem mainNavItem3 " href="/265/How-Do-I" target = "_self" >   How Do I...  </a>			<!--
+			--><!--
+			--></li><!---->
+</ol>
+
+
+	<script type="text/javascript">
+		(function () {
+			function setupMenu() {
+				const menuID = 'mainNavMenu';
+				const menuType = MAIN_MENU;
+
+				//setup menu manager properties for main menu
+				if (!menuManager.mobileMainNav && true)
+					menuManager.adjustMainItemsWidth('#' + menuID);
+				menuManager.isMainMenuEditable = false;
+				menuManager.mainMenuMaxSubMenuLevels = 4;
+				menuManager.setMOMMode(2, menuType);
+
+				//Init main menu
+				const setupDraggable = menuManager.isMainMenuEditable;
+				const urlToGetHiddenMenus = '/Pages/MenuMain/HiddenMainSubMenus?pageID=191&moduleID=&themeID=19&menuContainerID=mainNav';
+
+				menuManager.setupMenu(menuID, 'mainNav', menuType, setupDraggable, urlToGetHiddenMenus);
+				menuManager.mainMenuInit = true;
+				menuManager.mainMenuTextResizer = true;
+				if (1.00 > 0)
+					menuManager.mainMenuTextResizerRatio = 1.00;
+				if (window.isResponsiveEnabled)
+					menuManager.mainMenuReady.resolve();
+
+			}
+
+			if (document.readyState === "complete"
+				|| document.readyState === "loaded"
+				|| document.readyState === "interactive") {
+				setupMenu();
+				return;
+			}
+
+			document.addEventListener("DOMContentLoaded", setupMenu);
+		})();
+	</script>
+
+
+<aside data-cpRole="megaMenu" id="megaMenu" class="megaMenu" style="display: none;"><input type="hidden" id="megaMenuPopupDirection" value="0"><input type="hidden" id="megaMenuWidthReference" value="1"><aside role="menu" data-cpRole="contentContainer" id="mainNavMegaMenu266" class="contentTop mainNavMegaMenu megaMenuContainer pageID_266 hidden" data-orientation="horizontal">	<div id="cc01a2ea52-bfed-48c7-a443-c95e3f04472e" data-containerid="01a2ea52-bfed-48c7-a443-c95e3f04472e" class="pageContent cpGrid cpGrid24">
+				                
+
+
+
+	</div>
+</aside><aside role="menu" data-cpRole="contentContainer" id="mainNavMegaMenu267" class="contentTop mainNavMegaMenu megaMenuContainer pageID_267 hidden" data-orientation="horizontal">	<div id="cc5cf55782-f899-4741-a26b-cdb2c50a4acb" data-containerid="5cf55782-f899-4741-a26b-cdb2c50a4acb" class="pageContent cpGrid cpGrid24">
+				                
+
+
+
+	</div>
+</aside><aside role="menu" data-cpRole="contentContainer" id="mainNavMegaMenu265" class="contentTop mainNavMegaMenu megaMenuContainer pageID_265 hidden" data-orientation="horizontal">	<div id="cc6c5d7b8c-30bf-4ca5-9839-5e7e4f609508" data-containerid="6c5d7b8c-30bf-4ca5-9839-5e7e4f609508" class="pageContent cpGrid cpGrid24">
+				                
+
+
+
+	</div>
+</aside></aside></nav><div data-cpRole="contentContainer" id="searchTS1">	<div id="cc10c59fea-97f6-4e6b-a870-e84e89085001" data-containerid="10c59fea-97f6-4e6b-a870-e84e89085001" class="pageContent cpGrid cpGrid24 isLockedContainer showInMobile">
+				                
+
+		<div class="row outer wide"><!--
+--><div class="outer col col24 first last" style="" data-widgetcontainerid="e4ac6ed4-6cbb-4a8f-9811-b537e55eb323">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col24 first last idd5e3b88d-9e48-46fe-9440-a3a487c1edd7" style="" data-widgetcontainerid="d5e3b88d-9e48-46fe-9440-a3a487c1edd7">	
+<div data-widget-id="aab80b55-c658-4ad1-b2b1-cd879ce0e033" data-widget-controller-path="/Layout/WidgetSearch">
+	
+	<script defer type="text/javascript" src="/Common/Controls/jquery-ui-1.14.2/jquery-ui.min.js"></script>
+	<script defer src="/Areas/Layout/Assets/Scripts/Search.js" type="text/javascript"></script>
+	<script defer type="text/javascript">
+
+		$(document).ready(function () {
+			try {
+				// Minimum characters required before performing a search/autocomplete
+				var minPrefixLength = 3;
+				var autoCompleteDebounceDelay = 500;
+				var searchFieldSelector = "#searchField" + 'aab80b55-c658-4ad1-b2b1-cd879ce0e033';
+				var checkboxSelector = "#ysnSearchOnlyDept" + 'aab80b55-c658-4ad1-b2b1-cd879ce0e033';
+				var buttonSelector = ".widgetSearchButton" + 'aab80b55-c658-4ad1-b2b1-cd879ce0e033';
+				var autoCompleteCache = {};
+				var autoCompleteCacheKeys = [];
+				var autoCompleteCacheLimit = 25;
+				var currentAutoCompleteRequest = null;
+				var currentAutoCompleteRequestKey = null;
+				var autoCompleteDebounceTimer = null;
+				var autoCompleteDebounceKey = null;
+				var pendingAutoCompleteResponses = [];
+
+				function normalizeAutoCompleteTerm(term) {
+					return $.trim((term || "") + "").replace(/\s+/g, " ");
+				}
+
+				function shouldSearch(term) {
+					return normalizeAutoCompleteTerm(term).length >= minPrefixLength;
+				}
+
+				function getAutoCompleteUrl() {
+					return '/Search/AutoComplete' + ($(checkboxSelector).is(':checked') || false? '?departmentId=0' : '');
+				}
+
+				function getAutoCompleteCacheKey(requestUrl, term) {
+					return requestUrl + "|" + term.toLowerCase();
+				}
+
+				function cacheAutoCompleteResult(cacheKey, data) {
+					if (!Object.prototype.hasOwnProperty.call(autoCompleteCache, cacheKey)) {
+						autoCompleteCacheKeys.push(cacheKey);
+						if (autoCompleteCacheKeys.length > autoCompleteCacheLimit) {
+							delete autoCompleteCache[autoCompleteCacheKeys.shift()];
+						}
+					}
+					autoCompleteCache[cacheKey] = data;
+				}
+
+				function respondToPendingAutoComplete(data) {
+					var responses = pendingAutoCompleteResponses;
+					pendingAutoCompleteResponses = [];
+					for (var i = 0; i < responses.length; i++) {
+						responses[i](data);
+					}
+				}
+
+				function cancelPendingAutoComplete() {
+					clearTimeout(autoCompleteDebounceTimer);
+					autoCompleteDebounceKey = null;
+					if (currentAutoCompleteRequest != null) {
+						currentAutoCompleteRequest.abort();
+						currentAutoCompleteRequest = null;
+					}
+					currentAutoCompleteRequestKey = null;
+					respondToPendingAutoComplete([]);
+				}
+
+				function createWidgetAutoCompleteSource(options) {
+					return function (request, response) {
+						var term = normalizeAutoCompleteTerm(request.term);
+						if (!options.shouldSearch(term)) {
+							response([]);
+							return;
+						}
+
+						var requestUrl = options.url();
+						var cacheKey = getAutoCompleteCacheKey(requestUrl, term);
+						if (Object.prototype.hasOwnProperty.call(autoCompleteCache, cacheKey)) {
+							response(autoCompleteCache[cacheKey]);
+							if (options.success) {
+								options.success(autoCompleteCache[cacheKey]);
+							}
+							return;
+						}
+
+						if (currentAutoCompleteRequestKey === cacheKey || autoCompleteDebounceKey === cacheKey) {
+							pendingAutoCompleteResponses.push(response);
+							return;
+						}
+
+						cancelPendingAutoComplete();
+						autoCompleteDebounceKey = cacheKey;
+						pendingAutoCompleteResponses.push(response);
+						autoCompleteDebounceTimer = setTimeout(function () {
+							autoCompleteDebounceKey = null;
+							currentAutoCompleteRequestKey = cacheKey;
+							currentAutoCompleteRequest = $.ajax({
+								url: requestUrl,
+								dataType: "json",
+								timeout: options.timeout,
+								data: {
+									term: term,
+								},
+								success: function (data) {
+									if (currentAutoCompleteRequestKey === cacheKey) {
+										cacheAutoCompleteResult(cacheKey, data);
+										respondToPendingAutoComplete(data);
+										if (options.success) {
+											options.success(data);
+										}
+									}
+								},
+								error: function (xmlhttprequest, textstatus, message) {
+									if (textstatus === "abort") {
+										return;
+									}
+
+									if (options.error) {
+										options.error(xmlhttprequest, textstatus, message);
+									}
+
+									respondToPendingAutoComplete([]);
+								},
+								complete: function (xmlhttprequest) {
+									if (currentAutoCompleteRequest === xmlhttprequest) {
+										currentAutoCompleteRequest = null;
+										currentAutoCompleteRequestKey = null;
+									}
+								}
+							});
+						}, options.delay);
+					};
+				}
+
+				// click handler for search buttons
+				$(buttonSelector).click(function (e) {
+					e.preventDefault();
+					var $btn = $(this);
+					var $field = $btn.siblings(".widgetSearchBox");
+					var term = $field.val() + "";
+					if (!shouldSearch(term)) {
+						// do nothing until user types enough characters
+						$field.focus();
+						return;
+					}
+
+					if ($(checkboxSelector).is(':checked') || false)
+					{
+						doWidgetSearch($.trim(term), Number(0));
+					}
+					else {
+						doWidgetSearch($.trim(term), 0);
+					}
+				});
+
+				// enter key handler for the search field
+				$(searchFieldSelector).keypress(function (e) {
+					var code = e.which || e.keyCode;
+					if (code === 13) {
+						e.preventDefault();
+						var $this = $(this);
+						var term = $this.val() + "";
+						if (!shouldSearch(term)) {
+							// do nothing until user types enough characters
+							$this.focus();
+							return false;
+						}
+
+						if ($(checkboxSelector).is(':checked') || false) {
+							doWidgetSearch($.trim(term), Number(0));
+						} else {
+							doWidgetSearch($.trim(term), 0);
+						}
+						return false;
+					}
+					return true;
+				});
+
+				// autocomplete: set minLength and guard source
+				if (true) {
+					var $searchField = $(searchFieldSelector).autocomplete({
+						minLength: minPrefixLength,
+						source: createWidgetAutoCompleteSource({
+							delay: autoCompleteDebounceDelay,
+							timeout: 10000,
+							shouldSearch: shouldSearch,
+							url: getAutoCompleteUrl,
+							success: function () {
+								$('.autoCompleteError').remove();
+							},
+							error: function (xmlhttprequest, textstatus, message) {
+								if (textstatus === "timeout") {
+									if ($(searchFieldSelector).siblings('.autoCompleteError').length == 0)
+										$('<span class="autoCompleteError"><p class="alert error">Search autocomplete is currently not responding. Please try again later.</p></span>').insertAfter($(searchFieldSelector));
+								}
+							}
+						}),
+						html: true,
+						delay: 0,
+						select: function (event, ui) {
+							$(this).val(ui.item.value);
+							$(this).next().click();
+						}
+					});
+
+					$searchField.data("ui-autocomplete")._renderItem = function (ul, item) {
+						return $("<li class=\"itemList\"></li>")
+							.data("ui-autocomplete-item", item)
+							.append("<a>" + item.label + "</a>")
+							.appendTo(ul);
+					};
+				}
+
+				// keep searchBtnApplyQuery consistent with prefix rule
+				window.searchBtnApplyQuery = function() {
+					var $field = $(searchFieldSelector);
+					var term = $field.val() + "";
+					if (shouldSearch(term)) {
+						// update href for the icon/button (if present)
+						var btn = document.getElementById("btnSearchIcon");
+						if (btn) btn.href = "/Search?searchPhrase=" + encodeURIComponent($.trim(term));
+					} else {
+						var btn = document.getElementById("btnSearchIcon");
+						if (btn) btn.href = "#";
+					}
+				};
+			}
+			catch(e) {} //we're going to eat this error. Autocomplete won't work but we dont wan't to break anything else on the page.
+		});
+	</script>
+
+	<section id="widgetPreviewSearch" class="widget widgetSearch skin43 widgetOptionSet15" style="display: block;" aria-label="Search">
+				<!-- For the button right and inside -->
+		<div class="widgetBody buttonRightInside">
+			<input class="widgetSearchBox widgetSearchBoxaab80b55-c658-4ad1-b2b1-cd879ce0e033" cp5ph="true" id="searchFieldaab80b55-c658-4ad1-b2b1-cd879ce0e033" name="searchField" onchange="searchBtnApplyQuery();" placeholder="Search..." type="text" value="" />
+						<a href="/Search/Results" id="btnSearchIcon" class="widgetSearchButton widgetSearchButtonaab80b55-c658-4ad1-b2b1-cd879ce0e033" role="button"><img alt="Search" class="imageHover" data-hover="/ImageRepository/Document?documentID=90" data-image="/ImageRepository/Document?documentID=89" src="/ImageRepository/Document?documentID=89" /></a>
+
+			<label class="searchLabel" aria-hidden="true" for="searchFieldaab80b55-c658-4ad1-b2b1-cd879ce0e033">Search</label>
+		</div>
+
+	</section>
+
+
+<style scoped>
+	  
+		.widgetSearch ::-webkit-input-placeholder {
+		color: #fff;
+	  }
+		.widgetSearch :-moz-placeholder { /* Firefox 18- */
+	   color: #fff;
+	}
+		.widgetSearch ::-moz-placeholder {  /* Firefox 19+ */
+	   color: #fff;
+	}
+	.widgetSearch :-ms-input-placeholder {
+	   color: #fff;
+	}
+	
+
+	.widgetSearch .widgetBody .widgetSearchBoxaab80b55-c658-4ad1-b2b1-cd879ce0e033
+	{
+		color: #fff;
+		background-color: #004C74;
+border: none;
+border-radius: 6px;
+height: 60px;
+font-family: Open Sans;
+font-size: 15px;
+padding: 0 66px 0 16px;
+box-shadow: rgba(60, 64, 67, 0.3) 0px 1px 2px 0px, rgba(60, 64, 67, 0.15) 0px 2px 6px 2px;
+	}
+	.widgetSearch .widgetBody .widgetSearchButtonaab80b55-c658-4ad1-b2b1-cd879ce0e033
+	{
+		margin: 8px 16px 0 0;
+	}
+	.widgetSearch .widgetSearch-onlyDeptaab80b55-c658-4ad1-b2b1-cd879ce0e033
+	{
+		display: inline-block;
+		color: #333;
+		
+		
+		 padding-top: 10px;
+	}
+	#ysnSearchOnlyDeptaab80b55-c658-4ad1-b2b1-cd879ce0e033
+	{
+		position: relative;
+		top: .125em;
+	}
+
+</style>
+
+<link rel="stylesheet" href="/Common/Controls/jquery-ui-1.14.2/jquery-ui.min.css">
+<link rel="stylesheet" href="/Common/Controls/jquery-ui-1.14.2/jquery-ui.theme.min.css">
+
+
+
+<script type="text/javascript">
+	//Updates search icons href to have the correct queryString
+	function searchBtnApplyQuery() {
+		document.getElementById("btnSearchIcon").href = "/Search?searchPhrase=" + document.getElementById("searchFieldaab80b55-c658-4ad1-b2b1-cd879ce0e033").value;
+	}
+</script>
+
+</div>
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!--		--></div> <!-- outer row -->
+
+
+	</div>
+</div></div>
+</header><!-- Banner --><div data-cpRole="structuralContainer" id="bannerContainerTS" class="noOverflowTS">
+<div data-cpRole="banner" id="banner1"><div data-cpRole="structuralContainer" id="bannerSizingTS">
+<div data-cpRole="structuralContainer" id="bannerSearchTS">
+<div class="siteWrap10"></div>
+</div>
+</div>
+
+
+
+
+		<div id="bannerImagesJSON64" class="hidden"></div>
+		<div id="bannerSlideshowControls_banner1" class="bannerSlideshowControlsNew none " style="display:none">
+			<a id="arrowPrev_banner1" tabindex="0" class="arrowNew prev" aria-label="Banner Arrow Previous"><svg style=" " class=""><use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#iconSlideshowArrowLeft"></use></svg></a>
+			<a id="arrowNext_banner1" tabindex="0" class="arrowNew next" aria-label="Banner Arrow Next"><svg style=" " class=""><use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#iconSlideshowArrowRight"></use></svg></a>
+		</div>
+			<script type="text/javascript">
+				$(window).on("load", function () {
+					$.when(window.Pages.rwdSetupComplete)
+						.done(function () {
+							renderExternalBannerSlideshow('banner1',
+								{"BannerOptionID":64,"ThemeID":19,"SlotName":"banner1","Name":"Default","IsDefault":true,"BannerMode":2,"SlideShowSlideTiming":null,"SlideshowTransition":0,"SlideShowTransitionTiming":null,"ImageScale":true,"ImageAlignment":1,"ImageScroll":true,"MuteSound":true,"VideoType":0,"Status":40,"SlideshowControlsPosition":0,"SlideshowControlsAlignment":0,"SlideshowBannerControlsColorScheme":0,"DisplayVideoPauseButton":false,"VideoPauseButtonAlignment":1,"VideoPauseButtonControlsAlignment":0,"VideoPauseButtonStyle":"#FFFFFF","VideoPauseButtonBackgroundStyle":"#000000","VideoPauseButtonAlignmentClass":"alignRight viewport","DisplaySlideshowPauseButton":true,"SlideshowControlsColor":"#FFFFFF","SlideshowControlsBackgroundColor":"#000000","SlideshowPauseButtonClass":"isHidden","BannerImages":[{"BannerImageID":97,"BannerOptionID":64,"FileName":"/ImageRepository/Document?documentID=97","Height":350,"Width":2200,"StartingOn":null,"StoppingOn":null,"IsLink":false,"LinkAddress":null,"Sequence":1,"RecordStatus":0,"ModifiedBy":0,"ModifiedOn":"\/Date(-62135575200000)\/","AltText":""},{"BannerImageID":98,"BannerOptionID":64,"FileName":"/ImageRepository/Document?documentID=96","Height":350,"Width":2200,"StartingOn":null,"StoppingOn":null,"IsLink":false,"LinkAddress":null,"Sequence":2,"RecordStatus":0,"ModifiedBy":0,"ModifiedOn":"\/Date(-62135575200000)\/","AltText":""},{"BannerImageID":100,"BannerOptionID":64,"FileName":"/ImageRepository/Document?documentID=94","Height":350,"Width":2200,"StartingOn":null,"StoppingOn":null,"IsLink":false,"LinkAddress":null,"Sequence":4,"RecordStatus":0,"ModifiedBy":0,"ModifiedOn":"\/Date(-62135575200000)\/","AltText":""},{"BannerImageID":101,"BannerOptionID":64,"FileName":"/ImageRepository/Document?documentID=93","Height":350,"Width":2200,"StartingOn":null,"StoppingOn":null,"IsLink":false,"LinkAddress":null,"Sequence":5,"RecordStatus":0,"ModifiedBy":0,"ModifiedOn":"\/Date(-62135575200000)\/","AltText":""}],"BannerVideos":[],"RecordStatus":0,"ModifiedBy":0,"ModifiedOn":"\/Date(-62135575200000)\/"},
+								'/App_Themes/Interior/Images/',
+								'Rotating');
+						});
+				});
+			</script>
+
+</div>
+</div><!-- Content container --><div data-cpRole="structuralContainer" id="backgroundOverlayTS">
+<div data-cpRole="structuralContainer" id="mainContainerTS">
+<div class="siteWrap4"><div data-cpRole="structuralContainer" id="mainWrapTS" class="mainWrap" role="main">
+<div data-cpRole="structuralContainer" id="siteSidebarTS" class="siteSidebar">
+<aside data-cpRole="contentContainer" id="sidebarContainer1TS">	<div id="cc308044b4-a6b5-4f2e-8ba6-95a9d7833a5f" data-containerid="308044b4-a6b5-4f2e-8ba6-95a9d7833a5f" class="pageContent cpGrid cpGrid24 showInMobile">
+				                
+
+
+
+	</div>
+</aside><nav data-cpRole="nav" id="secondaryNav" class="siteNav secondaryNav">
+
+
+
+
+
+	<ol role="menu" id="secondaryMenusecondaryNav" data-parent="276" class="rootNavMenu accordionNav">
+	<li class="topMenuItem sideNavLi hasAccordionChildren" role="menuitem" tabindex="0" id="SideItem793" data-pageid="793">
+		<div class="accordionNavItem">
+			<a href="/793/Steps-to-Obtain-an-OSSF-Permit" target="_self" class="navMainItem secondaryNavItem cpComponent" data-type="SecondaryMainItem">Steps to Obtain an OSSF Permit</a>
+		</div>
+			</li>
+
+	</ol>
+
+
+	<script type="text/javascript">
+		(function () {
+			function setupSecondaryMenuProperties() {
+				//setup menu manager properties for secondary menu
+				menuManager.isSideMenuEditable = false;
+				menuManager.sideMenuMaxSubMenuLevels = 4;
+				menuManager.sideMenuHasCustomLinks = false;
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", setupSecondaryMenuProperties, { once: true });
+				return;
+			}
+
+			setupSecondaryMenuProperties();
+		})();
+	</script>
+
+	<script type="text/javascript">
+		(function () {
+			function setupAccordionSecondaryNav() {
+				var $menuContainer = $('#secondaryNav');
+
+				$menuContainer.find('*[id^="SideItem"]').each(function () {
+					var ids = $('[id="' + this.id + '"]');
+					if (ids.length > 1)
+						$.each(ids, function (index, value) {
+							value.id = value.id + '_' + index;
+						});
+				});
+
+				$menuContainer.find('.hasAccordionChildren .openAccordionNav').off('click.secondaryNav').on('click.secondaryNav', function (e) {
+					e.preventDefault();
+					showHideAccordionMenuForSecondaryNav($(this));
+				});
+
+				$menuContainer.find(".grippy").each(function () {
+					menuManager.setupDraggableElement($(this), SIDE_MENU, '#secondaryNav');
+				});
+
+				$menuContainer.find("li").each(function () {
+					menuManager.setupDroppableAccordionElement($(this), SIDE_MENU);
+				});
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", setupAccordionSecondaryNav, { once: true });
+				return;
+			}
+
+			setupAccordionSecondaryNav();
+		})();
+	</script>
+
+
+
+</nav><aside data-cpRole="contentContainer" id="sidebarContainer2TS">	<div id="cc184b5fa5-6c3f-4d2a-9bbc-cb24e2a9c7fc" data-containerid="184b5fa5-6c3f-4d2a-9bbc-cb24e2a9c7fc" class="pageContent cpGrid cpGrid24 showInMobile">
+				                
+
+
+
+	</div>
+</aside>
+</div><div data-cpRole="structuralContainer" id="outerContentWrapTS" class="outerContentWrap">
+<div data-cpRole="structuralContainer" id="contentWrapTS" class="contentWrap">
+<div data-cpRole="breadCrumbs" id="breadCrumbs" class="breadCrumbContainer">		<ol class="semanticList breadCrumbs">
+			<li><a class="breadCrumb" href="/">Home</a></li><li><a class="breadCrumb" href="/27/Government">Government</a></li><li><a class="breadCrumb" href="/163/County-Offices">County Offices</a></li><li><a class="breadCrumb" href="/191/Engineers-Office">Engineer's Office</a></li><li><a class="breadCrumb" href="/266/Departments">Departments</a></li><li><a class="breadCrumb" href="/274/Environmental-Health">Environmental Health</a></li><li id="currentBCPage" data-pageid="276"><a href class="breadCrumb" aria-current="page">OSSF Information</a></li>
+		</ol>
+
+	   
+    
+</div><div data-cpRole="mainContentContainer" id="moduleContent">
+	
+	<div id="page" class="moduleContentNew">
+		
+
+	<input id="hdnPageID" name="hdnPageID" type="hidden" value="276" />
+	<input id="hdnParentID" name="hdnParentID" type="hidden" value="274" />
+	<input id="hdnVersionID" name="hdnVersionID" type="hidden" value="1805" />
+	<input id="pageMenuTitle" name="pageMenuTitle" type="hidden" value="OSSF Information" />
+	<input id="pageShowFeatureColumn" name="pageShowFeatureColumn" type="hidden" value="False" />
+	<input id="hdnIsLayoutPage" name="hdnIsLayoutPage" type="hidden" value="False" />
+	<input id="hdnPageStatus" name="hdnPageStatus" type="hidden" value="Published" />
+
+				<h1 id="versionHeadLine" class="headline">
+
+OSSF Information		</h1>
+	
+		<div id="cc5f8c90dc-b4cb-431b-90ee-10648f8df655" data-containerid="5f8c90dc-b4cb-431b-90ee-10648f8df655" class="pageContent cpGrid cpGrid24"  data-contentcontainerbreakpoint="30" >
+			
+
+		<div class="row outer wide"><!--
+--><div class="outer col col24 first last" style="" data-widgetcontainerid="bba4857e-2784-4051-a86c-fa2f37b8902c">				
+	<div class="row nest first wide">
+	
+	<div class="inner col col24 first last id69f4d808-486c-445b-b2b9-ca23c1c631ea" style="" data-widgetcontainerid="69f4d808-486c-445b-b2b9-ca23c1c631ea">	
+<div class="widget editor pageStyles narrow" id="divEditored97aeef-5b3c-4dc3-9946-578363052942" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}'>
+	    <div class="fr-view">
+
+
+        <h2 class="subhead1">On-Site Sewage Facility (<abbr>OSSF</abbr>)</h2><p>About 45,000 on-site wastewater treatment systems are installed annually in Texas to treat wastewater from rural and suburban homes as well as from small businesses. An on-site wastewater treatment system collects, treats and applies wastewater to the soil.</p><p>By definition, wastewater managed by an on-site system cannot leave the property where it is generated. The water can evaporate into the air, transpire through plants or move through the soil to groundwater. An effective on-site system removes wastewater from the home, treats and distributes the wastewater, and protects our water resources.</p><p>Selecting the appropriate system for the site conditions is critical to the system&apos;s success. If you select the wrong system or design, or install, operate or maintain the system improperly, it can fail, which could result in pollution of your property and that of others. You could also be fined.</p><p>Because homeowners are responsible for conducting or contracting for maintenance of a system, they should be involved in selecting the technology, or type of system used.</p>
+    </div>
+
+<script type="text/javascript">
+	$(document).ready(function (e) {		
+	    renderSlideshowIfApplicable($('#divEditor' + 'ed97aeef-5b3c-4dc3-9946-578363052942'));
+	});
+</script>
+</div>
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+	<div class="row nest last wide">
+	
+	<div class="inner col col24 first last id724a8193-524e-44dc-81f8-9464b7805be8" style="" data-widgetcontainerid="724a8193-524e-44dc-81f8-9464b7805be8">	
+
+	<div id="divTabbedb714a4ff-1abd-4499-b699-d199443ae7cf" class="widget widgetTabbed narrow skin60 accordionTabs" data-widgetid="b714a4ff-1abd-4499-b699-d199443ae7cf">
+
+		<div class="cpTabPanels">
+					<ol class="tabbedWidgetNarrow cpTabs  accordion"  aria-hidden="False.ToString().ToLowerInvariant()" >
+						<li class="" role="presentation">	<a href="#tabb714a4ff-1abd-4499-b699-d199443ae7cf_0" class="tabButton" id="tabBtnNarrowb714a4ff-1abd-4499-b699-d199443ae7cf_0" role="button" aria-controls="tabb714a4ff-1abd-4499-b699-d199443ae7cf_0" aria-expanded="false" ><span class="tabName editable" data-sequence="0" data-tabname="What a Septic System Is" contenteditable="false">What a Septic System Is</span></a>
+</li>
+					</ol>
+				<div class="tabbedWidget cpTabPanel " style="display: none;" id="tabb714a4ff-1abd-4499-b699-d199443ae7cf_0" role="region" aria-labelledby="tabBtnb714a4ff-1abd-4499-b699-d199443ae7cf_0" >
+
+<div class="widget editor pageStyles narrow" id="divEditoreb2a3ea1-694c-4f2c-8daa-6ad0e58024c2" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}'>
+	    <div class="fr-view">
+
+
+        <p>A septic system is a method of dealing with household wastewater in areas where public sewers are not available. The standard type of septic system involves a septic tank (to hold wastewater from toilets and drainpipes until solids settle out in the tank), and a system of pipes that distribute the remaining liquid waste underground over a large area &mdash; the leach field&mdash;where the wastewater &quot;percolates&quot; through the soil, which helps to clean the water.</p><p>The goal is to make sure that this filtration through the soil is sufficient to clean the wastewater before it reaches drinking water well sources or surface waters.</p><p>Learn&nbsp;<a href="https://www.gbra.org/presentations/septic/index.html">How Your OSSF Works</a>.&nbsp;</p>
+    </div>
+
+<script type="text/javascript">
+	$(document).ready(function (e) {		
+	    renderSlideshowIfApplicable($('#divEditor' + 'eb2a3ea1-694c-4f2c-8daa-6ad0e58024c2'));
+	});
+</script>
+</div>
+
+				</div>
+					<ol class="tabbedWidgetNarrow cpTabs  accordion"  aria-hidden="False.ToString().ToLowerInvariant()" >
+						<li class="" role="presentation">	<a href="#tabb714a4ff-1abd-4499-b699-d199443ae7cf_1" class="tabButton" id="tabBtnNarrowb714a4ff-1abd-4499-b699-d199443ae7cf_1" role="button" aria-controls="tabb714a4ff-1abd-4499-b699-d199443ae7cf_1" aria-expanded="false" ><span class="tabName editable" data-sequence="1" data-tabname="I Need a Septic System" contenteditable="false">I Need a Septic System</span></a>
+</li>
+					</ol>
+				<div class="tabbedWidget cpTabPanel " style="display: none;" id="tabb714a4ff-1abd-4499-b699-d199443ae7cf_1" role="region" aria-labelledby="tabBtnb714a4ff-1abd-4499-b699-d199443ae7cf_1" >
+
+<div class="widget editor pageStyles narrow" id="divEditor97947a11-9828-4929-9f13-4fda34a3ed12" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}'>
+	    <div class="fr-view">
+
+
+        <p>State and County laws require that a permit be issued by the department prior to constructing or making non-emergency repairs to a septic system.&nbsp;</p><ul><li><a href="/793/">Steps for Obtaining an <abbr>OSSF</abbr> Permit</a></li><li><a href="/DocumentCenter/View/2142" target="_blank" rel="noopener">List of Environmental Health Department Fees (PDF)</a></li><li><a href="/790/">List of Area OSSF Installers</a></li><li><a href="/789/">List of Area Site/Soil Evaluators</a></li><li><a href="https://www2.tceq.texas.gov/lic_dpa/index.cfm">Check the Status of an Installer&apos;s License</a></li><li><a href="/DocumentCenter/View/2144/Installer-Notice-PDF" target="_blank" rel="noopener">Notice to Installers (PDF)</a></li></ul>
+    </div>
+
+<script type="text/javascript">
+	$(document).ready(function (e) {		
+	    renderSlideshowIfApplicable($('#divEditor' + '97947a11-9828-4929-9f13-4fda34a3ed12'));
+	});
+</script>
+</div>
+
+				</div>
+					<ol class="tabbedWidgetNarrow cpTabs  accordion"  aria-hidden="False.ToString().ToLowerInvariant()" >
+						<li class="" role="presentation">	<a href="#tabb714a4ff-1abd-4499-b699-d199443ae7cf_2" class="tabButton" id="tabBtnNarrowb714a4ff-1abd-4499-b699-d199443ae7cf_2" role="button" aria-controls="tabb714a4ff-1abd-4499-b699-d199443ae7cf_2" aria-expanded="false" ><span class="tabName editable" data-sequence="2" data-tabname="Septic System Maintenance" contenteditable="false">Septic System Maintenance</span></a>
+</li>
+					</ol>
+				<div class="tabbedWidget cpTabPanel " style="display: none;" id="tabb714a4ff-1abd-4499-b699-d199443ae7cf_2" role="region" aria-labelledby="tabBtnb714a4ff-1abd-4499-b699-d199443ae7cf_2" >
+
+<div class="widget editor pageStyles narrow" id="divEditor2e9eda29-0f2c-47ed-96b0-9793e0b7a41a" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}'>
+	    <div class="fr-view">
+
+
+        <p>Emergency repairs may be made to an On-site sewage facility (<abbr>OSSF</abbr>) providing that the repair:</p><ul><li>Is made for the abatement of an immediate, serious and dangerous health hazard; and</li><li>Does not constitute an alteration of that <abbr>OSSF</abbr> system&apos;s planning materials and function (which would require the issuance of a new <abbr>OSSF</abbr> permit).</li></ul><p>Our office can be consulted on possible repair alternatives, but ultimately the homeowner is responsible for the repair of a failing system.</p><ul><li><a href="https://www2.tceq.texas.gov/lic_dpa/index.cfm">TCEQ Registered Maintenance Providers</a></li><li><a href="/FAQ.aspx?TID=33">Homeowner Maintenance of Aerobic On-Site Sewage Facility</a></li><li><a href="https://www.youtube.com/watch?v=C4-sSuLh1wc">EPA Home Septic Tank Quick Tips</a></li></ul>
+    </div>
+
+<script type="text/javascript">
+	$(document).ready(function (e) {		
+	    renderSlideshowIfApplicable($('#divEditor' + '2e9eda29-0f2c-47ed-96b0-9793e0b7a41a'));
+	});
+</script>
+</div>
+
+				</div>
+					<ol class="tabbedWidgetNarrow cpTabs  accordion"  aria-hidden="False.ToString().ToLowerInvariant()" >
+						<li class="" role="presentation">	<a href="#tabb714a4ff-1abd-4499-b699-d199443ae7cf_3" class="tabButton" id="tabBtnNarrowb714a4ff-1abd-4499-b699-d199443ae7cf_3" role="button" aria-controls="tabb714a4ff-1abd-4499-b699-d199443ae7cf_3" aria-expanded="false" ><span class="tabName editable" data-sequence="3" data-tabname="Homeowner Maintenance Class" contenteditable="false">Homeowner Maintenance Class</span></a>
+</li>
+					</ol>
+				<div class="tabbedWidget cpTabPanel " style="display: none;" id="tabb714a4ff-1abd-4499-b699-d199443ae7cf_3" role="region" aria-labelledby="tabBtnb714a4ff-1abd-4499-b699-d199443ae7cf_3" >
+
+
+
+
+	<section class="widget widgetRelatedDocuments skin60 narrow" id="widgetRelDocf1adc03f-1f47-4da0-b295-0b71667c48f9" data-widgetid="f1adc03f-1f47-4da0-b295-0b71667c48f9" data-sections="[{&quot;Title&quot;:&quot;&quot;,&quot;DocumentIDs&quot;:&quot;2152,2151,2150,2149,2148,2147,2146,&quot;,&quot;FolderIds&quot;:&quot;,&quot;,&quot;SortedDocumentIds&quot;:&quot;&quot;}]" data-columncount="1" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}' data-elementquerymatch='matchMultiColumn' data-elementqueryunmatch='unmatchMultiColumn' aria-label="Related Documents">
+			<div id="divRelatedDocuments_f1adc03f-1f47-4da0-b295-0b71667c48f9" class="relatedDocuments">
+		<div class="widgetBody cpGrid cpGrid1">
+			
+<div class="row narrow sortableWidgetTitle">
+        <div class="relatedDocumentsSection selfClear" data-documentids="2152,2151,2150,2149,2148,2147,2146," data-folderids="," data-sorteddocumentids="">
+        
+	<div class=" first last">
+		<ol class="semanticList bullets" style="min-height:8px;">
+					<li class="widgetItem" data-documentid="2152"><a target="_blank" href="/DocumentCenter/View/2152/Homeowner-Maintenance-Class-Part-1-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 1 (PPT) ppt file">Homeowner Maintenance Class, Part 1 (PPT)</a>
+					</li>
+					<li class="widgetItem" data-documentid="2151"><a target="_blank" href="/DocumentCenter/View/2151/Homeowner-Maintenance-Class-Part-2-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 2 (PPT) ppt file">Homeowner Maintenance Class, Part 2 (PPT)</a>
+					</li>
+					<li class="widgetItem" data-documentid="2150"><a target="_blank" href="/DocumentCenter/View/2150/Homeowner-Maintenance-Class-Part-3-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 3 (PPT) ppt file">Homeowner Maintenance Class, Part 3 (PPT)</a>
+					</li>
+					<li class="widgetItem" data-documentid="2149"><a target="_blank" href="/DocumentCenter/View/2149/Homeowner-Maintenance-Class-Part-4-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 4 (PPT) ppt file">Homeowner Maintenance Class, Part 4 (PPT)</a>
+					</li>
+					<li class="widgetItem" data-documentid="2146"><a target="_blank" href="/DocumentCenter/View/2146/Homeowner-Maintenance-Class-Part-5-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 5 (PPT) ppt file">Homeowner Maintenance Class, Part 5 (PPT)</a>
+					</li>
+					<li class="widgetItem" data-documentid="2148"><a target="_blank" href="/DocumentCenter/View/2148/Homeowner-Maintenance-Class-Part-6-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 6 (PPT) ppt file">Homeowner Maintenance Class, Part 6 (PPT)</a>
+					</li>
+					<li class="widgetItem" data-documentid="2147"><a target="_blank" href="/DocumentCenter/View/2147/Homeowner-Maintenance-Class-Part-7-PPT" class="fileType ppt" aria-label="Homeowner Maintenance Class, Part 7 (PPT) ppt file">Homeowner Maintenance Class, Part 7 (PPT)</a>
+					</li>
+
+		</ol>
+	</div>
+                    </div>
+</div>
+
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        //Remove section heading when it is empty and live edit is off.
+        if ('false' === 'false') {
+            var jqh3Selector = $('#widgetRelDoc' + 'f1adc03f-1f47-4da0-b295-0b71667c48f9').find('div.widgetBody div.row div.relatedDocumentsSection h3.widgetTitle');
+    		if (jqh3Selector.val() == "") {
+    			jqh3Selector
+                    .filter(function () {
+                        return $.trim($(this).text()) === ''
+                    })
+                    .remove();
+            }
+        }
+    });
+</script>
+		</div>
+
+</div>
+
+	</section>
+
+
+<script type="text/javascript">
+    var documentsToInsert = [];
+    var foldersToInsert = [];
+
+    $(document).ready(function () {
+        var hasEditRights = false;        
+        if (window.File && window.FileList && window.FileReader && hasEditRights) {
+            var RelatedDocumentsWidget = 5;
+            makeWidgetAreaDroppable('f1adc03f-1f47-4da0-b295-0b71667c48f9', $('#widgetRelDoc' + 'f1adc03f-1f47-4da0-b295-0b71667c48f9'), RelatedDocumentsWidget, true, RelatedDocumentsCallback);
+        }
+
+		if(hasEditRights)
+    		browserVersionNotCompatibleWithDragDropTextUpdate($('#addFile' + 'f1adc03f-1f47-4da0-b295-0b71667c48f9'), 'Add a new file');
+    });
+
+    function RelatedDocumentsCallback(widgetID, response)
+    {
+        if (window.ContentCollectionInstance.IsWorkingCopy) {
+        	$('#widgetRelDoc' + widgetID).replaceWith(response);            
+            contentUpdated();
+            attachRelatedDocumentsHandlers();            
+        }
+        else {
+            ContentCollectionInstance.reloadContent();
+        }      
+    }
+</script>
+
+				</div>
+					<ol class="tabbedWidgetNarrow cpTabs  accordion"  aria-hidden="False.ToString().ToLowerInvariant()" >
+						<li class="" role="presentation">	<a href="#tabb714a4ff-1abd-4499-b699-d199443ae7cf_4" class="tabButton" id="tabBtnNarrowb714a4ff-1abd-4499-b699-d199443ae7cf_4" role="button" aria-controls="tabb714a4ff-1abd-4499-b699-d199443ae7cf_4" aria-expanded="false" ><span class="tabName editable" data-sequence="4" data-tabname="Homeowner Maintenance of Aerobic On-Site Sewage Facility" contenteditable="false">Homeowner Maintenance of Aerobic On-Site Sewage Facility</span></a>
+</li>
+					</ol>
+				<div class="tabbedWidget cpTabPanel " style="display: none;" id="tabb714a4ff-1abd-4499-b699-d199443ae7cf_4" role="region" aria-labelledby="tabBtnb714a4ff-1abd-4499-b699-d199443ae7cf_4" >
+
+<div data-widget-id="22de3415-326c-439a-810c-f78625fce55a" data-widget-controller-path="/Faq/Widget">
+
+
+
+
+
+
+
+
+	<section id="widgetFaq22de3415-326c-439a-810c-f78625fce55a" class="widget widgetFAQ skin43 widgetOptionSet1 narrow" data-modulewidgettype="FAQ" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}' data-elementquerymatch='matchMultiColumn' data-elementqueryunmatch='unmatchMultiColumn' aria-labelledby="faqHeader22de3415-326c-439a-810c-f78625fce55a">
+		    <header class="widgetHeader" id="faqHeader22de3415-326c-439a-810c-f78625fce55a">
+        <div class="">
+                    <h3><a href="/Faq.aspx?TID=33">FAQs</a></h3>
+                                </div>
+    </header>
+	<div class="widgetBody pageStyles cpGrid cpGrid1 ">
+		<div class="row  narrow">
+						<div class="col col1 first last">
+							<dl class="widgetFAQ--list semanticList bullets">
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(213)3844aad7-4840-493a-9326-33a4c6202bd0">
+                <span class="widgetFAQ--question__text">Can a homeowner maintain their own aerobic on-site sewage facility (OSSF)?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(213)3844aad7-4840-493a-9326-33a4c6202bd0"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(213)3844aad7-4840-493a-9326-33a4c6202bd0">
+                <p>Yes, if their OSSF serves a single family dwelling.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(214)f4dcfd45-21cb-45c9-92b9-8615168014ca">
+                <span class="widgetFAQ--question__text">What kind of training is a homeowner required to take in order to maintain their own aerobic OSSF?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(214)f4dcfd45-21cb-45c9-92b9-8615168014ca"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(214)f4dcfd45-21cb-45c9-92b9-8615168014ca">
+                <p>Homeowners are not required to take any training in order to maintain their own system.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(215)1698e173-7a4d-4ab2-9157-15a4ecadf983">
+                <span class="widgetFAQ--question__text">What kind of testing reports does a homeowner need to submit to the County if they choose to maintain their own aerobic OSSF?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(215)1698e173-7a4d-4ab2-9157-15a4ecadf983"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(215)1698e173-7a4d-4ab2-9157-15a4ecadf983">
+                <p>Homeowners are not required to submit any maintenance reports to Comal County if they choose to maintain their own system.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(216)f4ec569d-9193-47fe-a9f6-72c0e0f01968">
+                <span class="widgetFAQ--question__text">Does a homeowner need to contact Comal County to let them know that they will be maintaining their own aerobic OSSF?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(216)f4ec569d-9193-47fe-a9f6-72c0e0f01968"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(216)f4ec569d-9193-47fe-a9f6-72c0e0f01968">
+                <p>A homeowner is not required to notify Comal County if they choose to maintain their own aerobic OSSF.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(217)326ebf81-1395-4e3a-8304-88f70d49e2c5">
+                <span class="widgetFAQ--question__text">What happens if the County determines that the homeowner is not maintaining their aerobic OSSF correctly?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(217)326ebf81-1395-4e3a-8304-88f70d49e2c5"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(217)326ebf81-1395-4e3a-8304-88f70d49e2c5">
+                <p>The homeowner must correct the violation within 10 days of notification by Comal County. Otherwise, they will be required to enter into a contract for the maintenance of their aerobic OSSF.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(218)1dd541fb-6703-4887-a10d-89adacfaa2c0">
+                <span class="widgetFAQ--question__text">What happens if the County determines that the homeowner commits subsequent violations in maintaining their aerobic OSSF?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(218)1dd541fb-6703-4887-a10d-89adacfaa2c0"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(218)1dd541fb-6703-4887-a10d-89adacfaa2c0">
+                <p>If the homeowner commits two violations within three years of each other, then the homeowner must enter into a contract for maintenance within 10 days of notification by Comal County.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(219)73650490-57f8-4b37-9d11-ff2992b1d7a1">
+                <span class="widgetFAQ--question__text">Can the owner of a commercial business maintain their own aerobic OSSF?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(219)73650490-57f8-4b37-9d11-ff2992b1d7a1"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(219)73650490-57f8-4b37-9d11-ff2992b1d7a1">
+                <p>No. The only people that are allowed to maintain an aerobic OSSF, other than licensed maintenance providers, are owners of OSSFs serving single-family dwellings.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(220)225c9ba6-9f41-4654-8c13-bb843b7e83e2">
+                <span class="widgetFAQ--question__text">Are licensed maintenance providers still required to submit testing reports to Comal County?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(220)225c9ba6-9f41-4654-8c13-bb843b7e83e2"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(220)225c9ba6-9f41-4654-8c13-bb843b7e83e2">
+                <p>Yes. The reporting requirements for licensed maintenance providers have not changed.</p>
+            </p>
+        </dd>
+
+
+        <dt class="widgetFAQ--question widgetItem">
+            <a aria-role="button" href="#" aria-expanded="false" aria-controls="widgetFAQ(221)cb591266-083f-4909-bbce-a36de039c87e">
+                <span class="widgetFAQ--question__text">Does Comal County intend to adopt more stringent rules regarding maintenance of single family residential aerobic OSSFs?</span>
+                <span class="widgetFAQ--arrow widgetFAQ--arrow-collapsed" aria-controls="widgetFAQ(221)cb591266-083f-4909-bbce-a36de039c87e"></span>
+            </a>
+        </dt>
+        <dd class="widgetFAQ--answer hidden">
+            <p id="widgetFAQ(221)cb591266-083f-4909-bbce-a36de039c87e">
+                <p>At this time, Comal County is required to adhere to the current State statutes and TCEQ regulations regarding homeowner maintenance of single-family residential aerobic OSSFs. See TCEQ Guidance Document.</p>
+            </p>
+        </dd>
+							</dl>
+						</div>
+		</div>
+        <a id="faqViewAll22de3415-326c-439a-810c-f78625fce55a" class="widgetViewAll alignLeft" style="" href="/Faq.aspx?TID=33">View All FAQs</a>
+        	</div>
+	<div class="widgetFooter">	
+	</div>
+    <div class="addItemModal hidden">
+        <div class="url hidden">/FAQ.aspx</div>
+    </div>
+
+	</section>
+
+
+<script>
+	function handleExpandCollapse(e) {
+		const element = e.currentTarget;
+		const answer = document.getElementById(element.getAttribute("aria-controls")).parentElement;
+		const expandArrow = element.getElementsByClassName("widgetFAQ--arrow")[0];
+		if (answer.classList.contains("hidden")) {
+			expandArrow.classList.add('widgetFAQ--arrow-expanded');
+			expandArrow.classList.remove('widgetFAQ--arrow-collapsed');
+			answer.classList.remove("hidden");
+			element.setAttribute("aria-expanded", "true");
+		} else {
+			expandArrow.classList.add('widgetFAQ--arrow-collapsed');
+			expandArrow.classList.remove('widgetFAQ--arrow-expanded');
+			answer.classList.add("hidden");
+			element.setAttribute("aria-expanded", "false");
+		}
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		e.stopPropagation();
+	}
+    document.querySelectorAll(".widgetFAQ--question a").forEach(element => {
+        // When the link is clicked, expand or collapse the answer
+		element.addEventListener("click", handleExpandCollapse);
+	});
+</script>
+</div>
+
+				</div>
+				<div class="tabbedWidget cpTabPanel " style="display: none;" id="tabb714a4ff-1abd-4499-b699-d199443ae7cf_5" role="region" aria-labelledby="tabBtnb714a4ff-1abd-4499-b699-d199443ae7cf_5" >
+							<ol class="cpForm selfClear">
+								<li class="left">
+									<label for="txtTabName">Tab Name</label>
+								</li>
+							</ol>
+				</div>
+					</div>
+	</div>
+	<script type="text/javascript">
+
+		//If responsive not enabled, execute this after a timeout
+		if(!isResponsiveEnabled)
+		{
+			window.setTimeout(function(){
+				var tabbedWidgetID = 'divTabbedb714a4ff-1abd-4499-b699-d199443ae7cf';
+				typeof setTabbedWidgetsTabHeight === "function" && setTabbedWidgetsTabHeight(tabbedWidgetID);
+			}, 1500);
+		}
+
+		function reinitCarousels() {
+			if (window.carouselsToInit) {
+				for (var i = 0; i < window.carouselsToInit.length; i++) {
+					carouselsToInit[i]();
+				}
+			}
+		}
+		function sizeTabbedContent(element){
+			if(window.Pages){
+				if(window.Pages.onResizeHandlers){
+					var setTabbedInterval = setInterval(function () {
+						window.Pages.onResizeHandlers.forEach(function(car){car();});
+					}, 25)
+
+
+					setTimeout(function () {
+						clearInterval(setTabbedInterval);
+						if ($.cookie("enableLiveEdit") === "true") {
+							setInterval(function () {
+								window.Pages.onResizeHandlers.forEach(function(car){car();});
+							}, 2000);
+						}
+					}, 2500);
+					element.onclick="window.setTimeout(function(){reinitCarousels();},2);"
+				}
+			}
+		}
+
+		function adjustTab(e) {
+			e.preventDefault();
+			window.setTimeout(function(){
+				reinitCarousels();
+			}, 2);
+			sizeTabbedContent(this);
+		}
+
+		var tabButtons = document.querySelectorAll("#divTabbedb714a4ff-1abd-4499-b699-d199443ae7cf .tabButton");
+
+		tabButtons.forEach(function (tabButton) {
+			tabButton.addEventListener("click", adjustTab);
+		});
+
+	</script>
+
+
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!--		--></div> <!-- outer row -->
+
+
+		</div>
+
+	</div>
+
+	
+	<div class="newCP">
+
+	</div>
+</div>
+</div><aside data-cpRole="contentContainer" id="featureColumn" class="secondaryContent">	<div id="ccd6923f64-2522-4bce-8783-61ad1b416b69" data-containerid="d6923f64-2522-4bce-8783-61ad1b416b69" class="pageContent cpGrid cpGrid24 showInMobile" data-contentcontainerbreakpoint="40">
+				                
+
+
+
+	</div>
+</aside>
+</div>
+</div></div>
+</div><!-- GBs --><div data-cpRole="structuralContainer" id="gbsContainerTS">
+<div class="siteWrap4"><div data-cpRole="contentContainer" id="gbsTS">	<div id="cc11d7abc2-aec0-48d7-ba73-dedeae84d7df" data-containerid="11d7abc2-aec0-48d7-ba73-dedeae84d7df" class="pageContent cpGrid cpGrid24 isLockedContainer showInMobile" data-contentcontainerbreakpoint="61">
+				                
+
+		<div class="row outer wide"><!--
+--><div class="outer col col24 first last" style="" data-widgetcontainerid="4a94f10b-1ac4-4c60-b36b-d07d908f2766">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col24 first last id9d7d3f55-c0e6-42ad-91a0-5d6336e7ac4f" style="" data-widgetcontainerid="9d7d3f55-c0e6-42ad-91a0-5d6336e7ac4f">	
+<div data-widget-id="cfc719b1-7908-48ce-ad8d-4768d739b188" data-widget-controller-path="/GraphicLinks/Widget">
+</div>
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!--		--></div> <!-- outer row -->
+
+
+	</div>
+</div></div>
+</div>
+</div><!-- Calendar/Carousel --><!-- <div data-cpRole="structuralContainer" id="homeContainer1">
+    <div class="siteWrap4">
+      <div data-cpRole="contentContainer" id="homeContent1a"></div>
+    </div>
+  </div> --><!-- Footer --><div data-cpRole="structuralContainer" id="footerOverlayTS">
+<footer data-cpRole="structuralContainer" id="footerContainerTS">
+<div class="siteWrap4"><div data-cpRole="contentContainer" id="footerTS">	<div id="cc11091beb-1987-4a67-b804-11ad00b0065a" data-containerid="11091beb-1987-4a67-b804-11ad00b0065a" class="pageContent cpGrid cpGrid24 isLockedContainer showInMobile" data-contentcontainerbreakpoint="58">
+				                
+
+		<div class="row outer wide"><!--
+--><div class="outer col col6 first" style="" data-widgetcontainerid="2decbecb-86b5-4d02-8aea-64afcbb2cb46">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col6 first last id620d7e4a-b979-4768-9df6-7f69ab94ccc1" style="" data-widgetcontainerid="620d7e4a-b979-4768-9df6-7f69ab94ccc1">	
+    <div data-widget-id="be8062ca-bd53-4f71-af52-53c54dda445f" data-widget-controller-path="/InfoAdvanced/Widget">
+
+
+
+
+
+	<section id="divInfoAdvbe8062ca-bd53-4f71-af52-53c54dda445f" class="widget widgetInfoAdvanced skin43 widgetOptionSet5 wide" data-modulewidgettype="infoAdv" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}' data-elementquerymatch='matchMultiColumn' data-elementqueryunmatch='unmatchMultiColumn' aria-label="Info Advanced">
+			<header class="widgetHeader" id="headerbe8062ca-bd53-4f71-af52-53c54dda445f">
+		<div class="">
+								</div>
+	</header>
+	<div class="widgetBody  cpGrid cpGrid1 ">
+		<div class="row  wide">
+					<div class="col col1 first last">
+						<ol class="pageStyles semanticList">
+
+<li class="InfoAdvanced widgetItem fr-view">
+	<p><a href="/"><img src="/ImageRepository/Document?documentId=113" class="fr-dib" alt="Comal County Texas Homepage"></a></p>
+</li>						</ol>
+					</div>
+		</div>
+	</div>
+	<div class="widgetFooter">
+
+	</div>
+
+	</section>
+
+
+
+<script type="text/javascript">
+	//Render slideshow if info advacned items contain one.
+	$(document).ready(function (e) {
+		$('#divInfoAdvbe8062ca-bd53-4f71-af52-53c54dda445f .InfoAdvanced.widgetItem').each(function () {
+			renderSlideshowIfApplicable($(this));		
+		});
+	});
+</script></div>
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!----><div class="outer col col1" style="" data-widgetcontainerid="8f473bd3-b452-4f51-bc6a-07d8fbb2608a">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col1 first last id695c1f52-c2be-4812-8133-b40696fd311d" style="" data-widgetcontainerid="695c1f52-c2be-4812-8133-b40696fd311d">	
+
+<div class="widget widgetSpacer" id="cc99afa6-7832-4fe6-8c10-d27f9af7089d"></div>
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!----><div class="outer col col5" style="" data-widgetcontainerid="c71dccce-4c5a-4679-a14b-df40ae9b7cc0">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col5 first last id35aaea6d-9fcb-4b23-8b23-d259a80af3d0" style="" data-widgetcontainerid="35aaea6d-9fcb-4b23-8b23-d259a80af3d0">	
+    <div data-widget-id="d87dbd75-8191-4e35-bc51-5e32238500e9" data-widget-controller-path="/InfoAdvanced/Widget">
+
+
+
+
+
+	<section id="divInfoAdvd87dbd75-8191-4e35-bc51-5e32238500e9" class="widget widgetInfoAdvanced skin37 widgetOptionSet5 wide" data-modulewidgettype="infoAdv" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}' data-elementquerymatch='matchMultiColumn' data-elementqueryunmatch='unmatchMultiColumn' aria-labelledby="headerd87dbd75-8191-4e35-bc51-5e32238500e9">
+			<header class="widgetHeader" id="headerd87dbd75-8191-4e35-bc51-5e32238500e9">
+		<div class="">
+					<h3 >Contact Us</h3>
+								</div>
+	</header>
+	<div class="widgetBody  cpGrid cpGrid1 ">
+		<div class="row  wide">
+					<div class="col col1 first last">
+						<ol class="pageStyles semanticList">
+
+<li class="InfoAdvanced widgetItem fr-view">
+	<p>195 David Jonas Drive</p>
+</li>
+<li class="InfoAdvanced widgetItem fr-view">
+	<p>New Braunfels, Texas 78132&nbsp;</p>
+</li>
+<li class="InfoAdvanced widgetItem fr-view">
+	<p>Phone: <a href="tel:830-608-2090">830-608-2090</a>&nbsp;</p>
+</li>
+<li class="InfoAdvanced widgetItem fr-view">
+	<p>Fax: 830-608-2078&nbsp;</p>
+</li>
+<li class="InfoAdvanced widgetItem fr-view">
+	<p>Office Hours: 8 am to 4:30 pm</p>
+</li>						</ol>
+					</div>
+		</div>
+	</div>
+	<div class="widgetFooter">
+
+	</div>
+
+	</section>
+
+
+
+<script type="text/javascript">
+	//Render slideshow if info advacned items contain one.
+	$(document).ready(function (e) {
+		$('#divInfoAdvd87dbd75-8191-4e35-bc51-5e32238500e9 .InfoAdvanced.widgetItem').each(function () {
+			renderSlideshowIfApplicable($(this));		
+		});
+	});
+</script></div>
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!----><div class="outer col col1" style="" data-widgetcontainerid="09552c70-d2ce-4b97-b1e9-8860f899d282">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col1 first last id58cf7622-a567-48e2-9a83-3ba315853d46" style="" data-widgetcontainerid="58cf7622-a567-48e2-9a83-3ba315853d46">	
+
+<div class="widget widgetSpacer" id="8f6f364d-8a33-4e6c-9476-defd97b2074d"></div>
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!----><div class="outer col col5" style="" data-widgetcontainerid="edf7a901-3632-4dea-84eb-2becdb0b4d43">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col5 first last id66bc87af-9e85-4d58-a5ef-8ca90938d74f" style="" data-widgetcontainerid="66bc87af-9e85-4d58-a5ef-8ca90938d74f">	
+	<div data-widget-id="7d4b062f-4d17-4492-9976-f1ed87ade7b6" data-widget-controller-path="/QuickLinks/Widget">
+
+
+
+
+
+
+
+
+	<section id="widgetQuicklink7d4b062f-4d17-4492-9976-f1ed87ade7b6" class="widget widgetQuickLinks skin37 widgetOptionSet27 narrow" data-modulewidgettype="quickLinks" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}' data-elementquerymatch='matchMultiColumn' data-elementqueryunmatch='unmatchMultiColumn' aria-labelledby="quickLinksHeader7d4b062f-4d17-4492-9976-f1ed87ade7b6">
+			<header class="widgetHeader" id="quickLinksHeader7d4b062f-4d17-4492-9976-f1ed87ade7b6">
+		<div class="">
+					<h3><a  style="" href="/QuickLinks.aspx?CID=24,34" >Quick Links</a></h3>
+						</div>
+	</header>
+	<div class="widgetBody cpGrid cpGrid1 ">
+        <div class="row  narrow">
+				<div class="col col1 first last">
+					<ol class="semanticList">
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/286" target="_self" aria-label="Online Permit Application - Engineer&#39;s Office" rel="">Online Permit Application</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="https://cceo.comalcounty.gov/permit-search" target="_self" aria-label="Search Permit Records - Engineer&#39;s Office" rel="">Search Permit Records</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/282" target="_self" aria-label="Report an Issue - Engineer&#39;s Office" rel="">Report an Issue</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/272" target="_self" aria-label="GIS - Engineer&#39;s Office" rel="">GIS</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/270" target="_self" aria-label="Recycling Accepted - Engineer&#39;s Office" rel="">Recycling Accepted</a>
+        <div class="widgetMeta"></div>
+    </li>
+					</ol>
+				</div>
+		</div>
+        
+	</div>
+	<div class="widgetFooter">
+	</div>
+	<div class="addItemModal hidden">
+		<div class="url hidden">/QuickLinks.aspx</div>
+	</div>
+
+	</section>
+</div>
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!----><div class="outer col col1" style="" data-widgetcontainerid="36f508ce-fd11-4308-b4c4-72e27c9d9e6a">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col1 first last id0a49cea8-5b66-4e88-adce-a44fbc0e8e7f" style="" data-widgetcontainerid="0a49cea8-5b66-4e88-adce-a44fbc0e8e7f">	
+
+<div class="widget widgetSpacer" id="5137ef1c-7508-418d-bbfa-985c870cf60b"></div>
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!----><div class="outer col col5 last" style="" data-widgetcontainerid="d684fa19-e4a5-40c8-b29c-06b15f9bfbde">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col5 first last id08e8bf95-1a2a-465a-abb3-80514c27d9d6" style="" data-widgetcontainerid="08e8bf95-1a2a-465a-abb3-80514c27d9d6">	
+	<div data-widget-id="f6dbc22c-f19f-46b0-9e5f-6e328ff1e0d2" data-widget-controller-path="/QuickLinks/Widget">
+
+
+
+
+
+
+
+
+	<section id="widgetQuicklinkf6dbc22c-f19f-46b0-9e5f-6e328ff1e0d2" class="widget widgetQuickLinks skin37 widgetOptionSet27 narrow" data-modulewidgettype="quickLinks" data-elementqueryclasses='{"wide-narrow":"min-width:25em"}' data-elementquerymatch='matchMultiColumn' data-elementqueryunmatch='unmatchMultiColumn' aria-labelledby="quickLinksHeaderf6dbc22c-f19f-46b0-9e5f-6e328ff1e0d2">
+			<header class="widgetHeader" id="quickLinksHeaderf6dbc22c-f19f-46b0-9e5f-6e328ff1e0d2">
+		<div class="">
+					<h3><a  style="" href="/QuickLinks.aspx?CID=16" >Site Links</a></h3>
+						</div>
+	</header>
+	<div class="widgetBody cpGrid cpGrid1 ">
+        <div class="row  narrow">
+				<div class="col col1 first last">
+					<ol class="semanticList">
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/" target="_self" aria-label="Home - Site Links" rel="">Home</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/sitemap" target="_self" aria-label="Site Map - Site Links" rel="">Site Map</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/directory.aspx" target="_self" aria-label="Contact Us - Site Links" rel="">Contact Us</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/site/accessibility" target="_self" aria-label="Accessibility - Site Links" rel="">Accessibility</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/copyright" target="_self" aria-label="Copyright Notices - Site Links" rel="">Copyright Notices</a>
+        <div class="widgetMeta"></div>
+    </li>
+
+
+
+
+    <li style="position:relative" class="widgetItem QuickLinks">
+        <a class="widgetDesc widgetQuickLinksLink" href="/site/privacy" target="_self" aria-label="Privacy Policy - Site Links" rel="">Privacy Policy</a>
+        <div class="widgetMeta"></div>
+    </li>
+					</ol>
+				</div>
+		</div>
+        
+	</div>
+	<div class="widgetFooter">
+	</div>
+	<div class="addItemModal hidden">
+		<div class="url hidden">/QuickLinks.aspx</div>
+	</div>
+
+	</section>
+</div>
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!--		--></div> <!-- outer row -->
+
+
+	</div>
+</div></div>
+</footer><!-- Powered By --><div data-cpRole="structuralContainer" id="poweredByContainerTS">
+<div class="siteWrap4"><div data-cpRole="contentContainer" id="poweredByTS">	<div id="cc61fb1632-7cc3-445f-920f-01e5d91fdcbc" data-containerid="61fb1632-7cc3-445f-920f-01e5d91fdcbc" class="pageContent cpGrid cpGrid24 isLockedContainer showInMobile">
+				                
+
+		<div class="row outer wide"><!--
+--><div class="outer col col24 first last" style="" data-widgetcontainerid="b655943f-be83-490c-8189-d27383d4d980">				
+	<div class="row nest first last wide">
+	
+	<div class="inner col col24 first last id03da88cd-3e08-4e91-9db6-1e68faf47870" style="" data-widgetcontainerid="03da88cd-3e08-4e91-9db6-1e68faf47870">	
+ 
+	<div data-widget-id='8d1e54b5-d1a4-4611-b957-68f946a305f6' data-moduleName="customHtml" id='widgetCustomHtml8d1e54b5-d1a4-4611-b957-68f946a305f6' class="widget widgetCustomHtml skin43 narrow" >
+	<div class="widgetBody pageStyles" id="widgetBody8d1e54b5-d1a4-4611-b957-68f946a305f6">
+		<div id="customHtml8d1e54b5-d1a4-4611-b957-68f946a305f6"><div><style>
+  /* CP icon */
+  .cpBylineIconTS {
+    color: #fff;
+  }
+  /* CP Text */
+  .cpBylineTextTS,
+  .cpBylineTextTS a:link {
+    color: #fff;
+  }
+
+  .cpBylineTextTS a:visited {
+    color: #fff;
+  }
+
+  .cpBylineTextTS a {
+    text-decoration: underline!important;
+  }
+
+  .cpBylineTS {
+    text-align: center;
+  }
+  
+  .cpBylineIconTS {
+    fill: currentColor;
+    width: 39px;
+    height: 26px;
+    display: inline;
+    vertical-align: middle;
+  }
+</style>
+
+<div class="widgetItem cpBylineTS">
+  <svg xmlns="http://www.w3.org/2000/svg" viewbox="0 0 100 100" class="cpBylineIconTS">
+    <path class="c" d="M73.4,23.2h-19v16.7h19c2.8,0,5,2.2,5,5c0,2.8-2.2,5-5,5h-19v28.4h5.5l11.3-11.7h2.2c11.9,0,21.6-9.7,21.6-21.6C95,33,85.3,23.2,73.4,23.2"></path>
+    <path class="p" d="M45.8,66.5H26.6C14.7,66.5,5,56.8,5,44.9C5,33,14.7,23.2,26.6,23.2h19.1v16.7H26.6c-2.8,0-5,2.2-5,5c0,2.8,2.2,5,5,5h19.1V66.5z"></path>
+  </svg>
+  <span class="cpBylineTextTS">Government Websites by <a href="https://connect.civicplus.com/referral">CivicPlus&reg;</a></span>
+</div>
+</div></div>
+	</div>
+
+	</div>
+
+	</div> <!-- inner column -->
+
+	</div> <!-- inner row -->
+
+			</div><!-- outer column --><!--		--></div> <!-- outer row -->
+
+
+	</div>
+</div></div>
+</div>
+</div>
+</div>
+
+            </div>
+        </div>
+    </div>
+
+<link href="/745732998.css" rel="stylesheet" type="text/css" />
+
+<div id="SplashMessageWrapper" class="cp-Splash-wrapper">
+	<div role="dialog" aria-labelledby="cp-Splash-title" aria-describedby="editorContentDesc" aria-modal="true" tabindex="-1" id="SplashMessage" class="hidden cp-Splash cp-Splash--modal is-open">
+		<div class="cp-Splash-header">
+			<h2 class="cp-Splash-title" id="cp-Splash-title">Loading</h2>
+			<button class="cp-Splash-Btn cp-Splash-close" aria-label="Close this modal" title="Close this window">
+				<svg id="iconClose" viewBox="0 0 25 25">
+					<polygon style="fill:currentcolor"
+							 points="18.806,6.98 18.075,6.248 12.532,11.792 6.989,6.248 6.257,6.98 11.786,12.508 6.212,18.084 6.943,18.815 12.532,13.224 18.12,18.815 18.851,18.084 13.277,12.508"></polygon>
+				</svg>
+			</button>
+		</div>
+		<div class="cp-Splash-body">
+			<div class="cp-Splash-Prose editorContent fr-view" id="editorContentDesc">
+				<!-- Content from the Froala Editor will go here. -->
+				Loading
+			</div>
+		</div>
+		<div class="cp-Splash-footer">
+			<button class="cp-Splash-Btn cp-Splash-Btn--NoShow">Do Not Show Again</button>
+			<button class="cp-Splash-Btn cp-Splash-Btn--Close">Close</button>
+		</div>
+	</div>
+</div>
+
+<script src="/Assets/Scripts/APIClient.js"></script>
+<script src="/Assets/Mystique/Shared/Scripts/Moment/Moment.min.js"></script>
+<script src="/Assets/Scripts/SplashModal/SplashModalRender.js"></script>
+<script>
+
+		$(document).ready(function () {
+			var filter = {
+				targetId: '276',
+				targetType: 1
+			}
+
+			new SplashModalRender().triggerRender(filter);
+		});
+</script>
+
+
+	
+	
+	
+	
+
+
+
+	
+
+
+
+
+
+
+    <script src="/-1442400649.js" type="text/javascript"></script>
+    <!-- Fixed Nav Adjustment -->
+<script>
+  function getValueTS(elem, attr) {
+    const val = elem.css(attr);
+    if (val === undefined) return undefined;
+    const num = parseInt(val, 10);
+    if (num === NaN) return undefined;
+    return num;
+  }
+
+  function clampTS(number, min, max) {
+    return Math.min(Math.max(number, min), max);
+  }
+
+  function isPageEditingTS() {
+    return (
+      $("#doneEditing").length > 0 || // In live edit
+      typeof DesignCenter !== "undefined" // In theme manager
+    );
+  }
+
+  const bgColorRegexTS = /rgba\((\d+), (\d+), (\d+), (\d*\.?\d*)\)/;
+  function isTransparentTS(elem) {
+    const bg = elem.css('background-color');
+    if (typeof bg !== "string" || !bg.startsWith('rgba(')) return false;
+    const matchState = bg.match(bgColorRegexTS);
+    if (!matchState || matchState.length !== 5) return false;
+    const alpha = parseFloat(matchState[4], 10);
+    if (!(alpha >= 0 && alpha < 1)) return false;
+    return true;
+  }
+
+  function iterateLeftpads(cb) {
+    const containersTS = $("[class^='siteWrap'],[class*=' siteWrap']");
+    for (let i = 0; i < containersTS.length; i++) {
+      const containerTS = containersTS[i];
+      // Skip the body container and anything with data-skip-leftpad
+      if (
+        containerTS.id !== "bodyContainerTS" &&
+        containerTS.getAttribute('data-skip-leftpad') === null
+      ) {
+        cb(containerTS);
+      }
+    }
+  }
+
+  const anchor = $("#divToolbars");
+  const anchor2 = $("#headerContainerTS")
+
+  // Outer banner padding (push banner down)
+  const outerSizingTS = $("#bannerContainerTS");
+  // Inner banner padding (push banner content down) - Transparent header OR on attaching headers
+  const innerSizingTS = $("#bannerSizingTS");
+  const bodyContainerTS = $("#bodyContainerTS");
+
+  const forceUnfixClassTS = "forceUnfixTS";
+
+  const fixedTopTS = $(".fixedTopTS");
+  const fixedBottomTS = $(".fixedBottomTS");
+  const fixedLeftTS = $(".fixedLeftTS");
+
+  var initialTopTS;
+  var topAttachTS;
+  if (fixedTopTS && fixedTopTS.length === 1) {
+    initialTopTS = getValueTS(fixedTopTS, 'top');
+    const attachment = fixedTopTS.attr('data-attach');
+    if (attachment) topAttachTS = $("#" + attachment);
+    if (!topAttachTS || topAttachTS.length !== 1) topAttachTS = undefined;
+  }
+
+  function resizeAdjustmentTS() {
+    const editing = isPageEditingTS();
+
+    // Fixed top script
+    (function () {
+      if (!fixedTopTS || fixedTopTS.length !== 1 || initialTopTS === undefined) return;
+
+      if (editing) {
+        fixedTopTS[0].classList.add(forceUnfixClassTS);
+      } else {
+        fixedTopTS[0].classList.remove(forceUnfixClassTS);
+      }
+
+      const topPosition = fixedTopTS.css('position');
+      if (topPosition === 'fixed') {
+        if (topAttachTS) {
+          scrollAdjustmentTS();
+        } else {
+          const anchorHeight = anchor.outerHeight() - 1;
+          fixedTopTS.css('top', anchorHeight + initialTopTS);
+        }
+      } else {
+        fixedTopTS.css('top', initialTopTS);
+      }
+
+      if (topPosition === 'fixed' || topPosition === 'absolute') {
+        // Bump the banner content down
+        if (isTransparentTS(fixedTopTS)) {
+          innerSizingTS.css('padding-top', initialTopTS + fixedTopTS.outerHeight() - 1);
+          outerSizingTS.css('padding-top', '');
+
+          try {
+            window.Pages.onResizeHandlersExecute();
+          } catch (e) { }
+        } else {
+          outerSizingTS.css('padding-top', fixedTopTS.outerHeight() - 1);
+          innerSizingTS.css('padding-top', '');
+        }
+      } else {
+        innerSizingTS.css('padding-top', '');
+        outerSizingTS.css('padding-top', '');
+      }
+    })();
+
+    // Fixed bottom script
+    (function () {
+      if (!fixedBottomTS || fixedBottomTS.length === 0) return;
+
+      // If the widget has gone narrow, force unfix
+      if (editing || fixedBottomTS.outerHeight() > 200) {
+        fixedBottomTS[0].classList.add(forceUnfixClassTS);
+      } else {
+        fixedBottomTS[0].classList.remove(forceUnfixClassTS);
+      }
+
+      if (fixedBottomTS.css('position') === 'fixed') {
+        bodyContainerTS.css('padding-bottom', fixedBottomTS.outerHeight());
+      } else {
+        bodyContainerTS.css('padding-bottom', '');
+      }
+    })();
+
+    // Fixed left script
+    (function () {
+      if (!fixedLeftTS || fixedLeftTS.length === 0) return;
+
+      if (editing) {
+        fixedLeftTS[0].classList.add(forceUnfixClassTS);
+      } else {
+        fixedLeftTS[0].classList.remove(forceUnfixClassTS);
+      }
+
+      if (fixedLeftTS.css('position') === 'fixed') {
+        const anchorHeight = anchor.outerHeight() - 1;
+        fixedLeftTS.css('top', anchorHeight);
+        const leftBoundingTS = fixedLeftTS[0].getBoundingClientRect();
+        iterateLeftpads(function (containerTS) {
+          const containerBoundingTS = containerTS.getBoundingClientRect();
+          if (containerBoundingTS.left <= leftBoundingTS.right) {
+            $(containerTS).css('padding-left', leftBoundingTS.width + 16);
+          }
+        });
+      } else {
+        fixedLeftTS.css('top', '');
+        iterateLeftpads(function (containerTS) {
+          $(containerTS).css('padding-left', '');
+        });
+      }
+    })();
+  }
+
+  function scrollAdjustmentTS() {
+    if (!fixedTopTS || fixedTopTS.length !== 1 || !topAttachTS || topAttachTS.length !== 1) return;
+    const topPosition = fixedTopTS.css('position');
+    if (topPosition === 'fixed' || topPosition === 'absolute') {
+      const anchorBounding = anchor[0].getBoundingClientRect();
+      const attachBounding = topAttachTS[0].getBoundingClientRect();
+      const scrollTop = $(window).scrollTop();
+
+      fixedTopTS.css('top', Math.max(anchorBounding.bottom - 1, attachBounding.bottom));
+    } else {
+      fixedTopTS.css('top', initialTopTS);
+    }
+  }
+
+  $(window).load(function () {
+    setTimeout(function () {
+      resizeAdjustmentTS();
+    }, 350);
+
+    $(window).scroll(function () {
+      scrollAdjustmentTS();
+    });
+
+    var adjustTimeoutTS;
+    $(window).resize(function () {
+      clearTimeout(adjustTimeoutTS);
+      adjustTimeoutTS = setTimeout(function () {
+        resizeAdjustmentTS();
+      }, 350);
+    });
+
+    $.when(window.Pages.angularToolbarComplete).done(function () {
+      resizeAdjustmentTS();
+    });
+  });
+</script>
+<!-- End Fixed Nav Adjustment -->
+
+<!----------Google Translate (Mobile Friendly)--------->
+
+<style>#google-translate-container {float: right;padding: 3px 5px 0px 0px;}.goog-te-combo,.goog-te-banner *,.goog-te-ftab *,.goog-te-menu *,.goog-te-menu2 *,.goog-te-balloon * {font-family: arial;font-size: 10pt;background-image: url("https://theme.zdassets.com/theme_assets/958586/bae8aa24db8d43595871692a9d259186f2db3fb4.png");background-position: 3px 4px;background-size: 22px;background-repeat: no-repeat;padding-left: 30px !important;background-color: #fff;color: #000 !important;}.goog-logo-link {display: none !important;}.goog-te-gadget {color: transparent !important;}.goog-te-gadget .goog-te-combo {margin: 2px 0 !important;border-radius: 15px !important;}.goog-te-combo{border: 1px solid !important;border-color: #bcc9d7 #96a3b1 #96a3b1 #bcc9d7 !important;border-radius: 0 !important;height:32px !important;padding: 0 0 0 30px !important;width: 145px !important;-moz-appearance: none;-webkit-appearance: none;}#launcher-wrapper {bottom: 50px !important;}</style>
+
+ 
+
+<div id="google-translate-container">
+
+<div id="google_translate_element" style="position: fixed; bottom: 0px; right: 20px; z-index: 5;"></div>
+
+</div>
+
+<script>
+
+function googleTranslateElementInit() {
+
+new google.translate.TranslateElement({ pageLanguage: "en" }, "google_translate_element");
+
+    // begin accessibility compliance
+
+    $('img.goog-te-gadget-icon').attr('alt','Google Translate');
+
+    $('div#goog-gt-tt div.logo img').attr('alt','translate');
+
+    $('div#goog-gt-tt .original-text').css('text-align','left');
+
+    $('.goog-te-gadget-simple .goog-te-menu-value span').css('color','#000000');
+
+}
+
+$(function() {
+
+$.getScript("//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit");
+
+});
+
+</script>
+
+<!--------------End Google Translate----------------->
+
+<script type="text/javascript">!function(){var b=function(){window.__AudioEyeSiteHash = "27f6ac179324c58c8cf00f85fa36d472"; var a=document.createElement("script");a.src="https://wsmcdn.audioeye.com/aem.js";a.type="text/javascript";a.setAttribute("async","");document.getElementsByTagName("body")[0].appendChild(a)};"complete"!==document.readyState?window.addEventListener?window.addEventListener("load",b):window.attachEvent&&window.attachEvent("onload",b):b()}();</script>
+
+
+    <script type="text/javascript">
+        $(function () {
+            document.cookie = "responsiveGhost=0; path=/";
+        });
+        $(window).on("load", function () {
+            $('body').addClass('doneLoading').removeClass('hideContent');
+
+            if ($('#404Content').length > 0)
+                $('div#bodyWrapper').css('padding', '0px');
+        });
+    </script>
+
+    <noscript>
+        <style>
+            body.hideContent {
+                opacity: 1 !important;
+            }
+        </style>
+    </noscript>
+
+        
+<div style="display: none;">
+	<svg xmlns="http://www.w3.org/2000/svg" style="display:none;">
+
+		<symbol id="iconArrow--left" viewbox="0 0 25 25">
+			<title>Arrow Left</title>
+			<polygon style="fill:currentcolor" points="18.044,25 19.498,23.545 8.409,12.454 19.408,1.455 17.954,0 5.502,12.452"></polygon>
+		</symbol>
+
+		<symbol id="iconArrow--right" viewbox="0 0 25 25">
+			<title>Arrow Right</title>
+			<polygon style="fill:currentcolor" points="6.957,0 5.502,1.455 16.591,12.546 5.592,23.545 7.047,25 19.498,12.548"></polygon>
+		</symbol>
+
+	</svg>
+</div>
+    <script type="text/javascript">loadCSS('//fonts.googleapis.com/css?family=Lora:500,600,700,regular|Open+Sans:500,600,700,800,regular|');</script>
+    
+
+    <div class="hidden activeWidgetSkinComponentsOnPageJson">[]</div>
+        <div style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+                <symbol id="iconSlideshowArrowLeft" viewBox="0 0 22.68 40">
+                    <title>Slideshow Left Arrow</title>
+                    <g>
+                        <path style="fill:currentcolor;" d="M20,40a2.67,2.67,0,0,1-1.9-.79L.79,21.9a2.68,2.68,0,0,1,0-3.79L18.1.79a2.68,2.68,0,1,1,3.79,3.79L6.47,20,21.89,35.42A2.68,2.68,0,0,1,20,40Z"></path>
+                    </g>
+                </symbol>
+                <symbol id="iconSlideshowArrowRight" viewBox="0 0 22.68 40">
+                    <title>Slideshow Right Arrow</title>
+                    <g>
+                        <path style="fill:currentcolor;" d="M2.68,0a2.67,2.67,0,0,1,1.9.79L21.89,18.1a2.68,2.68,0,0,1,0,3.79L4.58,39.21A2.68,2.68,0,0,1,.79,35.42L16.21,20,.79,4.58A2.68,2.68,0,0,1,2.68,0Z"></path>
+                    </g>
+                </symbol>
+            </svg>
+        </div>
+    
+	
+	
+
+    <div id="root-picker-outlet"></div>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4663932aae4e0ea',t:'MTc5MTMwNjAzOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
