@@ -189,6 +189,57 @@ describe("filing fees", () => {
   });
 });
 
+describe("filing fees on the homeowner's invoice", () => {
+  /** A Fee Fixture County site whose inspection report reached the authority on time, billed quarterly. */
+  async function filed(name: string) {
+    const s = await inspected(ctx, FEES, name);
+    await runWorker(ctx);
+    const f = await filingOf(s);
+    ctx.now = new Date("2026-03-15T20:00:00Z");
+    expect((await s.api.post(`/filings/${f.id}/submit`, {})).statusCode).toBe(200);
+    await runWorker(ctx);
+    expect((await filingOf(s)).status).toBe("sent");
+    await ctx.db.updateTable("contracts").set({ billingFrequency: "quarterly" }).where("id", "=", s.contract.id).execute();
+    return { ...s, filingId: f.id as string };
+  }
+  type Line = { id: string; description: string; unitPriceCents: number; filingId: string | null; installment: number | null };
+  const invoiceFor = async (s: Setup) => {
+    const res = await s.api.post(`/contracts/${s.contract.id}/invoice`, {});
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json() as { id: string; totalCents: number; lines: Line[] };
+  };
+
+  it("are left off unless the company turns them on", async () => {
+    const s = await filed("Org A");
+    expect((await s.api.get("/organization/settings")).json().billFilingFees).toBe(false);
+    const inv = await invoiceFor(s);
+    expect(inv.lines.map((l) => l.filingId)).toEqual([null]);
+  });
+
+  it("are billed once each when on, without the late fee, and stay with their line through edits", async () => {
+    const s = await filed("Org A");
+    expect((await s.api.patch("/organization/settings", { billFilingFees: true })).json().billFilingFees).toBe(true);
+    const first = await invoiceFor(s);
+    expect(first.lines).toEqual([
+      expect.objectContaining({ installment: 1, filingId: null }),
+      expect.objectContaining({ description: "Fee Fixture County (fictional) filing fee: inspection report filed Mar 15, 2026", unitPriceCents: 1000, installment: null, filingId: s.filingId }),
+    ]);
+    // Editing the draft (lines sent back with their ids) keeps what the fee line bills for.
+    const edited = await s.api.patch(`/invoices/${first.id}`, {
+      lines: first.lines.map((l) => ({ id: l.id, description: l.filingId ? "County filing fee" : l.description, unitPriceCents: l.unitPriceCents })),
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    expect(edited.json().lines[1]).toMatchObject({ description: "County filing fee", filingId: s.filingId });
+
+    // The next installment does not bill the same fee again; once the first is discarded, it does.
+    const second = await invoiceFor(s);
+    expect(second.lines.map((l) => l.filingId)).toEqual([null]);
+    expect((await s.api.post(`/invoices/${first.id}/discard`, {})).statusCode).toBeLessThan(300);
+    const third = await invoiceFor(s);
+    expect(third.lines.map((l) => l.filingId)).toEqual([null, s.filingId]);
+  });
+});
+
 describe("lab results on the authority report", () => {
   const LAB = "Annual Lab Fixture County";
 

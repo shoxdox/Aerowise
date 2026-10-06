@@ -1,4 +1,4 @@
-import type { Database } from "@aerowise/db";
+import type { Database, DB } from "@aerowise/db";
 import {
   amountDue,
   contractInstallments,
@@ -19,12 +19,12 @@ import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import { activatePaidRenewals } from "@aerowise/renewals";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { applyView, checkDraftRefs, invoiceBase, invoiceDetail, issueDraft, overdueFirst, queueSend, toListItem, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
-import { organizationToday } from "../lib/today.ts";
+import { dateInZone, organizationToday } from "../lib/today.ts";
 
 const params = z.object({ id });
 const VIEWS = ["unpaid", "overdue", "draft", "paid", "void", "all"] as const;
@@ -32,6 +32,46 @@ const day = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 };
+
+/**
+ * Lines for the authority filing fees on a site's sent filings that no invoice (other than a
+ * void one) bills yet, for a company that bills them to the homeowner (Justin, 2026-10-05).
+ * Late fees are the company's own and are never passed on.
+ */
+async function filingFeeLines(trx: Transaction<DB>, organizationId: string, siteId: string, timezone: string) {
+  const fees = await trx
+    .selectFrom("filings as f")
+    .select(["f.id", "f.kind", "f.filingFeeCents", "f.sentAt"])
+    .select((eb) => eb.selectFrom("jurisdictions as j").select("j.authorityName").whereRef("j.id", "=", "f.jurisdictionId").as("authorityName"))
+    .where("f.organizationId", "=", organizationId)
+    .where("f.siteId", "=", siteId)
+    .where("f.filingFeeCents", ">", 0)
+    .where("f.sentAt", "is not", null)
+    .where((w) =>
+      w.not(
+        w.exists(
+          w
+            .selectFrom("invoiceLines as l")
+            .innerJoin("invoices as i", "i.id", "l.invoiceId")
+            .select("l.id")
+            .whereRef("l.organizationId", "=", "f.organizationId")
+            .whereRef("l.filingId", "=", "f.id")
+            .where("i.status", "<>", "void"),
+        ),
+      ),
+    )
+    .orderBy("f.sentAt")
+    // Two invoices made at once for the same site take turns, so a fee is billed once.
+    .forUpdate()
+    .execute();
+  return fees.map((f) => ({
+    description: `${f.authorityName ?? "Authority"} filing fee: ${f.kind === "contract" ? "maintenance contract" : "inspection report"} filed ${day(dateInZone(f.sentAt!, timezone))}`,
+    quantity: 1,
+    unitPriceCents: f.filingFeeCents!,
+    taxable: false,
+    filingId: f.id,
+  }));
+}
 
 export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig }> = async (app, { db, now, store, payments }) => {
   const detail = async (organizationId: string, invoiceId: string) =>
@@ -140,7 +180,11 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req, reply) => {
       const { organizationId, userId } = req.requireAuth();
-      const org = await db.selectFrom("organizations").select(["invoiceTermsDays", "defaultTaxRateBps"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
+      const org = await db
+        .selectFrom("organizations")
+        .select(["invoiceTermsDays", "defaultTaxRateBps", "billFilingFees", "timezone"])
+        .where("id", "=", organizationId)
+        .executeTakeFirstOrThrow();
       const invoiceId = await db.transaction().execute(async (trx) => {
         const at = now();
         // Locking the contract makes two people billing it at once take turns.
@@ -214,6 +258,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
               periodStart: part.periodStart,
               periodEnd: part.periodEnd,
             },
+            ...(org.billFilingFees ? await filingFeeLines(trx, organizationId, c.siteId, org.timezone) : []),
           ],
           { discountCents: 0, taxRateBps: org.defaultTaxRateBps },
           at,

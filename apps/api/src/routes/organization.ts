@@ -30,6 +30,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Database; store: Ob
         "o.state",
         "o.postalCode",
         "o.serviceCounties",
+        "o.billFilingFees",
         "o.timezone",
         "o.logoStorageKey",
         "pc.id as credentialId",
