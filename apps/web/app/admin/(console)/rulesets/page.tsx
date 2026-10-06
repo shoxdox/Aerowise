@@ -1,6 +1,7 @@
 "use client";
 
 import type { RulesetCoverage, RulesetCoverageItem } from "@aerowise/domain";
+import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
 import { day } from "@/lib/format";
@@ -36,7 +37,7 @@ export default function RulesetCoveragePage() {
             {data?.items.map((i) => (
               <tr key={i.key}>
                 <td>
-                  {i.authorityName}
+                  <Link href={`/admin/rulesets/${i.key}`}>{i.authorityName}</Link>
                   <div className="muted small">
                     {i.key} · {i.rulesetVersion ? `v${i.rulesetVersion} in force` : "no version in force today"}
                     {i.versions > 1 ? ` · ${i.versions} versions` : ""}

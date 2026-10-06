@@ -27,3 +27,4 @@ export * from "./legal.ts";
 export * from "./onboarding.ts";
 export * from "./import-summary.ts";
 export * from "./exports.ts";
+export * from "./authority-evidence.ts";
