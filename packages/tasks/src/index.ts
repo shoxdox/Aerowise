@@ -205,8 +205,8 @@ export interface TaskObserver {
  * Claims and runs one due task. Returns false when nothing was due. Errors are recorded
  * on the task and retried later; they never escape.
  */
-export async function runNextTask(ctx: TaskContext, workerId: string, observer: TaskObserver = {}): Promise<boolean> {
-  const task = await claimNext(ctx.db, workerId, ctx.now());
+export async function runNextTask(ctx: TaskContext, workerId: string, observer: TaskObserver = {}, organizationId?: string): Promise<boolean> {
+  const task = await claimNext(ctx.db, workerId, ctx.now(), organizationId);
   if (!task) return false;
   const started = Date.now();
   try {
@@ -220,9 +220,13 @@ export async function runNextTask(ctx: TaskContext, workerId: string, observer: 
   return true;
 }
 
-/** Runs every task that is due now. Tests use this in place of a running worker. */
-export async function drainTasks(ctx: TaskContext, workerId = "inline") {
+/**
+ * Runs every task that is due now. Tests use this in place of a running worker. With
+ * `organizationId`, only that organization's: the demo story drains its own company's work
+ * and leaves every other company's to the worker.
+ */
+export async function drainTasks(ctx: TaskContext, workerId = "inline", organizationId?: string) {
   let n = 0;
-  while (await runNextTask(ctx, workerId)) n++;
+  while (await runNextTask(ctx, workerId, {}, organizationId)) n++;
   return n;
 }

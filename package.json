@@ -12,8 +12,8 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "db:migrate": "pnpm --filter @aerowise/db migrate",
-    "db:seed": "pnpm --filter @aerowise/db seed",
-    "db:reseed-demo": "pnpm --filter @aerowise/db reseed-demo",
+    "db:seed": "pnpm --filter @aerowise/db seed && pnpm --filter @aerowise/api demo-story",
+    "db:reseed-demo": "pnpm --filter @aerowise/db reseed-demo && pnpm --filter @aerowise/api demo-story",
     "db:create-platform-admin": "pnpm --filter @aerowise/db exec tsx src/cli.ts create-platform-admin",
     "files:copy-to-r2": "pnpm --filter @aerowise/storage exec tsx src/cli.ts"
   },

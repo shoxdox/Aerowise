@@ -42,14 +42,19 @@ export async function enqueue(
 /** A task locked longer than this is assumed to belong to a crashed worker and is retried. */
 const LOCK_TIMEOUT = "10 minutes";
 
-/** Claims the next due task, or returns null. Safe to call from several workers at once. */
-export async function claimNext(db: Database, workerId: string, now: Date = new Date()): Promise<Task | null> {
+/**
+ * Claims the next due task, or returns null. Safe to call from several workers at once.
+ * With `organizationId`, only that organization's tasks.
+ */
+export async function claimNext(db: Database, workerId: string, now: Date = new Date(), organizationId?: string): Promise<Task | null> {
+  const onlyOrg = organizationId ? sql`and organization_id = ${organizationId}` : sql``;
   const row = await sql<Task>`
     update background_tasks set locked_at = ${now}, locked_by = ${workerId}, attempts = attempts + 1
     where id = (
       select id from background_tasks
       where completed_at is null and failed_at is null and run_at <= ${now}
         and (locked_at is null or locked_at < ${now}::timestamptz - ${LOCK_TIMEOUT}::interval)
+        ${onlyOrg}
       order by run_at
       for update skip locked
       limit 1
