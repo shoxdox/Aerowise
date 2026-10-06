@@ -50,6 +50,8 @@ export interface OrganizationsTable {
   subscriptionEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
   pricePerContractCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
   monthlyMinimumCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
+  dataDeletedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  dataDeletedBy: ColumnType<string | null, string | null | undefined, string | null>;
   billingCustomerId: ColumnType<string | null, string | null | undefined, string | null>;
   renewalTerms: ColumnType<string | null, string | null | undefined, string | null>;
   smsEnabled: Generated<boolean>;
@@ -712,6 +714,19 @@ export interface ImportMappingsTable {
   updatedAt: Generated<Timestamp>;
 }
 
+export interface DataExportsTable {
+  id: Generated<string>;
+  organizationId: string;
+  status: Generated<"queued" | "ready" | "failed">;
+  requestedBy: string;
+  requestedAt: Timestamp;
+  finishedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  storageKey: ColumnType<string | null, string | null | undefined, string | null>;
+  byteSize: ColumnType<number | null, number | null | undefined, number | null>;
+  contents: ColumnType<unknown, string | null | undefined, string | null>;
+  error: ColumnType<string | null, string | null | undefined, string | null>;
+}
+
 export interface InvoicesTable {
   id: Generated<string>;
   organizationId: string;
@@ -1217,6 +1232,7 @@ export interface DB {
   imports: ImportsTable;
   importRows: ImportRowsTable;
   importMappings: ImportMappingsTable;
+  dataExports: DataExportsTable;
   invoices: InvoicesTable;
   invoiceLines: InvoiceLinesTable;
   payments: PaymentsTable;

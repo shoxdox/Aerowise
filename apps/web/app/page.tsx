@@ -100,6 +100,7 @@ export default function MarketingPage() {
           <span className="row">
             <Link href="/terms">Terms of service</Link>
             <Link href="/privacy">Privacy policy</Link>
+            <Link href="/data-handling">How we handle your data</Link>
           </span>
         </footer>
       </main>

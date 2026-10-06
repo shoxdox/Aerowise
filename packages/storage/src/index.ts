@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 /**
@@ -10,6 +10,15 @@ export interface ObjectStore {
   put(key: string, body: Buffer, contentType: string): Promise<void>;
   /** Returns null when the object does not exist. */
   get(key: string): Promise<Buffer | null>;
+  /** Deletes every file of one organization (its whole key prefix) and returns how many there were. */
+  deleteOrganization?(organizationId: string): Promise<number>;
+}
+
+const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** An organization id, checked before it is used as a key prefix to delete. */
+export function assertOrganizationId(organizationId: string) {
+  if (!ORG_ID.test(organizationId)) throw new Error("Invalid organization id");
 }
 
 const ORG_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/;
@@ -52,6 +61,15 @@ export class LocalDiskStore implements ObjectStore {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
     }
+  }
+
+  async deleteOrganization(organizationId: string) {
+    assertOrganizationId(organizationId);
+    const dir = join(this.root, organizationId);
+    let count = 0;
+    for await (const key of this.keys()) if (key.startsWith(`${organizationId}/`)) count++;
+    await rm(dir, { recursive: true, force: true });
+    return count;
   }
 
   /** Every stored key, for copying the files elsewhere. Half-written temporary files are skipped. */

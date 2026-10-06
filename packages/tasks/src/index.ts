@@ -16,6 +16,7 @@ import { RENEWAL_AGREEMENT, RENEWAL_EMAIL, RENEWAL_SWEEP, renderSignedAgreement,
 import { runMonthlyBilling, runPlanLifecycle, type BillingProvider } from "@aerowise/billing";
 import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/domain";
 import { BILLING_RUN } from "./billing-task.ts";
+import { buildExport, EXPORT_DATA, failExport } from "./export-task.ts";
 import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 
 export * from "./queue.ts";
@@ -43,6 +44,7 @@ export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } fr
 export { cancelOpenVisits, serviceEndForVisit } from "./contract-end.ts";
 export { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 export { BILLING_RUN, scheduleBillingRuns } from "./billing-task.ts";
+export { buildExport, EXPORT_DATA, EXPORT_TABLES, queueExport } from "./export-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -79,6 +81,15 @@ export function complianceContext(ctx: TaskContext): ComplianceContext {
 async function run(ctx: TaskContext, task: Task) {
   const payload = task.payload as Record<string, string>;
   switch (task.kind) {
+    case EXPORT_DATA:
+      try {
+        await buildExport(ctx.db, ctx.store, task.organizationId!, payload.exportId!, ctx.now());
+      } catch (err) {
+        // The owner asks again; a half-built export is never offered.
+        await failExport(ctx.db, task.organizationId!, payload.exportId!, ctx.now(), (err as Error).message);
+        throw err;
+      }
+      return;
     case GENERATE_REPORTS:
       await generateReports(ctx.db, ctx.store, task.organizationId!, payload.inspectionId!, ctx.now());
       // With the authority copy made, the inspection's filing can be checked and sent.

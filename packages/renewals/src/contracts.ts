@@ -26,6 +26,26 @@ type VisitTerms = Pick<Terms, "customerType" | "termMonths" | "visitsPerTerm">;
  * plan's visits; visits are added, never removed. Pass `catalog` when doing many sites at once.
  */
 export async function termsForSite<T extends VisitTerms>(db: Executor, organizationId: string, siteId: string, startOn: string, terms: T, catalog?: CatalogEntry[]): Promise<T> {
+  return (await siteVisitTerms(db, organizationId, siteId, startOn, terms, catalog)).terms;
+}
+
+/** Visits the site's authority adds to a plan, and why. */
+export interface AddedVisits {
+  planVisits: number;
+  visitsPerTerm: number;
+  authorityName: string;
+  intervalMonths: number;
+}
+
+/** `termsForSite`, also saying when (and why) the authority needs more visits than the plan has. */
+export async function siteVisitTerms<T extends VisitTerms>(
+  db: Executor,
+  organizationId: string,
+  siteId: string,
+  startOn: string,
+  terms: T,
+  catalog?: CatalogEntry[],
+): Promise<{ terms: T; added: AddedVisits | null }> {
   const site = await db
     .selectFrom("sites")
     .select(["county", "state", "jurisdictionId", "customerType"])
@@ -34,11 +54,22 @@ export async function termsForSite<T extends VisitTerms>(db: Executor, organizat
     .executeTakeFirstOrThrow();
   terms = { ...terms, customerType: site.customerType };
   const resolved = resolveSite(catalog ?? (await loadCatalog(db)), site, startOn);
-  if (!resolved) return terms;
+  if (!resolved) return { terms, added: null };
   // Monitoring only matters where the authority allows a longer interval for it.
   const monitored = resolved.rules.service.monitored ? await siteMonitoredOn(db, organizationId, siteId, startOn) : false;
-  const visitsPerTerm = visitsWithin(terms.termMonths, terms.visitsPerTerm, serviceIntervalMonths(resolved.rules, terms.customerType, monitored));
-  return visitsPerTerm === terms.visitsPerTerm ? terms : { ...terms, visitsPerTerm };
+  const intervalMonths = serviceIntervalMonths(resolved.rules, terms.customerType, monitored);
+  const visitsPerTerm = visitsWithin(terms.termMonths, terms.visitsPerTerm, intervalMonths);
+  if (visitsPerTerm === terms.visitsPerTerm) return { terms, added: null };
+  return { terms: { ...terms, visitsPerTerm }, added: { planVisits: terms.visitsPerTerm, visitsPerTerm, authorityName: resolved.authorityName, intervalMonths } };
+}
+
+/** The office has not yet agreed to the extra visits the site's authority needs. */
+export class MoreVisitsRequired extends Error {
+  constructor(readonly added: AddedVisits) {
+    super(
+      `${added.authorityName} requires an inspection at least every ${added.intervalMonths} month${added.intervalMonths === 1 ? "" : "s"}, so this contract needs ${added.visitsPerTerm} visits instead of the plan's ${added.planVisits}, at the same price. Create it with ${added.visitsPerTerm} visits?`,
+    );
+  }
 }
 
 /**
@@ -50,9 +81,11 @@ export async function insertContract(
   trx: Transaction<DB>,
   organizationId: string,
   input: { siteId: string; startOn: string; terms: Terms; autoRenew: boolean; notes?: string | null; previousContractId?: string; signedDocumentId?: string | null },
-  opts: { catalog?: CatalogEntry[] } = {},
+  opts: { catalog?: CatalogEntry[]; acceptVisits?: number; confirmExtraVisits?: boolean } = {},
 ) {
-  const terms = await termsForSite(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
+  const { terms, added } = await siteVisitTerms(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
+  // The office is warned before visits are added (Justin, 2026-10-05): it must accept the count.
+  if (opts.confirmExtraVisits && added && opts.acceptVisits !== added.visitsPerTerm) throw new MoreVisitsRequired(added);
   const schedule = buildTermSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm);
   const created = await trx
     .insertInto("contracts")

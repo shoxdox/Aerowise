@@ -28,6 +28,7 @@ function Shell({ children }: { children: ReactNode }) {
       ? [
           { href: "/settings/billing", label: "Billing" },
           { href: "/settings/subscription", label: "Subscription" },
+          { href: "/settings/export", label: "Export" },
         ]
       : []),
   ];

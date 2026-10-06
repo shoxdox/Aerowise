@@ -50,3 +50,34 @@ export const DEMO = {
   tooMany: "We already have a few requests from you. We will be in touch soon.",
   failed: "Could not send your request. Please try again.",
 };
+
+/**
+ * The public data-handling page. Placeholder wording that describes what the software does
+ * today; Justin supplies the statement itself (W5.6, "Needs from Justin").
+ */
+export const DATA_HANDLING = {
+  title: "How Aerowise handles your data",
+  draftNote: "Draft: this page is a placeholder. The final statement is still being written.",
+  sections: [
+    {
+      id: "what",
+      title: "What we keep",
+      body: "The records your company enters or imports: customers, sites, systems, contracts, visits, inspections, reports, invoices and payments, plus the files that go with them. Each company's records are kept apart from every other company's.",
+    },
+    {
+      id: "export",
+      title: "Taking your data with you",
+      body: "The owner of a company can download everything at any time from Settings, Export: a zip of spreadsheet files and every report and invoice PDF. This works even when the account is read-only.",
+    },
+    {
+      id: "delete",
+      title: "Deleting your data",
+      body: "Ask us and we delete your company's records and files. We keep only a note that the deletion happened, who asked, and when. Please download an export first: deletion cannot be undone.",
+    },
+    {
+      id: "contact",
+      title: "Questions",
+      body: "Contact details will be listed here.",
+    },
+  ],
+};

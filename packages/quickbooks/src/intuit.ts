@@ -114,8 +114,9 @@ export class IntuitQuickBooksProvider implements QuickBooksProvider {
     }
     const body = (await res.json().catch(() => ({}))) as Json;
     if (!res.ok) {
-      if (res.status >= 500 || res.status === 429) throw new QuickBooksError("transient", `QuickBooks sign-in is unavailable (${res.status})`);
-      throw new QuickBooksError("auth", `QuickBooks refused the connection: ${body.error_description ?? body.error ?? res.status}`, body.error);
+      const tid = res.headers.get("intuit_tid") ?? undefined;
+      if (res.status >= 500 || res.status === 429) throw new QuickBooksError("transient", `QuickBooks sign-in is unavailable (${res.status})`, undefined, tid);
+      throw new QuickBooksError("auth", `QuickBooks refused the connection: ${body.error_description ?? body.error ?? res.status}`, body.error, tid);
     }
     const now = Date.now();
     return {
@@ -173,15 +174,17 @@ class IntuitCompany implements QuickBooksCompany {
     }
     const data = (await res.json().catch(() => ({}))) as Json;
     if (res.ok && !data.Fault) return data;
-    if (res.status === 401 || res.status === 403) throw new QuickBooksError("auth", "QuickBooks no longer accepts this connection. Connect again.");
-    if (res.status === 429 || res.status >= 500) throw new QuickBooksError("transient", `QuickBooks is busy or unavailable (${res.status})`);
+    // Every failure carries Intuit's request id, so a stored sync error can be traced with Intuit support.
+    const tid = res.headers.get("intuit_tid") ?? undefined;
+    if (res.status === 401 || res.status === 403) throw new QuickBooksError("auth", "QuickBooks no longer accepts this connection. Connect again.", undefined, tid);
+    if (res.status === 429 || res.status >= 500) throw new QuickBooksError("transient", `QuickBooks is busy or unavailable (${res.status})`, undefined, tid);
     const e = (data.Fault?.Error?.[0] ?? {}) as Json;
     const code = e.code != null ? String(e.code) : undefined;
     const message = [e.Message, e.Detail].filter(Boolean).join(": ") || `QuickBooks returned ${res.status}`;
-    if (code === "6240") throw new QuickBooksError("duplicate_name", message, code);
-    if (code === "5010") throw new QuickBooksError("stale", message, code);
-    if (code === "610") throw new QuickBooksError("validation", "Not found in QuickBooks", code);
-    throw new QuickBooksError("validation", message, code);
+    if (code === "6240") throw new QuickBooksError("duplicate_name", message, code, tid);
+    if (code === "5010") throw new QuickBooksError("stale", message, code, tid);
+    if (code === "610") throw new QuickBooksError("validation", "Not found in QuickBooks", code, tid);
+    throw new QuickBooksError("validation", message, code, tid);
   }
 
   private async query(statement: string): Promise<Json> {

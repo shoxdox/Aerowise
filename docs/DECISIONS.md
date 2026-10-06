@@ -453,6 +453,24 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Definitions.** An active contract is one in force today (`contractState`). Expiring in 30, 60 or 90 days counts active contracts whose last day falls within that many days, each count including the shorter windows. Overdue inspections are open visits due before today. Due this month are open visits due from today to the month's last day. A site has no authority when the catalog resolves none for it today, whether no ruleset covers its county or several do and nobody has chosen. Missing permit means the site has no permit number. Customers counts customers with at least one service site in scope.
 - **Lists to fix from.** The first ten sites with no authority and the first ten missing a permit are listed with links, sorted by customer name.
 
+## 2026-10-05 · W5.5 Full data export
+
+- **What goes in:** one CSV per kind of record (customers, contacts, sites, systems, contracts, visits, jobs, inspections, inspection values, invoices, invoice lines, payments) with every column Aerowise keeps, plus every stored document (inspection reports, signed reports, invoice PDFs, signed agreements, uploaded contracts) in folders named by record id, and a README. Records refer to each other by id. Left out: the invoice pay-link token (a secret that lets someone pay as the customer) and signature images, which the signed PDFs show. Columns come from the database at build time, so a new column is exported without a code change.
+- **Formulas are defused.** A text cell starting with `=`, `+`, `-` or `@` (not a plain number) gets a leading `'`, so opening the CSV in a spreadsheet cannot run a formula a homeowner typed into a name or note.
+- **Built by the worker, one at a time.** `POST /exports` queues `export.build`; asking again while one is being built returns that one. The zip is built in memory, which is fine at pilot sizes (a few thousand sites and their PDFs). Very large organizations will need a streamed zip. A document whose file is missing is listed in the README and the export still finishes. A failed build is marked failed and the owner asks again.
+- **Owner only (`data:export`), and allowed while read-only.** Routes opt out of the read-only write block with `config.allowedWhenReadOnly` (added by W4.3 for saving a payment method); asking for an export uses it too. Downloads are GETs and work anyway.
+- **Not done here:** expiring old exports from storage, and emailing the owner when an export is ready.
+
+## 2026-10-05 · W5.6 Organization data deletion and data-handling page
+
+- **What goes:** every row of every table with an `organization_id` (read from the database, so a later table is covered without a code change), every stored file under the organization's prefix, and the people who belonged to no other organization. Someone who also works for another company keeps their account; a user row another record still points at is emptied (name, email, phone, password) instead of deleted.
+- **What stays:** the organization row, as a tombstone with only its name, plan and billing customer id, marked `data_deleted_at`/`data_deleted_by`. The platform audit log points at it and records who deleted what (row counts per table, users, files). The audit record has no tenant data in it beyond the company name. The billing customer id stays so a final invoice or refund can still be found at the billing provider; deleting the customer there is a manual step.
+- **Append-only tables** (audit events, reports, signed documents) refuse deletes through triggers. The erase switches those triggers off inside its own transaction only (`alter table … disable trigger user`, which briefly locks those tables) and back on before committing. Acceptable for a rare, deliberate admin action.
+- **Order:** records first in one transaction, files after it commits. A file failure leaves only unreachable files and writes `organization.files_delete_failed` to the platform audit log so they can be removed by hand. The reverse order could leave records pointing at deleted files.
+- **Confirmation:** the admin types the organization's exact name. The organization goes read-only (billing stops), its plan can no longer be changed and no one can be invited to it. Deletion cannot be undone. The screen asks the admin to have the owner download an export first.
+- **Data-handling page** (`/data-handling`, linked from the marketing page footer): placeholder text describing what the software does today. Justin supplies the statement.
+- **Open:** whether the company name should also be blanked in the tombstone (kept now so the admin can tell which company was deleted); how long the platform audit record of a deletion is kept.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -497,7 +515,7 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 ## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
 
 - **Versions live in code** (`CURRENT_LEGAL_VERSIONS` in `packages/domain/src/legal.ts`), next to the placeholder text in `apps/web/components/legal/text.ts`. Changing the text means bumping the version in the same pull request, so the version on the page and the version owners accept can never disagree.
-- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0032) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
+- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0034) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
 - **When it is asked:** `/auth/me` returns `legalDue`, and the office screens show only the acceptance prompt until the owner accepts. The prompt links to the public `/terms` and `/privacy` pages and sends the versions it showed; if either changed meanwhile, the API answers 409 and records nothing.
 - **The API does not refuse other requests until acceptance.** The prompt is the gate. Blocking every API call would also block the technician app and the worker's own calls, and a forgotten click should never stop a county filing. Revisit if the lawyer requires a hard block.
 - **A read-only (lapsed) company can still accept** (`config.allowedWhenReadOnly`), or its owner could never get past the prompt to export their data.
@@ -510,7 +528,7 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 
 1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
-2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Done in a follow-up: the contract form asks first, and the API refuses (409 `more_visits_required`) without `acceptVisits`. Imports still add the visits: they record contracts that already exist, and refusing would drop rows. The import summary does not list them yet.
 3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
 4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
 5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
@@ -533,3 +551,16 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **One Connect webhook endpoint.** With direct charges every event Aerowise reads (checkout, refunds, `account.updated`) happens on a connected account, so only the "Connected accounts" endpoint is needed; `STRIPE_WEBHOOK_SECRET` still takes several secrets for rotation.
 - **Checkout pages last 23 hours, not 24.** Stripe's 24-hour maximum is counted on its clock.
 - **The recorded run is a manual checklist plus the `stripe_events` table.** No Claude session can reach staging or Stripe from its sandbox, so Justin runs the steps in `INTEGRATIONS.md` and the webhook log on the server is the record.
+
+## 2026-10-06 · Restore check on a production with no companies yet
+
+- The first run on the real server failed production's restore check only because it required at least one organization, which a new production cannot have. That rule was a stand-in for "the backup is missing data".
+- **Now:** `backup.sh` records every table's row count just before the dump (`db-<stamp>.counts`, kept and copied to R2 with the dump), and `restore-check.sh` fails when a table that had rows then has none restored. Empty-at-backup tables are fine; a company created after the backup does not fail the check either. Comparing with the live database alone would fail on any table whose first row arrived after the backup.
+- The counts are taken a moment before `pg_dump`'s own snapshot, not in it. A table emptied in that moment (say, its last expired session deleted) would show as missing; that is rare and clears on the next backup, so it was preferred over holding an exported snapshot open across the dump.
+
+## 2026-10-06 · W7.2 QuickBooks against an Intuit sandbox
+
+- **`quickbooks` joins `DEMO_LIVE_SERVICES`, sandbox only.** The demo uses the real Intuit app only with `QUICKBOOKS_ENVIRONMENT=sandbox`, and staging refuses `production` outright, so staging can never connect a real company's books.
+- **Every QuickBooks failure names Intuit's request id** (`intuit_tid`, shown as "Intuit ref …" in the stored sync error). Intuit support asks for it, and Intuit's app review asks whether apps capture it.
+- **Production waits on Intuit's app review.** Its questionnaire answers and the URLs it asks for are in `docs/engineering/INTEGRATIONS.md`. The privacy and licence URLs depend on W8.3's pages.
+

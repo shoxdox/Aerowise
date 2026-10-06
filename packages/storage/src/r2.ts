@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { AwsClient } from "aws4fetch";
-import { assertOrganizationKey, type ObjectStore } from "./index.ts";
+import { assertOrganizationId, assertOrganizationKey, type ObjectStore } from "./index.ts";
 
 type Fetch = typeof fetch;
 
@@ -39,11 +39,36 @@ export class R2Store implements ObjectStore {
     return `${this.base}/${key.split("/").map(encodeURIComponent).join("/")}`;
   }
 
-  private async send(method: "GET" | "PUT", key: string, init: { body?: Buffer; headers?: Record<string, string> } = {}) {
+  private async send(method: "GET" | "PUT" | "DELETE", key: string, init: { body?: Buffer; headers?: Record<string, string> } = {}) {
+    return this.signedFetch(method, this.url(key), init);
+  }
+
+  private async signedFetch(method: "GET" | "PUT" | "DELETE", url: string, init: { body?: Buffer; headers?: Record<string, string> } = {}) {
     // The payload hash is signed too, so the bucket refuses a body changed on the way.
     const contentSha256 = createHash("sha256").update(init.body ?? Buffer.alloc(0)).digest("hex");
-    const signed = await this.aws.sign(this.url(key), { method, headers: { ...init.headers, "x-amz-content-sha256": contentSha256 }, body: init.body });
+    const signed = await this.aws.sign(url, { method, headers: { ...init.headers, "x-amz-content-sha256": contentSha256 }, body: init.body });
     return this.fetch(signed, { signal: AbortSignal.timeout(this.timeoutMs) });
+  }
+
+  /** Lists every key under the organization's prefix (ListObjectsV2, a page at a time) and deletes each. */
+  async deleteOrganization(organizationId: string) {
+    assertOrganizationId(organizationId);
+    const keys: string[] = [];
+    let token: string | null = null;
+    do {
+      const query = new URLSearchParams({ "list-type": "2", prefix: `${organizationId}/` });
+      if (token) query.set("continuation-token", token);
+      const res = await this.signedFetch("GET", `${this.base}?${query}`);
+      const xml = await res.text();
+      if (!res.ok) throw new Error(`R2 could not list ${organizationId}/: ${res.status} ${xml.slice(0, 300)}`);
+      for (const m of xml.matchAll(/<Key>([^<]*)<\/Key>/g)) keys.push(unescapeXml(m[1]!));
+      token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? unescapeXml(/<NextContinuationToken>([^<]*)<\/NextContinuationToken>/.exec(xml)?.[1] ?? "") || null : null;
+    } while (token);
+    for (const key of keys) {
+      const res = await this.send("DELETE", key);
+      if (!res.ok && res.status !== 404) throw new Error(`R2 could not delete ${key}: ${res.status}`);
+    }
+    return keys.length;
   }
 
   async put(key: string, body: Buffer, contentType: string) {
@@ -58,3 +83,5 @@ export class R2Store implements ObjectStore {
     return Buffer.from(await res.arrayBuffer());
   }
 }
+
+const unescapeXml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");

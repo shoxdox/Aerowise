@@ -77,12 +77,15 @@ describe("boot-time configuration check", () => {
     expect(configProblems({ ...staging, TWILIO_ACCOUNT_SID: "AC1" })).toEqual(["TWILIO_AUTH_TOKEN is required together"]);
   });
 
-  it("keeps staging's Stripe in test mode, and the demo's live services off production", () => {
+  it("keeps staging's Stripe in test mode and QuickBooks in the sandbox, and the demo's live services off production", () => {
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([]);
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "rk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([]);
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_live_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([
       "STRIPE_SECRET_KEY must be a test-mode key (sk_test_ or rk_test_) on staging",
     ]);
+    const qbo = { QUICKBOOKS_CLIENT_ID: "id", QUICKBOOKS_CLIENT_SECRET: "s", QUICKBOOKS_TOKEN_KEY: "k".repeat(64) };
+    expect(configProblems({ ...staging, ...qbo, QUICKBOOKS_ENVIRONMENT: "sandbox" })).toEqual([]);
+    expect(configProblems({ ...staging, ...qbo, QUICKBOOKS_ENVIRONMENT: "production" })).toEqual(['QUICKBOOKS_ENVIRONMENT must be "sandbox" on staging']);
     expect(configProblems({ ...production, DEMO_LIVE_SERVICES: "stripe" })).toEqual(["DEMO_LIVE_SERVICES is for the staging demo only; leave it empty in production"]);
   });
 

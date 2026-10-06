@@ -18,6 +18,7 @@ import { adminSupportRoutes } from "./routes/admin-support.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
+import { exportRoutes } from "./routes/exports.ts";
 import { inboxRoutes } from "./routes/inbox.ts";
 import { invoiceRoutes } from "./routes/invoices.ts";
 import { paymentRoutes } from "./routes/payments.ts";
@@ -252,7 +253,7 @@ export async function buildApp({
   const transport = mail ?? new OutboxTransport(store, now);
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
-  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription });
+  await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription, store });
   await app.register(adminSupportRoutes, { db, production });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
@@ -266,6 +267,7 @@ export async function buildApp({
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db, now });
+  await app.register(exportRoutes, { db, store, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
   await app.register(billingRoutes, { db, now, provider: billing, config: subscription });
   await app.register(subscriptionRoutes, { db, now, provider: billing, config: subscription, appUrl });
