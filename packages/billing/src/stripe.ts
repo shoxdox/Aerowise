@@ -68,6 +68,17 @@ export class StripeBillingProvider implements BillingProvider {
     return { invoiceId: invoice.id, status: finalized.status === "paid" ? ("paid" as const) : ("open" as const), hostedUrl: finalized.hosted_invoice_url ?? null };
   }
 
+  async retryInvoice(invoiceId: string) {
+    try {
+      const invoice = await this.stripe.invoices.pay(invoiceId);
+      return { status: invoice.status === "paid" ? ("paid" as const) : ("open" as const) };
+    } catch (err) {
+      // A declined card (or an invoice Stripe will not retry) leaves it unpaid; anything else is a real error.
+      if (err instanceof Stripe.errors.StripeCardError || err instanceof Stripe.errors.StripeInvalidRequestError) return { status: "open" as const };
+      throw err;
+    }
+  }
+
   async paymentMethod(customerId: string): Promise<PaymentMethodSummary | null> {
     const customer = await this.stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] });
     if (customer.deleted) return null;

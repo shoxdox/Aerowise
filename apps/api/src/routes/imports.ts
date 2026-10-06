@@ -11,6 +11,10 @@ import {
   importMappingInput,
   importRowsInput,
   importSheetInput,
+  importUndoCheck,
+  onboardingCounts,
+  onboardingSummary,
+  onboardingSummaryQuery,
   importUpload,
   mappingScore,
   MAX_IMPORT_BYTES,
@@ -21,7 +25,7 @@ import {
   type ExistingRecords,
   type SavedColumn,
 } from "@aerowise/domain";
-import { loadCatalog } from "@aerowise/compliance";
+import { loadCatalog, resolveSite } from "@aerowise/compliance";
 import { queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Insertable, type Transaction } from "kysely";
@@ -30,6 +34,7 @@ import { audit } from "../lib/audit.ts";
 import { insertContract, type Terms } from "../lib/contracts.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { parseSpreadsheet } from "../lib/import-parse.ts";
+import { deleteImportRecords, importRecords, undoBlockers } from "../lib/import-undo.ts";
 import { organizationToday } from "../lib/today.ts";
 import { jsonRow } from "../lib/json.ts";
 
@@ -49,7 +54,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   async function findImport(organizationId: string, importId: string) {
     const row = await db
       .selectFrom("imports")
-      .select(["id", "filename", "status", "sheets", "sheetIndex", "headers", "mapping", "mappingSource", "createdAt", "committedAt", "error", "result"])
+      .select(["id", "filename", "status", "sheets", "sheetIndex", "headers", "mapping", "mappingSource", "createdAt", "committedAt", "undoneAt", "error", "result"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", importId)
       .executeTakeFirst();
@@ -167,6 +172,68 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     if (imp.status === "preview" || (allowFailed && imp.status === "failed")) return;
     throw new HttpError(409, "import_closed", `This import is already ${imp.status}`);
   };
+
+  app.get(
+    "/onboarding/summary",
+    {
+      config: { permission: "contracts:read" },
+      schema: {
+        tags: ["imports"],
+        summary: "The book at a glance: active and expiring contracts, late visits, sites missing an authority or permit",
+        description: "For the whole organization, or for what one saved import created.",
+        querystring: onboardingSummaryQuery,
+        response: { 200: onboardingSummary },
+      },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const importId = req.query.importId ?? null;
+      if (importId) await findImport(organizationId, importId);
+      const today = await organizationToday(db, organizationId, now());
+      // An import's records are its sites and the contracts it created on them.
+      const sites = await db
+        .selectFrom("sites as s")
+        .innerJoin("customers as c", "c.id", "s.customerId")
+        .select(["s.id", "s.addressLine1", "s.city", "s.county", "s.state", "s.jurisdictionId", "s.permitNumber", "s.customerId", "c.displayName as customerName"])
+        .where("s.organizationId", "=", organizationId)
+        .$if(importId !== null, (q) => q.where("s.importId", "=", importId!))
+        .orderBy("c.displayName")
+        .orderBy("s.addressLine1")
+        .execute();
+      const siteIds = sites.map((s) => s.id);
+      const [contracts, visits] = siteIds.length
+        ? await Promise.all([
+            db
+              .selectFrom("contracts")
+              .select(["status", "startOn", "endOn", "serviceEndsOn"])
+              .where("organizationId", "=", organizationId)
+              .$if(importId !== null, (q) => q.where("siteId", "in", siteIds))
+              .execute(),
+            db
+              .selectFrom("serviceObligations")
+              .select("dueOn")
+              .where("organizationId", "=", organizationId)
+              .where("status", "=", "open")
+              .$if(importId !== null, (q) => q.where("siteId", "in", siteIds))
+              .execute(),
+          ])
+        : [[], []];
+      const catalog = await loadCatalog(db);
+      const withAuthority = sites.map((s) => ({ ...s, hasAuthority: resolveSite(catalog, s, today) !== null }));
+      const ref = (s: (typeof withAuthority)[number]) => ({ id: s.id, addressLine1: s.addressLine1, city: s.city, customerName: s.customerName });
+      return {
+        importId,
+        today,
+        customers: new Set(sites.map((s) => s.customerId)).size,
+        sites: sites.length,
+        ...onboardingCounts({ today, contracts, visits, sites: withAuthority }),
+        examples: {
+          withoutAuthority: withAuthority.filter((s) => !s.hasAuthority).slice(0, 10).map(ref),
+          withoutPermit: withAuthority.filter((s) => !s.permitNumber).slice(0, 10).map(ref),
+        },
+      };
+    },
+  );
 
   app.get(
     "/imports",
@@ -432,6 +499,67 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     },
   );
 
+  async function undoCheck(q: Database | Transaction<DB>, organizationId: string, imp: { id: string; status: string }) {
+    const records = await importRecords(q, organizationId, imp.id);
+    const removes = { customers: records.customers.length, sites: records.sites.length, contracts: records.contracts.length, visits: records.service_obligations.length };
+    if (imp.status !== "committed") {
+      const reason = imp.status === "undone" ? "This import was already undone" : "Only a saved import can be undone";
+      return { records, check: { canUndo: false, reason, removes, blockers: [] } };
+    }
+    const blockers = await undoBlockers(q, organizationId, records);
+    return { records, check: { canUndo: blockers.length === 0, reason: null, removes, blockers } };
+  }
+
+  app.get(
+    "/imports/:id/undo",
+    {
+      config: { permission: "crm:write" },
+      schema: { tags: ["imports"], summary: "What undoing a saved import would delete, and any work that stops it", params, response: { 200: importUndoCheck } },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const imp = await findImport(organizationId, req.params.id);
+      return (await undoCheck(db, organizationId, imp)).check;
+    },
+  );
+
+  app.post(
+    "/imports/:id/undo",
+    {
+      config: { permission: "crm:write" },
+      schema: {
+        tags: ["imports"],
+        summary: "Delete everything a saved import created",
+        description: "Only while nothing has been done with those records (no visits scheduled, inspections, invoices, filings, renewals and so on); otherwise 409 names what blocks it.",
+        params,
+        response: { 200: importDetail },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      const imp = await findImport(organizationId, req.params.id);
+      await db.transaction().execute(async (trx) => {
+        // Hold the import while checking and deleting, so two undos cannot interleave.
+        await trx.selectFrom("imports").select("id").where("id", "=", imp.id).forUpdate().execute();
+        const current = await trx.selectFrom("imports").select("status").where("id", "=", imp.id).executeTakeFirstOrThrow();
+        const { records, check } = await undoCheck(trx, organizationId, { id: imp.id, status: current.status });
+        if (check.reason) throw new HttpError(409, "import_closed", check.reason);
+        if (!check.canUndo) throw new HttpError(409, "import_in_use", `This import can't be undone because work was done on its records: ${check.blockers.map((b) => b.label).join(", ")}`);
+        try {
+          await deleteImportRecords(trx, organizationId, records);
+        } catch (err) {
+          // Work added between the check and the delete.
+          if ((err as { code?: string }).code === "23503") throw new HttpError(409, "import_in_use", "Work was just added to this import's records; check again");
+          throw err;
+        }
+        await trx.updateTable("importRows").set({ customerId: null, siteId: null, contractId: null }).where("importId", "=", imp.id).execute();
+        await trx.updateTable("imports").set({ status: "undone", undoneAt: now(), undoneBy: userId }).where("id", "=", imp.id).execute();
+        await audit(trx, req, { action: "import.undone", entityType: "import", entityId: imp.id, changes: check.removes });
+      });
+      return detail(organizationId, imp.id);
+    },
+  );
+
   app.post(
     "/imports/:id/discard",
     {
@@ -498,6 +626,8 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
       accessNotes: r.accessNotes,
       gateCode: r.gateCode,
       schedulingNotes: null,
+      // The plan named on the row is the only hint the import has; the office can change it on the site.
+      customerType: (r.planName ? plans.get(r.planName)?.customerType : undefined) ?? "residential",
       importId,
     });
     if (r.manufacturer || r.model || r.serial) systems.push({ organizationId, siteId, manufacturer: r.manufacturer, model: r.model, serial: r.serial });

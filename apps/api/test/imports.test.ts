@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
+import { drainTasks } from "@aerowise/tasks";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 
 const ctx = setupTestApp();
@@ -48,6 +49,48 @@ function messyCsv() {
     if (i === 250) lines.push("");
   }
   return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`${lines.join("\r\n")}\r\n`)]);
+}
+
+/**
+ * A provider's whole book, 500 rows, as messy as messyCsv, with contract dates and last
+ * inspections. Today is 2026-03-01 and the plan is 12 months with a visit every 4 months.
+ * Each row's kind is i % 10:
+ * 0 ends 2026-03-21, every visit done (last inspection 2025-12-10)
+ * 1 ends 2026-04-25, every visit done (last inspection 2026-01-05)
+ * 2 ends 2026-05-20, no last inspection: 2 visits overdue
+ * 3 started 2025-07-01, last inspected 2025-10-01: 1 visit overdue
+ * 4 started 2025-04-01, last inspected 2025-09-15: 1 visit due 2026-03-31, ends that day
+ * 5 ended 2026-01-31
+ * 6 starts 2026-04-01
+ * 7, 8, 9 no contract
+ * Rows i % 100 === 42 have no address and i % 100 === 77 repeat the row before, so neither
+ * is imported. A third of the rows name Example County (an authority); a quarter have a permit.
+ */
+function bookCsv() {
+  const KINDS: [plan: boolean, start: string, end: string, last: string][] = [
+    [true, "", "3/21/2026", "12/10/2025"],
+    [true, "", "2026-04-25", "1/5/26"],
+    [true, "", "05/20/2026", ""],
+    [true, "7/1/2025", "", "2025-10-01"],
+    [true, "4/1/2025", "", "9/15/2025"],
+    [true, "", "1/31/2026", ""],
+    [true, "4/1/2026", "", ""],
+    [false, "", "", ""],
+    [false, "", "", ""],
+    [false, "", "", ""],
+  ];
+  const lines = ["Account Name,Property Address,City,County,Permit No,Make,Model,Plan,Contract Start,Expires,Last Service"];
+  for (let i = 0; i < 500; i++) {
+    const [plan, start, end, last] = KINDS[i % 10]!;
+    const address = i % 100 === 42 ? "" : i % 100 === 77 ? ` ${200 + i - 1} Cedar Rd. ` : `${200 + i} Cedar Road`;
+    lines.push(
+      [` Owner ${i} `, address, i % 2 ? "Austin" : "austin", i % 3 === 0 ? "example county" : "", i % 4 === 0 ? `ex-${pad(i)}` : "", i % 3 === 1 ? "Aqua-Safe" : "", i % 3 === 1 ? "AS 500" : "", plan ? (i % 2 ? "annual aerobic" : "Annual Aerobic") : "", start, end, last]
+        .map(csvCell)
+        .join(","),
+    );
+    if (i % 125 === 0) lines.push(",,,,,,,,,,");
+  }
+  return Buffer.from(`${lines.join("\r\n")}\r\n`);
 }
 
 type Detail = {
@@ -277,6 +320,128 @@ describe("customer import", () => {
     const site = await ctx.db.selectFrom("sites").select(["id", "permitNumber"]).where("addressLine1", "=", "1 R St").executeTakeFirstOrThrow();
     expect(site.permitNumber).toBe("P-1");
     expect(await ctx.db.selectFrom("wastewaterSystems").select(["manufacturer", "model"]).where("siteId", "=", site.id).execute()).toEqual([{ manufacturer: "Aqua", model: "AS-500" }]);
+  });
+
+  it("undoes a saved import while nothing has been done with it", async () => {
+    const t = await tenant(ctx);
+    const existing = (await t.api.post("/customers", { displayName: "Ann Lee" })).json();
+    await t.api.post(`/customers/${existing.id}/contacts`, { name: "Ann Lee", phone: "(512) 555-0100" });
+    const before = { customers: await count(ctx, "customers"), sites: await count(ctx, "sites"), contacts: await count(ctx, "contacts"), systems: await count(ctx, "wastewater_systems") };
+    const csv = "Name,Address,City,Phone,Make,Plan,Start Date,Last Inspection\nAnn Lee,9 Elm Rd,Austin,512.555.0100,Aqua,Annual Aerobic,7/1/2025,10/1/2025\nBo Diaz,5 Pine Ln,Austin,512.555.0111,,Annual Aerobic,3/1/2026,\n";
+    const imp = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    // Nothing to undo before it is saved.
+    expect((await t.api.get(`/imports/${imp.id}/undo`)).json()).toMatchObject({ canUndo: false, reason: "Only a saved import can be undone" });
+    await t.api.post(`/imports/${imp.id}/commit`, {});
+    await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now });
+
+    expect((await t.api.get(`/imports/${imp.id}/undo`)).json()).toEqual({ canUndo: true, reason: null, removes: { customers: 1, sites: 2, contracts: 2, visits: 6 }, blockers: [] });
+    // Editing what was imported is not work that blocks undo.
+    const bo = (await t.api.get("/customers?search=Bo%20Diaz")).json().items[0];
+    await t.api.patch(`/customers/${bo.id}`, { notes: "prefers texts" });
+
+    const undone = (await t.api.post(`/imports/${imp.id}/undo`, {})).json() as Detail;
+    expect(undone).toMatchObject({ status: "undone", result: { customers: 1, sites: 2, contracts: 2 } });
+    expect(undone.rows.every((r) => r.result === null)).toBe(true);
+    expect({ customers: await count(ctx, "customers"), sites: await count(ctx, "sites"), contacts: await count(ctx, "contacts"), systems: await count(ctx, "wastewater_systems") }).toEqual(before);
+    expect(await count(ctx, "contracts")).toBe(0);
+    expect((await t.api.post(`/imports/${imp.id}/undo`, {})).statusCode).toBe(409);
+    expect((await t.api.get("/imports")).json().items).toMatchObject([{ id: imp.id, status: "undone" }]);
+    const audit = await ctx.db.selectFrom("auditEvents").select(["action", "changes"]).where("entityId", "=", imp.id).where("action", "=", "import.undone").execute();
+    expect(audit).toMatchObject([{ changes: { customers: 1, sites: 2, contracts: 2, visits: 6 } }]);
+    // The same file can be imported again.
+    const again = (await t.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    expect(again.summary).toMatchObject({ ready: 2, duplicate: 0 });
+  });
+
+  it("lists exactly the work that stops an undo", async () => {
+    const s = await tenant(ctx);
+    const csv = "Name,Address,City,Plan,Start Date\nAnn Lee,9 Elm Rd,Austin,Annual Aerobic,12/1/2025\nBo Diaz,5 Pine Ln,Austin,,\nCy Moss,7 Oak Dr,Austin,Annual Aerobic,1/15/2026\n";
+    const imp = (await s.upload("c.csv", Buffer.from(csv))).json() as Detail;
+    const saved = (await s.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    const [ann, bo, cy] = saved.rows.map((r) => r.result as { customerId: string; siteId: string; contractId: string | null });
+    const check = async () => (await s.api.get(`/imports/${imp.id}/undo`)).json();
+
+    // A visit scheduled and inspected.
+    const tech = await createUser(ctx.db, s.org.id, "technician");
+    const techApi = client(ctx.app, await login(ctx.app, tech.email));
+    const visit = (await s.api.get(`/contracts/${ann!.contractId}`)).json().obligations[0];
+    const job = (await s.api.post("/jobs", { obligationId: visit.id, technicianId: tech.id, scheduledDate: "2026-03-01" })).json();
+    const template = (await techApi.get("/inspection-template")).json();
+    expect(
+      (
+        await techApi.put("/inspections/sync", {
+          clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d01",
+          jobId: job.jobId,
+          templateId: template.id,
+          status: "draft",
+          arrivedAt: "2026-03-01T15:00:00Z",
+          values: { aerator: "pass" },
+        })
+      ).statusCode,
+    ).toBeLessThan(300);
+    // An invoice, a site added to an imported customer, and a renewal of an imported contract.
+    await s.api.post("/invoices", { customerId: bo!.customerId, lines: [{ description: "Pump out", unitPriceCents: 30000 }] });
+    await s.api.post(`/customers/${bo!.customerId}/sites`, { addressLine1: "6 Pine Ln", city: "Austin" });
+    expect((await s.api.post(`/contracts/${cy!.contractId}/renewal`, { send: false })).statusCode).toBeLessThan(300);
+
+    const blocked = await check();
+    expect(blocked).toMatchObject({ canUndo: false, reason: null });
+    expect(Object.fromEntries(blocked.blockers.map((b: { table: string; label: string }) => [b.table, b.label]))).toEqual({
+      jobs: "1 scheduled visit",
+      inspections: "1 inspection",
+      invoices: "1 invoice",
+      sites: "1 site added to an imported customer",
+      renewals: "1 renewal",
+    });
+    const res = await s.api.post(`/imports/${imp.id}/undo`, {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toContain("1 scheduled visit");
+    expect(await count(ctx, "contracts")).toBe(2);
+
+    // A filing on an imported site blocks it too.
+    for (const table of ["inspection_values", "inspections", "jobs", "invoice_lines", "invoices", "renewals"]) await sql`delete from ${sql.table(table)}`.execute(ctx.db);
+    await ctx.db.deleteFrom("sites").where("addressLine1", "=", "6 Pine Ln").execute();
+    expect((await check()).blockers).toEqual([]);
+    // A contract filing: the authority is told about an imported contract.
+    await sql`insert into filings (organization_id, site_id, contract_id, kind, status, state_machine_version)
+      values (${s.org.id}, ${cy!.siteId}, ${cy!.contractId}, 'contract', 'pending', 1)`.execute(ctx.db);
+    expect((await check()).blockers).toEqual([{ table: "filings", label: "1 filing", count: 1 }]);
+  });
+
+  it("shows the onboarding summary of a messy 500-row book", async () => {
+    const t = await tenant(ctx);
+    const imp = (await t.upload("book.csv", bookCsv())).json() as Detail;
+    expect(imp.mapping).toMatchObject({ customerName: 0, addressLine1: 1, city: 2, county: 3, permitNumber: 4, manufacturer: 5, model: 6, planName: 7, contractStart: 8, contractEnd: 9, lastInspection: 10 });
+    expect(imp.summary).toMatchObject({ rows: 500, error: 5, duplicate: 5, included: 490 });
+    // What the import and the summary should say, from the rules the book was built with.
+    const imported = Array.from({ length: 500 }, (_, i) => i).filter((i) => i % 100 !== 42 && i % 100 !== 77);
+    const kinds = (...ks: number[]) => imported.filter((i) => ks.includes(i % 10)).length;
+    const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json() as Detail;
+    expect(done.result).toEqual({ customers: 490, sites: 490, contracts: kinds(0, 1, 2, 3, 4, 5, 6) });
+    const summary = (await t.api.get(`/onboarding/summary?importId=${imp.id}`)).json();
+    expect(summary).toMatchObject({
+      importId: imp.id,
+      today: "2026-03-01",
+      customers: 490,
+      sites: 490,
+      activeContracts: kinds(0, 1, 2, 3, 4),
+      expiring: { within30: kinds(0, 4), within60: kinds(0, 1, 4), within90: kinds(0, 1, 2, 4) },
+      overdueVisits: 2 * kinds(2) + kinds(3),
+      dueThisMonth: kinds(4),
+      sitesWithoutAuthority: imported.filter((i) => i % 3 !== 0).length,
+      sitesWithoutPermit: imported.filter((i) => i % 4 !== 0).length,
+    });
+    expect(summary.examples.withoutAuthority).toHaveLength(10);
+    expect(summary.examples.withoutPermit[0]).toMatchObject({ customerName: "Owner 1", addressLine1: "201 Cedar Road" });
+
+    // The whole organization also counts what was there before.
+    const all = (await t.api.get("/onboarding/summary")).json();
+    expect(all).toMatchObject({ importId: null, sites: 491, customers: 491, activeContracts: summary.activeContracts });
+
+    // Another organization sees neither the import nor its records.
+    const b = await tenant(ctx, "Org B");
+    expect((await b.api.get(`/onboarding/summary?importId=${imp.id}`)).statusCode).toBe(404);
+    expect((await b.api.get("/onboarding/summary")).json()).toMatchObject({ sites: 1, activeContracts: 0, overdueVisits: 0 });
   });
 
   it("lets the office fix the mapping and choose rows", async () => {

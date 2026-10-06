@@ -4,7 +4,9 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { forbidden, HttpError, unauthorized } from "../lib/errors.ts";
 import { ADMIN_SESSION_COOKIE, findAdminSession, type AdminContext } from "./admin-sessions.ts";
+import { platformAudit } from "../lib/platform-audit.ts";
 import { findSession, SESSION_COOKIE, type AuthContext } from "./sessions.ts";
+import { findSupportSession, SUPPORT_SESSION_COOKIE } from "./support-sessions.ts";
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -22,6 +24,8 @@ declare module "fastify" {
      * or lets its owner back in (saving a payment method to pay Aerowise, accepting the terms).
      */
     allowedWhenReadOnly?: boolean;
+    /** A GET that changes data (an OAuth callback). Support access is refused it like any write. */
+    changesState?: boolean;
     /** Accepts a raw image body instead of JSON (photo uploads). */
     imageUpload?: boolean;
     /** Accepts a form-encoded body: provider webhooks that sign their requests (Twilio). */
@@ -93,14 +97,35 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
       return;
     }
 
+    // A live support session wins over a tenant sign-in in the same browser: the admin
+    // opened it on purpose, and it can only read.
+    const supportToken = req.cookies[SUPPORT_SESSION_COOKIE];
     const token = req.cookies[SESSION_COOKIE];
-    req.auth = token ? await findSession(opts.db, token) : null;
+    req.auth = (supportToken ? await findSupportSession(opts.db, supportToken) : null) ?? (token ? await findSession(opts.db, token) : null);
     // Every later log line for this request (including "request completed") names the tenant.
-    if (req.auth) req.log = reply.log = req.log.child({ organizationId: req.auth.organizationId, userId: req.auth.userId });
+    if (req.auth) {
+      req.log = reply.log = req.log.child({
+        organizationId: req.auth.organizationId,
+        userId: req.auth.userId,
+        ...(req.auth.support ? { platformAdminId: req.auth.support.adminId, supportSessionId: req.auth.support.supportSessionId } : {}),
+      });
+    }
 
     if (config.public) return;
     const auth = req.requireAuth();
     if (!config.permission || !roleHasPermission(auth.role, config.permission)) throw forbidden();
+    // Support looks and never touches: every write is refused, and the attempt is recorded.
+    if (auth.support && (!SAFE_METHODS.includes(req.method) || config.changesState)) {
+      await platformAudit(opts.db, req, {
+        adminId: auth.support.adminId,
+        organizationId: auth.organizationId,
+        action: "support.write_refused",
+        entityType: "support_session",
+        entityId: auth.support.supportSessionId,
+        changes: { method: req.method, route: req.routeOptions.url },
+      });
+      throw new HttpError(403, "support_read_only", "Support access is read-only. Nothing was changed.");
+    }
     // A lapsed organization keeps reading and exporting everything (reads are GETs) but
     // changes nothing. Public routes (homeowner links, provider webhooks) are not tenant
     // sessions and keep working, so a homeowner can still pay what they owe.

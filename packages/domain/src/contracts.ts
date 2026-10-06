@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { id } from "./crm.ts";
+import { CUSTOMER_TYPES, id } from "./crm.ts";
 
-export const CUSTOMER_TYPES = ["residential", "commercial"] as const;
 export const BILLING_FREQUENCIES = ["annual", "semiannual", "quarterly", "monthly"] as const;
 export const SERVICE_TYPES = ["aerobic_inspection"] as const;
 export const CONTRACT_STATES = ["upcoming", "active", "expired", "cancelled"] as const;

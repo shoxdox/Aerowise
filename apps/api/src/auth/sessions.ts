@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Database } from "@aerowise/db";
 import type { Role, SubscriptionState } from "@aerowise/domain";
+import type { SupportContext } from "./support-sessions.ts";
 
 export const SESSION_COOKIE = "aw_session";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -12,6 +13,8 @@ export interface AuthContext {
   role: Role;
   /** The organization's Aerowise plan state; `read_only` refuses every write. */
   subscriptionState: SubscriptionState;
+  /** Set when a platform admin is looking at the organization read-only for support. */
+  support?: SupportContext;
 }
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest();

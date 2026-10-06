@@ -137,6 +137,7 @@ export interface SitesTable {
   gateCode: string | null;
   safetyFlags: Generated<string[]>;
   schedulingNotes: string | null;
+  customerType: Generated<"residential" | "commercial">;
   jurisdictionId: ColumnType<string | null, string | null | undefined, string | null>;
   authorityAssignmentId: ColumnType<string | null, string | null | undefined, string | null>;
   importId: ColumnType<string | null, string | null | undefined, never>;
@@ -674,7 +675,7 @@ export interface ImportsTable {
   id: Generated<string>;
   organizationId: string;
   filename: string;
-  status: Generated<"preview" | "committed" | "failed" | "discarded">;
+  status: Generated<"preview" | "committed" | "failed" | "discarded" | "undone">;
   headers: ColumnType<unknown, string, string>;
   mapping: ColumnType<unknown, string, string>;
   createdBy: string;
@@ -685,6 +686,8 @@ export interface ImportsTable {
   sheets: ColumnType<unknown, string, never>;
   sheetIndex: Generated<number>;
   mappingSource: Generated<"detected" | "saved" | "edited">;
+  undoneAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  undoneBy: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface ImportRowsTable {
@@ -1089,6 +1092,17 @@ export interface PlatformAdminsTable {
   createdAt: CreatedAt;
 }
 
+export interface SupportSessionsTable {
+  id: Generated<string>;
+  tokenHash: Buffer;
+  adminId: string;
+  organizationId: string;
+  reason: string;
+  startedAt: CreatedAt;
+  expiresAt: Timestamp;
+  endedAt: Timestamp | null;
+}
+
 export interface PlatformAdminSessionsTable {
   id: Generated<string>;
   tokenHash: Buffer;
@@ -1129,6 +1143,14 @@ export interface BillingPeriodsTable {
   hostedInvoiceUrl: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Generated<Date>;
+}
+
+export interface PlanRemindersTable {
+  id: Generated<string>;
+  organizationId: string;
+  endsOn: string;
+  daysBefore: number;
+  sentAt: CreatedAt;
 }
 
 export interface BillingEventsTable {
@@ -1225,9 +1247,11 @@ export interface DB {
   demoRequests: DemoRequestsTable;
   legalAcceptances: LegalAcceptancesTable;
   platformAdminSessions: PlatformAdminSessionsTable;
+  supportSessions: SupportSessionsTable;
   platformAuditEvents: PlatformAuditEventsTable;
   billingPeriods: BillingPeriodsTable;
   billingEvents: BillingEventsTable;
+  planReminders: PlanRemindersTable;
   invitations: InvitationsTable;
   passwordResetTokens: PasswordResetTokensTable;
 }

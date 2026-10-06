@@ -49,6 +49,7 @@ export default function SitePage() {
       postalCode: v.postalCode ?? null,
       county: v.county ?? null,
       permitNumber: v.permitNumber ?? null,
+      customerType: v.customerType,
       gateCode: v.gateCode ?? null,
       accessNotes: v.accessNotes ?? null,
       schedulingNotes: v.schedulingNotes ?? null,
@@ -119,6 +120,13 @@ export default function SitePage() {
             <input name="permitNumber" defaultValue={site.permitNumber ?? ""} />
           </label>
           <label>
+            System use
+            <select name="customerType" defaultValue={site.customerType}>
+              <option value="residential">Residential</option>
+              <option value="commercial">Commercial</option>
+            </select>
+          </label>
+          <label>
             Gate code
             <input name="gateCode" defaultValue={site.gateCode ?? ""} />
           </label>
@@ -158,6 +166,8 @@ export default function SitePage() {
           <dd>{site.permitNumber ?? "Not recorded"}</dd>
           <dt>County</dt>
           <dd>{site.county ?? "—"}</dd>
+          <dt>System use</dt>
+          <dd>{site.customerType === "commercial" ? "Commercial" : "Residential"}</dd>
           <dt>Gate code</dt>
           <dd>{site.gateCode ?? "—"}</dd>
           <dt>Location</dt>

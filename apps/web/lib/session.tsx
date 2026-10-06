@@ -15,6 +15,8 @@ export interface Me {
   role: "owner" | "office" | "technician" | "read_only";
   /** Documents this owner must accept first (W8.3). Missing from a copy cached on a phone before then. */
   legalDue?: ("terms" | "privacy")[];
+  /** Set when Aerowise support is looking at the company read-only. */
+  support?: { adminName: string; expiresAt: string };
 }
 
 const SessionContext = createContext<Me | null>(null);
@@ -37,5 +39,8 @@ export function useSession(): Me {
 /** Whether the company's Aerowise plan has lapsed: everything stays readable, nothing changes. */
 export const isReadOnlyAccount = (me: Me) => me.organization.subscription?.readOnly === true;
 
+/** Whether this is Aerowise support's read-only view of the company. */
+export const isSupportView = (me: Me) => Boolean(me.support);
+
 /** Whether the signed-in role may edit records. The API enforces this regardless. */
-export const canEdit = (me: Me) => (me.role === "owner" || me.role === "office") && !isReadOnlyAccount(me);
+export const canEdit = (me: Me) => (me.role === "owner" || me.role === "office") && !isReadOnlyAccount(me) && !isSupportView(me);

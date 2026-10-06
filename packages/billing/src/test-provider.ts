@@ -18,6 +18,10 @@ export class TestBillingProvider implements BillingProvider {
   readonly invoices: (BillingInvoiceInput & { invoiceId: string; totalCents: number })[] = [];
   /** Saved payment methods by customer. */
   readonly paymentMethods = new Map<string, PaymentMethodSummary>();
+  /** Set to make retried invoices decline, as a card that still does not work would. */
+  declineRetries = false;
+  /** Invoices collected again through retryInvoice. */
+  readonly retried: string[] = [];
   /** Set to make the next calls fail, as a network error would. */
   failNext = 0;
 
@@ -43,6 +47,12 @@ export class TestBillingProvider implements BillingProvider {
     const invoice = existing ?? { ...input, invoiceId: rid("in"), totalCents: input.lines.reduce((sum, l) => sum + l.quantity * l.unitAmountCents, 0) };
     if (!existing) this.invoices.push(invoice);
     return { invoiceId: invoice.invoiceId, status: "open" as const, hostedUrl: `https://invoice.stripe.test/${invoice.invoiceId}` };
+  }
+
+  async retryInvoice(invoiceId: string) {
+    this.maybeFail();
+    this.retried.push(invoiceId);
+    return { status: this.declineRetries ? ("open" as const) : ("paid" as const) };
   }
 
   async paymentMethod(customerId: string) {

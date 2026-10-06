@@ -306,6 +306,14 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Who sees it:** owners and office staff (`users:read`). Technicians land in the tech app and read-only users have nothing to set up.
 - **The demo company shows it.** The seeded demo company has no service counties, licenses or Stripe account, so the hosted demo shows the checklist with two of six steps done. **Open:** whether the demo should be seeded complete instead.
 
+## 2026-10-05 · W2.6 Read-only support access
+
+- **Support sees the company as its owner does, signed in as themselves.** "View read-only" in `/admin` asks for a reason and sets a separate `aw_support_session` cookie for one hour. Requests carry the owner's role, so every page the owner can read opens, but `/auth/me` names "Aerowise support (admin name)" and the office shows a banner with an "End support view" button. It needs an active owner to look through; a company whose owner has not joined yet is refused with "no owner yet".
+- **Every write is refused in the auth plugin**, before any route runs: any method other than GET, HEAD or OPTIONS, and the one GET that changes data (the QuickBooks OAuth callback, marked `changesState`). Each refused attempt is written to the platform audit log as `support.write_refused`. A test sends every write route in the OpenAPI description through a support session and checks each is refused and nothing in the company's audit log changed.
+- **Audited in both logs.** `support.started` (with the reason and expiry) and `support.ended` go to the platform audit log and to the company's own audit log (with no user as actor), so the company can see when Aerowise looked and why. Opening a second company ends the first, so one admin has at most one support view. A view that simply runs out its hour has no "ended" event; its start event records when it expired.
+- **Precedence:** a live support cookie wins over a tenant sign-in in the same browser, so a write can never fall through to the tenant session. Support sessions stop working as soon as the admin is deactivated or the view is ended.
+- **Not built:** a way for the company to turn support access off, or to be emailed when support opens it. **Open:** whether Justin wants either.
+
 ## 2026-10-05 · W6.2 Annual lab tests
 
 - **A lab test belongs to the site, not to an inspection.** Effluent samples are often taken on a separate trip and the result arrives days later from the lab, so results are recorded on the site with their own sample date. Results are not part of the authority report yet. Open question: does any authority want lab results sent with a quarterly report, or filed on their own?
@@ -433,6 +441,18 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 - **Today-dependent remarks are notes, not warnings** (`notes` on a preview row). A row stays "ready" when the only remark is that its contract has ended or has no last inspection. Otherwise a typical file with no last-inspection column would mark every contract row as a warning.
 - **A last inspection without a contract** is not stored. With no contract there are no visits to schedule from it. W5.4's summary counts those sites as having no contract.
 
+## 2026-10-05 · W5.3 Undo a committed import
+
+- **What undo deletes:** the customers and sites the import created, the contracts it created and their visits, and the contacts and unit details of those customers and sites, even ones added after the import (they describe the record, they are not work). A site the import added to a customer already on file is deleted; that customer stays. The import itself is kept, marked `undone` with who and when, and the audit log records the counts. The file can be imported again.
+- **What blocks it: any row anywhere that points at what the import created**, found from the database's own foreign keys, so a table added later is checked without anyone listing it. Examples are a scheduled visit, an inspection, a report, an invoice, a filing, a renewal, a portal link, a text message, an authority assignment, a site or contract added later to an imported customer or site. Edits to imported records (a renamed customer, a note) do not block it. The page and the 409 name each blocker with a count. Undo is all or nothing: there is no partial undo of the rows that are free.
+- **Who:** anyone who can import (`crm:write`). The check and the delete run in one transaction holding the import row; work added in between makes the delete fail on its foreign key, which is reported as a 409 instead of a 500.
+
+## 2026-10-05 · W5.4 Onboarding summary
+
+- **Two scopes, one definition.** `GET /onboarding/summary` counts the whole organization, and `?importId=` counts what one saved import created (its sites, and the contracts and visits on them). The import page shows the second right after saving; `/import/summary` shows the first.
+- **Definitions.** An active contract is one in force today (`contractState`). Expiring in 30, 60 or 90 days counts active contracts whose last day falls within that many days, each count including the shorter windows. Overdue inspections are open visits due before today. Due this month are open visits due from today to the month's last day. A site has no authority when the catalog resolves none for it today, whether no ruleset covers its county or several do and nobody has chosen. Missing permit means the site has no permit number. Customers counts customers with at least one service site in scope.
+- **Lists to fix from.** The first ten sites with no authority and the first ten missing a permit are listed with links, sorted by customer name.
+
 ## 2026-10-05 · W4.2 Active-contract count and Stripe Billing
 
 - **Calendar months, billed in advance on the 1st.** Each organization's month runs from the 1st to the last day in its own time zone. The first billing run of the month counts the contracts in force on the 1st and stores the count, price, minimum, plan state and amount in `billing_periods` (migration 0025). That row never changes afterwards: a trigger refuses it. A contract added or cancelled later in the month shows up in the next month's count. A trial that ends mid-month pays from the next 1st, and the moment a trial converts is handled in W4.4.
@@ -477,9 +497,31 @@ _Superseded the same day by "Hosting on our own server, for now" below; kept as 
 ## 2026-10-05 · W8.3 Terms and privacy with recorded acceptance
 
 - **Versions live in code** (`CURRENT_LEGAL_VERSIONS` in `packages/domain/src/legal.ts`), next to the placeholder text in `apps/web/components/legal/text.ts`. Changing the text means bumping the version in the same pull request, so the version on the page and the version owners accept can never disagree.
-- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0030) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
+- **Each owner accepts for themselves, per organization.** `legal_acceptances` (migration 0032) holds organization, user, document, version, time and request id, with composite foreign keys to the membership. It is append-only (a trigger refuses updates and deletes), so it is the record of who agreed to which version and when; a new version adds rows and the old ones stay. Office, technician and read-only users are never asked: the owner accepts on the company's behalf.
 - **When it is asked:** `/auth/me` returns `legalDue`, and the office screens show only the acceptance prompt until the owner accepts. The prompt links to the public `/terms` and `/privacy` pages and sends the versions it showed; if either changed meanwhile, the API answers 409 and records nothing.
 - **The API does not refuse other requests until acceptance.** The prompt is the gate. Blocking every API call would also block the technician app and the worker's own calls, and a forgotten click should never stop a county filing. Revisit if the lawyer requires a hard block.
 - **A read-only (lapsed) company can still accept** (`config.allowedWhenReadOnly`), or its owner could never get past the prompt to export their data.
 - **The demo owner is seeded as having accepted**, so the hosted demo and the e2e tests go straight in. A demo reseed now also keeps `demo_requests`, since real prospects can ask for a demo from the demo site.
+- **Support access (W2.6) is never asked to accept.** `/auth/me` returns no documents due for a support view, so the admin sees what the office sees; the owner still accepts at their own next sign-in, and the accept call is refused like every other support write.
 - **Open:** lawyer-reviewed text (Justin). The pages say clearly that the current text is a placeholder.
+
+## 2026-10-05 · Justin's answers on the county rules questions
+
+Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
+
+1. **"Commercial" is set on the site, not the plan.** Done in this change: `sites.customer_type` (backfilled from each site's latest contract), "System use" on the site page. A contract records the site's type when made; the plan's type is a label. An import sets a new site's type from the plan named on its row, since that is the only hint the file has.
+2. **When the authority needs more visits than the plan includes, warn the office before the contract is created** rather than adding them silently. Follow-up PR.
+3. **Lab results go on the authority report only where the ruleset requires it, and a result over the ruleset's limits raises an inbox flag.** Follow-up PR.
+4. **Filing fees go on the homeowner's invoice only if the company turns that on; off by default.** Follow-up PR.
+5. **Lateness of a rejected-and-resent report counts from the first send.** No change (W6.4 already does this).
+
+## 2026-10-05 · W4.4 Expiry reminders and the full plan lifecycle
+
+- **The worker's hourly billing run moves the plan first, then counts the month.** `runPlanLifecycle` (packages/billing) runs before `runMonthlyBilling` in the same task, so a month is counted in the state the company is actually in. It is safe to run any number of times.
+- **Reminders 14, 7 and 1 days before a free period ends**, to every active owner, from `ACCOUNT_EMAIL_FROM`. `plan_reminders` (migration 0031) keeps one row per organization, end date and threshold, so each goes out once; a period that starts inside the window gets one reminder, not several. Extending a trial (a new end date) starts the reminders over. The email says the price that follows and whether a payment method is already saved.
+- **When a free period ends:** active from the next day if a payment method is saved, read-only if not. The rest of that month stays free (it was counted on the 1st during the trial); the first invoice is the next 1st. Design-partner periods end the same way as trials.
+- **A failed payment makes an active company past due** for `AEROWISE_PAST_DUE_GRACE_DAYS` (14). Past due can still work; Stripe's own retry schedule and customer emails keep trying the card. Once the grace period has passed with the invoice still unpaid, the company goes read-only.
+- **Back to active** when a paid invoice leaves nothing failed (Stripe's webhook), or when the owner returns from Stripe with a new card: the subscription page calls `POST /subscription/refresh`, which charges each failed invoice again right away and reactivates once nothing is unpaid. The hourly run does not keep charging a declined card; that is Stripe's retry schedule. A read-only company with a saved card and nothing unpaid is reactivated by the hourly run too, so an admin who wants a company locked should not leave it with a working card (none of the pilot needs that).
+- **Without Stripe Billing keys nothing moves on its own.** Reminders still go out, but a free period past its end stays as it is until an admin changes it in `/admin`, since nothing can be collected.
+- **Every automatic change is in the platform audit log** as `organization.plan_changed` with no admin and a reason; a change the owner triggered from the subscription page is also in the company's own audit log.
+- **A lapsed company's automatic sends keep going**, as Justin decided in W4.3: nothing in the lifecycle pauses queued filings or homeowner reminders.

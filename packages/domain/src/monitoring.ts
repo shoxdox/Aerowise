@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOMER_TYPES } from "./contracts.ts";
+import { CUSTOMER_TYPES } from "./crm.ts";
 import { id } from "./crm.ts";
 
 // Electronic monitoring on a wastewater system (an autodialer or remote telemetry that

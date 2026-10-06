@@ -85,6 +85,9 @@ export const contact = z.object({
   consentSms: z.boolean(),
 });
 
+/** Whether a system is residential or commercial: a property of the site, not the plan. */
+export const CUSTOMER_TYPES = ["residential", "commercial"] as const;
+
 const siteFields = z.object({
   addressLine1: z.string().trim().min(1).max(200),
   addressLine2: addressFields.line2,
@@ -99,9 +102,12 @@ const siteFields = z.object({
   gateCode: optionalText(50),
   safetyFlags: z.array(z.enum(SAFETY_FLAGS)).max(SAFETY_FLAGS.length),
   schedulingNotes: optionalText(2000),
+  /** Commercial systems may have a shorter service interval and lab tests (the site's authority decides). */
+  customerType: z.enum(CUSTOMER_TYPES),
   active: z.boolean(),
 });
 export const siteInput = siteFields.extend({
+  customerType: siteFields.shape.customerType.default("residential"),
   state: siteFields.shape.state.default("TX"),
   safetyFlags: siteFields.shape.safetyFlags.default([]),
   active: siteFields.shape.active.default(true),
@@ -128,6 +134,7 @@ export const site = z.object({
   gateCode: z.string().nullable(),
   safetyFlags: z.array(z.enum(SAFETY_FLAGS)),
   schedulingNotes: z.string().nullable(),
+  customerType: z.enum(CUSTOMER_TYPES),
   active: z.boolean(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
