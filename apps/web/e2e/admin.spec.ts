@@ -60,6 +60,7 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   const lcra = page.getByRole("row").filter({ hasText: "tx-lcra-ossf" });
   await expect(lcra.getByText("Draft", { exact: true })).toBeVisible();
   await expect(lcra.getByText(/^\d+ open$/)).toBeVisible();
+  await expect(lcra.getByText("Nothing recorded with the authority yet")).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "tx-example-county" }).getByText("Example rules")).toBeVisible();
 
   // Evidence: a provider's accepted report answers an open question, which stays open.
@@ -89,4 +90,8 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   const proposal = page.getByRole("region", { name: "Proposed version" });
   await expect(proposal.getByText("Stays a draft")).toBeVisible();
   await expect(proposal.getByText(/does not close a question/)).toBeVisible();
+
+  // Coverage now shows how far each filing question is confirmed: still nothing by the authority.
+  await page.getByRole("link", { name: "Rulesets" }).click();
+  await expect(lcra.getByText(/^Receipt and acceptance provider evidence only; where reports go, .* open$/)).toBeVisible();
 });

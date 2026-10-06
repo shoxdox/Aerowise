@@ -20,11 +20,13 @@ export const DEMO_PLATFORM_ADMIN = { name: "Pat Platform", email: "admin@example
 const FIRST = ["James", "Maria", "Robert", "Linda", "Carlos", "Patricia", "David", "Rosa", "Michael", "Karen", "Jose", "Susan", "Daniel", "Lupe", "Thomas", "Nancy"];
 const LAST = ["Hartley", "Gonzales", "Whitfield", "Ramirez", "Calloway", "Nguyen", "Brennan", "Salinas", "Dorsey", "Medina", "Pruitt", "Castillo", "Langford", "Villarreal"];
 const STREETS = ["Cedar Ridge Rd", "Live Oak Ln", "Bluebonnet Trl", "Mesquite Dr", "Old Mill Rd", "Pecan Hollow", "County Road 214", "Ranch Road 1863", "Deer Creek Dr", "Limestone Way"];
+// Every site is in the fictional Example County, whose made-up rules let the demo reach a
+// filing; its towns are only for the map. No site claims a real county's permit.
 const PLACES = [
   { city: "Dripping Springs", county: "Example County", zip: "78620", lat: 30.19, lng: -98.09 },
   { city: "Wimberley", county: "Example County", zip: "78676", lat: 30.0, lng: -98.1 },
-  { city: "Blanco", county: "Sample County", zip: "78606", lat: 30.1, lng: -98.42 },
-  { city: "Spicewood", county: "Sample County", zip: "78669", lat: 30.47, lng: -98.16 },
+  { city: "Blanco", county: "Example County", zip: "78606", lat: 30.1, lng: -98.42 },
+  { city: "Spicewood", county: "Example County", zip: "78669", lat: 30.47, lng: -98.16 },
 ];
 const MAKERS = [
   { manufacturer: "Acme Aerobic", models: ["AA-500", "AA-750"] },
@@ -32,7 +34,8 @@ const MAKERS = [
   { manufacturer: "TreatRight", models: ["TR-1", "TR-2X"] },
 ];
 const DISPOSAL = ["spray", "drip", "spray"];
-const CHLORINE = ["tablet", "liquid", "tablet", "none"];
+// Every demo unit disinfects, so a report never says "no chlorinator" beside a working one.
+const CHLORINE = ["tablet", "liquid", "tablet", "tablet"];
 
 /** Small deterministic PRNG so every developer gets the same demo data. */
 function rng(seed: number) {
@@ -99,7 +102,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
           organizationId: org.id,
           userId: user.id,
           role: u.role,
-          technicianLicense: u.role === "technician" ? "MP-DEMO-0001" : null,
+          technicianLicense: u.role === "technician" ? "MT-DEMO-0001" : null,
         })
         .execute();
       if (u.role === "technician") techId = user.id;
@@ -223,6 +226,10 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
       } else if (i < 25) {
         // First visit overdue by 1–5 days.
         startOn = addMonths(addDays(today, -(i - 20)), -4);
+      } else if (i === 25) {
+        // Ends in three weeks: the demo story renews it (apps/api/src/demo-story.ts).
+        startOn = addDays(addMonths(today, -12), 21);
+        r.int(330);
       } else if (i < 52) {
         startOn = addDays(today, -r.int(330));
       } else {

@@ -16,6 +16,7 @@ import { LocalDiskStore } from "@aerowise/storage";
 import { DemoGatedBilling, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport, demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { playDemoStory } from "../src/demo-story.ts";
 import { testDatabaseUrl } from "./db-url.ts";
 import { createOrg, setupTestApp } from "./helpers.ts";
 
@@ -210,6 +211,37 @@ describe("demo reseed", () => {
     const after = await ctx.db.selectFrom("jurisdictionRulesets").select((eb) => eb.fn.countAll().as("n")).executeTakeFirstOrThrow();
     expect(after.n).toBe(before.n);
     expect(readdirSync(files)).toEqual([]);
+  });
+
+  it("plays the five-minute story once on top of the seed, through the stand-ins", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    // Another company on the same server, with work queued for the real worker.
+    const other = await createOrg(ctx.db, "Real company on the demo server");
+    const queued = await ctx.db
+      .insertInto("backgroundTasks")
+      .values({ organizationId: other.id, kind: "email.send", payload: "{}", dedupeKey: null, runAt: new Date(0), lockedAt: null, lockedBy: null, lastError: null, completedAt: null, failedAt: null })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    expect(await playDemoStory({ db: ctx.db, store })).toBe(true);
+    // The story ran only the demo company's tasks.
+    const untouched = await ctx.db.selectFrom("backgroundTasks").select(["attempts", "completedAt", "lockedBy"]).where("id", "=", queued.id).executeTakeFirstOrThrow();
+    expect(untouched).toEqual({ attempts: 0, completedAt: null, lockedBy: null });
+    expect(await playDemoStory({ db: ctx.db, store })).toBe(false); // already played
+
+    const filings = await ctx.db.selectFrom("filings").select(["status", "confirmationReference"]).where("inspectionId", "is not", null).execute();
+    expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
+    expect(filings.find((f) => f.status === "confirmed")?.confirmationReference).toBe("EC-DEMO-0042");
+    const counties = await ctx.db.selectFrom("sites").select("county").distinct().execute();
+    expect(counties).toEqual([{ county: "Example County" }]);
+    const renewals = await ctx.db.selectFrom("renewals").select("status").execute();
+    expect(renewals.map((r) => r.status)).toContain("sent");
+    const payments = await ctx.db.selectFrom("payments").select("status").execute();
+    expect(payments.map((p) => p.status)).toContain("succeeded");
+    // Everything went to the stand-ins: the outbox, never a real provider.
+    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).executeTakeFirstOrThrow();
+    expect(org.stripeAccountId).toMatch(/^acct_test_/);
   });
 
   it("refuses to seed or reseed a production database outside demo mode", async () => {

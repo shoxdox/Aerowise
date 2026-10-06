@@ -791,6 +791,8 @@ export const rulesetCoverageItem = z.object({
   sourcesCheckedOn: z.iso.date().nullable(),
   sourceCount: z.number().int(),
   unresolved: z.array(z.string()),
+  /** W12.V4: how far where reports go and the acceptance questions are confirmed, in one line. */
+  confirmation: z.string(),
   /** Active sites whose authority this is today. */
   sites: z.number().int(),
   /** Organizations with at least one of those sites. */

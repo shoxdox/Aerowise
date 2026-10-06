@@ -7,10 +7,13 @@ test("the owner bills a contract and the homeowner pays it online", async ({ pag
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/inbox");
 
-  // Connect the (test) Stripe account.
+  // Connect the (test) Stripe account, unless the demo story already did.
   await page.goto("/settings/billing");
-  await page.getByRole("button", { name: "Connect Stripe" }).click();
-  await expect(page.getByText("Customers can pay invoices by card or bank transfer")).toBeVisible();
+  const connected = page.getByText("Customers can pay invoices by card or bank transfer");
+  const connect = page.getByRole("button", { name: "Connect Stripe" });
+  await expect(connected.or(connect)).toBeVisible();
+  if (await connect.isVisible()) await connect.click();
+  await expect(connected).toBeVisible();
 
   // Bill the contract of a site whose customer has an email on file.
   const due = await (await page.request.get("/api/obligations/due?limit=50")).json();

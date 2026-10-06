@@ -32,6 +32,7 @@ export const COVERAGE = {
   intro: "Each authority's rules are built from its own published sources. Verified means we confirmed them with the authority directly.",
   draftLabel: "In progress",
   draftNote: "Built from public sources; being confirmed with the authority.",
+  confirmedLabel: "Confirmed with the authority so far",
   empty: "Coverage is being added. Ask us about your county.",
 };
 

@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { bundledRulesets, loadCatalog, syncRulesets } from "@aerowise/compliance";
-import type { AuthorityEvidence, RulesetEvidencePage, RulesetProposal } from "@aerowise/domain";
+import type { AuthorityConfirmation, AuthorityEvidence, PublicOverview, RulesetCoverage, RulesetEvidencePage, RulesetProposal } from "@aerowise/domain";
 import { sql } from "kysely";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { adminLogin, client, createAdmin, createTenant, setupTestApp } from "./helpers.ts";
@@ -131,6 +131,50 @@ describe("authority evidence", () => {
 
     const bad = await api.post("/admin/rulesets/tx-example-county/proposal", { effectiveFrom: "2026-03-01" });
     expect(bad.statusCode).toBe(422);
+  });
+
+  it("shows partial confirmation per field on coverage, to offices, and only the authority's own confirmations publicly", async () => {
+    const api = await admin();
+    const empty = (await api.get("/admin/rulesets")).json() as RulesetCoverage;
+    expect(empty.items.find((i) => i.key === "tx-fixture-draft")?.confirmation).toBe("Nothing recorded with the authority yet");
+
+    expect((await api.post("/admin/rulesets/tx-fixture-draft/evidence", call)).statusCode).toBe(201);
+    // A provider's accepted report and a published rule support answers but confirm nothing.
+    const provider = await api.post("/admin/rulesets/tx-fixture-draft/evidence", {
+      kind: "accepted_report",
+      obtainedOn: "2026-02-01",
+      contactName: "Owner",
+      contactOrganization: "Example Aerobic Services (fictional)",
+      references: ["report-2026-01.pdf"],
+      answers: [{ question: "Was an emailed PDF accepted?", topic: "report_format", answer: "Yes, once.", outcome: "confirms" }],
+    });
+    expect(provider.statusCode, provider.body).toBe(201);
+
+    const line = "Where reports go confirmed by the authority; signature partly confirmed by the authority; report format provider evidence only; where contracts go and receipt and acceptance open";
+    const coverage = (await api.get("/admin/rulesets")).json() as RulesetCoverage;
+    expect(coverage.items.find((i) => i.key === "tx-fixture-draft")?.confirmation).toBe(line);
+
+    const t = await createTenant(ctx, "Org A");
+    const id = (await loadCatalog(ctx.db)).find((e) => e.jurisdiction.key === "tx-fixture-draft")!.jurisdiction.id;
+    const res = await t.api.get(`/jurisdictions/${id}/confirmation`);
+    expect(res.statusCode, res.body).toBe(200);
+    const office = res.json() as AuthorityConfirmation;
+    expect(office.summary).toBe(line);
+    expect(Object.fromEntries(office.fields.map((f) => [f.topic, f.state]))).toEqual({
+      report_channel: "authority_confirmed",
+      report_format: "provider_evidence",
+      signature: "authority_partial",
+      contract_destination: "open",
+      receipt_acceptance: "open",
+    });
+    // States only: who answered and what they said stay with platform admins.
+    expect(res.body).not.toContain("Pat Example");
+    expect(res.body).not.toContain("555-0100");
+    expect((await t.api.get("/jurisdictions/00000000-0000-4000-8000-000000000000/confirmation")).statusCode).toBe(404);
+
+    const overview = (await ctx.app.inject({ method: "GET", url: "/public/overview" })).json() as PublicOverview;
+    expect(overview.coverage.find((c) => c.key === "tx-fixture-draft")?.confirmedWithAuthority).toEqual(["Where reports go"]);
+    expect(overview.coverage.find((c) => c.key === "tx-fixture-verified")?.confirmedWithAuthority).toEqual([]);
   });
 
   it("is for platform admins only", async () => {

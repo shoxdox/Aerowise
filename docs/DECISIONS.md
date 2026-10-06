@@ -665,3 +665,15 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **City agreements are evidence, not assignment.** Comal v2 cites its five published agreements in `howToDecide`; assignment stays reviewed per site, since an agreement can end.
 - **A claim the current source doesn't support is dropped, not kept as an exception.** Comal v1 said self-maintaining homeowners submit no reports; the current page doesn't say so, so v2 turns it into an open question.
 - **Denton gets no v2.** Its fresh download was blocked, but the saved original form (SHA-256 `7f32068b…983e`) reads the same as v1 and #76's split, so the reconciliation is recorded in its doc only.
+
+## 2026-10-06 · W10.3 The demo's five-minute path
+
+- **The demo's history is played through the API, not written into the seed.** After seeding, `pnpm --filter @aerowise/api demo-story` signs in as the demo owner, office and technician on an in-process API whose outside services are all stand-ins, and does what a provider would have done before a prospect arrives: licenses on file, two overdue visits inspected yesterday (with photos) and filed with the county by email, one acknowledged with reference EC-DEMO-0042, a renewal sent for a contract ending in three weeks, and two invoices, one paid on the test checkout. The records are therefore exactly what the product makes, and stay right as the product changes. It runs once per seed (it does nothing when the demo company already has inspections) and refuses a production database outside demo mode. `db:seed`, `db:reseed-demo` and the e2e server run it.
+- **Demo sites are in the fictional Example County**, whose ruleset is loaded outside production, so due dates, reports and filings follow real-looking rules without implying anything about a real county. Every demo unit has a tablet or liquid chlorinator, and the demo's licenses are MP-DEMO-0001 and MT-DEMO-0001.
+- Today's and tomorrow's route is left untouched for the visitor to work through.
+
+## 2026-10-06 · W12.V4 Partial confirmation per field
+
+- **Five fields, confirmed only by the authority.** Where reports go, report format, signature, where contracts go, and receipt and acceptance each get the state the evidence page already computes (`questionState`), from every answer recorded for that authority. Only the authority's own settling answer makes a field "confirmed by the authority"; provider documents and published rules show as "provider evidence only" or "published rule only".
+- **Where each audience sees it.** The coverage page shows one line per draft authority ("Where reports go confirmed by the authority; report format, signature … open"). Offices get the per-field states from `GET /jurisdictions/:id/confirmation` for the W10.5 panels, without contacts, answers or references. The public marketing page lists only fields the authority itself confirmed, and nothing for a verified authority, whose badge already says it.
+- **Nothing here changes "verified".** These states are read from the evidence log on each request; the ruleset files and W6.5's rules for verification are unchanged.

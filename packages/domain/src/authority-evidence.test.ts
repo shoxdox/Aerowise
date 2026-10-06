@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorityEvidenceInput, buildRulesetProposal, evidenceClass, ProposalError, questionState, rulesetProposalInput, unifiedDiff, type EvidenceAnswer } from "./authority-evidence.ts";
+import { authorityEvidenceInput, buildRulesetProposal, confirmationSummary, fieldConfirmations, evidenceClass, ProposalError, questionState, rulesetProposalInput, unifiedDiff, type EvidenceAnswer } from "./authority-evidence.ts";
 import { rulesetRules } from "./filings.ts";
 
 // The API tests' draft fixture (apps/api/test/fixtures/rulesets/tx-fixture-draft).
@@ -131,6 +131,33 @@ describe("question state", () => {
     expect(questionState([answer({ kind: "published_rule", topic: "deadline" }), answer({ kind: "accepted_report" })])).toBe("public_rule_settled");
     expect(questionState([answer({ kind: "published_rule", topic: "signature" })])).toBe("public_rule");
     expect(questionState([answer({ kind: "accepted_report", topic: "deadline" })])).toBe("provider_evidence");
+  });
+});
+
+describe("confirmation fields", () => {
+  const at = (topic: EvidenceAnswer["topic"], evidenceClass: EvidenceAnswer["evidenceClass"], outcome: EvidenceAnswer["outcome"], obtainedOn = "2026-02-01") => ({ topic, evidenceClass, outcome, obtainedOn });
+
+  it("gives where reports go and each acceptance question a state, confirmed only by the authority", () => {
+    const fields = fieldConfirmations([
+      at("report_channel", "authority", "confirms"),
+      at("signature", "public_rule", "confirms"),
+      at("report_format", "provider", "confirms"),
+      at("deadline", "authority", "confirms"),
+    ]);
+    expect(fields.map((f) => [f.topic, f.state])).toEqual([
+      ["report_channel", "authority_confirmed"],
+      ["report_format", "provider_evidence"],
+      ["signature", "public_rule"],
+      ["contract_destination", "open"],
+      ["receipt_acceptance", "open"],
+    ]);
+    expect(confirmationSummary(fields)).toBe(
+      "Where reports go confirmed by the authority; report format provider evidence only; signature published rule only; where contracts go and receipt and acceptance open",
+    );
+  });
+
+  it("says when nothing is recorded", () => {
+    expect(confirmationSummary(fieldConfirmations([]))).toBe("Nothing recorded with the authority yet");
   });
 });
 

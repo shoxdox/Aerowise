@@ -19,7 +19,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `${db} reset && ${db} seed && pnpm --filter @aerowise/api start`,
+      command: `${db} reset && ${db} seed && pnpm --filter @aerowise/api demo-story && pnpm --filter @aerowise/api start`,
       cwd: "../..",
       url: "http://localhost:4000/health",
       // Demo mode, as on the hosted demo: every outside service is a test stand-in and the banner shows.
