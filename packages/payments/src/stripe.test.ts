@@ -21,6 +21,7 @@ const checkoutInput = {
   accountId: "acct_123",
   idempotencyKey: "checkout-inv1-1",
   amountCents: 32500,
+  applicationFeeCents: 0,
   description: "Invoice 1001",
   customerEmail: "billing@example.test",
   successUrl: "https://staging.example.test/pay/t/done",
@@ -46,6 +47,16 @@ describe("StripeProvider checkout", () => {
     expect(call.body.get("metadata[invoiceId]")).toBe("inv1");
     expect(call.body.get("payment_intent_data[metadata][invoiceId]")).toBe("inv1");
     expect(session).toEqual({ sessionId: "cs_test_1", url: "https://checkout.stripe.com/c/pay/cs_test_1", expiresAt: new Date(expiresAt * 1000) });
+  });
+
+  it("sends no application fee by default, and the platform fee when one is set, for card and bank payments alike", async () => {
+    const { provider, calls } = fakeStripe((c) => ({ id: "cs_test_1", object: "checkout.session", url: "https://checkout.stripe.com/c/pay/cs_test_1", expires_at: Number(c.body.get("expires_at")) }));
+    await provider.createCheckout(checkoutInput);
+    expect([...calls[0]!.body.keys()].filter((k) => k.includes("application_fee"))).toEqual([]);
+    await provider.createCheckout({ ...checkoutInput, idempotencyKey: "checkout-inv1-2", applicationFeeCents: 812 });
+    // On the payment intent, so it applies whichever method the homeowner picks on the page.
+    expect(calls[1]!.body.get("payment_intent_data[application_fee_amount]")).toBe("812");
+    expect(calls[1]!.headers.get("stripe-account")).toBe("acct_123");
   });
 
   it("refunds on the connected account with our idempotency key", async () => {

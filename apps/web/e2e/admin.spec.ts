@@ -35,10 +35,12 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await editor.getByLabel("Founder price per active contract ($/month)").fill("1.00");
   await editor.getByLabel("State").selectOption("read_only");
   await editor.getByLabel("Ends on").fill("");
+  // And Aerowise takes 2.5% of the payments their homeowners make online.
+  await editor.getByLabel("Platform fee on homeowner payments (%)").fill("2.5");
   await editor.getByRole("button", { name: "Save plan" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved the plan for Brazos Aerobic Co.");
   await expect(row.getByRole("cell").nth(6)).toHaveText("Read-only");
-  await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $99.00 min (founder)");
+  await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $99.00 min (founder); 2.5% fee on payments");
 
   // The company asks for its data to be deleted: the name has to be typed to confirm.
   await page.getByRole("button", { name: "Delete the data of Brazos Aerobic Co" }).click();

@@ -50,6 +50,8 @@ export interface OrganizationsTable {
   subscriptionEndsOn: ColumnType<string | null, string | null | undefined, string | null>;
   pricePerContractCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
   monthlyMinimumCentsOverride: ColumnType<number | null, number | null | undefined, number | null>;
+  /** Aerowise's Stripe Connect application fee on homeowner payments, in basis points (100 = 1%). */
+  platformFeeBps: Generated<number>;
   dataDeletedAt: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   dataDeletedBy: ColumnType<string | null, string | null | undefined, string | null>;
   billingCustomerId: ColumnType<string | null, string | null | undefined, string | null>;
@@ -822,6 +824,8 @@ export interface CheckoutSessionsTable {
   invoiceId: string;
   providerSessionId: string;
   amountCents: number;
+  /** Aerowise's fee on this payment, fixed when the page was opened. */
+  applicationFeeCents: Generated<number>;
   url: string;
   expiresAt: Timestamp;
   status: Generated<"open" | "complete" | "expired">;
