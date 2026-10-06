@@ -6,6 +6,7 @@ import { useState } from "react";
 import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
 import { day, dayOf } from "@/lib/format";
+import { EmptyState } from "@/components/EmptyState";
 
 const VIEWS = [
   { key: "attention", label: "Needs attention" },
@@ -14,6 +15,14 @@ const VIEWS = [
   { key: "confirmed", label: "Acknowledged" },
   { key: "all", label: "All" },
 ] as const;
+
+const FILINGS_EMPTY: Record<(typeof VIEWS)[number]["key"], string> = {
+  attention: "Nothing is late, failed or waiting on you. Today is {today}.",
+  open: "Nothing is waiting to be sent. A filing starts here when a technician finishes an inspection at a site whose authority takes reports.",
+  sent: "Nothing is waiting on an authority. Sent filings wait here until you record the authority's acknowledgment.",
+  confirmed: "Nothing acknowledged yet. Record the authority's reply on a sent filing to finish it.",
+  all: "No filings yet. They start when a technician finishes an inspection at a site whose authority takes reports.",
+};
 
 const when = dayOf;
 
@@ -81,7 +90,7 @@ export default function FilingsPage() {
         </tbody>
       </table>
       {data?.items.length === 0 && (
-        <p className="muted">{view === "attention" ? `Nothing needs attention. Today is ${day(data.today)}.` : "No filings here."}</p>
+        <EmptyState title={view === "attention" ? "Nothing needs attention" : "No filings here"}>{FILINGS_EMPTY[view].replace("{today}", day(data.today))}</EmptyState>
       )}
     </div>
   );

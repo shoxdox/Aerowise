@@ -29,3 +29,5 @@ export * from "./import-summary.ts";
 export * from "./exports.ts";
 export * from "./authority-evidence.ts";
 export * from "./demo.ts";
+export * from "./intros.ts";
+export * from "./authority-requirements.ts";

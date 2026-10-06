@@ -7,6 +7,7 @@ import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, today } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 /**
  * Licenses and registrations: the responsible maintenance provider's MP license, each
@@ -133,7 +134,11 @@ export default function CredentialsPage() {
           ))}
         </tbody>
       </table>
-      {data.items.length === 0 && <p className="muted">None recorded yet.</p>}
+      {data.items.length === 0 && (
+        <EmptyState title="No licenses recorded yet">
+          Record your maintenance provider license and each technician&apos;s registration. Reports to the authorities need them before they can be signed and filed.
+        </EmptyState>
+      )}
 
       {owner && (
         <form className="card stack" onSubmit={add}>

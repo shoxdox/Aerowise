@@ -17,6 +17,7 @@ import { adminRoutes } from "./routes/admin.ts";
 import { adminEvidenceRoutes } from "./routes/admin-evidence.ts";
 import { authorityConfirmationRoutes } from "./routes/authority-confirmation.ts";
 import { adminSupportRoutes } from "./routes/admin-support.ts";
+import { adminDemoRoutes } from "./routes/admin-demos.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
 import { importRoutes } from "./routes/imports.ts";
@@ -48,6 +49,7 @@ import { onboardingRoutes } from "./routes/onboarding.ts";
 import { organizationRoutes } from "./routes/organization.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { demoRequestRoutes } from "./routes/demo-requests.ts";
+import { demoVisitRoutes } from "./routes/demo-visits.ts";
 import { legalRoutes } from "./routes/legal.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
@@ -129,6 +131,8 @@ export interface AppOptions {
    * /health also fails if the worker's heartbeat is missing or old, so the host restarts both.
    */
   workerHeartbeat?: HeartbeatOptions;
+  /** Visitor demo limits (W10.2); tests lower them. */
+  demoVisitLimits?: { perHour?: number; maxLive?: number };
 }
 
 export async function buildApp({
@@ -155,6 +159,7 @@ export async function buildApp({
   demoRequestNotifyTo = [],
   billing = production && !demo ? null : new TestBillingProvider(),
   workerHeartbeat,
+  demoVisitLimits,
 }: AppOptions) {
   if (production && !fileSigningSecret) throw new Error("FILE_SIGNING_SECRET is required in production");
   // Reporting authorities' rules ship with the code; make sure the database has them.
@@ -241,8 +246,9 @@ export async function buildApp({
   // Lets the web app show the demo banner (and the demo sign-ins) without its own setting.
   // `demo` is the demo deployment; `demoCompany` that whoever is signed in works in a demo company.
   app.get("/app-info", { config: { public: true }, schema: { hide: true } }, async (req) => {
-    const org = req.auth ? await db.selectFrom("organizations").select("demo").where("id", "=", req.auth.organizationId).executeTakeFirst() : undefined;
-    return { demo, demoCompany: demo || org?.demo === true };
+    const org = req.auth ? await db.selectFrom("organizations").select(["demo", "demoExpiresAt"]).where("id", "=", req.auth.organizationId).executeTakeFirst() : undefined;
+    // `demoVisitor`: a visitor's own demo company (W10.2), where the banner offers other people's views.
+    return { demo, demoCompany: demo || org?.demo === true, demoVisitor: !!org?.demoExpiresAt };
   });
 
   app.get("/health", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
@@ -268,6 +274,7 @@ export async function buildApp({
   await app.register(adminEvidenceRoutes, { db, now });
   await app.register(authorityConfirmationRoutes, { db });
   await app.register(adminSupportRoutes, { db, production });
+  await app.register(adminDemoRoutes, { db, store, now, production, appUrl, subscription });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
   await app.register(organizationRoutes, { db, store });
@@ -298,6 +305,7 @@ export async function buildApp({
   await app.register(monitoringRoutes, { db, now });
   await app.register(publicRoutes, { db, now, subscription });
   await app.register(legalRoutes, { db, now });
+  await app.register(demoVisitRoutes, { db, store, now, enabled: demo, production, hashKey: fileSigningSecret ?? "aerowise-development-only-signing-secret", limits: demoVisitLimits });
   await app.register(demoRequestRoutes, { db, now, demoMail: { mail: transport, from: accountMailFrom, notifyTo: demoRequestNotifyTo, appUrl } });
 
   return app;

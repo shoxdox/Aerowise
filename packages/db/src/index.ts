@@ -5,4 +5,4 @@ export type * from "./schema.ts";
 export * from "./platform-admin.ts";
 export * from "./reseed.ts";
 export * from "./config-check.ts";
-export { DEMO_ORG_NAME, DEMO_PASSWORD, DEMO_USERS } from "./seed.ts";
+export { DEMO_ORG_NAME, DEMO_PASSWORD, DEMO_USERS, seedDemoCompany, type DemoCompanyOptions } from "./seed.ts";

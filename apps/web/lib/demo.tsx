@@ -11,15 +11,17 @@ interface DemoInfo {
   demo: boolean;
   /** Whoever is signed in works in a demo company (always so on the demo deployment). */
   demoCompany: boolean;
+  /** A visitor's own demo company from "Try the demo": they can look around as each person. */
+  demoVisitor: boolean;
 }
 
-const NONE: DemoInfo = { demo: false, demoCompany: false };
+const NONE: DemoInfo = { demo: false, demoCompany: false, demoVisitor: false };
 
 function remembered(): DemoInfo {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
-    if (v === "true") return { demo: true, demoCompany: true };
-    if (v === "company") return { demo: false, demoCompany: true };
+    if (v === "true") return { demo: true, demoCompany: true, demoVisitor: false };
+    if (v === "company") return { demo: false, demoCompany: true, demoVisitor: false };
   } catch {
     // Private browsing: nothing remembered.
   }
@@ -40,7 +42,7 @@ function useDemoInfo(): DemoInfo {
       .then((res) => (res.ok ? res.json() : null))
       .then((body: Partial<DemoInfo> | null) => {
         if (cancelled || !body) return;
-        const next = { demo: body.demo === true, demoCompany: body.demo === true || body.demoCompany === true };
+        const next = { demo: body.demo === true, demoCompany: body.demo === true || body.demoCompany === true, demoVisitor: body.demoVisitor === true };
         setInfo(next);
         try {
           window.localStorage.setItem(STORAGE_KEY, next.demo ? "true" : next.demoCompany ? "company" : "false");
@@ -63,11 +65,44 @@ export function useDemoMode(): boolean {
 
 /** Shown at the top of every screen in the hosted demo, and to anyone in a demo company. */
 export function DemoBanner() {
-  const { demoCompany } = useDemoInfo();
+  const { demoCompany, demoVisitor } = useDemoInfo();
   if (!demoCompany) return null;
   return (
     <div className="demo-banner" role="note">
       {DEMO_NOTICE}
+      {demoVisitor && <ViewAs />}
     </div>
+  );
+}
+
+const VIEWS = [
+  { role: "owner", label: "Owner", home: "/inbox" },
+  { role: "office", label: "Office", home: "/inbox" },
+  { role: "technician", label: "Technician", home: "/tech" },
+] as const;
+
+/** In a visitor's own demo company: switch between its owner, office manager and technician. */
+function ViewAs() {
+  const [error, setError] = useState(false);
+  async function view(role: string, home: string) {
+    setError(false);
+    const res = await fetch("/api/demo/switch", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) }).catch(() => null);
+    if (res?.ok) window.location.assign(home);
+    else setError(true);
+  }
+  return (
+    <span className="demo-view-as">
+      {" "}
+      View as:{" "}
+      {VIEWS.map((v, i) => (
+        <span key={v.role}>
+          {i > 0 && " · "}
+          <button type="button" className="link" onClick={() => void view(v.role, v.home)}>
+            {v.label}
+          </button>
+        </span>
+      ))}
+      {error && " (could not switch, try again)"}
+    </span>
   );
 }

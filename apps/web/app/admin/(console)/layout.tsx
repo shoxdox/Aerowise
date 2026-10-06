@@ -32,6 +32,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/demo-requests" className={path.startsWith("/admin/demo-requests") ? "active" : undefined}>
             Demo requests
           </Link>
+          <Link href="/admin/prospect-demos" className={path.startsWith("/admin/prospect-demos") ? "active" : undefined}>
+            Prospect demos
+          </Link>
         </nav>
         <span className="spacer" />
         <span className="muted">{me.name}</span>

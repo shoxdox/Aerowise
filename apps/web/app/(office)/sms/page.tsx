@@ -8,6 +8,7 @@ import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -93,7 +94,11 @@ function Texts() {
         ))}
       </div>
       {messages.error && <p className="error">{messages.error}</p>}
-      {messages.data?.items.length === 0 && <p className="muted">No texts yet.</p>}
+      {messages.data?.items.length === 0 && (
+        <EmptyState title="No texts here">
+          Visit reminders and invoice links texted to customers show here, with their delivery and any replies. Customers get texts once they have a mobile number on file, until they reply STOP.
+        </EmptyState>
+      )}
       {messages.data && messages.data.items.length > 0 && (
         <table>
           <thead>

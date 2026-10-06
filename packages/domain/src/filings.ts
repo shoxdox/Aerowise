@@ -607,7 +607,18 @@ export const siteJurisdiction = z.object({
       assignedBy: z.string().nullable(),
     })
     .nullable(),
-  profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), howToDecide: z.string().nullable() }).nullable(),
+  profile: z
+    .object({
+      status: z.enum(PROFILE_STATUSES),
+      sourcesCheckedOn: isoDate.nullable(),
+      requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(),
+      unresolved: z.array(z.string()),
+      howToDecide: z.string().nullable(),
+      /** What the authority asks of the site, line by line (W10.5), and where that comes from. */
+      requirements: z.array(z.object({ key: z.string(), label: z.string(), value: z.string() })),
+      requirementsSource: z.string(),
+    })
+    .nullable(),
   identifiers: z.array(authorityIdentifierStatus),
   /** Why the authority's schedule for this site isn't settled yet; its filings are held until it is. */
   scheduleNotice: z.string().nullable(),

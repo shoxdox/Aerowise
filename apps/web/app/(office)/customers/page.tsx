@@ -7,6 +7,7 @@ import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { canEdit, useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 const PAGE = 50;
 
@@ -133,6 +134,12 @@ export default function CustomersPage() {
           ))}
         </tbody>
       </table>
+      {data && data.total === 0 && !search && (
+        <EmptyState title="No customers yet">
+          Customers are the homeowners and businesses you serve, each with one or more sites. Add one with New customer, or bring your list in from a{" "}
+          <Link href="/import">spreadsheet</Link>.
+        </EmptyState>
+      )}
       {data && (
         <div className="row muted">
           {data.total === 0 ? "No customers found" : `${offset + 1}–${Math.min(offset + PAGE, data.total)} of ${data.total}`}

@@ -62,15 +62,39 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
     log(`demo organization already exists (${existing.id}); nothing to do`);
     return;
   }
+  // The hosted demo publishes no password: visitors each get their own company (W10.2).
+  // The shared one keeps the development password everywhere else (local, tests, e2e).
+  const password = process.env.NODE_ENV === "production" ? null : DEMO_PASSWORD;
+  await seedDemoCompany(db, { password, log });
+  if (password) log(`log in as ${DEMO_USERS.map((u) => u.email).join(", ")} with password "${password}"`);
+}
 
+export interface DemoCompanyOptions {
+  name?: string;
+  users?: readonly { name: string; email: string; role: "owner" | "office" | "technician" }[];
+  /** Null: the people have no password, and are signed in only by a session made for them. */
+  password?: string | null;
+  /** A visitor's own demo company ends then (W10.2); the shared one never does. */
+  expiresAt?: Date | null;
+  /** A prospect demo (W10.6): who it is for, and the counties they work in. */
+  prospect?: { name: string; serviceCounties: string[] } | null;
+  log?: (msg: string) => void;
+}
+
+/** One fictional demo company, as the seed makes it. Returns its id. */
+export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {}): Promise<string> {
+  const { name = DEMO_ORG_NAME, users = DEMO_USERS, password = DEMO_PASSWORD, expiresAt = null, prospect = null, log = () => {} } = opts;
   const r = rng(42);
-  const passwordHash = await hashPassword(DEMO_PASSWORD);
+  const passwordHash = password ? await hashPassword(password) : null;
 
-  await db.transaction().execute(async (trx) => {
+  return db.transaction().execute(async (trx) => {
     const org = await trx
       .insertInto("organizations")
       .values({
-        name: DEMO_ORG_NAME,
+        name,
+        demoExpiresAt: expiresAt,
+        demoProspect: prospect?.name ?? null,
+        ...(prospect ? { serviceCounties: prospect.serviceCounties } : {}),
         // Fictional: its email, texts, filings, payments and books only ever reach the stand-ins.
         demo: true,
         phone: "(512) 555-0100",
@@ -90,7 +114,7 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
       .executeTakeFirstOrThrow();
 
     let techId = "";
-    for (const u of DEMO_USERS) {
+    for (const u of users) {
       const user = await trx
         .insertInto("users")
         .values({ name: u.name, email: u.email, phone: null, passwordHash })
@@ -302,10 +326,9 @@ export async function seed(db: Database, log: (msg: string) => void = () => {}) 
         .execute();
     }
 
-    log(`seeded ${DEMO_ORG_NAME} (${org.id}) with ${siteIds.length} sites, ${contracts} contracts and ${toSchedule.length} scheduled jobs`);
+    log(`seeded ${name} (${org.id}) with ${siteIds.length} sites, ${contracts} contracts and ${toSchedule.length} scheduled jobs`);
+    return org.id;
   });
-
-  log(`log in as ${DEMO_USERS.map((u) => u.email).join(", ")} with password "${DEMO_PASSWORD}"`);
 }
 
 /** Never in production: there, platform admins are created only with the CLI command. */

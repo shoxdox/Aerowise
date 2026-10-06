@@ -19,9 +19,11 @@ export interface AuthContext {
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest();
 
-export async function createSession(db: Database, organizationId: string, userId: string) {
+/** `endsAt`: an earlier end than the usual 30 days (a visitor's demo ends with its company). */
+export async function createSession(db: Database, organizationId: string, userId: string, endsAt?: Date) {
   const token = randomBytes(32).toString("base64url");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const usual = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = endsAt && endsAt < usual ? endsAt : usual;
   await db
     .insertInto("sessions")
     .values({ tokenHash: hashToken(token), organizationId, userId, expiresAt })
@@ -44,6 +46,8 @@ export async function findSession(db: Database, token: string): Promise<AuthCont
     .where("s.expiresAt", ">", new Date())
     .where("u.active", "=", true)
     .where("m.active", "=", true)
+    // A visitor's demo company (W10.2) lets no one in once it has ended, whatever the session says.
+    .where((eb) => eb.or([eb("o.demoExpiresAt", "is", null), eb("o.demoExpiresAt", ">", new Date())]))
     .executeTakeFirst();
   return row ?? null;
 }

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { InvoiceTable } from "@/components/InvoiceTable";
 import { useLoad } from "@/components/useLoad";
 import { canEdit, useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 const VIEWS = [
   { key: "unpaid", label: "Unpaid" },
@@ -16,13 +17,13 @@ const VIEWS = [
   { key: "all", label: "All" },
 ] as const;
 
-const EMPTY: Record<(typeof VIEWS)[number]["key"], string> = {
-  unpaid: "Nothing is waiting to be paid.",
-  overdue: "No invoices are overdue.",
-  draft: "No drafts.",
-  paid: "No paid invoices yet.",
-  void: "No void invoices.",
-  all: "No invoices yet. Bill a contract from its site page, or start one here.",
+const EMPTY: Record<(typeof VIEWS)[number]["key"], [string, string]> = {
+  unpaid: ["Nothing is waiting to be paid", "Issued invoices wait here until they are paid in full, online or recorded by hand."],
+  overdue: ["No invoices are overdue", "An unpaid invoice shows here once its due date passes."],
+  draft: ["No drafts", "Bill a contract from its site page, or start an invoice here; it stays a draft until you issue it."],
+  paid: ["No paid invoices yet", "Invoices paid online or recorded as paid by check or cash show here."],
+  void: ["No void invoices", "An issued invoice you cancel is kept here, voided, for the record."],
+  all: ["No invoices yet", "Bill a contract from its site page, or start one here. Customers can pay online once Stripe is connected."],
 };
 
 export default function InvoicesPage() {
@@ -48,7 +49,7 @@ export default function InvoicesPage() {
       </div>
       {error && <p className="error">{error}</p>}
       {data && data.items.length > 0 && <InvoiceTable items={data.items} />}
-      {data?.items.length === 0 && <p className="muted">{EMPTY[view]}</p>}
+      {data?.items.length === 0 && <EmptyState title={EMPTY[view][0]}>{EMPTY[view][1]}</EmptyState>}
     </div>
   );
 }

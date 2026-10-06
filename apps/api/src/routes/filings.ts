@@ -19,6 +19,7 @@ import {
 } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import {
+  authorityRequirements,
   deadlineState,
   FILING_ATTENTION_STATUSES,
   FILING_OPEN_STATUSES,
@@ -31,6 +32,7 @@ import {
   id,
   jurisdiction,
   profileStatus,
+  requirementsSource,
   siteIdentifierInput,
   siteJurisdiction,
   siteJurisdictionInput,
@@ -144,7 +146,14 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             }
           : null,
       profile: resolved
-        ? { status: profileStatus(resolved.rules), ...profileDates(resolved.rules), unresolved: resolved.rules.profile?.unresolved ?? [], howToDecide: resolved.rules.applicability.howToDecide ?? null }
+        ? {
+            status: profileStatus(resolved.rules),
+            ...profileDates(resolved.rules),
+            unresolved: resolved.rules.profile?.unresolved ?? [],
+            howToDecide: resolved.rules.applicability.howToDecide ?? null,
+            requirements: authorityRequirements(resolved.rules),
+            requirementsSource: requirementsSource(resolved.rules),
+          }
         : null,
       identifiers: (resolved?.rules.identifiers ?? []).map((i) => {
         const value = values.find((v) => v.kind === i.key)?.value ?? null;

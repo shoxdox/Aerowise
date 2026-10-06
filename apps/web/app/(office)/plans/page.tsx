@@ -6,6 +6,7 @@ import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { money } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function PlansPage() {
   const editable = canEdit(useSession());
@@ -129,7 +130,11 @@ export default function PlansPage() {
           ))}
         </tbody>
       </table>
-      {data?.items.length === 0 && <p className="muted">No plans yet. Create one to start contracts.</p>}
+      {data?.items.length === 0 && (
+        <EmptyState title="No plans yet">
+          A plan is what you sell: how many visits a year, what they include and the price. Create one here, then start contracts on it from each site.
+        </EmptyState>
+      )}
     </div>
   );
 }
