@@ -24,6 +24,15 @@ afterAll(async () => {
 
 const AUTODIALER = { method: "autodialer", description: "Acme AD-200 on the control panel", notifies: "The maintenance provider, by phone call", startedOn: "2025-12-01", checkedOn: "2025-12-15" };
 
+/**
+ * Creates a contract the way the office does: look at the visits the site's authority needs
+ * and, if that is more than the plan has, agree to them (the office is warned first).
+ */
+async function agreed(t: { api: ReturnType<typeof client>; site: { id: string } }, body: { planId: string; startOn: string }) {
+  const preview = (await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${body.planId}&startOn=${body.startOn}`)).json();
+  return t.api.post(`/sites/${t.site.id}/contracts`, { ...body, acceptVisits: preview.warning ? preview.visitsPerTerm : undefined });
+}
+
 async function siteIn(c: TestContext, county: string, name = "Org A") {
   const t = await createTenant(c, name);
   expect((await t.api.patch(`/sites/${t.site.id}`, { county })).statusCode).toBe(200);
@@ -31,7 +40,7 @@ async function siteIn(c: TestContext, county: string, name = "Org A") {
   const plan = async (customerType = "residential") => (await t.api.post("/plans", { name: `${customerType} 12/2`, customerType, termMonths: 12, visitsPerTerm: 2, priceCents: 20000 })).json();
   const contract = async (startOn = "2026-01-15", customerType = "residential") => {
     await t.api.patch(`/sites/${t.site.id}`, { customerType });
-    return (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: (await plan(customerType)).id, startOn })).json();
+    return (await agreed(t, { planId: (await plan(customerType)).id, startOn })).json();
   };
   return { ...t, contract };
 }

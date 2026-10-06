@@ -1,11 +1,13 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
+import { MoreVisitsRequired, siteVisitTerms } from "@aerowise/renewals";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
   addDays,
   cancelInput,
   contractDetail,
   contractInput,
+  contractTermsPreview,
   contractState,
   dueObligation,
   dueQuery,
@@ -254,6 +256,28 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     },
   );
 
+  app.get(
+    "/sites/:id/contract-terms",
+    {
+      config: { permission: "contracts:read" },
+      schema: {
+        tags: ["contracts"],
+        summary: "The visits a contract on this plan would get at this site, and a warning when its authority needs more than the plan has",
+        params,
+        querystring: z.object({ planId: id, startOn: z.iso.date() }),
+        response: { 200: contractTermsPreview },
+      },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const site = await db.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+      if (!site) throw notFound("Site");
+      const terms = await activePlanTerms(organizationId, req.query.planId);
+      const { terms: t, added } = await siteVisitTerms(db, organizationId, site.id, req.query.startOn, terms);
+      return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null };
+    },
+  );
+
   app.post(
     "/sites/:id/contracts",
     {
@@ -284,7 +308,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           terms,
           autoRenew: req.body.autoRenew,
           notes: req.body.notes,
-        });
+        }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, { action: "contract.created", entityType: "contract", entityId: created, changes: req.body });
         // Opens a filing with the site's authority when it requires contracts on file.
         await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
@@ -342,7 +366,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           terms,
           autoRenew: prev.autoRenew,
           previousContractId: prev.id,
-        });
+        }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, {
           action: "contract.renewed",
           entityType: "contract",
