@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("a new owner reads and accepts the terms and privacy policy before using the office", async ({ page, browser }) => {
+test("a new company owner reads and accepts the terms and privacy policy before using the office", async ({ page, browser }) => {
   // The terms and privacy pages are public and show the version an owner accepts.
   await page.goto("/");
   await page.getByRole("link", { name: "Terms of service" }).click();
@@ -10,18 +10,22 @@ test("a new owner reads and accepts the terms and privacy policy before using th
   await page.goto("/privacy");
   await expect(page.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeVisible();
 
-  // The seeded owner has accepted already and invites a second owner.
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@example.com");
+  // The founder creates a company and invites its first owner, the usual way a design
+  // partner starts. (Signing in through /admin keeps the office sign-in limit free for
+  // the other tests that use the seeded owner.)
+  await page.goto("/admin/login");
+  await page.getByLabel("Email").fill("admin@example.com");
   await page.getByLabel("Password").fill("aerowise-dev");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("**/inbox");
-  await page.goto("/settings/users");
-  await page.getByRole("button", { name: "Invite someone" }).click();
-  await page.getByLabel("Email").fill("oscar.owner@example.com");
-  await page.getByLabel("Name").fill("Oscar Owner");
-  await page.getByLabel("Role").selectOption("owner");
-  await page.getByRole("button", { name: "Send invitation" }).click();
+  await page.waitForURL(/\/admin$/);
+  await page.getByRole("button", { name: "New organization" }).click();
+  await page.getByLabel("Company name").fill("Pecos Aerobic Co");
+  await page.getByRole("button", { name: "Create organization" }).click();
+  await expect(page.getByRole("status")).toHaveText("Created Pecos Aerobic Co.");
+  await page.getByRole("row", { name: /Pecos Aerobic Co/ }).getByRole("button", { name: "Invite owner" }).click();
+  await page.getByLabel("Owner email").fill("oscar.owner@example.com");
+  await page.getByLabel("Owner name").fill("Oscar Owner");
+  await page.getByRole("button", { name: "Send owner invitation" }).click();
   const link = await page.getByLabel("Invitation link").inputValue();
 
   const other = await browser.newContext({ ...test.info().project.use });
