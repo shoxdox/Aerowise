@@ -10,6 +10,7 @@ import type {
   QuickBooksConflictKind,
   QuickBooksEntityType,
   QuickBooksSyncStatus,
+  RefundIntent,
   RefundStatus,
   Role,
   SmsKind,
@@ -748,6 +749,7 @@ export interface InvoicesTable {
   totalCents: number;
   paidCents: Generated<number>;
   pendingCents: Generated<number>;
+  creditedCents: Generated<number>;
   refundedCents: Generated<number>;
   issuedOn: string | null;
   dueOn: string | null;
@@ -814,6 +816,7 @@ export interface RefundsTable {
   paymentId: string;
   amountCents: number;
   status: RefundStatus;
+  intent: Generated<RefundIntent>;
   providerRefundId: string | null;
   reason: string | null;
   failureReason: string | null;
@@ -874,6 +877,12 @@ export interface QuickbooksConnectionsTable {
   syncFrom: string;
   defaultItemId: string | null;
   defaultItemName: string | null;
+  refundItemId: Generated<string | null>;
+  refundItemName: Generated<string | null>;
+  stripeRefundAccountId: Generated<string | null>;
+  stripeRefundAccountName: Generated<string | null>;
+  manualRefundAccountId: Generated<string | null>;
+  manualRefundAccountName: Generated<string | null>;
   reviewFetchedAt: Timestamp | null;
   reviewRemoteCount: number | null;
   changesSince: Timestamp | null;

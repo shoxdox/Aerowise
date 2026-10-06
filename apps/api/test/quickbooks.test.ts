@@ -172,6 +172,203 @@ describe("sending invoices and payments", () => {
     expect(s.connection.lastSyncError).toBeNull();
   });
 
+  it("sends an ordinary refund as a Refund Receipt once its item and account are chosen, leaving the payment alone", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm, items } = await synced(t);
+    const inv = await issue(t, cs.nora.id);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", reference: "1042", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    const refunded = (await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 200, reason: "Overcharged" })).json();
+    expect(refunded).toMatchObject({ paidCents: 9800, creditedCents: 200, amountDueCents: 20000 });
+    const refundId = refunded.payments[0].refunds[0].id as string;
+
+    // Nothing is assumed about the company's books: it waits for the refund item and account.
+    await runWorker(ctx);
+    expect(await link("refund", refundId)).toMatchObject({ status: "queued", syncError: "Choose the refund item on the QuickBooks page" });
+    const accounts = (await t.api.get("/quickbooks/accounts")).json() as { id: string; name: string }[];
+    const checking = accounts.find((a) => a.name === "Checking")!;
+    const clearing = accounts.find((a) => a.name === "Stripe Clearing")!;
+    const services = items.find((i) => i.name === "Services")!;
+    expect((await t.api.put("/quickbooks/mapping", { refundItemId: services.id, stripeRefundAccountId: clearing.id })).statusCode).toBe(200);
+    await runWorker(ctx);
+    expect(await link("refund", refundId)).toMatchObject({ status: "queued", syncError: "Choose the account check and cash refunds are paid from on the QuickBooks page" });
+    const mapped = (await t.api.put("/quickbooks/mapping", { manualRefundAccountId: checking.id })).json();
+    expect(mapped).toMatchObject({ refundItem: { id: services.id, name: "Services" }, stripeRefundAccount: { name: "Stripe Clearing" }, manualRefundAccount: { name: "Checking" } });
+    expect((await t.api.put("/quickbooks/mapping", { manualRefundAccountId: services.id })).statusCode).toBe(422);
+    await runWorker(ctx);
+
+    const company = await companies().get(realm);
+    const custLink = await link("customer", cs.nora.id);
+    expect(Object.values(company.refundReceipts ?? {})).toEqual([
+      expect.objectContaining({
+        customerId: custLink!.externalId,
+        itemId: services.id,
+        accountId: checking.id,
+        amountCents: 200,
+        paymentType: "Check",
+        reference: "1042",
+        description: "Refund on INV-1001: Overcharged",
+      }),
+    ]);
+    // The payment and the invoice's balance stay as they were.
+    expect(Object.values(company.payments)).toEqual([expect.objectContaining({ amountCents: 10000 })]);
+    expect(Object.values(company.invoices)[0]!.balanceCents).toBe(20000);
+    expect(await link("refund", refundId)).toMatchObject({ status: "synced" });
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced" });
+    expect((await t.api.get("/quickbooks/records?view=all&entityType=refund")).json().map((r: { label: string }) => r.label)).toContain("Refund of $2.00 on INV-1001");
+
+    // Later runs don't send it again.
+    await runWorker(ctx);
+    expect(Object.values((await companies().get(realm)).refundReceipts ?? {})).toHaveLength(1);
+  });
+
+  it("sends a Stripe refund from the Stripe account, and a payment refunded before it was sent at its full amount", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm, items } = await synced(t);
+    const accounts = (await t.api.get("/quickbooks/accounts")).json() as { id: string; name: string }[];
+    const clearing = accounts.find((a) => a.name === "Stripe Clearing")!;
+    const services = items.find((i) => i.name === "Services")!;
+    await t.api.put("/quickbooks/mapping", { refundItemId: services.id, stripeRefundAccountId: clearing.id });
+    const inv = await issue(t, cs.nora.id);
+    // A card payment taken online and part-refunded in Stripe's dashboard, both before the next sync.
+    const pay = await ctx.db
+      .insertInto("payments")
+      .values({ organizationId: t.org.id, invoiceId: inv.id, amountCents: 10000, method: "card", source: "stripe", status: "succeeded", providerPaymentId: "pi_test_qb", succeededAt: ctx.now, createdAt: ctx.now, updatedAt: ctx.now })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    const refund = await ctx.db
+      .insertInto("refunds")
+      .values({ organizationId: t.org.id, paymentId: pay.id, amountCents: 300, status: "succeeded", providerRefundId: "re_test_qb", reason: "Refunded in Stripe", createdAt: ctx.now, updatedAt: ctx.now })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    await runWorker(ctx);
+    await runWorker(ctx);
+    const company = await companies().get(realm);
+    expect(Object.values(company.payments)).toEqual([expect.objectContaining({ amountCents: 10000 })]);
+    expect(Object.values(company.refundReceipts ?? {})).toEqual([
+      expect.objectContaining({ accountId: clearing.id, amountCents: 300, paymentType: "CreditCard", reference: "re_test_qb", privateNote: "Aerowise refund on INV-1001 (Stripe re_test_qb, payment pi_test_qb)" }),
+    ]);
+    expect(await link("refund", refund.id)).toMatchObject({ status: "synced" });
+  });
+
+  it("lowers a payment reversed by a refund in QuickBooks, and deletes it once nothing is kept", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await synced(t);
+    const inv = await issue(t, cs.nora.id);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", reference: "1042", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    const remoteInvoice = async () => Object.values((await companies().get(realm)).invoices)[0]!;
+    expect((await remoteInvoice()).balanceCents).toBe(20000);
+
+    // Part of the payment reversed: QuickBooks keeps the payment at what the customer kept paying.
+    expect((await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 200, reason: "Overcharged", intent: "reverse" })).statusCode).toBe(200);
+    await runWorker(ctx);
+    expect(Object.values((await companies().get(realm)).payments)).toEqual([expect.objectContaining({ amountCents: 9800 })]);
+    expect((await remoteInvoice()).balanceCents).toBe(20200);
+    expect((await t.api.get(`/invoices/${inv.id}`)).json()).toMatchObject({ paidCents: 9800 });
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced", pushedHash: "9800" });
+
+    // Nothing more to send until the next refund.
+    await runWorker(ctx);
+    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(1);
+
+    // The rest reversed: the payment comes off the QuickBooks invoice entirely.
+    expect((await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 9800, reason: "Job cancelled", intent: "reverse" })).statusCode).toBe(200);
+    await runWorker(ctx);
+    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(0);
+    expect((await remoteInvoice()).balanceCents).toBe(30000);
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced", remoteState: "deleted" });
+  });
+
+  it("asks before reversing a payment that was deleted in QuickBooks", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await synced(t);
+    const inv = await issue(t, cs.nora.id);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    const sent = (await link("payment", paid.payments[0].id))!;
+    await new TestQuickBooksProvider(ctx.db, () => ctx.now).company(realm).deletePayment(sent.externalId!, sent.syncToken!);
+    await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 200, reason: "Overcharged", intent: "reverse" });
+    await runWorker(ctx);
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "conflict", conflictKind: "deleted_in_quickbooks" });
+    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(0);
+    expect(Object.values((await companies().get(realm)).invoices)[0]!.balanceCents).toBe(30000);
+  });
+
+  it("asks before reversing a payment someone changed in QuickBooks, and keeps their version if told to", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await synced(t);
+    const inv = await issue(t, cs.nora.id);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 10000, method: "check", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    const paymentId = paid.payments[0].id as string;
+    const sent = (await link("payment", paymentId))!;
+    // The bookkeeper changes the amount in QuickBooks, then the office reverses $2 of it in Aerowise.
+    await companies().editPayment(realm, sent.externalId!, { amountCents: 9500 });
+    await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 200, reason: "Overcharged", intent: "reverse" });
+    await runWorker(ctx);
+    const rec = (await t.api.get("/quickbooks/records")).json()[0];
+    expect(rec).toMatchObject({ entityType: "payment", conflictKind: "changed_in_both", actions: ["keep_quickbooks", "use_aerowise"] });
+    expect(rec.details.fields).toEqual([
+      { field: "Amount", aerowise: "$98.00 ($100.00 less $2.00 reversed by refund)", quickbooks: "$95.00" },
+      { field: "Applied to", aerowise: "$98.00 to INV-1001", quickbooks: "$95.00 to INV-1001" },
+    ]);
+    expect(Object.values((await companies().get(realm)).payments)).toEqual([expect.objectContaining({ amountCents: 9500 })]);
+
+    // Keeping the QuickBooks version leaves it alone, and later syncs don't send it again.
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "keep_quickbooks" })).statusCode).toBe(200);
+    await runWorker(ctx);
+    expect(await link("payment", paymentId)).toMatchObject({ status: "synced" });
+    expect(Object.values((await companies().get(realm)).payments)).toEqual([expect.objectContaining({ amountCents: 9500 })]);
+
+    // The next reversal asks again, since QuickBooks still has their version.
+    await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 800, reason: "Discount", intent: "reverse" });
+    await runWorker(ctx);
+    expect(await link("payment", paymentId)).toMatchObject({ status: "conflict", conflictKind: "changed_in_both" });
+  });
+
+  it("asks before reversing a payment moved to another invoice in QuickBooks, and sends the Aerowise version if told to", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await synced(t);
+    const a = await issue(t, cs.nora.id);
+    await issue(t, cs.nora.id);
+    const paid = (await t.api.post(`/invoices/${a.id}/payments`, { amountCents: 10000, method: "check", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    await runWorker(ctx);
+    const paymentId = paid.payments[0].id as string;
+    const sent = (await link("payment", paymentId))!;
+    const invA = (await link("invoice", a.id))!.externalId!;
+    const invB = Object.keys((await companies().get(realm)).invoices).find((id) => id !== invA)!;
+    await companies().editPayment(realm, sent.externalId!, { invoiceId: invB });
+    await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 200, reason: "Overcharged", intent: "reverse" });
+    await runWorker(ctx);
+    const rec = (await t.api.get("/quickbooks/records")).json()[0];
+    expect(rec.details.fields[1]).toEqual({ field: "Applied to", aerowise: "$98.00 to INV-1001", quickbooks: `$100.00 to another invoice (QuickBooks id ${invB})` });
+
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "use_aerowise" })).statusCode).toBe(200);
+    await runWorker(ctx);
+    const company = await companies().get(realm);
+    expect(Object.values(company.payments)).toEqual([expect.objectContaining({ amountCents: 9800, invoiceId: invA })]);
+    expect(company.invoices[invA]!.balanceCents).toBe(20200);
+    expect(company.invoices[invB]!.balanceCents).toBe(30000);
+    expect(await link("payment", paymentId)).toMatchObject({ status: "synced", pushedHash: "9800" });
+  });
+
+  it("sends a payment reversed before it reached QuickBooks at what was kept, or not at all", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await synced(t);
+    const a = await issue(t, cs.nora.id);
+    const b = await issue(t, cs.dana.id);
+    const pa = (await t.api.post(`/invoices/${a.id}/payments`, { amountCents: 10000, method: "cash", receivedOn: "2026-03-01" })).json();
+    const pb = (await t.api.post(`/invoices/${b.id}/payments`, { amountCents: 5000, method: "cash", receivedOn: "2026-03-01" })).json();
+    await t.api.post(`/payments/${pa.payments[0].id}/refund`, { amountCents: 2500, reason: "Overcharged", intent: "reverse" });
+    await t.api.post(`/payments/${pb.payments[0].id}/refund`, { amountCents: 5000, reason: "Paid twice", intent: "reverse" });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    expect(Object.values((await companies().get(realm)).payments)).toEqual([expect.objectContaining({ amountCents: 7500 })]);
+    expect(await link("payment", pb.payments[0].id)).toMatchObject({ status: "ignored", syncError: "Reversed in full before it reached QuickBooks" });
+  });
+
   it("voids in QuickBooks what was voided here", async () => {
     const t = await createTenant(ctx, "Org A");
     const { cs, realm } = await synced(t);

@@ -3,6 +3,7 @@ import {
   id,
   QUICKBOOKS_ENTITY_TYPES,
   QUICKBOOKS_SYNC_STATUSES,
+  quickbooksAccount,
   quickbooksItem,
   quickbooksMapping,
   quickbooksMappingInput,
@@ -77,7 +78,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       .where("status", "<>", "new")
       .groupBy(["entityType", "status"])
       .execute();
-    const counts: QuickBooksStatus["counts"] = { customer: {}, plan: {}, invoice: {}, payment: {} };
+    const counts: QuickBooksStatus["counts"] = { customer: {}, plan: {}, invoice: {}, payment: {}, refund: {} };
     let attention = 0;
     for (const r of rows) {
       counts[r.entityType][r.status] = Number(r.n);
@@ -196,8 +197,25 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     },
   );
 
+  app.get(
+    "/quickbooks/accounts",
+    { config: { permission: "quickbooks:read" }, schema: { tags: ["quickbooks"], summary: "Bank and clearing accounts in QuickBooks that refunds can be paid from", response: { 200: z.array(quickbooksAccount) } } },
+    async (req) => {
+      try {
+        const accounts = await (await openCompany(ctx(), req.requireAuth().organizationId)).listAccounts();
+        return accounts.sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+      } catch (err) {
+        asHttp(err);
+      }
+    },
+  );
+
   async function mapping(organizationId: string) {
-    const c = await db.selectFrom("quickbooksConnections").select(["syncFrom", "defaultItemId", "defaultItemName"]).where("organizationId", "=", organizationId).executeTakeFirst();
+    const c = await db
+      .selectFrom("quickbooksConnections")
+      .select(["syncFrom", "defaultItemId", "defaultItemName", "refundItemId", "refundItemName", "stripeRefundAccountId", "stripeRefundAccountName", "manualRefundAccountId", "manualRefundAccountName"])
+      .where("organizationId", "=", organizationId)
+      .executeTakeFirst();
     if (!c) throw unprocessable("QuickBooks is not connected");
     const plans = await db
       .selectFrom("plans as p")
@@ -210,6 +228,9 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     return {
       syncFrom: c.syncFrom,
       defaultItem: c.defaultItemId ? { id: c.defaultItemId, name: c.defaultItemName ?? c.defaultItemId } : null,
+      refundItem: c.refundItemId ? { id: c.refundItemId, name: c.refundItemName ?? c.refundItemId } : null,
+      stripeRefundAccount: c.stripeRefundAccountId ? { id: c.stripeRefundAccountId, name: c.stripeRefundAccountName ?? c.stripeRefundAccountId } : null,
+      manualRefundAccount: c.manualRefundAccountId ? { id: c.manualRefundAccountId, name: c.manualRefundAccountName ?? c.manualRefundAccountId } : null,
       plans: plans.map((p) => ({
         planId: p.id,
         planName: p.name,
@@ -235,7 +256,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     async (req) => {
       const { organizationId } = req.requireAuth();
       const body = req.body;
-      const wanted = [...new Set([body.defaultItemId, ...(body.plans ?? []).map((p) => p.itemId)].filter((x): x is string => !!x))];
+      const wanted = [...new Set([body.defaultItemId, body.refundItemId, ...(body.plans ?? []).map((p) => p.itemId)].filter((x): x is string => !!x))];
       let names = new Map<string, string>();
       if (wanted.length) {
         try {
@@ -246,6 +267,17 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
         }
         const missing = wanted.filter((w) => !names.has(w));
         if (missing.length) throw unprocessable("Pick active QuickBooks items only");
+      }
+      const wantedAccounts = [...new Set([body.stripeRefundAccountId, body.manualRefundAccountId].filter((x): x is string => !!x))];
+      let accountNames = new Map<string, string>();
+      if (wantedAccounts.length) {
+        try {
+          const accounts = await (await openCompany(ctx(), organizationId)).listAccounts();
+          accountNames = new Map(accounts.filter((a) => a.active).map((a) => [a.id, a.name]));
+        } catch (err) {
+          asHttp(err);
+        }
+        if (wantedAccounts.some((w) => !accountNames.has(w))) throw unprocessable("Pick active QuickBooks accounts only");
       }
       if (body.plans?.length) {
         const known = await db.selectFrom("plans").select("id").where("organizationId", "=", organizationId).where("id", "in", body.plans.map((p) => p.planId)).execute();
@@ -258,6 +290,16 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
         if (body.defaultItemId !== undefined) {
           conn.defaultItemId = body.defaultItemId;
           conn.defaultItemName = body.defaultItemId ? names.get(body.defaultItemId)! : null;
+        }
+        if (body.refundItemId !== undefined) {
+          conn.refundItemId = body.refundItemId;
+          conn.refundItemName = body.refundItemId ? names.get(body.refundItemId)! : null;
+        }
+        for (const key of ["stripeRefundAccount", "manualRefundAccount"] as const) {
+          const chosen = body[`${key}Id`];
+          if (chosen === undefined) continue;
+          conn[`${key}Id`] = chosen;
+          conn[`${key}Name`] = chosen ? accountNames.get(chosen)! : null;
         }
         await trx.updateTable("quickbooksConnections").set(conn).where("organizationId", "=", organizationId).execute();
         for (const p of body.plans ?? []) {

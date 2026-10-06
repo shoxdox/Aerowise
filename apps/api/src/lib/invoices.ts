@@ -201,6 +201,7 @@ export function invoiceBase(db: Database, organizationId: string) {
       "i.totalCents",
       "i.paidCents",
       "i.pendingCents",
+      "i.creditedCents",
       "i.sentAt",
       "i.createdAt",
       "c.id as customerId",
@@ -230,6 +231,7 @@ export function toListItem(r: BaseRow, today: string): InvoiceListItem {
     totalCents: r.totalCents,
     paidCents: r.paidCents,
     pendingCents: r.pendingCents,
+    creditedCents: r.creditedCents,
     amountDueCents: r.status === "open" ? amountDue(r) : 0,
     sentAt: r.sentAt?.toISOString() ?? null,
     customer: { id: r.customerId, displayName: r.displayName },
@@ -264,7 +266,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
     db
       .selectFrom("refunds as r")
       .innerJoin("payments as p", "p.id", "r.paymentId")
-      .select(["r.id", "r.paymentId", "r.amountCents", "r.status", "r.reason", "r.createdAt"])
+      .select(["r.id", "r.paymentId", "r.amountCents", "r.status", "r.intent", "r.reason", "r.createdAt"])
       .where("p.organizationId", "=", organizationId)
       .where("p.invoiceId", "=", invoiceId)
       .orderBy("r.createdAt")
@@ -323,7 +325,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       createdAt: p.createdAt.toISOString(),
       refunds: refunds
         .filter((r) => r.paymentId === p.id)
-        .map((r) => ({ id: r.id, amountCents: r.amountCents, status: r.status, reason: r.reason, createdAt: r.createdAt.toISOString() })),
+        .map((r) => ({ id: r.id, amountCents: r.amountCents, status: r.status, intent: r.intent, reason: r.reason, createdAt: r.createdAt.toISOString() })),
     })),
     events: events.map((e) => ({ id: e.id, eventType: e.eventType, summary: e.summary, occurredAt: e.occurredAt.toISOString(), actorName: e.actorName })),
   };

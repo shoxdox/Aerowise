@@ -5,6 +5,9 @@ import {
   type Changes,
   type CustomerPayload,
   type InvoicePayload,
+  type PaymentChange,
+  type QboAccount,
+  type RefundReceiptPayload,
   type PaymentPayload,
   type QboCustomer,
   type QboInvoice,
@@ -22,6 +25,9 @@ export interface TestCompanyData {
   items: Record<string, QboItem>;
   invoices: Record<string, QboInvoice & { lines: InvoicePayload["lines"]; discountCents: number }>;
   payments: Record<string, { id: string; syncToken: string; customerId: string; invoiceId: string; amountCents: number; txnDate: string }>;
+  /** Missing in companies saved before refunds were synced. */
+  accounts?: Record<string, QboAccount>;
+  refundReceipts?: Record<string, RefundReceiptPayload & { id: string; syncToken: string }>;
   /** What a request id created, so a repeated create returns the same record. */
   requests: Record<string, string>;
   /** Changes in order, for change data capture. */
@@ -150,7 +156,16 @@ export class TestCompanies {
       const iid = id();
       items[iid] = { id: iid, name: itemName, type, active: true };
     }
-    const data: TestCompanyData = { name, next: n, customers, items, invoices: {}, payments: {}, requests: {}, log: [] };
+    const accounts: Record<string, QboAccount> = {};
+    for (const [accountName, type] of [
+      ["Checking", "Bank"],
+      ["Undeposited Funds", "Other Current Asset"],
+      ["Stripe Clearing", "Other Current Asset"],
+    ] as const) {
+      const aid = id();
+      accounts[aid] = { id: aid, name: accountName, type, active: true };
+    }
+    const data: TestCompanyData = { name, next: n, customers, items, accounts, invoices: {}, payments: {}, refundReceipts: {}, requests: {}, log: [] };
     await this.db
       .insertInto("quickbooksTestCompanies")
       .values({ realmId, data: JSON.stringify(data), updatedAt: this.now() })
@@ -186,6 +201,19 @@ export class TestCompanies {
     return this.update(realmId, (c, at) => {
       const inv = c.invoices[id]!;
       c.invoices[id] = { ...inv, balanceCents: inv.balanceCents - amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+    });
+  }
+
+  /** As if someone edited a payment in QuickBooks: its amount, or the invoice it pays. */
+  editPayment(realmId: string, id: string, change: { amountCents?: number; invoiceId?: string }) {
+    return this.update(realmId, (c, at) => {
+      const pay = c.payments[id]!;
+      const next = { ...pay, ...change, syncToken: bump(pay.syncToken) };
+      const was = c.invoices[pay.invoiceId]!;
+      c.invoices[pay.invoiceId] = { ...was, balanceCents: was.balanceCents + pay.amountCents, syncToken: bump(was.syncToken), updatedAt: at };
+      const now = c.invoices[next.invoiceId]!;
+      c.invoices[next.invoiceId] = { ...now, balanceCents: now.balanceCents - next.amountCents, syncToken: bump(now.syncToken), updatedAt: at };
+      c.payments[id] = next;
     });
   }
 
@@ -332,6 +360,57 @@ class TestCompany implements QuickBooksCompany {
       const id = newId();
       c.payments[id] = { id, syncToken: "0", customerId: p.customerId, invoiceId: p.invoiceId, amountCents: p.amountCents, txnDate: p.txnDate };
       c.invoices[p.invoiceId] = { ...inv, balanceCents: inv.balanceCents - p.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+      c.requests[requestId] = id;
+      return { id, syncToken: "0" };
+    });
+  }
+
+  getPayment(id: string) {
+    return this.read((c) => {
+      const pay = c.payments[id];
+      return pay ? { id, syncToken: pay.syncToken, amountCents: pay.amountCents, applied: [{ invoiceId: pay.invoiceId, amountCents: pay.amountCents }] } : null;
+    });
+  }
+
+  updatePayment(id: string, syncToken: string, change: PaymentChange) {
+    return this.write((c, at) => {
+      const pay = c.payments[id];
+      if (!pay) throw new QuickBooksError("validation", "Object Not Found", "610");
+      if (pay.syncToken !== syncToken) throw new QuickBooksError("stale", "Stale Object Error", "5010");
+      const was = c.invoices[pay.invoiceId];
+      if (was) c.invoices[pay.invoiceId] = { ...was, balanceCents: was.balanceCents + pay.amountCents, syncToken: bump(was.syncToken), updatedAt: at };
+      const inv = c.invoices[change.invoiceId];
+      if (!inv) throw new QuickBooksError("validation", "Invalid Reference Id: the invoice is missing", "2500");
+      c.invoices[change.invoiceId] = { ...inv, balanceCents: inv.balanceCents - change.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+      c.payments[id] = { ...pay, invoiceId: change.invoiceId, amountCents: change.amountCents, syncToken: bump(pay.syncToken) };
+      return { id, syncToken: c.payments[id].syncToken };
+    });
+  }
+
+  deletePayment(id: string, syncToken: string) {
+    return this.write((c, at) => {
+      const pay = c.payments[id];
+      if (!pay) throw new QuickBooksError("validation", "Object Not Found", "610");
+      if (pay.syncToken !== syncToken) throw new QuickBooksError("stale", "Stale Object Error", "5010");
+      const inv = c.invoices[pay.invoiceId];
+      if (inv) c.invoices[pay.invoiceId] = { ...inv, balanceCents: inv.balanceCents + pay.amountCents, syncToken: bump(inv.syncToken), updatedAt: at };
+      delete c.payments[id];
+    });
+  }
+
+  listAccounts() {
+    return this.read((c) => Object.values(c.accounts ?? {}));
+  }
+
+  createRefundReceipt(p: RefundReceiptPayload, requestId: string) {
+    return this.write((c, _at, newId) => {
+      const done = c.requests[requestId];
+      if (done && c.refundReceipts?.[done]) return { id: done, syncToken: c.refundReceipts[done].syncToken };
+      if (!c.items[p.itemId]?.active) throw new QuickBooksError("validation", `Invalid Reference Id: item ${p.itemId} is inactive or missing`, "2500");
+      if (!c.accounts?.[p.accountId]?.active) throw new QuickBooksError("validation", `Invalid Reference Id: account ${p.accountId} is inactive or missing`, "2500");
+      if (!c.customers[p.customerId]) throw new QuickBooksError("validation", "Invalid Reference Id: the customer is missing", "2500");
+      const id = newId();
+      c.refundReceipts = { ...(c.refundReceipts ?? {}), [id]: { ...p, id, syncToken: "0" } };
       c.requests[requestId] = id;
       return { id, syncToken: "0" };
     });

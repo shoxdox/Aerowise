@@ -4,6 +4,7 @@ import {
   MATCH_REASON_LABELS,
   QUICKBOOKS_ACTION_LABELS,
   QUICKBOOKS_SYNC_STATUS_LABELS,
+  type QuickBooksAccount,
   type QuickBooksAction,
   type QuickBooksItem,
   type QuickBooksMapping,
@@ -25,7 +26,7 @@ const RETURN_MESSAGES: Record<string, string> = {
   connect: "QuickBooks did not finish connecting. Try again.",
 };
 
-const ENTITY_LABELS = { customer: "Customers", invoice: "Invoices", payment: "Payments" } as const;
+const ENTITY_LABELS = { customer: "Customers", invoice: "Invoices", payment: "Payments", refund: "Refunds" } as const;
 const HEALTH_ORDER: QuickBooksSyncStatus[] = ["synced", "queued", "syncing", "failed", "conflict", "ignored"];
 
 function errorText(err: unknown, fallback: string) {
@@ -140,12 +141,15 @@ function RecordCard({ r, editable, onDone }: { r: QuickBooksRecord; editable: bo
 function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promise<void> }) {
   const mapping = useLoad<QuickBooksMapping>("/quickbooks/mapping");
   const items = useLoad<QuickBooksItem[]>("/quickbooks/items");
+  const accounts = useLoad<QuickBooksAccount[]>("/quickbooks/accounts");
   const [message, setMessage] = useState<string | null>(null);
   if (mapping.error) return <p className="error">{mapping.error}</p>;
   if (!mapping.data) return <p className="muted">Loading…</p>;
   const m = mapping.data;
   const active = (items.data ?? []).filter((i) => i.active);
   const known = new Set(active.map((i) => i.id));
+  const activeAccounts = (accounts.data ?? []).filter((a) => a.active);
+  const knownAccounts = new Set(activeAccounts.map((a) => a.id));
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -157,6 +161,9 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
         body: {
           syncFrom: String(f.get("syncFrom")),
           defaultItemId: String(f.get("defaultItem") ?? "") || null,
+          refundItemId: String(f.get("refundItem") ?? "") || null,
+          stripeRefundAccountId: String(f.get("stripeRefundAccount") ?? "") || null,
+          manualRefundAccountId: String(f.get("manualRefundAccount") ?? "") || null,
           plans: m.plans.map((p) => ({ planId: p.planId, itemId: String(f.get(`plan-${p.planId}`) ?? "") || null })),
         },
       });
@@ -179,8 +186,20 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
     </select>
   );
 
+  const accountSelect = (name: string, value: string | null) => (
+    <select name={name} defaultValue={value ?? ""} disabled={!owner}>
+      <option value="">Not chosen: refunds wait</option>
+      {value && !knownAccounts.has(value) && <option value={value}>Missing in QuickBooks ({value})</option>}
+      {activeAccounts.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.name} ({a.type})
+        </option>
+      ))}
+    </select>
+  );
+
   return (
-    <form className="card stack" onSubmit={save} key={JSON.stringify(m) + active.length}>
+    <form className="card stack" onSubmit={save} key={JSON.stringify(m) + active.length + activeAccounts.length}>
       <h2>Products and services</h2>
       <p className="muted small">Each invoice line goes to QuickBooks under a product or service. Plan installments use their plan&apos;s item; everything else uses the item for other charges.</p>
       {items.error && <p className="error">{items.error}</p>}
@@ -202,6 +221,25 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
         </label>
       </div>
       <p className="muted small">Invoices issued before {day(m.syncFrom)} are not sent, so ones already entered in QuickBooks by hand are not doubled.</p>
+      <h2>Refunds</h2>
+      <p className="muted small">
+        An ordinary refund goes to QuickBooks as a Refund Receipt, and the original payment stays as it is. Choose the item it reduces and where the money leaves from. Ask your accountant if unsure. Refunds wait until all three are chosen.
+      </p>
+      {accounts.error && <p className="error">{accounts.error}</p>}
+      <div className="grid">
+        <label>
+          Refund item
+          {select("refundItem", m.refundItem?.id ?? null, "Not chosen: refunds wait")}
+        </label>
+        <label>
+          Card and bank refunds paid from
+          {accountSelect("stripeRefundAccount", m.stripeRefundAccount?.id ?? null)}
+        </label>
+        <label>
+          Check and cash refunds paid from
+          {accountSelect("manualRefundAccount", m.manualRefundAccount?.id ?? null)}
+        </label>
+      </div>
       {owner && (
         <div className="row">
           <button type="submit">Save</button>

@@ -27,7 +27,8 @@ export async function invoiceEvent(
 }
 
 /**
- * Recomputes what each payment has had refunded and what the invoice has been paid, from
+ * Recomputes what each payment has had refunded and what the invoice has been paid (and
+ * credited: refunds the customer no longer owes), from
  * the payments and refunds themselves. Every change to either calls this in the same
  * transaction, so the cached sums can never drift. Money on a void invoice counts as
  * overpaid: it has to go back.
@@ -46,6 +47,7 @@ export async function recalcInvoice(trx: Transaction<DB>, organizationId: string
       sql<number>`coalesce(sum(amount_cents) filter (where status = 'succeeded'), 0)::int`.as("succeeded"),
       sql<number>`coalesce(sum(amount_cents) filter (where status = 'pending'), 0)::int`.as("pending"),
       sql<number>`coalesce(sum(refunded_cents), 0)::int`.as("refunded"),
+      sql<number>`coalesce(sum((select coalesce(sum(r.amount_cents), 0) from refunds r where r.payment_id = payments.id and r.status = 'succeeded' and r.intent = 'credit')), 0)::int`.as("credited"),
     ])
     .where("organizationId", "=", organizationId)
     .where("invoiceId", "=", invoiceId)
@@ -58,6 +60,8 @@ export async function recalcInvoice(trx: Transaction<DB>, organizationId: string
     paidCents,
     pendingCents: sums.pending,
     refundedCents: sums.refunded,
+    // Nothing is owed on a void invoice, so there is nothing for a credit to come off.
+    creditedCents: invoice.status === "void" ? 0 : sums.credited,
   });
   const fullyPaid = status === "paid" || status === "overpaid";
   await trx
@@ -66,6 +70,7 @@ export async function recalcInvoice(trx: Transaction<DB>, organizationId: string
       paidCents,
       pendingCents: sums.pending,
       refundedCents: sums.refunded,
+      creditedCents: sums.credited,
       paymentStatus: invoice.status === "void" && status === "paid" ? "unpaid" : status,
       paidAt: fullyPaid && invoice.status !== "void" ? (invoice.paidAt ?? now) : null,
       updatedAt: now,
@@ -73,7 +78,7 @@ export async function recalcInvoice(trx: Transaction<DB>, organizationId: string
     .where("organizationId", "=", organizationId)
     .where("id", "=", invoiceId)
     .execute();
-  return { paidCents, pendingCents: sums.pending, refundedCents: sums.refunded, paymentStatus: status };
+  return { paidCents, pendingCents: sums.pending, refundedCents: sums.refunded, creditedCents: sums.credited, paymentStatus: status };
 }
 
 /** Puts a cleared payment on the site's compliance timeline, when the invoice is for a site. */
