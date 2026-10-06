@@ -4,7 +4,7 @@ import type { Database } from "@aerowise/db";
 import { StripeProvider, TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { quickBooksFromEnv, TestQuickBooksProvider, TokenCipher, type QuickBooksProvider } from "@aerowise/quickbooks";
 import { geocoderFromEnv, TestGeocoder, type Geocoder } from "@aerowise/routing";
-import { smsFromEnv, TestSmsProvider, type SmsConfig } from "@aerowise/sms";
+import { isE164, smsFromEnv, TestSmsProvider, type SmsConfig } from "@aerowise/sms";
 import type { ObjectStore } from "@aerowise/storage";
 
 type Env = Record<string, string | undefined>;
@@ -22,7 +22,7 @@ export function demoModeFromEnv(env: Env): boolean {
 }
 
 /** Outside services that DEMO_LIVE_SERVICES may switch back to their real (test-mode) accounts. */
-export const DEMO_LIVE_SERVICE_NAMES = ["stripe", "quickbooks"] as const;
+export const DEMO_LIVE_SERVICE_NAMES = ["stripe", "quickbooks", "sms"] as const;
 export type DemoLiveService = (typeof DEMO_LIVE_SERVICE_NAMES)[number];
 
 /** A Stripe key that can only move test-mode money. */
@@ -32,7 +32,7 @@ export const isStripeTestKey = (key: string | undefined) => /^(sk|rk)_test_/.tes
  * DEMO_LIVE_SERVICES (comma-separated, staging only) lets the named services use their real
  * accounts in demo mode, so they can be tried end to end on staging. Each must be in a mode
  * where nothing real happens: Stripe only with a test-mode key, QuickBooks only against Intuit's
- * sandbox. Anything else refuses to start.
+ * sandbox, texts only to one test phone (SMS_REDIRECT_TO). Anything else refuses to start.
  */
 export function demoLiveServicesFromEnv(env: Env): Set<DemoLiveService> {
   const names = (env.DEMO_LIVE_SERVICES ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -51,6 +51,10 @@ export function demoLiveServicesFromEnv(env: Env): Set<DemoLiveService> {
       throw new Error("DEMO_LIVE_SERVICES lists quickbooks, so QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET must be set");
     }
     if (env.QUICKBOOKS_ENVIRONMENT?.trim() !== "sandbox") throw new Error('DEMO_LIVE_SERVICES lists quickbooks, so QUICKBOOKS_ENVIRONMENT must be "sandbox"');
+  }
+  if (live.has("sms")) {
+    if (!env.TWILIO_ACCOUNT_SID?.trim() || !env.TWILIO_AUTH_TOKEN?.trim()) throw new Error("DEMO_LIVE_SERVICES lists sms, so TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set");
+    if (!isE164(env.SMS_REDIRECT_TO?.trim() ?? "")) throw new Error("DEMO_LIVE_SERVICES lists sms, so SMS_REDIRECT_TO must be one test phone like +15125550123");
   }
   return live;
 }
@@ -93,7 +97,7 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
       quickbooks: live.has("quickbooks")
         ? quickBooksFromEnv(db, env, production, now)
         : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher(env.QUICKBOOKS_TOKEN_KEY || undefined) },
-      sms: { provider: new TestSmsProvider(), webhookBaseUrl: smsWebhookBaseUrl(env) },
+      sms: live.has("sms") ? smsFromEnv(env, production) : { provider: new TestSmsProvider(), webhookBaseUrl: smsWebhookBaseUrl(env) },
       geocoder: new TestGeocoder(),
       billing: new TestBillingProvider(),
     };

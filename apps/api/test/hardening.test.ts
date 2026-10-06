@@ -74,10 +74,10 @@ describe("boot-time configuration check", () => {
     ]);
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_test_x" })).toEqual(["STRIPE_WEBHOOK_SECRET is required when Stripe is configured"]);
     expect(configProblems({ ...staging, STRIPE_BILLING_SECRET_KEY: "sk_live_x" })).toEqual(["STRIPE_BILLING_WEBHOOK_SECRET is required when Stripe Billing is configured"]);
-    expect(configProblems({ ...staging, TWILIO_ACCOUNT_SID: "AC1" })).toEqual(["TWILIO_AUTH_TOKEN is required together"]);
+    expect(configProblems({ ...staging, TWILIO_ACCOUNT_SID: "AC1", SMS_REDIRECT_TO: "+15125550199" })).toEqual(["TWILIO_AUTH_TOKEN is required together"]);
   });
 
-  it("keeps staging's Stripe in test mode and QuickBooks in the sandbox, and the demo's live services off production", () => {
+  it("keeps staging's Stripe in test mode, QuickBooks in the sandbox and texts on one test phone, and the demo's live services off production", () => {
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([]);
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "rk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([]);
     expect(configProblems({ ...staging, STRIPE_SECRET_KEY: "sk_live_x", STRIPE_WEBHOOK_SECRET: "whsec_x" })).toEqual([
@@ -86,6 +86,12 @@ describe("boot-time configuration check", () => {
     const qbo = { QUICKBOOKS_CLIENT_ID: "id", QUICKBOOKS_CLIENT_SECRET: "s", QUICKBOOKS_TOKEN_KEY: "k".repeat(64) };
     expect(configProblems({ ...staging, ...qbo, QUICKBOOKS_ENVIRONMENT: "sandbox" })).toEqual([]);
     expect(configProblems({ ...staging, ...qbo, QUICKBOOKS_ENVIRONMENT: "production" })).toEqual(['QUICKBOOKS_ENVIRONMENT must be "sandbox" on staging']);
+    const twilio = { TWILIO_ACCOUNT_SID: "AC1", TWILIO_AUTH_TOKEN: "t" };
+    expect(configProblems({ ...staging, ...twilio })).toEqual(["SMS_REDIRECT_TO is required on staging when Twilio is configured, so test texts never reach a real customer"]);
+    expect(configProblems({ ...staging, ...twilio, SMS_REDIRECT_TO: "+15125550199" })).toEqual([]);
+    // The demo ignores Twilio's keys unless DEMO_LIVE_SERVICES lists sms, which needs the redirect itself.
+    expect(configProblems({ ...staging, ...twilio, DEMO_MODE: "true" })).toEqual([]);
+    expect(configProblems({ ...production, SMS_REDIRECT_TO: "+15125550199" })).toEqual(["SMS_REDIRECT_TO must be empty in production: it would send every customer's texts to one phone"]);
     expect(configProblems({ ...production, DEMO_LIVE_SERVICES: "stripe" })).toEqual(["DEMO_LIVE_SERVICES is for the staging demo only; leave it empty in production"]);
   });
 
