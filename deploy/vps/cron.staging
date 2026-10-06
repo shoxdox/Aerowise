@@ -1,0 +1,6 @@
+# Staging only. Server cron uses UTC: reseed at 09:00 UTC (04:00 CDT / 03:00 CST).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root docker ps -q --filter label=com.docker.compose.project=aerowise-staging --filter label=aerowise.autoheal=true --filter health=unhealthy | xargs -r docker restart >> /var/log/aerowise-staging-autoheal.log 2>&1
+45 8 * * * root /opt/aerowise/staging/deploy/vps/backup.sh staging >> /var/log/aerowise-staging-backup.log 2>&1
+0 9 * * * root docker exec aerowise-staging-api-1 pnpm db:reseed-demo >> /var/log/aerowise-reseed.log 2>&1

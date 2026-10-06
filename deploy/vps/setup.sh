@@ -14,11 +14,18 @@ set -euo pipefail
 
 domain=${1:-}
 acme_email=${2:-}
+mode=${3:-all}
+[[ $mode == all || $mode == --staging-only ]] || { echo "third argument must be --staging-only (or omitted)" >&2; exit 2; }
+environments=(staging production)
+hosts=()
+[[ $mode == --staging-only ]] && environments=(staging)
 [[ $domain =~ ^[A-Za-z0-9.-]+\.[A-Za-z0-9-]+$ && $acme_email == *@* ]] || { echo "usage: sudo bash setup.sh <domain, or the server's IP> <email>" >&2; exit 2; }
 # An IP address becomes an sslip.io name, which resolves back to that IP.
 [[ $domain =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && domain=${domain//./-}.sslip.io
 staging_host=staging.$domain
 production_host=app.$domain
+hosts=("$staging_host")
+[[ $mode == all ]] && hosts+=("$production_host")
 [[ $(id -u) == 0 ]] || { echo "run as root (sudo)" >&2; exit 1; }
 repo=${AEROWISE_REPO:-git@github.com:shoxdox/Aerowise.git}
 root=/opt/aerowise
@@ -78,16 +85,16 @@ EOF
   exit 0
 fi
 
-say "Checking out staging and production"
+say "Checking out ${environments[*]}"
 install -d -m 755 -o deploy -g deploy "$root"
-for env in staging production; do
+for env in "${environments[@]}"; do
   [[ -d $root/$env/.git ]] || sudo -u deploy git clone --quiet "$repo" "$root/$env"
 done
 
 say "Writing the settings files in $etc"
 install -d -m 750 -o root -g deploy "$etc"
 secret() { openssl rand -hex 32; }
-for env in staging production; do
+for env in "${environments[@]}"; do
   file=$etc/$env.env
   [[ -f $file ]] && { echo "$file exists; left as it is"; continue; }
   host=$([[ $env == staging ]] && echo "$staging_host" || echo "$production_host")
@@ -104,14 +111,16 @@ for env in staging production; do
   chown root:deploy "$file"; chmod 640 "$file"
   echo "wrote $file"
 done
-if [[ ! -f $etc/edge.env ]]; then
+if [[ $mode == all && ! -f $etc/edge.env ]]; then
   printf 'STAGING_DOMAIN=%s\nPRODUCTION_DOMAIN=%s\nACME_EMAIL=%s\n' "$staging_host" "$production_host" "$acme_email" > "$etc/edge.env"
   chown root:deploy "$etc/edge.env"; chmod 640 "$etc/edge.env"
   echo "wrote $etc/edge.env"
 fi
 
 say "Letting CI deploy, and nothing else"
-install -m 755 "$root/staging/deploy/vps/aerowise-deploy.sh" /usr/local/bin/aerowise-deploy
+if [[ $mode == all || ! -f /usr/local/bin/aerowise-deploy ]]; then
+  install -m 755 "$root/staging/deploy/vps/aerowise-deploy.sh" /usr/local/bin/aerowise-deploy
+fi
 ci_key=/root/aerowise-ci-key
 if ! grep -q aerowise-ci ~deploy/.ssh/authorized_keys 2>/dev/null; then
   ssh-keygen -q -t ed25519 -N "" -C "aerowise-ci" -f "$ci_key"
@@ -121,31 +130,55 @@ if ! grep -q aerowise-ci ~deploy/.ssh/authorized_keys 2>/dev/null; then
 fi
 
 say "Installing nightly backups, the demo reset and the restarter"
-install -m 644 "$root/staging/deploy/vps/cron" /etc/cron.d/aerowise
+if [[ $mode == --staging-only ]]; then
+  # Preserve existing production maintenance, but avoid two nightly staging resets.
+  if [[ -f /etc/cron.d/aerowise ]]; then
+    sed -i '/^[^#].*staging/d' /etc/cron.d/aerowise
+  fi
+  install -m 644 "$root/staging/deploy/vps/cron.staging" /etc/cron.d/aerowise-staging
+else
+  install -m 644 "$root/staging/deploy/vps/cron" /etc/cron.d/aerowise
+  rm -f /etc/cron.d/aerowise-staging
+fi
 install -d -m 700 /var/backups/aerowise
 
 say "Starting the HTTPS front door ($front)"
-for host in "$staging_host" "$production_host"; do
+for host in "${hosts[@]}"; do
   getent hosts "$host" >/dev/null || echo "warning: $host does not resolve yet; its certificate needs the DNS record first"
 done
 if [[ $front == caddy ]]; then
+  if [[ $mode == --staging-only ]]; then
+    echo "staging-only setup currently requires an existing nginx front door" >&2
+    exit 1
+  fi
   (cd "$root/staging" && docker compose -f deploy/vps/edge.compose.yaml --env-file "$etc/edge.env" up -d)
 else
   # The two Aerowise sites only; the rest of nginx's configuration is left as it is.
   install -m 644 "$root/staging/deploy/vps/nginx/aerowise-proxy.conf" /etc/nginx/aerowise-proxy.conf
   site=$([[ -d /etc/nginx/sites-enabled ]] && echo /etc/nginx/sites-available/aerowise.conf || echo /etc/nginx/conf.d/aerowise.conf)
   if [[ ! -f $site ]]; then
-    sed -e "s/STAGING_HOST/$staging_host/" -e "s/PRODUCTION_HOST/$production_host/" "$root/staging/deploy/vps/nginx/aerowise.conf" > "$site"
+    template=$root/staging/deploy/vps/nginx/aerowise.conf
+    [[ $mode == --staging-only ]] && template=$root/staging/deploy/vps/nginx/staging.conf
+    sed -e "s/STAGING_HOST/$staging_host/" -e "s/PRODUCTION_HOST/$production_host/" "$template" > "$site"
     [[ $site == /etc/nginx/sites-available/* ]] && ln -sf "$site" /etc/nginx/sites-enabled/aerowise.conf
   fi
-  nginx -t && { systemctl reload nginx 2>/dev/null || nginx -s reload; }
+  nginx -t
+  systemctl reload nginx 2>/dev/null || nginx -s reload
   if ! command -v certbot >/dev/null; then
     command -v apt-get >/dev/null || { echo "install certbot and its nginx plugin, then run this again" >&2; exit 1; }
     apt-get install -y -q certbot python3-certbot-nginx >/dev/null
   fi
   # Adds HTTPS and the redirect to the two sites; certbot's timer renews them.
-  certbot_cmd=(certbot --nginx --non-interactive --agree-tos -m "$acme_email" --redirect --cert-name aerowise -d "$staging_host" -d "$production_host")
-  "${certbot_cmd[@]}" || echo "warning: no certificate yet (is DNS pointing here?). Once it is, run: sudo ${certbot_cmd[*]}"
+  cert_name=aerowise
+  [[ $mode == --staging-only ]] && cert_name=aerowise-staging
+  certbot_cmd=(certbot --nginx --non-interactive --agree-tos -m "$acme_email" --redirect --cert-name "$cert_name")
+  for host in "${hosts[@]}"; do certbot_cmd+=(-d "$host"); done
+  # Reuse valid HTTPS already configured for staging; do not rewrite a shared certificate.
+  if [[ $mode == --staging-only ]] && curl --fail --silent --resolve "$staging_host:443:127.0.0.1" "https://$staging_host/" >/dev/null; then
+    echo "staging HTTPS already verifies; existing certificate left in place"
+  else
+    "${certbot_cmd[@]}" || { echo "certificate failed; run: sudo ${certbot_cmd[*]}" >&2; exit 1; }
+  fi
   docker network inspect aerowise-edge >/dev/null 2>&1 || docker network create aerowise-edge >/dev/null
 fi
 
@@ -161,8 +194,7 @@ ci_key_line=$([[ -f $ci_key ]] && echo "everything printed by: sudo cat $ci_key"
 cat <<EOF
 
 Done. The demo is at https://$staging_host (the certificate can take a minute).
-Production is at https://$production_host once it is deployed; it will not start until
-the Resend and R2 lines in $etc/production.env are filled in.
+Setup scope: ${environments[*]}.
 
 For deploys from GitHub, add these repository secrets (Settings > Secrets and variables > Actions):
   VPS_HOST         $ip   (this server's public IP address; correct it if it shows a private one)

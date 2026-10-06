@@ -29,8 +29,10 @@ Then `deploy/vps/setup.sh` does the rest and is safe to run again. As root on th
 
 ```sh
 curl -fsSL https://get.docker.com | sh      # if Docker is not installed yet
-sudo bash setup.sh <domain> <your email>    # copy deploy/vps/setup.sh over first
+sudo bash setup.sh <domain> <your email> --staging-only    # copy deploy/vps/setup.sh over first
 ```
+
+Use `--staging-only` for a staging deployment on an existing nginx host. This creates only staging checkout/settings/sites and a staging cron file, preserves production maintenance, and reuses valid existing HTTPS. Omit the flag only when both environments are explicitly authorized. Staging-only on a Caddy host is not supported yet.
 
 The first run creates a `deploy` user and a read-only key for GitHub, prints that key and stops. Add it under the repository's **Settings > Deploy keys** (write access off), then run the script again. The second run:
 

@@ -89,3 +89,13 @@ Each restore or restore check run for the record: date, where, which backup, and
 
 - Photos and signed PDFs in R2 have no second copy. R2 keeps them durably, but a bug or a leaked token could delete them. One option is a nightly copy of the bucket to the server's disk, keeping deleted objects for 35 days.
 - The backups use the app's R2 token unless `BACKUP_R2_*` is set. A separate token, or better a separate bucket whose token the app never holds, means a compromised app cannot delete its own backups.
+
+## Staging deployment and walkthrough — October 6, 2026
+
+Scope: staging only at https://staging.deshain.com, on `vultr-beta` (45.76.29.23, SSH 62008). An existing production deployment was discovered and is outside this operation. No production deploy, DNS change, signup or purchase is authorized or performed.
+
+1. Read DEPLOY.md, this runbook, DEMO-PILOT-BRIEF.md and deploy/vps. Fetch origin; starting main is `0b77a6339ee082fbb941032ff63554b1cfdb1515`. Preserve the untracked Next.js guidance files.
+2. Inspect via SSH: nginx owns 80/443, Docker 29.8.2 / Compose 5.6.0 installed, root disk has 34 GB free, RAM 3910 MB with 1316 MB available and 7899 MB swap. DNS already points through Cloudflare; no sslip.io or DNS edits needed. Existing origin certificate covers staging and expires January 3, 2027; public /api/health returned 200.
+3. Privileged commands use existing owner-supplied SSH/sudo access with a protected local helper; never put secrets in command output or this repo. Inspect current containers, cron, nginx and settings using key-presence summaries, not credential values.
+4. Stop staging API/worker before walkthrough actions. Save `/etc/aerowise/staging.env` to root-only `/root/aerowise-staging-before-walkthrough.env`. Clear DEMO_LIVE_SERVICES, notification recipient, Resend, R2, backup R2/heartbeat, Stripe, QuickBooks client credentials, Twilio and Sentry. Keep DEMO_MODE=true. Mail/SMS/payments/accounting/storage must use local stand-ins. Resend is absent, so EMAIL_REDIRECT_TO is unnecessary and no mail can be sent. Production settings/containers are left alone.
+5. Fix setup.sh to support `--staging-only` before running: its default also provisions production. Preserve production cron entries; move staging maintenance to `/etc/cron.d/aerowise-staging`, remove duplicate old staging jobs, reuse current certificate, fail on nginx/certificate errors.
