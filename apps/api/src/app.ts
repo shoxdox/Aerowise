@@ -14,6 +14,7 @@ import {
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
 import { adminRoutes } from "./routes/admin.ts";
+import { adminEvidenceRoutes } from "./routes/admin-evidence.ts";
 import { adminSupportRoutes } from "./routes/admin-support.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { filingRoutes } from "./routes/filings.ts";
@@ -174,6 +175,11 @@ export async function buildApp({
     if (err instanceof HttpError) {
       return reply.status(err.statusCode).send({ error: err.code, message: err.message });
     }
+    // The database refuses real contact details in a demo company (migration 0039).
+    const pg = err as { code?: string; constraint?: string };
+    if (pg.code === "23514" && (pg.constraint === "demo_fictional_email" || pg.constraint === "demo_fictional_phone")) {
+      return reply.status(422).send({ error: "fictional_contact_required", message: (err as Error).message.replace(/^a demo/, "A demo") + "." });
+    }
     if (hasZodFastifySchemaValidationErrors(err)) {
       return reply.status(400).send({
         error: "invalid_request",
@@ -232,7 +238,11 @@ export async function buildApp({
   await app.register(authPlugin, { db });
 
   // Lets the web app show the demo banner (and the demo sign-ins) without its own setting.
-  app.get("/app-info", { config: { public: true }, schema: { hide: true } }, async () => ({ demo }));
+  // `demo` is the demo deployment; `demoCompany` that whoever is signed in works in a demo company.
+  app.get("/app-info", { config: { public: true }, schema: { hide: true } }, async (req) => {
+    const org = req.auth ? await db.selectFrom("organizations").select("demo").where("id", "=", req.auth.organizationId).executeTakeFirst() : undefined;
+    return { demo, demoCompany: demo || org?.demo === true };
+  });
 
   app.get("/health", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {
     await db.selectNoFrom((eb) => eb.lit(1).as("ok")).execute();
@@ -254,6 +264,7 @@ export async function buildApp({
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
   await app.register(authRoutes, { db, production, loginRateLimit });
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription, store });
+  await app.register(adminEvidenceRoutes, { db, now });
   await app.register(adminSupportRoutes, { db, production });
   await app.register(userRoutes, { db, now, production, invitations });
   await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });

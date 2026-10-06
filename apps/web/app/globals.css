@@ -214,6 +214,9 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .message { white-space: pre-wrap; margin: 0; }
 .marketing .cta { align-self: flex-start; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
+fieldset.answer-fields { min-width: 0; }
+fieldset.answer-fields select { max-width: 100%; }
+pre.diff, pre.file { overflow-x: auto; max-width: 100%; margin: 0; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .legal { max-width: 720px; }
 .legal-gate { max-width: 560px; margin: 24px auto; }
 .legal-gate ul { margin: 0; padding-left: 20px; }

@@ -30,6 +30,8 @@ export interface CheckoutInput {
 }
 
 export interface RefundInput {
+  /** The company refunding; a demo company only ever reaches the stand-in. */
+  organizationId: string;
   accountId: string;
   idempotencyKey: string;
   paymentIntentId: string;
@@ -42,11 +44,11 @@ export interface PaymentProvider {
   readonly kind: "stripe" | "test";
   createAccount(input: { organizationId: string; name: string; email: string | null }): Promise<{ accountId: string }>;
   /** Where the owner finishes setting up their Stripe account. */
-  accountLink(input: { accountId: string; refreshUrl: string; returnUrl: string }): Promise<{ url: string }>;
-  getAccount(accountId: string): Promise<{ chargesEnabled: boolean; detailsSubmitted: boolean }>;
+  accountLink(input: { organizationId: string; accountId: string; refreshUrl: string; returnUrl: string }): Promise<{ url: string }>;
+  getAccount(accountId: string, organizationId: string): Promise<{ chargesEnabled: boolean; detailsSubmitted: boolean }>;
   createCheckout(input: CheckoutInput): Promise<{ sessionId: string; url: string; expiresAt: Date }>;
   /** Closes a payable page so it can no longer take money. Already closed is fine. */
-  expireCheckout(input: { accountId: string; sessionId: string }): Promise<void>;
+  expireCheckout(input: { organizationId: string; accountId: string; sessionId: string }): Promise<void>;
   createRefund(input: RefundInput): Promise<{ refundId: string; status: RefundStatus; failureReason: string | null }>;
   /** Checks the signature and returns the event; throws if it was not signed by Stripe. */
   parseWebhook(rawBody: Buffer | string, signature: string): WebhookEvent;

@@ -28,6 +28,8 @@ type CreatedAt = ColumnType<Date, never, never>;
 export interface OrganizationsTable {
   id: Generated<string>;
   name: string;
+  /** A fictional demo company: only ever reaches the stand-ins, and holds made-up contact details. Fixed when made. */
+  demo: Generated<boolean>;
   phone: string | null;
   email: string | null;
   addressLine1: string | null;
@@ -627,6 +629,35 @@ export interface LegalAcceptancesTable {
   version: string;
   acceptedAt: Date;
   requestId: string | null;
+}
+
+/** W12.1: platform-wide like jurisdictions; append-only. Recording it never changes a ruleset. */
+export interface AuthorityEvidenceTable {
+  id: Generated<string>;
+  jurisdictionId: string;
+  rulesetVersion: number;
+  kind: "call" | "email" | "letter" | "meeting" | "published_rule" | "permit" | "signed_contract" | "accepted_report";
+  obtainedOn: string;
+  contactName: string | null;
+  contactRole: string | null;
+  contactOrganization: string | null;
+  contactDetail: string | null;
+  references: string[];
+  note: string | null;
+  recordedBy: string;
+  createdAt: CreatedAt;
+}
+
+export interface AuthorityEvidenceAnswersTable {
+  id: Generated<string>;
+  evidenceId: string;
+  position: number;
+  question: string;
+  unresolvedItem: string | null;
+  topic: string;
+  field: string | null;
+  answer: string;
+  outcome: "confirms" | "partial" | "contradicts" | "no_answer";
 }
 
 /** W8.2: platform-wide, no organization_id (a prospect is not an organization yet). */
@@ -1280,6 +1311,8 @@ export interface DB {
   emailEvents: EmailEventsTable;
   platformAdmins: PlatformAdminsTable;
   demoRequests: DemoRequestsTable;
+  authorityEvidence: AuthorityEvidenceTable;
+  authorityEvidenceAnswers: AuthorityEvidenceAnswersTable;
   legalAcceptances: LegalAcceptancesTable;
   platformAdminSessions: PlatformAdminSessionsTable;
   supportSessions: SupportSessionsTable;

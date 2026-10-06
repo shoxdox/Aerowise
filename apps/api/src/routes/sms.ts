@@ -17,7 +17,7 @@ import {
   type SmsSettings,
 } from "@aerowise/domain";
 import { applyDeliveryStatus, receiveSms, samePhone, smsWebhookUrls, TestSmsProvider, type SmsConfig } from "@aerowise/sms";
-import { queueSms } from "@aerowise/tasks";
+import { DemoGatedSms, providerFor, queueSms } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
@@ -28,9 +28,11 @@ const iso = (d: Date | null) => d?.toISOString() ?? null;
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 
 export const smsRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; sms: SmsConfig | null }> = async (app, { db, now, sms }) => {
-  const mode = !sms ? "off" : sms.provider.kind === "test" ? "test" : "live";
+  // A demo company texts through the stand-in, so it is in test mode whatever is configured.
+  const modeOf = async (organizationId: string) => (!sms ? "off" : (await providerFor(sms.provider, organizationId)).kind === "test" ? "test" : "live");
 
   async function settingsOf(organizationId: string): Promise<SmsSettings> {
+    const mode = await modeOf(organizationId);
     const o = await db.selectFrom("organizations").select(["smsEnabled", "smsKinds", "smsFromNumber"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
     return {
       mode,
@@ -63,6 +65,7 @@ export const smsRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; s
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
+      const mode = await modeOf(organizationId);
       const current = await db.selectFrom("organizations").select(["smsEnabled", "smsFromNumber"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
       const enabled = req.body.enabled ?? current.smsEnabled;
       let fromNumber = req.body.fromNumber !== undefined ? req.body.fromNumber : current.smsFromNumber;
@@ -289,7 +292,8 @@ export const smsRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; s
 
   // ---- Test mode: play a customer's reply ----
 
-  if (sms?.provider instanceof TestSmsProvider) {
+  // Also for demo companies where Twilio is configured: they text through the stand-in.
+  if (sms?.provider instanceof TestSmsProvider || sms?.provider instanceof DemoGatedSms) {
     app.post(
       "/sms/test/inbound",
       {
@@ -304,6 +308,7 @@ export const smsRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; s
       },
       async (req) => {
         const { organizationId } = req.requireAuth();
+        if ((await modeOf(organizationId)) !== "test") throw notFound("Route");
         const from = toE164(req.body.from);
         if (!from) throw unprocessable("Enter a full mobile number, like (512) 555-0123");
         const r = await receiveSms(db, { organizationId, from, body: req.body.body, providerMessageId: null, now: now() });
