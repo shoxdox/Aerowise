@@ -128,7 +128,8 @@ describe("authority selection", () => {
     const s = await lcraSetup(ctx);
     const before = (await s.api.get(`/sites/${s.site.id}/jurisdiction`)).json();
     expect(before).toMatchObject({ source: "none", jurisdiction: null, reviewReason: expect.stringContaining("may cover part of Travis County") });
-    expect(before.candidates.map((c: { key: string }) => c.key)).toEqual(["tx-lcra-ossf"]);
+    // Travis County's own office covers the rest of the county, so it is a candidate too.
+    expect(before.candidates.map((c: { key: string }) => c.key)).toEqual(["tx-lcra-ossf", "tx-travis-county"]);
 
     await complete(s);
     await runWorker(ctx);
@@ -161,11 +162,15 @@ describe("authority selection", () => {
     const site = (county: string) => ({ county, state: "TX", jurisdictionId: null });
     expect(explainSite(catalog, site("Example County"), "2026-03-01").resolved?.key).toBe("tx-example-county");
     // LCRA covers only part of these counties.
-    for (const county of ["Travis", "Burnet County", "llano"]) {
+    for (const county of ["Burnet County", "llano"]) {
       const r = explainSite(catalog, site(county), "2026-03-01");
       expect(r.resolved).toBeNull();
       expect(r.candidates.map((c) => c.jurisdiction.key)).toEqual(["tx-lcra-ossf"]);
     }
+    // In Travis, LCRA and Travis County each cover part: a person picks.
+    const travis = explainSite(catalog, site("Travis"), "2026-10-06");
+    expect(travis.resolved).toBeNull();
+    expect(travis.candidates.map((c) => c.jurisdiction.key)).toEqual(["tx-lcra-ossf", "tx-travis-county"]);
     // Harris County's office is assigned by review too; the county is not enough.
     expect(explainSite(catalog, site("Harris"), "2026-10-04").resolved).toBeNull();
     const twin = structuredClone(catalog.find((e) => e.jurisdiction.key === "tx-example-county")!);
