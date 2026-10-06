@@ -4,6 +4,7 @@ import type { Inbox, InboxException } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
@@ -156,6 +157,8 @@ export default function InboxPage() {
         <span className="spacer" />
         <span className="muted">{day(data.today, { weekday: "long", month: "long", day: "numeric" })}</span>
       </div>
+
+      {(me.role === "owner" || me.role === "office") && <OnboardingChecklist />}
 
       <div className="tiles">
         {tiles.map((t) => (
