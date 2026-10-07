@@ -77,7 +77,6 @@ export async function eraseOrganization(trx: Transaction<DB>, organizationId: st
   // that is still referenced is retried on the next pass.
   const counts: Record<string, number> = {};
   let remaining = [...tables];
-  let nulled = false;
   while (remaining.length) {
     const left: string[] = [];
     for (const t of remaining) {
@@ -93,11 +92,12 @@ export async function eraseOrganization(trx: Transaction<DB>, organizationId: st
       }
     }
     if (left.length === remaining.length) {
-      // Tables that point at each other (a site and its current authority assignment):
-      // clear the optional links between them once, then carry on.
-      if (nulled) throw new Error(`Could not delete the rows of: ${left.join(", ")}`);
-      await clearLinks(trx, organizationId, left);
-      nulled = true;
+      // Tables that point at each other (a site and its current authority assignment, a
+      // renewal and its signed document, an activated renewal and its new contract): deleted
+      // together in one statement, whose foreign keys are checked at its end. No link is
+      // nulled first, so no check (an activated renewal names its new contract) is broken.
+      Object.assign(counts, await deleteTogether(trx, organizationId, left));
+      left.length = 0;
     }
     remaining = left;
   }
@@ -129,17 +129,10 @@ export async function eraseOrganization(trx: Transaction<DB>, organizationId: st
   return { tables: Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0)), users };
 }
 
-/** Sets to null every optional foreign key column among these tables that points at another of them. */
-async function clearLinks(trx: Transaction<DB>, organizationId: string, tables: string[]) {
-  const links = await sql<{ table: string; column: string }>`
-    select distinct c.conrelid::regclass::text as "table", a.attname as "column"
-    from pg_constraint c
-    cross join lateral unnest(c.conkey) as k(attnum)
-    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
-    where c.contype = 'f' and not a.attnotnull and a.attname <> 'organization_id'
-      and c.conrelid::regclass::text = any(${tables}::text[])
-      and c.confrelid::regclass::text = any(${tables}::text[])`.execute(trx);
-  for (const { table, column } of links.rows) {
-    await sql`update ${sql.table(table)} set ${sql.ref(column)} = null where organization_id = ${organizationId} and ${sql.ref(column)} is not null`.execute(trx);
-  }
+/** Deletes the organization's rows from all these tables in one statement; returns rows per table. */
+async function deleteTogether(trx: Transaction<DB>, organizationId: string, tables: string[]): Promise<Record<string, number>> {
+  const parts = tables.map((t, i) => sql`${sql.id(`d${i}`)} as (delete from ${sql.table(t)} where organization_id = ${organizationId} returning 1)`);
+  const counts = tables.map((_, i) => sql`(select count(*) from ${sql.id(`d${i}`)})::int as ${sql.id(`n${i}`)}`);
+  const r = await sql<Record<string, number>>`with ${sql.join(parts)} select ${sql.join(counts)}`.execute(trx);
+  return Object.fromEntries(tables.map((t, i) => [t, Number(r.rows[0]?.[`n${i}`] ?? 0)]));
 }
