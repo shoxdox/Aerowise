@@ -306,17 +306,19 @@ If work has already been done, the estimate cannot be cancelled. The office invo
 
 **Invoice identity, with voids and replacements.** `estimate_invoices (estimate_id, invoice_id, role, replaces_invoice_id, voided_at)` links invoices to the estimate, with `role` either `deposit` or `final`. A unique partial index `(estimate_id, role) where voided_at is null` allows **at most one active** deposit invoice and one active final invoice, while keeping every voided one in history. Voiding an invoice sets `voided_at` on its link in the same transaction. A replacement final invoice F2 records `replaces_invoice_id = F`. A retried accept or invoice request returns the active row instead of creating another. Every work order follows the same rule: `invoices.work_order_id` with a unique partial index `(organization_id, work_order_id) where status <> 'void'`. So "one invoice per work order" never blocks re-invoicing after a void, and a concurrent pair of invoice requests still yields one.
 
-**Deposit ledger.** For each deposit invoice D there is an append-only `deposit_ledger`. Rows are never updated or deleted, and corrections are new rows. Every entry carries `amount_cents > 0`, its kind, actor, reason and the related ids:
+**Deposit ledger.** For each deposit invoice D there is an append-only `deposit_ledger`. Rows are never updated or deleted, and corrections are new rows. Every entry carries `amount_cents > 0`, its kind, actor, reason, the related ids and a `cause_key` (unique per D) naming the event that produced it, so a replay of that event finds its rows and writes nothing:
 
 | Kind | Meaning | Created by |
 |---|---|---|
 | `received` | Cleared payment on D | Payment success (webhook or manual) |
-| `refunded` | Refund of D's money started in Aerowise | Refund route |
-| `refunded_external` | Refund of D's money that Aerowise did not start (for example the Stripe dashboard), keyed by `provider_refund_id`, unique | Webhook |
+| `refunded` | Settled refund of D's money started in Aerowise | The refund's status becoming `succeeded` (below) |
+| `refunded_external` | Settled refund of D's money that Aerowise did not start (for example the Stripe dashboard), keyed by `provider_refund_id`, unique | Webhook reporting `succeeded` |
 | `applied` / `unapplied` | Money moved to final invoice F / moved back when F is voided | Final invoice / void |
 | `retained` / `retain_reversed` | Kept under the estimate's terms / an explicit office reversal of that | Office, with reason |
-| `shortfall` | Recorded when an external refund takes more than the free balance; keyed by the same refund id, unique | Webhook, same transaction |
-| `deposit_reversal` | Applied deposit money returned to the customer after F was issued, paired with a credit on F | "Refund the job" flow |
+| `shortfall` / `shortfall_released` | Increase / decrease of the **current** deficit (below) | Any operation, in its own transaction |
+| `deposit_reversal` | Applied deposit money returned to the customer after F was issued, paired with a credit on F | Settlement of a "Refund the job" refund |
+
+Refunds that are requested but not settled are **not** ledger entries. They are the existing `refunds` rows (`status` `pending | succeeded | failed`, `packages/payments`), which the ledger reads.
 
 Per D, in cents, the balances are:
 
@@ -324,46 +326,82 @@ Per D, in cents, the balances are:
 - `X` = refunded + refunded_external + deposit_reversal
 - `A` = applied − unapplied − deposit_reversal
 - `T` = retained − retain_reversed
-- `S` = shortfall
+- `Q` = pending Aerowise-started refunds of D's free money (reserved, below)
+- `S` = shortfall − shortfall_released, the **current** deficit
 
-The free balance is `U = R − X − A − T + S`.
+**The shortfall is the current deficit, never a running total.** Every operation on D, under the lock below, recomputes `need = max(0, X + Q + A + T − R)` after its own entries and writes the difference `need − S_before`: a `shortfall` entry if positive, a `shortfall_released` entry if negative, nothing if zero. So `S = need` after every commit, and
+
+`U = R − X − Q − A − T + S = max(0, R − X − Q − A − T)`.
+
+`U` is exactly the deposit money that is really free. A shortfall that has been booked can never look like available money: once the deficit disappears (for example F is voided), the shortfall is released in the same transaction, and `U` counts only real money.
+
+Whether a shortfall has been **dealt with** is tracked separately, in `deposit_shortfall_resolutions` (amount, a linked supplemental invoice or an office write-off with a reason). That table never changes `S` or `U`. The outstanding amount shown in the inbox is `max(0, S − resolved)`. If resolutions ever exceed the current `S` (the deficit went away after a supplemental invoice was paid), the inbox shows "Shortfall resolved more than is now owed" so the office can credit the customer.
 
 **Rules.** Each rule is enforced in one transaction that first locks D's invoice row with `SELECT … FOR UPDATE`, which the webhook path takes too:
 
-- **I1 (reconciled):** `U ≥ 0` at all times. A deferred constraint trigger checks it at commit, so it never sees a half-written transaction.
-- **I2 (Aerowise-initiated movements):** `applied`, `retained` and `refunded` entries may each take at most `R − X − A − T`, the free balance *excluding* any shortfall. Only real money can be applied, kept or returned. A request for more gets 409 `deposit_not_available`. Retained money is outside the free balance, so it cannot later be refunded or applied unless an explicit `retain_reversed` entry puts it back first.
-- **I3 (external refunds are never refused):** the webhook records `refunded_external`. If that would make `R − X − A − T` negative, it records a `shortfall` of exactly the deficit in the same transaction, so `U` stays at least 0 and I1 holds. A replayed webhook finds the existing refund id and adds nothing. A shortfall is never deleted. It raises a high-severity inbox item until it is resolved by a supplemental invoice (linked) or an office write-off with a reason. The resolution is recorded separately; `S` itself stays as history.
+- **I1 (reconciled):** `U ≥ 0` and `S = max(0, X + Q + A + T − R)` at commit. A deferred constraint trigger checks both, so it never sees a half-written transaction.
+- **I2 (Aerowise-initiated movements):** `applied`, `retained` and a new refund request may each take at most `U`. Only real, free money can be applied, kept or returned. A request for more gets 409 `deposit_not_available`. Retained money is outside `U`, so it cannot later be refunded or applied unless an explicit `retain_reversed` entry puts it back first.
+- **I3 (external refunds are never refused):** when the webhook reports an external refund as `succeeded`, it records `refunded_external` and then the shortfall difference above, in the same transaction. A replayed webhook finds the existing `provider_refund_id` and its `cause_key` and adds nothing. A pending external refund is shown in the inbox ("Refund pending at Stripe") and booked only when it succeeds. A failed one is never booked.
 - **I4 (F never negative):** for each active F, `deposit_applied ≤ subtotal − discount + tax`. A deposit larger than the final amount is applied only up to F's total. The remainder stays free, and "Unapplied deposit" stays in the inbox until it is refunded or retained.
-- **I5 (voiding F):** the existing rules allow voiding only with no direct payment on F. Voiding writes `unapplied` for everything applied to F, and a replacement F2 can then apply again.
+- **I5 (voiding F):** the existing rules allow voiding only with no direct payment on F. Voiding writes `unapplied` for everything applied to F (and so releases any shortfall it no longer needs), and a replacement F2 can then apply again.
+
+**Refunds Aerowise starts can be pending or fail.** A SQL transaction cannot undo a Stripe refund that has already been issued, so no balance moves until the provider says the money moved:
+
+1. **Reserve.** Under D's lock, check I2 and insert the `refunds` row with `status = 'pending'`, no provider id yet, and its idempotency key (the existing scheme in `apps/api/src/routes/invoices.ts`: one key per refund request). Commit. The pending row is `Q`, so it is unavailable to any other apply, retain or refund.
+2. **Call the provider after the commit** with that key (`PaymentProvider.createRefund` in `packages/payments/src/provider.ts`), passing the refund row id as metadata. A retried request reuses the key, so Stripe returns the same refund. Store the provider refund id and status.
+3. **Settle by provider status**, through the existing path that already moves a refund from `pending` to a final status (`refundEvent` in `packages/payments/src/webhooks.ts`, which also matches a refund by its stored id). In the same transaction as that change:
+   - `succeeded`: write `refunded` (or, for the deposit part of "Refund the job", `deposit_reversal` plus its credit on F), which removes it from `Q`. Then recompute the shortfall.
+   - `failed`: write nothing to the ledger. The reservation is released because the row has left `pending`, `U` returns, and the inbox shows "Refund failed" with the provider's reason.
+   - `pending`: nothing changes.
+   - As today, a final status never changes again, so a replayed or late webhook is a no-op.
+4. **Lost response.** If the process stops between step 1 and step 2, or the provider's answer is lost, a new `payments.reconcile_refunds` task finds pending refund rows with no provider id after a few minutes and repeats step 2 with the same key. A webhook for a refund that carries the row id in its metadata settles that reservation, and is never booked as `refunded_external`.
+5. **Manual refunds** (check or cash, recorded by the office) have no provider and settle immediately, as today.
 
 **"Refund the job" after F was issued and paid**, partly or entirely by the deposit. One audited office action takes the amount to return and splits it:
 
 1. F's own direct payments, through the existing refund route (credit intent).
-2. Then the deposit-funded part, as a `deposit_reversal` entry on D, a Stripe refund of D's payment (or a manual refund record), and an equal **`deposit_reversal` credit on F**. A new credit kind counted in F's `credited_cents` by `recalcInvoice`, so F does not become owed again.
+2. Then the deposit-funded part, as a refund of D's payment that reserves against F's applied amount (at most `applied_F` minus pending reversals on F, 409 otherwise) rather than against `U`. Only when that refund **succeeds** does settlement write the `deposit_reversal` entry and an equal **`deposit_reversal` credit on F**. That is a new credit kind, counted in F's `credited_cents` by `recalcInvoice` (which already counts only succeeded refunds), so F never becomes owed again. While it is pending, F shows "Refund pending" and nothing is booked. If it fails, F is unchanged.
 
 This also covers a fully deposit-funded F with $0 due and no direct payments: everything goes through step 2.
 
 **Ledger equality** (tested for every estimate after every operation). The terms, in cents:
 
-- `P` = cleared payments on D and on every final invoice for the estimate, minus all refunds of those payments.
+- `P` = cleared payments on D and on every final invoice for the estimate, minus all **succeeded** refunds of those payments.
 - For each active F: `G_F = subtotal − discount + tax`, `C_F` = all credits on F (including deposit reversals), and `due_F = G_F − deposit_applied_F − C_F − paid_F`.
 
 The equality:
 
-`P + Σ due_F = Σ (G_F − C_F) + T + U − S`
+`P + Σ due_F = Σ (G_F − C_F) + T + U + Q − S`
 
-So the money held, plus what is still owed, equals the value of the work after credits, plus retained deposit, plus free deposit, less any shortfall not covered by real money. With no final invoice the F terms are zero.
+So the money held, plus what is still owed, equals the value of the work after credits, plus retained deposit, plus free deposit, plus deposit money reserved for pending refunds, less the current deficit. With no final invoice the F terms are zero. A pending reversal on F changes no term until it settles. When it settles, `P` and `G_F − C_F` fall by the same amount.
 
-**Tests:**
+**Worked example** (Codex's case). D received `R = 10000`, all applied to F (`A = 10000`), `T = 0`:
+
+| Step | X | A | S | U | Entries written |
+|---|---|---|---|---|---|
+| External refund 2000 succeeds | 2000 | 10000 | 2000 | 0 | `refunded_external` 2000, `shortfall` 2000 |
+| A second, distinct external refund 3000 succeeds | 5000 | 10000 | 5000 | 0 | `refunded_external` 3000, `shortfall` 3000 (not 5000) |
+| Replay of either webhook | unchanged | | | | none |
+| Apply 1 more cent from D | unchanged | | | | refused, 409 `deposit_not_available` |
+| Void F | 5000 | 0 | 0 | 5000 | `unapplied` 10000, `shortfall_released` 5000 |
+| Apply 6000 to F2 / apply 5000 to F2 | 5000 | 5000 | 0 | 0 | refused / `applied` 5000 |
+
+**Tests** (built-in test payment provider only; no real provider calls or accounts):
 
 - a partly paid F with an applied D;
 - a fully deposit-funded F with $0 due;
 - a full refund of everything the customer paid;
-- a replayed external refund (one shortfall only);
+- the worked example above, step by step: two distinct external refunds with each webhook replayed (`S = 5000`, not 7000), an apply refused while `S > 0`, then void, release, and apply up to `U` only;
+- an external refund while a final invoice is only partly applied (shortfall only for the real deficit);
 - a retained remainder followed by attempts to refund or apply it (refused) and a retain reversal (then allowed);
 - void and replacement F, applying again: F2 is created with `replaces_invoice_id = F` despite the per-work-order index, and a replayed request returns F2;
 - a deposit larger than the final amount;
-- concurrent apply and webhook refund (serialized by the lock).
+- concurrent apply and webhook refund (serialized by the lock);
+- **pending → succeeded:** a refund of free deposit money is reserved (`Q`), a second request for the same money gets 409, then the success webhook is delivered twice. One `refunded` entry, `Q` back to 0, equality holds at every step;
+- **pending → failed:** the reservation is held, then the failure webhook is delivered twice. No ledger entry, `U` restored once, one "Refund failed" inbox item;
+- **"Refund the job" deposit part, pending → succeeded and pending → failed**, each with replay: the credit on F appears only on success and only once; on failure F and its amount due are unchanged;
+- **lost provider response:** the test provider records the call but the response is dropped. Reconciliation repeats it with the same key and gets the same refund id; one refund, one settlement;
+- a webhook for an Aerowise-started refund that arrives before the route stored the provider id settles the reservation and is not booked as external.
 
 **Accounting hypotheses, not facts.** The software can implement either treatment behind a flag (`deposit_mode`), but neither is asserted as correct accounting:
 
@@ -786,7 +824,7 @@ Each PR is a draft until local checks pass on its exact head ([§9.2](#92-valida
 | SW-2 | **Technician offline work** | SW-1, SW-F, SW-2a **deployed to staging** | Work database (§8.1), `work_records`, `work_attachments` (record and conflict owners), `work_sync_conflicts`, `job_assignments` (written by SW-1's assign routes from this PR on), draft-first ordering, `/work/sync`, photo and signature routes with `held_for_review`, conflicts API and screens (§8.5), `/route` work stops, `/tech` work form | §8.1 acceptance; §8.5 R4 tests 1–9; existing offline e2e unchanged | yes |
 | SW-3 | **Service items and work invoicing** (flag `service_items`) | SW-1 | `service_items`, `invoice_lines.service_item_id`/`quantity_milli`, invoice from a work order (idempotent per work order), QuickBooks `service_item` mapping with default-item fallback | One invoice per work order under concurrent calls; old invoices' QuickBooks payloads byte-identical; untaxed work invoices sync | yes |
 | SW-4 | **QuickBooks mixed tax** (per-connection `tax_mode`, off) | SW-0 | Tax code mapping, `TaxCodeRef`/`TxnTaxDetail`, deterministic `requestid` kept, compare after create, `quarantined` link state, held payments, review choices (§3.7) | Test provider: matching, mismatching and lost-response cases; no duplicate remote invoice; mode off is today's behavior | yes (small) |
-| SW-5 | **Estimates and deposits** (flag `estimates`; `deposit_mode` per organization) | SW-1, SW-3, SW-F; SW-4 for taxed sync | §3.3–§3.8, including cancellation after acceptance, `estimate_invoices` with void-aware uniqueness, the append-only `deposit_ledger`, invariants I1–I5, the "Refund the job" flow with the `deposit_reversal` credit, and QuickBooks deposit handling behind its conflict | Concurrent accept, checkout replay; the §3.6 test list, including the ledger equality after every operation | yes |
+| SW-5 | **Estimates and deposits** (flag `estimates`; `deposit_mode` per organization) | SW-1, SW-3, SW-F; SW-4 for taxed sync | §3.3–§3.8, including cancellation after acceptance, `estimate_invoices` with void-aware uniqueness, the append-only `deposit_ledger`, invariants I1–I5, the "Refund the job" flow with the `deposit_reversal` credit, refund reservations settled by provider status plus `payments.reconcile_refunds`, and QuickBooks deposit handling behind its conflict | Concurrent accept, checkout replay; the §3.6 test list, including the ledger equality after every operation, two distinct external refunds with replays, apply and unapply after a shortfall, and refund **pending → succeeded** and **pending → failed** with replayed webhooks (test payment provider) | yes |
 | SW-6 | **Pumping and disposal** (flag `pumping`) | SW-2 | `vehicles`, `disposal_facilities`, `pumping_records` and `disposal_loads` as revision groups, canonical `volume_milligallons`, `disposal_load_items`, `work_attachments.disposal_load_group_id` (added here, widening the one-owner check), pumping starter template, "Record disposal" on phone and office, overdue-disposal inbox item, site history, CSV/PDF log, exports | §2.5 | yes |
 | SW-7 | **System categories, conventional and installation** | SW-2, SW-F | `wastewater_systems.system_category` plus backfill, aerobic-contract warning, conventional and installation templates, multi-visit installation flow, completion summary PDF, portal listing | No aerobic reporting on non-aerobic work; two-visit install with final sign-off exactly once | yes |
 | SW-8 | **Plan versions, terms, options, coverage** (flag `plan_builder`) | SW-1, SW-3, SW-F | `plan_versions` plus v1 backfill, `contracts`/`renewals.plan_version_id`, `contract_coverage_rules`, `coverage_uses`, agreement snapshot, builder tabs, intake at renewal (SW-F renderer), options, coverage evaluation and reservation (§4.3) | Existing contracts unchanged after backfill; concurrent exhaustion test; frozen rules ignore later plan edits; override audited | yes |
@@ -889,7 +927,7 @@ Effort is relative (S, M, L, XL) and assumes the conventions above. No calendar 
 | SW-2 Offline work | XL | Two databases, blob durability, business conflicts, quota, physical phone behavior | §8.1 and §8.5 tests, including draft-first ordering and `held_for_review`; G-DEVICE before pilot reliance |
 | SW-3 Service items and invoicing | M | Fractional quantities change line math | `quantity_milli` only on new rows; payload snapshot tests; floor SW-3 |
 | SW-4 Mixed tax in QuickBooks | M | Automated sales tax recomputes; a wrong remote invoice exists before detection | Mode off for real companies until G-QBO-TAX; deterministic `requestid`; quarantine and held payments |
-| SW-5 Estimates and deposits | XL | Double conversion or charge; deposit larger than final; refunds after application; accounting treatment | Unique indexes (void-aware), one lock on D for every ledger write, invariants I1–I5, ledger equality tests; G-TAX-TREATMENT, G-QBO-DEPOSIT |
+| SW-5 Estimates and deposits | XL | Double conversion or charge; deposit larger than final; refunds after application; accounting treatment | Unique indexes (void-aware), one lock on D for every ledger write, invariants I1–I5, ledger equality tests, refund reservations settled only by provider status; G-TAX-TREATMENT, G-QBO-DEPOSIT |
 | SW-6 Pumping and disposal | M | Implying regulatory compliance; facility data licensing; load/volume mismatch | Neutral wording; provider-entered or cited public facility data; mismatch shown, not refused; revision groups and exact unit conversion; G-HAUL, G-FAC |
 | SW-7 Conventional and installation | M | Misclassified existing systems; multi-visit installs | Backfill only from aerobic contracts; warning not refusal; explicit `final_visit` |
 | SW-8 Plan versions and coverage | XL | Backfill must not change any existing contract; concurrent limit use; legal text | v1 backfill uses `terms_text=null`; locked reservation; snapshot equality tests; G-LEGAL, G-COVERAGE |
@@ -947,6 +985,7 @@ SW-12 runs the full matrix on one integration SHA. Each feature PR runs its own 
 | 34 | A same-organization technician never assigned to the job sends a record | Trial | API | 403 `not_assigned`, nothing stored |
 | 35 | Fully deposit-funded final invoice ($0 due), then "Refund the job"; void and re-invoice | Trial | Office + API | Deposit reversal credit keeps F at $0 due; F2 created after void; ledger equality holds |
 | 36 | Correct a pump-out after its load; liters and gallons in one load; load manifest after a demo reset | Trial and demo | Phone + office | §2.5: one current revision, exact canonical total, manifest follows the load group and is removed with the demo |
+| 37 | Deposit refund that stays pending, then fails; another that succeeds; two distinct dashboard refunds after full application, then void (test payment provider) | Trial | Office + API | Pending money is unavailable; failure restores it once with an inbox item; success books once; shortfall equals the real deficit and is released on void |
 
 ---
 
@@ -1032,6 +1071,7 @@ SW-4 (QuickBooks tax, against the test provider) and SW-11 (export framework) ma
 | R1 | Kind guards could be bypassed with NULL (`CHECK` accepts NULL; `MATCH SIMPLE` skips a key with a NULL column) | §1.2 "Kind guards without a NULL bypass": `jobs.obligation_service_type` with a pairing check, the `jobs_derive_obligation_kind` trigger (overwrites supplied values) and a fully non-null composite key; `inspections.job_type` is `NOT NULL` with a default. §4.4: `service_obligations.cycle_id` is `NOT NULL`, filled or created by `obligations_assign_cycle`, with an all-non-null composite key; `work_orders.obligation_id` uses the same pairing scheme | §1.2 and §4.4 direct SQL test lists; matrix rows 30 and 32 |
 | R2 | Several visits per work order conflict with `jobs_one_live_per_obligation`, which also counts completed jobs | §1.2: work jobs never reference obligations; one open job per work order through a separate index; the aerobic index is unchanged. §4.4: a non-aerobic obligation links to its **work order** (`work_orders_one_per_obligation`), and its visits are ordinary work jobs | §4.4 scheduling tests (two visits, concurrent scheduling, scheduling after final); matrix rows 30 and 31 |
 | R3 | Deposit model inconsistent: I1 against external refunds, retained bounds, refund of a paid F (including $0 due), unique final invoice blocking void and re-invoice, no concrete cent equality | §3.6: `estimate_invoices` with an active-only unique index plus void-aware `invoices.work_order_id`; append-only `deposit_ledger`; balances R, X, A, T, S and `U`; I1 (deferred check), I2 (Aerowise moves limited to real money, retained money excluded), I3 (external refunds recorded with an exact shortfall, never refused), I4, I5; "Refund the job" with the `deposit_reversal` credit; the ledger equality `P + Σ due_F = Σ (G_F − C_F) + T + U − S` | §3.6 test list (eight cases); matrix rows 23 and 35 |
+| R3 follow-up | I3 appended the cumulative deficit on each distinct external refund, double-counting earlier shortfalls; Stripe refunds can be pending or fail | §3.6: `S` is now the **current** deficit, adjusted by `shortfall` / `shortfall_released` deltas so `U = max(0, R − X − Q − A − T)`; resolutions tracked separately in `deposit_shortfall_resolutions`; Aerowise-started refunds reserve (`Q`) in a committed pending `refunds` row, call the provider after commit with the existing idempotency key, settle (including the `deposit_reversal` credit on F) only on `succeeded` through `refundEvent`, release on `failed`, and are reconciled after a lost response; the equality gains `+ Q` | §3.6 worked example and test list (two distinct refunds with replays, apply/unapply after a shortfall, pending → succeeded and pending → failed with replays, lost response); matrix rows 23, 35 and 37 |
 | R4 | Offline uploads could precede the draft; the original technician had no path to the conflict queue; a 409 acknowledgement would be stranded by the retry classifier | §8.5: draft-first ordering with `record_not_synced` as a defensive retry; signature identity; append-only `job_assignments` provenance (same organization and user only, 403 otherwise); **202 `held_for_review`** acknowledged as success; drafts move to the conflict when the office reassigns, cancels or completes the job | §8.5 R4 tests 1–9 (before the first draft sync and before the first upload, each with photos and a signature); matrix rows 26, 33 and 34 |
 | R5 | Disposal loads lacked attachments, revision identity and a canonical unit | §1.2 `work_attachments` with exactly one owner, including `disposal_load_group_id`. §2.2: revision groups (`group_id`, `revision`, `is_current`), `disposal_load_items` keyed by pump-out group, entered value and unit kept, canonical `volume_milligallons` from the exact US gallon (3.785411784 L) | §2.5 acceptance list; matrix row 36 |
 
