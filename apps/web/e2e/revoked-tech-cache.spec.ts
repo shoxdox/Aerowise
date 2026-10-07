@@ -242,7 +242,7 @@ test("work saved by the earlier app version, before sign-ins had their own stora
 });
 
 // Last in this file: it runs the nightly demo reset, which removes every public demo company.
-test("a public visitor's technician copy is cleared once the nightly reset has removed their demo", async ({ page, context }) => {
+test("a public visitor's technician copy is cleared once the nightly reset has emptied their demo", async ({ page, context }) => {
   const db = new pg.Client({ connectionString: databaseUrl });
   await db.connect();
   const total = async () => Number((await db.query("select count(*) as n from inspections")).rows[0].n);
@@ -263,13 +263,14 @@ test("a public visitor's technician copy is cleared once the nightly reset has r
     await startFirstStop(page);
     await expect(page.getByTestId("sync-status")).toContainText("No signal. 1 change saved on this phone");
 
-    // The nightly reset removes the visitor's company outright (no row left to say it ended).
+    // The nightly reset empties the visitor's company: removed outright (main today) or left
+    // as an ended tombstone (STG-01); the phone must clear it either way.
     execFileSync("pnpm", ["db:reseed-demo"], {
       cwd: fileURLToPath(new URL("../../..", import.meta.url)),
       env: { ...process.env, DATABASE_URL: databaseUrl, FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true" },
       stdio: "pipe",
     });
-    expect((await db.query("select count(*) as n from organizations where id = $1", [me.organization.id])).rows[0].n).toBe("0");
+    expect((await db.query("select count(*) as n from memberships where organization_id = $1", [me.organization.id])).rows[0].n).toBe("0");
     const afterReset = await total();
 
     // Still no signal: nothing is removed.
