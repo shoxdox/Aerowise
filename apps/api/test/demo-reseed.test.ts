@@ -240,4 +240,42 @@ describe("the nightly demo reset", () => {
       expect(await snapshot(w.trial.org.id)).toEqual(trialBefore);
     }
   });
+  // The same tables pointing at each other are emptied when a company is erased: a prospect
+  // ended by hand or on its day, and a real company deleted on its request.
+  it("ends a prospect demo with an activated renewal, by hand and on its day, without breaking the renewal's checks", async () => {
+    const w = await world();
+    await activateRenewal(w.app, client(w.app, w.prospect.cookie));
+    const ended = await w.admin.post(`/admin/prospect-demos/${w.prospect.id}/end`, {});
+    expect(ended.statusCode, ended.body).toBe(200);
+    expect(ended.json().state).toBe("ended");
+    expect(await ctx.db.selectFrom("renewals").select("id").where("organizationId", "=", w.prospect.id).execute()).toEqual([]);
+    expect(await ctx.db.selectFrom("signedDocuments").select("id").where("organizationId", "=", w.prospect.id).execute()).toEqual([]);
+
+    // Another prospect, reaching its day.
+    const made = (await w.admin.post("/admin/prospect-demos", { prospect: "Hill Top Aerobic", serviceCounties: ["Hays County"], days: 7 })).json();
+    const entered = await w.app.inject({ method: "POST", url: "/demo/enter", payload: { token: (made.link.url as string).split("#")[1] } });
+    await activateRenewal(w.app, client(w.app, cookieOf(entered)));
+    await sql`update organizations set demo_expires_at = now() - interval '1 hour' where id = ${made.demo.id}`.execute(ctx.db);
+    const list = await w.admin.get("/admin/prospect-demos");
+    expect(list.statusCode, list.body).toBe(200);
+    expect(await ctx.db.selectFrom("renewals").select("id").where("organizationId", "=", made.demo.id).execute()).toEqual([]);
+    expect(await snapshot(w.trial.org.id)).toMatchObject({ customers: 1 });
+  });
+
+  it("erases a real company with an activated renewal on its request, and only that company", async () => {
+    const w = await world();
+    const other = await createTenant({ ...ctx, app: w.app }, "Other Real Septic");
+    // A 12-month contract ending inside the renewal window.
+    const plan = (await w.trial.api.post("/plans", { name: "Standard", termMonths: 12, visitsPerTerm: 2, priceCents: 30000, billingFrequency: "annual" })).json();
+    const startOn = new Date(Date.now() - 300 * 86_400_000).toISOString().slice(0, 10);
+    expect((await w.trial.api.post(`/sites/${w.trial.site.id}/contracts`, { planId: plan.id, startOn })).statusCode).toBe(201);
+    await activateRenewal(w.app, w.trial.api);
+    const otherBefore = await snapshot(other.org.id);
+    const res = await w.admin.post(`/admin/organizations/${w.trial.org.id}/erase`, { confirmName: "Clean Trial Septic" });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().tables).toMatchObject({ renewals: 1, signed_documents: 1 });
+    expect(await ctx.db.selectFrom("contracts").select("id").where("organizationId", "=", w.trial.org.id).execute()).toEqual([]);
+    expect(await snapshot(other.org.id)).toEqual(otherBefore);
+    expect((await other.api.get("/auth/me")).statusCode).toBe(200);
+  });
 });

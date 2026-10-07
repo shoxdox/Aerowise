@@ -714,4 +714,5 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Files by company.** Only `FILE_STORAGE_DIR/<id>` folders of removed companies are deleted; anything else in the directory stays. As before, R2 is not touched by the reseed.
 - **Authority evidence is now kept.** Recorded authority calls/evidence are platform records, not public-demo data, so the reset no longer empties them (it used to, as a side effect of truncating everything).
 - **Prospect expiry is unchanged.** A prospect demo still ends on its day or by hand and is emptied by `apps/api/src/lib/demo-lifecycle.ts`; the reset neither extends nor ends it.
+- **Erasing a company deletes tables that point at each other together.** Company erasure (prospect End now, a demo reaching its end, `/admin/organizations/:id/erase`) used to null optional links between such tables first, which broke `renewals_check1` for an activated renewal (a 500 on End now or erase). It now deletes them in one statement, as the reset does; no check constraint or trigger beyond the append-only ones is switched off.
 
