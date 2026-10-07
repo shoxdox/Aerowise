@@ -1,3 +1,5 @@
+import { parseFeatures } from "@aerowise/domain";
+
 /**
  * The boot-time configuration check shared by the API and the worker. Outside production
  * nothing is required: missing providers fall back to the built-in test ones. In
@@ -25,6 +27,11 @@ const DEV_SECRETS = new Set(["aerowise-development-only-signing-secret", "aerowi
 export function configProblems(env: Env): string[] {
   if (env.NODE_ENV !== "production") return [];
   const problems: string[] = [];
+  try {
+    parseFeatures(env.AEROWISE_FEATURES);
+  } catch (err) {
+    problems.push((err as Error).message);
+  }
   const set = (k: string) => !!env[k]?.trim();
   const missing = (keys: string[], why: string) => {
     const names = keys.filter((k) => !set(k));
