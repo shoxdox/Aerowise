@@ -116,7 +116,7 @@ export async function buildExport(db: Database, store: ObjectStore, organization
   }
   files["README.txt"] = enc.encode(
     [
-      ...(demo ? [DEMO_EXPORT_NOTICE, `Every CSV file starts with a ${DEMO_CSV_COLUMN} column reading "${DEMO_WATERMARK}" on every row; the columns after it are the same as in a real export.`, ""] : []),
+      ...(demo ? [DEMO_EXPORT_NOTICE, `Every CSV file starts with an ${DEMO_CSV_COLUMN} column reading "${DEMO_WATERMARK}" on every row; the columns after it are the same as in a real export.`, ""] : []),
       `Aerowise data export, made ${now.toISOString()}.`,
       "",
       "Each CSV file holds one kind of record, one row per record, with every column Aerowise keeps.",

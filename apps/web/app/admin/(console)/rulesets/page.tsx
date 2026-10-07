@@ -22,7 +22,7 @@ export default function RulesetCoveragePage() {
         Sites are counted across every organization, as each would resolve today ({data ? day(data.today) : "…"}). A draft never sends on its own; a ruleset becomes verified only with a record of who confirmed it with the authority.
       </p>
       <p className="muted small">
-        A call sheet lists one authority&apos;s open and acceptance questions with the dated evidence on record, for asking that authority only when it governs a selected pilot&apos;s permits. It names no contact and confirms nothing.
+        A call sheet lists one authority&apos;s open and acceptance questions with the dated evidence on record, for asking that authority only when it governs a selected pilot&apos;s permits. It adds no contact details and confirms nothing.
       </p>
       {error && <p className="error">{error}</p>}
       <div className="table-scroll">
@@ -47,7 +47,7 @@ export default function RulesetCoveragePage() {
                     {i.active ? "" : " · inactive"}
                   </div>
                   {i.profileStatus !== "fictional" && (
-                    <a className="small" href={`/api/admin/rulesets/${i.key}/call-sheet.pdf`} target="_blank" rel="noreferrer" aria-label={`Call sheet PDF for ${i.authorityName}`}>
+                    <a className="small" href={`/api/admin/rulesets/${i.key}/call-sheet.pdf`} target="_blank" rel="noreferrer">
                       Call sheet (PDF)
                     </a>
                   )}

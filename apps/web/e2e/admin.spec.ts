@@ -62,9 +62,19 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await expect(lcra.getByText(/^\d+ open$/)).toBeVisible();
   await expect(lcra.getByText("Nothing recorded with the authority yet")).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "tx-example-county" }).getByText("Example rules")).toBeVisible();
+  // STG-06: a call sheet per real authority, none for the fictional example.
+  const sheetLink = lcra.getByRole("link", { name: "Call sheet (PDF)" });
+  await expect(sheetLink).toHaveAttribute("href", "/api/admin/rulesets/tx-lcra-ossf/call-sheet.pdf");
+  await expect(page.getByRole("row").filter({ hasText: "tx-example-county" }).getByRole("link", { name: "Call sheet (PDF)" })).toHaveCount(0);
+  const sheet = await page.request.get("/api/admin/rulesets/tx-lcra-ossf/call-sheet.pdf");
+  expect(sheet.status()).toBe(200);
+  expect(sheet.headers()["content-type"]).toBe("application/pdf");
+  expect((await sheet.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
 
   // Evidence: a provider's accepted report answers an open question, which stays open.
   await lcra.getByRole("link", { name: /Lower Colorado River Authority/ }).click();
+  await page.waitForURL(/\/admin\/rulesets\/tx-lcra-ossf$/);
+  await expect(page.getByRole("link", { name: "Call sheet (PDF)" })).toHaveAttribute("href", "/api/admin/rulesets/tx-lcra-ossf/call-sheet.pdf");
   const acceptance = page.getByRole("region", { name: "Acceptance questions" });
   await expect(acceptance.getByRole("row", { name: /Signature/ }).getByText("Open")).toBeVisible();
   const record = page.getByRole("form", { name: "Record evidence" });

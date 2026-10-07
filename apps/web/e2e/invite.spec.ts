@@ -13,7 +13,8 @@ test("the owner invites a technician, who sets a password from the link and land
   await page.getByLabel("Name").fill("Terry Tech");
   await page.getByLabel("Role").selectOption("technician");
   await page.getByRole("button", { name: "Send invitation" }).click();
-  await expect(page.getByRole("status")).toContainText("Invitation emailed to terry.tech@example.com.");
+  // The e2e API has no mail provider: the invitation stays in the local outbox (STG-08).
+  await expect(page.getByRole("status")).toContainText("Invitation for terry.tech@example.com recorded in the test outbox; no email was delivered.");
   const link = await page.getByLabel("Invitation link").inputValue();
   await expect(page.getByRole("row", { name: /terry\.tech@example\.com/ })).toContainText("pending");
 

@@ -17,8 +17,8 @@ export interface CallSheetQuestion {
 
 /**
  * A printable worksheet for asking one authority its open questions (STG-06). Drawn only
- * from the ruleset and the evidence on record: it names no contact, claims no acceptance,
- * and says plainly when the authority is unverified.
+ * from the ruleset and the evidence on record: it adds no contact details (only what the
+ * dated sources quote), claims no acceptance, and says plainly when the authority is unverified.
  */
 export interface CallSheet {
   authorityName: string;
@@ -36,6 +36,8 @@ export interface CallSheet {
   open: CallSheetQuestion[];
   /** What only the authority can confirm about accepting a report. */
   acceptance: CallSheetQuestion[];
+  /** Answers on record that belong to neither list (another topic, or an earlier version's question). */
+  other: string[];
   /** The question asked of every authority once a sample has been reviewed. */
   sharedQuestion: string;
   /** Date (YYYY-MM-DD) and time the sheet was made, and by whom. */
@@ -89,7 +91,9 @@ export function renderCallSheet(c: CallSheet): Promise<Buffer> {
   };
   const bullet = (text: string) => {
     room(24);
-    doc.font(FONTS.regular).fontSize(9).fillColor("#000").text(`•  ${text}`, left + 6, doc.y, { width: width - 6, lineGap: 1.2 });
+    const y = doc.y;
+    doc.font(FONTS.regular).fontSize(9).fillColor("#000").text("•", left + 4, y, { width: 10, lineBreak: false });
+    doc.text(text, left + 16, y, { width: width - 16, lineGap: 1.2 });
     doc.moveDown(0.15);
   };
   /** A label with a ruled line to write on. */
@@ -135,11 +139,11 @@ export function renderCallSheet(c: CallSheet): Promise<Buffer> {
 
   heading("Before using this sheet");
   bullet("Use it only when this authority governs the permits of a selected pilot provider. Confirm the actual permit authority from the permits first; do not contact authorities outside the pilot's scope.");
-  bullet("This sheet gives no phone number, email or address. Take the current contact from the dated sources below and check it before use.");
+  bullet("This sheet adds no contact details. Any address or number below is quoted from a dated source; check that it is current before using it.");
   bullet("Keep separate: report destination, contract destination, report format, signature method, and receipt or acknowledgment. A published destination is evidence for that destination only; it does not confirm that an Aerowise report is accepted.");
   bullet("Record each answer with its scope and exact words. A verbal answer is evidence of what was said; ask for written confirmation where a conflict matters.");
   bullet(`Enter answers as evidence in /admin/rulesets/${c.key}. Saving evidence changes no rules and verifies nothing; a new version needs a reviewed pull request.`);
-  if (!c.verified) bullet(`${c.authorityName} is ${c.statusLabel.toLowerCase()}: nothing here is confirmed by the authority unless the evidence says so.`);
+  if (!c.verified) bullet(`The rules for ${c.authorityName} are a ${c.statusLabel.toLowerCase()}: nothing here is confirmed by the authority unless the evidence on record says so.`);
 
   heading("Who, when, how");
   const col = width / 2;
@@ -185,6 +189,11 @@ export function renderCallSheet(c: CallSheet): Promise<Buffer> {
   doc.moveDown(0.3);
   c.acceptance.forEach((q, i) => question(q, c.open.length + i + 1));
 
+  if (c.other.length) {
+    heading("Other evidence on record");
+    for (const e of c.other) bullet(e);
+  }
+
   heading("Shared acceptance question (after the sample has been reviewed)");
   para(`"${c.sharedQuestion}"`, { font: FONTS.italic });
   doc.moveDown(0.3);
@@ -195,6 +204,7 @@ export function renderCallSheet(c: CallSheet): Promise<Buffer> {
   if (c.sources.length === 0) para("No sources recorded in the ruleset.", { color: MUTED });
   for (const s of c.sources) bullet(`${s.title} (read ${s.retrievedOn}) ${s.url}${s.note ? `. ${s.note}` : ""}`);
 
+  room(150);
   heading("Notes");
   lines(6);
 

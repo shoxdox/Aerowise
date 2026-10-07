@@ -149,7 +149,7 @@ export const adminEvidenceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () 
       config: { platformAdmin: true },
       schema: {
         tags: ["admin"],
-        summary: "A printable call sheet of this authority's open and acceptance questions, with the dated evidence on record. Read-only; names no contact and claims no acceptance.",
+        summary: "A printable call sheet of this authority's open and acceptance questions, with the dated evidence on record. Read-only; adds no contact details (only what the dated sources quote) and claims no acceptance.",
         params: keyParams,
       },
     },
@@ -171,6 +171,7 @@ export const adminEvidenceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () 
           ].join("");
         });
       const q = (text: string, state: QuestionState, answers: EvidenceAnswer[]): CallSheetQuestion => ({ text, state: QUESTION_STATE_LABELS[state], evidence: onRecord(answers) });
+      const other = p.otherAnswers.filter((x) => !(ACCEPTANCE_TOPICS as readonly QuestionTopic[]).includes(x.topic));
       const at = now();
       const pdf = await renderCallSheet({
         authorityName: p.authorityName,
@@ -184,6 +185,8 @@ export const adminEvidenceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () 
         sources: rules.profile?.sources ?? [],
         open: p.unresolved.map((u) => q(u.item, u.state, u.answers)),
         acceptance: p.acceptance.map((x) => q(x.label, x.state, x.answers)),
+        // Acceptance answers already print under their question above.
+        other: onRecord(other).map((line, i) => `${QUESTION_TOPIC_LABELS[other[i]!.topic]}: ${line}`),
         sharedQuestion: CALL_SHEET_SHARED_QUESTION,
         generatedOn: p.today,
         generatedAt: at.toISOString(),

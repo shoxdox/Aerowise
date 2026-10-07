@@ -369,7 +369,7 @@ export default function AuthorityEvidencePage() {
           <a className="button secondary" href={`/api/admin/rulesets/${data.key}/call-sheet.pdf`} target="_blank" rel="noreferrer">
             Call sheet (PDF)
           </a>
-          <span className="muted small">Open and acceptance questions with the dated evidence below, and room for who was asked, when and what they said. Use only when this authority governs a selected pilot&apos;s permits; it names no contact and confirms nothing.</span>
+          <span className="muted small">Open and acceptance questions with the dated evidence below, and room for who was asked, when and what they said. Use only when this authority governs a selected pilot&apos;s permits; it adds no contact details and confirms nothing.</span>
         </p>
       )}
 

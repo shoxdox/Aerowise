@@ -53,6 +53,7 @@ const callSheet = {
   sources: [{ title: "FICTIONAL fixture source", url: "https://tx-fixture-draft.example/rules", retrievedOn: "2026-01-10" }],
   open: [{ text: "FICTIONAL: whether the authority accepts reports by email", state: "Open", evidence: [] }],
   acceptance: [{ text: "Report format", state: "Published rule only", evidence: ["2026-01-10, Published rule (published rule or form): Answers part of it. The form lists email."] }],
+  other: [],
   sharedQuestion: CALL_SHEET_SHARED_QUESTION,
   generatedOn: "2026-10-07",
   generatedAt: "2026-10-07T02:00:00Z",

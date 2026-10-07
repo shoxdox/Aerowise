@@ -199,7 +199,7 @@ describe("authority evidence", () => {
     expect(before).toContain(OPEN);
     expect(before).toContain("No evidence recorded yet.");
     expect(before).toContain("FICTIONAL fixture source (read 2026-01-10) https://tx-fixture-draft.example/rules");
-    expect(before).toContain("This sheet gives no phone number, email or address.");
+    expect(before).toContain("This sheet adds no contact details.");
     // Room to record who was asked, when and what they said.
     for (const label of ["Contact name", "Date and time", "Channel (call, email, letter, meeting)", "Answer, scope and exact words:"]) expect(before).toContain(label);
     // Every font is embedded, so it prints evenly anywhere.
@@ -211,6 +211,19 @@ describe("authority evidence", () => {
     expect(after).toContain("Now: Confirmed by the authority");
     expect(after).toContain("On record: 2026-02-20, Authority's own answer (call with the authority, Draft Fixture County (fictional)): Settles it. Yes, as a PDF attachment. Sources: Call notes, 2026-02-20");
     expect(after).toContain("Now: Partly confirmed by the authority");
+    expect(after.match(/Only a drawn or wet-ink signature/g)).toHaveLength(1);
+    // An answer on no listed question still prints, under its topic.
+    const fees = {
+      kind: "published_rule",
+      obtainedOn: "2026-02-21",
+      references: ["https://tx-fixture-draft.example/fees, section 2"],
+      answers: [{ question: "What is the filing fee?", topic: "fees", answer: "FICTIONAL: $10 per report.", outcome: "partial" }],
+    };
+    expect((await api.post("/admin/rulesets/tx-fixture-draft/evidence", fees)).statusCode).toBe(201);
+    const withFees = pdfText((await api.get("/admin/rulesets/tx-fixture-draft/call-sheet.pdf")).rawPayload).replace(/\s+/g, " ");
+    expect(withFees).toContain("Other evidence on record");
+    expect(withFees).toContain("Fees: 2026-02-21, Published rule (published rule or form): Answers part of it. FICTIONAL: $10 per report. Sources: https://");
+    expect(withFees).toContain("tx-fixture-draft.example/fees, section 2");
     expect(after).not.toContain("555-0100");
     expect(after).not.toContain("Pat Example");
     // Still a draft: recorded evidence verifies nothing.
