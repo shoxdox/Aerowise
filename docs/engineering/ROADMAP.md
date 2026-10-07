@@ -32,6 +32,10 @@ Supported research corrections have landed; original packet `implemented: false`
 
 Choose one provider and actual permit authority; obtain a small redacted permit/contract/accepted-report pack; deploy and verify controlled staging/demo; compare one generated report and schedule; confirm the pilot's remaining acceptance details; log evidence and review any proposed new version. Before real operations, validate required integrations, credentials, legal text and backup/restore. These steps require fresh evidence, not automatic new coding workers.
 
+## Service workflows (planned, not built)
+
+- **SW-0:** [implementation plan](SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md) for general work orders, pumping/disposal records, estimates, plan-specific agreements and coverage, conventional/installation work, work on the street map and authority export interoperability — draft documentation PR, branch `claude/service-workflows-plan-ttg7xh`, baseline `0906828`. SW-1–SW-12 are proposed; no implementation worker has started.
+
 ## W9. Deferred
 
 Homeowner autopay/saved payment methods, organization switcher, technician-app MP signing, two-way QuickBooks, IoT and other states remain deferred until a real pilot/customer need justifies them. No 300-contract demo seed or statewide confirmation campaign is queued.
