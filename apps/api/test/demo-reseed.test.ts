@@ -165,4 +165,31 @@ describe("the nightly demo reset", () => {
     expect(await ctx.db.selectFrom("memberships").select("organizationId").where("userId", "=", w.trial.owner.id).execute()).toEqual([{ organizationId: w.trial.org.id }]);
     expect((await w.trial.api.get("/auth/me")).statusCode).toBe(200);
   });
+  it("stays idempotent night after night: old shared companies never block the seed, and tombstones are left as they are", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-reseed-"));
+    const live = () => ctx.db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null).execute();
+    const tombstones = () => ctx.db.selectFrom("organizations").select(["id", "demoExpiresAt", "name"]).where("demoExpiresAt", "is not", null).orderBy("id").execute();
+    await reseedDemo(ctx.db, { filesDir: files });
+    const seen: string[] = [];
+    let earlier: Awaited<ReturnType<typeof tombstones>> = [];
+    for (let night = 1; night <= 3; night++) {
+      const [current] = await live();
+      seen.push(current!.id);
+      const result = await reseedDemo(ctx.db, { filesDir: files });
+      // Only the live shared company is emptied; no earlier tombstone is touched again.
+      expect(result.removed).toEqual([current!.id]);
+      const now = await tombstones();
+      expect(now.map((t) => t.id).sort()).toEqual(seen.slice().sort());
+      for (const t of earlier) expect(now.find((n) => n.id === t.id)?.demoExpiresAt).toEqual(t.demoExpiresAt);
+      // An old shared company keeps the seed's name, yet the seed made a new live one with its people.
+      expect(now.every((t) => t.name === DEMO_ORG_NAME)).toBe(true);
+      const fresh = await live();
+      expect(fresh).toHaveLength(1);
+      expect(seen).not.toContain(fresh[0]!.id);
+      expect(await snapshot(fresh[0]!.id)).toMatchObject({ memberships: 3 });
+      for (const t of now) expect(Object.values(await snapshot(t.id)).every((n) => n === 0)).toBe(true);
+      earlier = now;
+    }
+    expect((await ctx.db.selectFrom("users").select("email").orderBy("email").execute()).map((u) => u.email)).toEqual(["office@example.com", "owner@example.com", "tech@example.com"]);
+  });
 });
