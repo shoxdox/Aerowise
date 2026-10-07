@@ -87,7 +87,7 @@ function payload(insp: LocalInspection, photosQueued: boolean) {
 }
 
 async function runOp(store: TenantStore, op: QueuedOp, ops: QueuedOp[], inspections: Map<string, LocalInspection>) {
-  const { removeOp, failOp, getPhotoBlob, photoUploaded, putInspection } = store;
+  const { removeOp, failOp, getPhotoBlob, photoUploaded, acknowledgeSync } = store;
   const insp = inspections.get(op.inspectionClientId);
   if (!insp) return removeOp(op.seq);
 
@@ -113,15 +113,7 @@ async function runOp(store: TenantStore, op: QueuedOp, ops: QueuedOp[], inspecti
   });
   if (!res.ok) return failOp(op, await message(res));
   const server = (await res.json()) as { id: string; status: "draft" | "completed"; validationStatus: string; validationProblems: { key: string; message: string }[] };
-  const updated: LocalInspection = {
-    ...insp,
-    server: { id: server.id, status: server.status, validationStatus: server.validationStatus, problems: server.validationProblems },
-  };
-  // The server found problems the phone did not (say, a template changed): reopen it.
-  if (server.validationStatus === "invalid" && insp.status === "completed") Object.assign(updated, { status: "draft", completedAt: null });
-  await putInspection(updated);
-  inspections.set(insp.clientId, updated);
-  return removeOp(op.seq);
+  await acknowledgeSync(op, insp, { id: server.id, status: server.status, validationStatus: server.validationStatus, problems: server.validationProblems }, insp.status === "completed" && !photosQueued);
 }
 
 async function drainOnce() {

@@ -113,3 +113,55 @@ test("two inspections done with no signal reach the office exactly once", async 
     await db.end();
   }
 });
+
+
+test("finishing online while a draft sync is in flight preserves the readings, photos and completion", async ({ page, context }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("tech@example.com");
+  await page.getByLabel("Password").fill("aerowise-dev");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("**/tech");
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let first = true;
+  let clientId = "";
+  let captured!: () => void;
+  const draftCaptured = new Promise<void>(resolve => { captured = resolve; });
+  await context.route("**/api/inspections/sync", async route => {
+    if (first) {
+      first = false;
+      clientId = route.request().postDataJSON().clientId;
+      const response = await route.fetch();
+      captured();
+      await held;
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  const card = page.locator(".stop-card", { hasText: "To do" }).first();
+  const customer = await card.locator("strong").innerText();
+  await card.click();
+  await page.getByRole("button", { name: "Arrive and start inspection" }).click();
+  await draftCaptured;
+  for (const pass of await page.getByRole("button", { name: "Pass", exact: true }).all()) await pass.click();
+  await page.getByRole("group", { name: "Chlorine device" }).getByRole("button", { name: "Working" }).click();
+  await page.getByLabel("Chlorine level").fill("1.5");
+  await page.getByLabel("Air pressure").fill("4");
+  await page.getByRole("group", { name: "Odor", exact: true }).getByRole("button", { name: "None" }).click();
+  await page.getByRole("group", { name: "Pumping needed" }).getByRole("button", { name: "No", exact: true }).click();
+  for (const key of ["Overview of the unit", "Chlorinator"]) {
+    await page.getByLabel(`Add photo: ${key}`).setInputFiles({ name: "test.png", mimeType: "image/png", buffer: PNG });
+  }
+  await expect(page.locator('[data-photo="chlorinator"]')).toContainText("1 taken");
+  await page.getByRole("button", { name: "Finish inspection" }).click();
+  const stop = page.locator(".stop-card", { hasText: customer });
+  await expect(stop).toContainText("Done · not sent yet");
+  release();
+  await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
+  await expect(stop).toContainText("Done");
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  try {
+    const result = await db.query("select i.status, i.validation_status, (select count(*)::int from attachments a where a.inspection_id=i.id) as photos, (select count(*)::int from audit_events a where a.entity_id=i.id and a.action='inspection.completed') as completions from inspections i where i.offline_client_id=$1", [clientId]);
+    expect(result.rows).toEqual([{ status: "completed", validation_status: "valid", photos: 2, completions: 1 }]);
+  } finally { await db.end(); }
+});

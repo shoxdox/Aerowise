@@ -29,6 +29,8 @@ export interface LocalIssue {
 }
 
 export interface LocalInspection {
+  /** Incremented on each local edit, so an older sync cannot consume a newer edit. */
+  revision?: number;
   clientId: string;
   jobId: string;
   templateId: string;
@@ -286,7 +288,8 @@ export function storeFor(t: KnownTenant) {
      */
     saveInspection: (insp: LocalInspection, photo?: PhotoBlob) =>
       run(["inspections", "photos", "outbox"], "readwrite", async (trx) => {
-        trx.objectStore("inspections").put(insp);
+        const existing = await done(trx.objectStore("inspections").get(insp.jobId)) as LocalInspection | undefined;
+        trx.objectStore("inspections").put({ ...insp, revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         const ops = (await done(outbox.getAll())) as QueuedOp[];
         const mine = ops.filter((o) => o.inspectionClientId === insp.clientId && !o.failed);
@@ -303,6 +306,26 @@ export function storeFor(t: KnownTenant) {
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),
     putInspection: (insp: LocalInspection) => run(["inspections"], "readwrite", (trx) => done(trx.objectStore("inspections").put(insp)).then(() => undefined)),
+
+    acknowledgeSync: (op: QueuedOp, sent: LocalInspection, server: NonNullable<LocalInspection["server"]>, completedSent: boolean) =>
+      run(["inspections", "outbox"], "readwrite", async (trx) => {
+        const inspections = trx.objectStore("inspections");
+        const outbox = trx.objectStore("outbox");
+        const latest = await done(inspections.get(sent.jobId)) as LocalInspection | undefined;
+        if (latest) {
+          const unchanged = (latest.revision ?? 0) === (sent.revision ?? 0);
+          const updated = { ...latest, server };
+          // Draft validation while photos upload must not undo a local completion.
+          if (unchanged && completedSent && server.validationStatus === "invalid") Object.assign(updated, { status: "draft", completedAt: null });
+          inspections.put(updated);
+          outbox.delete(op.seq);
+          if (!unchanged) {
+            const queued = (await done(outbox.getAll())) as QueuedOp[];
+            const last = queued.filter(o => o.inspectionClientId === sent.clientId && !o.failed).at(-1);
+            if (!last || last.kind !== "sync") outbox.add({ kind: "sync", inspectionClientId: sent.clientId } satisfies OutboxOp);
+          }
+        } else outbox.delete(op.seq);
+      }),
 
     /** Marks a photo uploaded and drops its image from the phone. */
     photoUploaded: (jobId: string, photoClientId: string) =>
