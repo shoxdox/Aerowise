@@ -33,7 +33,7 @@ Real coverage is whatever file the operator installs. The recommended file for t
 | Covers | Travis, Hays, Williamson, Bastrop, Blanco, Burnet, Comal, Caldwell, Llano (south), Bell (south) and the towns the demo uses (Dripping Springs, Wimberley, Blanco, Spicewood, Austin, Round Rock, Georgetown, San Marcos) |
 | Does not cover | Other counties in the county research (Denton, Ellis, Kaufman, Hill, McLennan, Grimes, Montgomery, Brazoria, SJRA): cut a larger box (below) before routing real customers there |
 | Zoom | 0–15 (street level; the map zooms further by enlarging zoom 15) |
-| File size | **not measured** (the extract could not be downloaded from the build sandbox). Expect hundreds of MB at zoom 15. Check it with `ls -lh` and `pmtiles show` after cutting it, and record it here. |
+| File size | **154,000,057 bytes (147 MiB)** for the October 7, 2026 Protomaps build, extracted and verified by Codex on Justin's machine. SHA-256: `34f1c0032492d780ce7c3c50ba13d47b92a957a4f1315c59e0005aee547eab83`. Bounds and zooms match the table above. |
 
 A real customer's stops are drawn on streets only inside that box; outside it they are still placed and listed as outside the map.
 

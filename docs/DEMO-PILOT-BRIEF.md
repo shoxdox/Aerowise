@@ -1,5 +1,13 @@
 # Aerowise — current demo and pilot handoff
 
+## Street map staging update — October 7, 2026
+
+**Real street maps are live at https://staging.deshain.com** in the office Schedule and technician List/Map views. PR #97 is merged; staging application commit `220b4e747d34b23d7a6dc9451f0a16df35dacafc` passed API/worker health and browser checks with an actual 154 MB Central Texas OpenStreetMap extract. Numbering, selection, phone stop opening, offline list fallback and reconnect map recovery passed. All 13 requests in the observed map retry stayed on staging. [Screenshots and deployment record](engineering/RUNBOOK.md#street-map-review-and-staging-deployment--october-7-2026).
+
+Demo entry remains password-free: **Try the demo → Start my demo**, then Owner / Office / Technician. Maps cover the configured Central Texas box; demo locations remain fictional and visit lines remain straight. No guaranteed offline basemap or physical-phone validation. A P3 demo quirk: role-switch buttons disappear while offline and require an online reload to return. Test providers remain enabled, Twilio off, production untouched. No new DNS, account or keys are needed for this map.
+
+The Fieldbase gap expansion is still being built: phone compatibility PR #99 is draft and rerunning checks after the map merge; the work-order foundation worker is preparing its PR. These capabilities are not yet merged or deployed. Existing provider/authority acceptance and hosted Actions limits below remain open.
+
 ## Live staging result — October 6 local / October 7 UTC, 2026
 
 **Ready for guided public and personalized fictional demos.** Send https://staging.deshain.com. **Try the demo → Start my demo** is password-free; switch Owner / Office / Technician in the banner. Personalized owner links are created in `/admin/prospect-demos` and support the same role switch. Admin credentials and private entry links remain outside Git.
