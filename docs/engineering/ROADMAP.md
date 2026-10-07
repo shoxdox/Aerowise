@@ -37,6 +37,8 @@ Choose one provider and actual permit authority; obtain a small redacted permit/
 
 - **SW-0:** [implementation plan](SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md) for general work orders, pumping/disposal records, estimates, plan-specific agreements and coverage, conventional/installation work, work on the street map and authority export interoperability — draft documentation PR, branch `claude/service-workflows-plan-ttg7xh`, baseline `0906828`. SW-1–SW-12 are proposed; no implementation worker has started.
 
+- **SW-4:** QuickBooks mixed sales tax and quarantine (§3.7): per-connection tax mode, off by default and refused for live QuickBooks companies until G-QBO-TAX; compare after create, quarantined invoices with held payments and refunds, recheck/keep review — draft PR, branch `claude/sw-4-qbo-tax-quarantine-2o2rzy`, migration `0049` (number reserved through SW-1, renumbered at merge if needed). Test provider only; no Intuit sandbox run.
+
 ## W9. Deferred
 
 Homeowner autopay/saved payment methods, organization switcher, technician-app MP signing, two-way QuickBooks, IoT and other states remain deferred until a real pilot/customer need justifies them. No 300-contract demo seed or statewide confirmation campaign is queued.
