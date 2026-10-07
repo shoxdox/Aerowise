@@ -20,3 +20,4 @@ playwright-report
 .playwright-cli/
 output/playwright/
 output/pdf/
+apps/web/public/map/maplibre/

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { IntroCard } from "@/components/Intro";
 import { InspectionForm } from "@/components/tech/InspectionForm";
 import { StopDetail } from "@/components/tech/StopDetail";
-import { StopList } from "@/components/tech/StopList";
+import { StopList, type RouteView } from "@/components/tech/StopList";
 import { SyncBanner } from "@/components/tech/SyncBanner";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
@@ -39,6 +39,8 @@ export default function TechApp() {
   const [failures, setFailures] = useState<string[]>([]);
   const [sync, setSync] = useState<SyncState>({ kind: "idle", pending: 0, failed: 0 });
   const [view, setView] = useState<View>({ name: "list" });
+  // List or map of the route; kept while a stop is open, so Back returns to the same one.
+  const [routeView, setRouteView] = useState<RouteView>("list");
   const [loading, setLoading] = useState(true);
   const [needsSignIn, setNeedsSignIn] = useState(false);
   // A demo company that ended: its data was removed from the phone and nothing of it shows.
@@ -219,6 +221,8 @@ export default function TechApp() {
             inspections={inspections}
             onOpen={(jobId) => setView({ name: "stop", jobId })}
             onRefresh={() => void refresh()}
+            view={routeView}
+            onView={setRouteView}
           />
         )}
         {view.name === "stop" && stop && (

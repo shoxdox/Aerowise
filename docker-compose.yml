@@ -47,6 +47,9 @@ services:
   web:
     build: .
     command: pnpm --filter @aerowise/web start
+    # The synthetic test map (not real streets); see docs/engineering/MAP.md for a real extract.
+    environment:
+      MAP_TILES_FILE: e2e/fixtures/map-fixture.pmtiles
     restart: unless-stopped
     ports: ["3000:3000"]
     depends_on: [api]

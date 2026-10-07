@@ -27,6 +27,7 @@ export default defineConfig({
       timeout: 120_000,
       stdout: "pipe",
     },
-    { command: "pnpm start", url: "http://localhost:3000/login", timeout: 120_000 },
+    // The street map's tiles: the small synthetic fixture (scripts/map/make-fixture.py), not real streets.
+    { command: "pnpm start", url: "http://localhost:3000/login", timeout: 120_000, env: { MAP_TILES_FILE: "e2e/fixtures/map-fixture.pmtiles" } },
   ],
 });

@@ -195,7 +195,7 @@ export default function SchedulePage() {
 
         <section className="stack">
           {routes.data && dayStops.length > 0 && (
-            <RouteMap day={routes.data} technicianIds={techs.data?.items.map((t) => t.id) ?? []} numbers={numbers} />
+            <RouteMap day={routes.data} technicianIds={techs.data?.items.map((t) => t.id) ?? []} numbers={numbers} stops={dayStops} />
           )}
           <div className="row small">
             {routes.data && !routes.data.start && <span className="muted">Routes start at their first stop.</span>}
@@ -221,8 +221,8 @@ export default function SchedulePage() {
                   </div>
                   {r && stops.length > 0 && (
                     <div className="route-summary small">
-                      <span>
-                        {r.driveMiles} mi · {duration(r.driveMinutes)} driving
+                      <span title="Estimated from straight-line distances and an average road factor; no traffic">
+                        Est. {r.driveMiles} mi · {duration(r.driveMinutes)} driving
                       </span>
                       <span className="muted">{duration(r.totalMinutes)} with stops</span>
                       {r.overCapacity && <span className="badge danger">longer than a working day</span>}
@@ -269,7 +269,7 @@ export default function SchedulePage() {
                     <Fragment key={s.jobId}>
                       {legTo.get(s.jobId) && (
                         <div className="leg muted small">
-                          ↓ {legTo.get(s.jobId)!.miles} mi · {duration(legTo.get(s.jobId)!.minutes)}
+                          ↓ est. {legTo.get(s.jobId)!.miles} mi · {duration(legTo.get(s.jobId)!.minutes)}
                           {legTo.get(s.jobId)!.fromJobId === null ? " from the start" : ""}
                         </div>
                       )}
@@ -308,7 +308,7 @@ export default function SchedulePage() {
                   ))}
                   {legTo.get("end") && (
                     <div className="leg muted small">
-                      ↩ {legTo.get("end")!.miles} mi · {duration(legTo.get("end")!.minutes)} back to the start
+                      ↩ est. {legTo.get("end")!.miles} mi · {duration(legTo.get("end")!.minutes)} back to the start
                     </div>
                   )}
                 </div>

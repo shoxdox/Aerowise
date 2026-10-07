@@ -194,8 +194,25 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .wrap-anywhere { overflow-wrap: anywhere; }
 .notice { background: var(--warn-bg); color: var(--warn-text); padding: 8px 12px; border-radius: 8px; margin: 0; }
 
-.route-map { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; }
-.route-map-bg { fill: #eef2ef; }
+.street-map-wrap { display: flex; flex-direction: column; gap: 4px; }
+.street-map { position: relative; height: 420px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #eef2ef; }
+.street-map-canvas { width: 100%; height: 100%; }
+.street-map-overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); background: rgba(238, 242, 239, 0.9); }
+.street-map-overlay.failed { color: var(--warn-text); background: var(--warn-bg); }
+.map-chip { position: absolute; top: 8px; left: 8px; background: var(--warn-bg); color: var(--warn-text); font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; pointer-events: none; }
+.map-key, .street-map-wrap p { margin: 0; }
+.warn-text { color: var(--warn-text); }
+.map-stop { --route: var(--accent); width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid #ffffff; background: var(--route); color: #ffffff; font-size: 0.8rem; font-weight: 700; line-height: 1; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); cursor: pointer; }
+.map-stop.done { background: #ffffff; color: var(--route); border-color: var(--route); }
+.map-stop.done::after { content: "✓"; position: absolute; right: -6px; top: -6px; width: 14px; height: 14px; border-radius: 50%; background: var(--route); color: #ffffff; font-size: 9px; display: grid; place-items: center; }
+.map-stop.selected { outline: 3px solid var(--text); outline-offset: 2px; z-index: 2; }
+.map-stop:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+.map-start { width: 20px; height: 20px; display: grid; place-items: center; background: var(--text); color: #ffffff; font-size: 0.7rem; font-weight: 700; border: 2px solid #ffffff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.map-detail { display: flex; flex-direction: column; gap: 4px; }
+.view-toggle { align-self: flex-start; display: inline-flex; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; }
+.view-toggle button { border: none; border-radius: 0; background: var(--surface); color: var(--accent); min-width: 64px; }
+.view-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.tech-page .street-map { height: min(60vh, 480px); }
 .route-summary { display: flex; flex-wrap: wrap; gap: 2px 10px; }
 .route-legend { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
 .leg { padding-left: 14px; margin: -6px 0; }

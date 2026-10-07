@@ -255,7 +255,10 @@ test("a database a later release moved on opens without VersionError, and its wo
     expect((work?.rows.outbox as { kind: string }[]).map((o) => o.kind)).toEqual(["work-sync", "work-photo"]);
     expect(work?.rows.records).toEqual([{ clientId: "w1" }]);
 
-    // Signing out warns about the work only the later release can send, and keeps it.
+    // Signing out from the Map view warns about the work only the later release can send, and
+    // cancelling keeps it and the view the technician was on.
+    await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByRole("button", { name: "Map" })).toHaveAttribute("aria-pressed", "true");
     let warning = "";
     page.once("dialog", (d) => {
       warning = d.message();
@@ -264,6 +267,8 @@ test("a database a later release moved on opens without VersionError, and its wo
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect.poll(() => warning).toContain("2 of them will send only after the app updates");
     await expect(page).toHaveURL(/\/tech/);
+    await expect(page.getByRole("button", { name: "Map" })).toHaveAttribute("aria-pressed", "true");
+    expect((await readDb(page, workDb(me)))?.rows.outbox).toHaveLength(2);
   });
 });
 
