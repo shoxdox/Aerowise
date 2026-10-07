@@ -20,6 +20,8 @@ export interface Me {
   introsDismissed?: ("office" | "technician")[];
   /** Set when Aerowise support is looking at the company read-only. */
   support?: { adminName: string; expiresAt: string };
+  /** Demo companies only: lets the technician app learn later that the company was removed. */
+  demoTicket?: string;
 }
 
 const SessionContext = createContext<Me | null>(null);

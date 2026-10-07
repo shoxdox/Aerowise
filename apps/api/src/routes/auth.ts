@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { verifyPassword, type Database } from "@aerowise/db";
 import { INTROS, isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -22,7 +23,21 @@ export const meResponse = z.object({
   introsDismissed: z.array(z.enum(INTROS)),
   /** Present when a platform admin is looking at the organization read-only for support. */
   support: z.object({ adminName: z.string(), expiresAt: z.iso.datetime() }).optional(),
+  /**
+   * Demo companies only: proof that this id is a demo company, which the technician app keeps
+   * so it can later learn that the company was removed (STG-03). Says nothing else.
+   */
+  demoTicket: z.string().optional(),
 });
+
+const demoTicket = (key: string, organizationId: string) => createHmac("sha256", key).update(`demo-ticket.${organizationId}`).digest("base64url");
+
+function verifyDemoTicket(key: string, organizationId: string, ticket: unknown) {
+  if (typeof ticket !== "string") return false;
+  const expected = Buffer.from(demoTicket(key, organizationId));
+  const given = Buffer.from(ticket);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+}
 
 export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">) {
   if (auth.support) return loadSupportMe(db, auth.organizationId, auth.support);
@@ -52,6 +67,8 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
   };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const knownIntros = (keys: string[]) => INTROS.filter((k) => keys.includes(k));
 
 /** Support sees the organization as its owner does, but signed in as themselves. */
@@ -78,9 +95,9 @@ async function loadSupportMe(db: Database, organizationId: string, support: NonN
   };
 }
 
-export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean; loginRateLimit: number }> = async (
+export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean; loginRateLimit: number; demoTicketKey: string }> = async (
   app,
-  { db, production, loginRateLimit },
+  { db, production, loginRateLimit, demoTicketKey },
 ) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
@@ -146,10 +163,45 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
     },
   );
 
+  // The technician app asks this after its sign-in is refused, to tell a demo that has ended
+  // (its data can leave the phone) from an expired session (its queued work must stay). Ending
+  // a demo deletes its sessions, so the refused cookie cannot say which. "ended" means: a demo
+  // company past its end, or, with that company's demo ticket (handed out by /auth/me only to
+  // demo companies), a demo company that no longer exists at all (the nightly reset removes
+  // the public ones). Every other id, live, deleted, unknown or malformed, answers "unknown"
+  // the same way, so this says nothing about whether any real company exists.
+  app.post(
+    "/auth/access-status",
+    {
+      config: { public: true, rateLimit: { max: 30, timeWindow: "1 minute", keyGenerator: (req) => req.ip } },
+      schema: {
+        tags: ["auth"],
+        summary: "Whether a demo company's access has ended, so a phone can clear its saved copy",
+        body: z.object({ organizationId: z.unknown(), demoTicket: z.unknown() }).partial(),
+        response: { 200: z.object({ state: z.enum(["ended", "unknown"]) }) },
+      },
+    },
+    async (req) => {
+      const { organizationId: id, demoTicket } = req.body;
+      if (typeof id !== "string" || !UUID.test(id)) return { state: "unknown" as const };
+      const org = await db.selectFrom("organizations").select(["demo", "demoExpiresAt"]).where("id", "=", id).executeTakeFirst();
+      const pastEnd = org?.demo === true && org.demoExpiresAt !== null && org.demoExpiresAt <= new Date();
+      // A company is demo or real from the moment it is made, so an id that was a demo
+      // company and no longer exists can only be a removed demo.
+      const removedDemo = !org && verifyDemoTicket(demoTicketKey, id, demoTicket);
+      return { state: pastEnd || removedDemo ? ("ended" as const) : ("unknown" as const) };
+    },
+  );
+
   app.get(
     "/auth/me",
     { config: { permission: "self:read" }, schema: { tags: ["auth"], summary: "Current user and organization", response: { 200: meResponse } } },
-    async (req) => loadMe(db, req.requireAuth()),
+    async (req) => {
+      const auth = req.requireAuth();
+      const me = await loadMe(db, auth);
+      const org = await db.selectFrom("organizations").select("demo").where("id", "=", auth.organizationId).executeTakeFirstOrThrow();
+      return org.demo ? { ...me, demoTicket: demoTicket(demoTicketKey, auth.organizationId) } : me;
+    },
   );
 
   app.put(

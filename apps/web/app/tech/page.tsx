@@ -9,9 +9,10 @@ import { StopList } from "@/components/tech/StopList";
 import { SyncBanner } from "@/components/tech/SyncBanner";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
-import { allInspections, allOps, saveInspection, type LocalInspection } from "@/lib/offline/db";
-import { currentPosition, loadActiveTemplate, loadMe, loadRoute } from "@/lib/offline/data";
+import { activeStore, activeTenant, allInspections, allOps, saveInspection, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
+import { currentPosition, loadActiveTemplate, loadRoute } from "@/lib/offline/data";
 import { startBackgroundSync, subscribe, syncNow, type SyncState } from "@/lib/offline/sync";
+import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import type { Me } from "@/lib/session";
 
 type View = { name: "list" } | { name: "stop"; jobId: string } | { name: "inspect"; jobId: string };
@@ -40,38 +41,78 @@ export default function TechApp() {
   const [view, setView] = useState<View>({ name: "list" });
   const [loading, setLoading] = useState(true);
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  // A demo company that ended: its data was removed from the phone and nothing of it shows.
+  const [ended, setEnded] = useState<EndedAccess | null>(null);
+  const [endedElsewhere, setEndedElsewhere] = useState<EndedAccess[]>([]);
+  const [others, setOthers] = useState<{ tenant: KnownTenant; pending: number }[]>([]);
 
   const refreshLocal = useCallback(async () => {
+    if (!activeTenant()) return;
     setInspections(new Map((await allInspections()).map((i) => [i.jobId, i])));
     setFailures((await allOps()).filter((o) => o.failed).map((o) => o.failed!));
   }, []);
 
+  const showEnded = useCallback((e: EndedAccess) => {
+    setEnded(e);
+    setMe(null);
+    setRoute(null);
+    setTemplate(undefined);
+    setInspections(new Map());
+    setFailures([]);
+    setView({ name: "list" });
+  }, []);
+
   const refresh = useCallback(async () => {
-    const [m, r, t] = await Promise.all([loadMe(), loadRoute(), loadActiveTemplate()]);
-    if (m.signedOut && !m.data) {
-      window.location.href = "/login?next=/tech";
+    const session = await openTechSession();
+    if (session.kind === "ended") {
+      showEnded(session.ended);
+      setLoading(false);
       return;
     }
-    setNeedsSignIn(m.signedOut);
-    if (m.data) setDisplayTimeZone(m.data.organization.timezone);
-    setMe(m.data ?? null);
-    if (r.route) setRoute(r.route);
+    if (session.kind === "none" || (session.kind === "cached" && !session.me)) {
+      if (session.reason === "signed_out") {
+        window.location.href = "/login?next=/tech";
+        return;
+      }
+      // Nothing saved on this phone yet: the route list says to open the app with signal.
+      setLoading(false);
+      return;
+    }
+    setEnded(null);
+    setNeedsSignIn(session.kind === "cached" && (session.reason === "signed_out" || session.reason === "other_account"));
+    setOthers(session.kind === "signed_in" ? session.others : []);
+    if (session.kind === "signed_in" && session.ended.length > 0) setEndedElsewhere(session.ended);
+    const m = session.me!;
+    setDisplayTimeZone(m.organization.timezone);
+    setMe(m);
+    const store = activeStore();
+    const [r, t] = await Promise.all([loadRoute(store), loadActiveTemplate(store)]);
+    setRoute(r.route ?? null);
     setFetchedAt(r.fetchedAt);
     setTemplate(t);
     await refreshLocal();
     setLoading(false);
-  }, [refreshLocal]);
+    void syncNow();
+  }, [refreshLocal, showEnded]);
 
   useEffect(() => {
     registerServiceWorker();
-    void refresh();
     startBackgroundSync();
+    // Opened only after the sign-in is known, so nothing of another sign-in is ever read.
+    void refresh();
     return subscribe((s) => {
       setSync(s);
-      if (s.kind === "signed_out") setNeedsSignIn(true);
+      if (s.kind === "signed_out") {
+        setNeedsSignIn(true);
+        // Back in signal and refused: ask whether the company ended, and only then clear it.
+        const t = activeTenant();
+        if (t) void discardIfEnded(t).then((e) => e && showEnded(e));
+      }
+      // The phone is signed in as someone else now: switch to them; these changes wait.
+      if (s.kind === "other_account") void refresh();
       void refreshLocal();
     });
-  }, [refresh, refreshLocal]);
+  }, [refresh, refreshLocal, showEnded]);
 
   async function start(stop: Stop) {
     if (!template) return;
@@ -108,6 +149,29 @@ export default function TechApp() {
 
   if (loading) return <p className="muted pad">Loading your route…</p>;
 
+  if (ended) {
+    return (
+      <main className="tech-page">
+        <div className="card stack" role="alert" data-testid="access-ended">
+          <h1>This demo has ended</h1>
+          <p>
+            {ended.organizationName ? `${ended.organizationName} is` : "This demo company is"} no longer available. Its route, inspections and photos were removed from this
+            phone.
+          </p>
+          {ended.discarded > 0 && (
+            <p className="muted">
+              {ended.discarded} unsent {ended.discarded === 1 ? "change" : "changes"} from the demo could not be sent, because the demo company no longer exists. Nothing was
+              recorded for a real company.
+            </p>
+          )}
+          <a className="button" href="/login?next=/tech">
+            Sign in
+          </a>
+        </div>
+      </main>
+    );
+  }
+
   const stop = view.name !== "list" ? route?.items.find((s) => s.jobId === view.jobId) : undefined;
 
   return (
@@ -127,6 +191,23 @@ export default function TechApp() {
         </button>
       </header>
       <SyncBanner state={sync} failures={failures} needsSignIn={needsSignIn} onRetry={() => void syncNow()} />
+      {(others.length > 0 || endedElsewhere.length > 0) && (
+        <div className="sync-area" data-testid="other-sign-ins">
+          {others.map(({ tenant, pending }) => (
+            <p key={`${tenant.organizationId}:${tenant.userId}`} className="sync warn" role="status">
+              {pending} {pending === 1 ? "change" : "changes"} made as {tenant.userName || "another person"}
+              {tenant.organizationName && ` at ${tenant.organizationName}`} {pending === 1 ? "is" : "are"} saved on this phone. Sign in as them to send{" "}
+              {pending === 1 ? "it" : "them"}.
+            </p>
+          ))}
+          {endedElsewhere.map((e, i) => (
+            <p key={i} className="sync" role="status">
+              The demo {e.organizationName && `for ${e.organizationName} `}has ended, so its data was removed from this phone
+              {e.discarded > 0 && `, including ${e.discarded} unsent ${e.discarded === 1 ? "change" : "changes"}`}.
+            </p>
+          ))}
+        </div>
+      )}
       <main className="tech-page">
         {view.name === "list" && me && <IntroCard intro="technician" me={me} />}
         {view.name === "list" && (

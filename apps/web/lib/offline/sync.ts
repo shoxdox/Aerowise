@@ -1,16 +1,25 @@
 "use client";
 
-import { allInspections, allOps, failOp, getPhotoBlob, photoUploaded, putInspection, removeOp, type LocalInspection, type QueuedOp } from "./db";
+import { activeTenant, sameTenant, storeFor, type LocalInspection, type QueuedOp, type Tenant, type TenantStore } from "./db";
 
 // Sends the outbox to the server, oldest first. Every request is idempotent on the
 // server (keyed by ids the phone created), so sending something twice — after a timeout,
 // a crash or a lost response — never records it twice.
+//
+// Every request names the sign-in whose outbox it comes from (TENANT_HEADER). The server
+// refuses it if the phone's session now belongs to someone else, so one company's queued
+// work is never sent under another's sign-in; it waits until that person signs in again.
+
+export const TENANT_HEADER = "x-aerowise-tenant";
+export const tenantHeader = (t: Tenant) => ({ [TENANT_HEADER]: `${t.organizationId}:${t.userId}` });
 
 export type SyncState =
   | { kind: "idle"; pending: number; failed: number }
   | { kind: "syncing"; pending: number; failed: number }
   | { kind: "offline"; pending: number; failed: number }
   | { kind: "signed_out"; pending: number; failed: number }
+  /** The phone is now signed in as someone else: this sign-in's changes wait on the phone. */
+  | { kind: "other_account"; pending: number; failed: number }
   /** The company's Aerowise plan has lapsed: changes wait on the phone until it is reactivated. */
   | { kind: "read_only"; pending: number; failed: number };
 
@@ -33,22 +42,25 @@ const emit = (s: SyncState) => {
 
 /** Thrown when the request never got a usable answer; the op stays queued. */
 class RetryLater extends Error {
-  constructor(readonly reason: "offline" | "signed_out" | "server" | "read_only") {
+  constructor(readonly reason: "offline" | "signed_out" | "server" | "read_only" | "other_account") {
     super(reason);
   }
 }
 
-async function send(url: string, init: RequestInit): Promise<Response> {
+const errorCode = async (res: Response) => ((await res.clone().json().catch(() => ({}))) as { error?: string }).error;
+
+async function send(store: TenantStore, url: string, init: RequestInit & { headers?: Record<string, string> }): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(url, { ...init, credentials: "same-origin", cache: "no-store" });
+    res = await fetch(url, { ...init, headers: { ...init.headers, ...tenantHeader(store.tenant) }, credentials: "same-origin", cache: "no-store" });
   } catch {
     throw new RetryLater("offline");
   }
   if (res.status === 401) throw new RetryLater("signed_out");
+  if (res.status === 409 && (await errorCode(res)) === "tenant_mismatch") throw new RetryLater("other_account");
   if (res.status >= 500 || res.status === 429) throw new RetryLater("server");
   // Not the inspection's fault, so never marked failed: it sends once the account is reactivated.
-  if (res.status === 403 && ((await res.clone().json().catch(() => ({}))) as { error?: string }).error === "organization_read_only") {
+  if (res.status === 403 && (await errorCode(res)) === "organization_read_only") {
     throw new RetryLater("read_only");
   }
   return res;
@@ -74,7 +86,8 @@ function payload(insp: LocalInspection, photosQueued: boolean) {
   };
 }
 
-async function runOp(op: QueuedOp, ops: QueuedOp[], inspections: Map<string, LocalInspection>) {
+async function runOp(store: TenantStore, op: QueuedOp, ops: QueuedOp[], inspections: Map<string, LocalInspection>) {
+  const { removeOp, failOp, getPhotoBlob, photoUploaded, putInspection } = store;
   const insp = inspections.get(op.inspectionClientId);
   if (!insp) return removeOp(op.seq);
 
@@ -84,7 +97,7 @@ async function runOp(op: QueuedOp, ops: QueuedOp[], inspections: Map<string, Loc
     if (!photo || !blob) return removeOp(op.seq);
     const headers: Record<string, string> = { "content-type": blob.contentType, "x-photo-key": photo.photoKey, "x-captured-at": photo.capturedAt };
     if (photo.lat !== null && photo.lng !== null) Object.assign(headers, { "x-lat": String(photo.lat), "x-lng": String(photo.lng) });
-    const res = await send(`/api/inspections/${insp.clientId}/photos/${photo.clientId}`, { method: "PUT", headers, body: blob.blob });
+    const res = await send(store, `/api/inspections/${insp.clientId}/photos/${photo.clientId}`, { method: "PUT", headers, body: blob.blob });
     if (res.ok) {
       await photoUploaded(insp.jobId, photo.clientId);
       return removeOp(op.seq);
@@ -93,7 +106,7 @@ async function runOp(op: QueuedOp, ops: QueuedOp[], inspections: Map<string, Loc
   }
 
   const photosQueued = ops.some((o) => o.kind === "photo" && o.inspectionClientId === insp.clientId && o.seq !== op.seq && !o.failed);
-  const res = await send("/api/inspections/sync", {
+  const res = await send(store, "/api/inspections/sync", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload(insp, photosQueued)),
@@ -112,8 +125,16 @@ async function runOp(op: QueuedOp, ops: QueuedOp[], inspections: Map<string, Loc
 }
 
 async function drainOnce() {
+  const tenant = activeTenant();
+  if (!tenant) {
+    emit({ kind: "idle", pending: 0, failed: 0 });
+    return;
+  }
+  const store = storeFor(tenant);
   for (;;) {
-    const ops = await allOps();
+    // Signed in as someone else since this pass began: the next pass sends theirs.
+    if (!sameTenant(activeTenant(), tenant)) return;
+    const ops = await store.allOps();
     const live = ops.filter((o) => !o.failed);
     const failed = ops.length - live.length;
     const next = live[0];
@@ -122,9 +143,9 @@ async function drainOnce() {
       return;
     }
     emit({ kind: "syncing", pending: live.length, failed });
-    const inspections = new Map((await allInspections()).map((i) => [i.clientId, i]));
+    const inspections = new Map((await store.allInspections()).map((i) => [i.clientId, i]));
     try {
-      await runOp(next, live, inspections);
+      await runOp(store, next, live, inspections);
     } catch (err) {
       if (err instanceof RetryLater) {
         const kind = err.reason === "server" ? "idle" : err.reason;
