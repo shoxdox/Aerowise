@@ -186,31 +186,41 @@ describe("the API in demo mode", () => {
 });
 
 describe("demo reseed", () => {
-  it("empties everything but the rules and platform admins, removes files, and seeds again", async () => {
+  it("replaces the public demo company, keeps the rules, platform admins and other companies, and removes only its files", async () => {
     const before = await ctx.db.selectFrom("jurisdictionRulesets").select((eb) => eb.fn.countAll().as("n")).executeTakeFirstOrThrow();
-    await createOrg(ctx.db, "Someone's real-looking company");
+    const real = await createOrg(ctx.db, "Someone's real-looking company");
     const admin = await ctx.db
       .insertInto("platformAdmins")
       .values({ name: "Kept Admin", email: "kept@example.com", passwordHash: "x" })
       .returning("id")
       .executeTakeFirstOrThrow();
     const files = mkdtempSync(join(tmpdir(), "aerowise-reseed-"));
-    mkdirSync(join(files, "some-org"));
-    writeFileSync(join(files, "some-org", "photo.jpg"), "x");
-
     await reseedDemo(ctx.db, { filesDir: files });
+    const first = await ctx.db.selectFrom("organizations").select("id").where("demo", "=", true).executeTakeFirstOrThrow();
+    mkdirSync(join(files, first.id));
+    writeFileSync(join(files, first.id, "photo.jpg"), "x");
+    mkdirSync(join(files, real.id));
+    writeFileSync(join(files, real.id, "photo.jpg"), "x");
+
     await reseedDemo(ctx.db, { filesDir: files }); // nightly, again and again
 
-    const orgs = await ctx.db.selectFrom("organizations").select("name").execute();
-    expect(orgs).toEqual([{ name: "Hill Country Aerobic Services (demo)" }]);
-    // A demo company: it only ever reaches the stand-ins, and holds made-up contact details.
-    expect(await ctx.db.selectFrom("organizations").select("demo").execute()).toEqual([{ demo: true }]);
+    const orgs = await ctx.db.selectFrom("organizations").select(["id", "name", "demo"]).where("demoExpiresAt", "is", null).orderBy("name").execute();
+    expect(orgs.map(({ name, demo }) => ({ name, demo }))).toEqual([
+      // A demo company: it only ever reaches the stand-ins, and holds made-up contact details.
+      { name: "Hill Country Aerobic Services (demo)", demo: true },
+      { name: "Someone's real-looking company", demo: false },
+    ]);
+    expect(orgs[0]!.id).not.toBe(first.id);
+    // Earlier shared companies stay only as ended, emptied tombstones.
+    const tombstones = await ctx.db.selectFrom("organizations").select("id").where("demoExpiresAt", "is not", null).execute();
+    expect(tombstones.map((t) => t.id)).toContain(first.id);
+    expect(await ctx.db.selectFrom("customers").select("id").where("organizationId", "in", tombstones.map((t) => t.id)).execute()).toEqual([]);
     const users = await ctx.db.selectFrom("users").select("email").orderBy("email").execute();
     expect(users.map((u) => u.email)).toEqual(["office@example.com", "owner@example.com", "tech@example.com"]);
     expect(await ctx.db.selectFrom("platformAdmins").select("id").where("id", "=", admin.id).execute()).toHaveLength(1);
     const after = await ctx.db.selectFrom("jurisdictionRulesets").select((eb) => eb.fn.countAll().as("n")).executeTakeFirstOrThrow();
     expect(after.n).toBe(before.n);
-    expect(readdirSync(files)).toEqual([]);
+    expect(readdirSync(files)).toEqual([real.id]);
   });
 
   it("plays the five-minute story once on top of the seed, through the stand-ins", async () => {
@@ -242,7 +252,7 @@ describe("demo reseed", () => {
     const payments = await ctx.db.selectFrom("payments").select("status").execute();
     expect(payments.map((p) => p.status)).toContain("succeeded");
     // Everything went to the stand-ins: the outbox, never a real provider.
-    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).executeTakeFirstOrThrow();
+    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).where("demoExpiresAt", "is", null).executeTakeFirstOrThrow();
     expect(org.stripeAccountId).toMatch(/^acct_test_/);
   });
 

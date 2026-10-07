@@ -269,7 +269,7 @@ export async function buildApp({
 
   const transport = mail ?? new OutboxTransport(store, now);
   const invitations = { mail: transport, appUrl, from: accountMailFrom };
-  await app.register(authRoutes, { db, production, loginRateLimit });
+  await app.register(authRoutes, { db, production, loginRateLimit, demoTicketKey: fileSigningSecret ?? "aerowise-development-only-signing-secret" });
   await app.register(adminRoutes, { db, production, loginRateLimit, now, invitations, subscription, store });
   await app.register(adminEvidenceRoutes, { db, now });
   await app.register(authorityConfirmationRoutes, { db });

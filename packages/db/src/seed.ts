@@ -57,7 +57,8 @@ function todayInChicago(): string {
 
 export async function seed(db: Database, log: (msg: string) => void = () => {}) {
   await seedPlatformAdmin(db, log);
-  const existing = await db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).executeTakeFirst();
+  // The live shared company: the nightly reset leaves earlier ones as ended tombstones.
+  const existing = await db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null).executeTakeFirst();
   if (existing) {
     log(`demo organization already exists (${existing.id}); nothing to do`);
     return;

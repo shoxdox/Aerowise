@@ -7,14 +7,14 @@ test("the office runs the renewal campaign and the homeowner signs, pays and is 
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/inbox");
 
-  // Online payments use the built-in test Stripe account.
+  // Online payments use the built-in test payment provider.
   await page.goto("/settings/billing");
   const connect = page.getByRole("button", { name: "Connect Stripe" });
-  const connected = page.getByText("Customers can pay invoices by card or bank transfer");
+  const connected = page.getByText("Try a simulated card or bank payment. No payment goes to Stripe or a bank.");
   await expect(connect.or(connected).first()).toBeVisible();
   if (await connect.isVisible()) {
     await connect.click();
-    await expect(page.getByText("Customers can pay invoices by card or bank transfer")).toBeVisible();
+    await expect(connected).toBeVisible();
   }
 
   // The campaign starts renewals for contracts ending inside the window (widened here so

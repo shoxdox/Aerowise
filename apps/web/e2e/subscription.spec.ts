@@ -12,7 +12,7 @@ test("the owner sees what the company pays Aerowise and saves a card", async ({ 
   // The demo company is a paying account; the estimate follows its active contracts.
   await expect(page.getByTestId("plan-line")).toHaveText("Active");
   await expect(page.getByTestId("estimate")).toContainText(/estimated for \d+ active contracts as of/);
-  await expect(page.getByTestId("payment-method")).toContainText("No payment method saved yet");
+  await expect(page.getByTestId("payment-method")).toContainText("No test payment method saved yet. Adding one only simulates monthly billing.");
 
   // The test provider stands in for Stripe's page and comes straight back.
   await page.getByRole("button", { name: "Add payment method" }).click();

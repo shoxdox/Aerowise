@@ -48,7 +48,7 @@ pnpm db:seed
 pnpm dev
 ```
 
-The API is on `:4000`, the web app on `:3000`, and the worker runs alongside them. `db:seed` applies migrations, seeds fictional data and plays the guided demo story through the API. Use a disposable development/demo database; `db:reseed-demo` deletes tenant data and stored files.
+The API is on `:4000`, the web app on `:3000`, and the worker runs alongside them. `db:seed` applies migrations, seeds fictional data and plays the guided demo story through the API. Use a disposable development/demo database; `db:reseed-demo` replaces the public demo company and visitor demos (data, people and stored files) and keeps prospect demos and every real company.
 
 In local development, seeded users are `owner@example.com`, `office@example.com` and `tech@example.com`, password `aerowise-dev`. The technician opens `/tech`; the office opens the inbox. Development also creates `admin@example.com` for `/admin`. These credentials are for development only. Public visitors use `/demo` on a dedicated demo deployment, with individual companies and no shared password or platform-admin access.
 

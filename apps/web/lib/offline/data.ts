@@ -2,14 +2,17 @@
 
 import type { InspectionTemplate, Stop } from "@aerowise/domain";
 import type { Me } from "../session";
-import { kvGet, kvSet, type CachedRoute, type Gps } from "./db";
+import { activeStore, type CachedRoute, type Gps, type Tenant, type TenantStore } from "./db";
+import { tenantHeader } from "./sync";
 
-type Fetched<T> = { ok: true; data: T } | { ok: false; reason: "offline" | "signed_out" | "error" };
+export type Fetched<T> = { ok: true; data: T } | { ok: false; reason: "offline" | "signed_out" | "other_account" | "error" };
 
-async function fetchJson<T>(path: string): Promise<Fetched<T>> {
+/** `tenant`: the sign-in the answer is for; the server refuses it if the session is now someone else's. */
+async function fetchJson<T>(path: string, tenant?: Tenant): Promise<Fetched<T>> {
   try {
-    const res = await fetch(`/api${path}`, { credentials: "same-origin", cache: "no-store" });
+    const res = await fetch(`/api${path}`, { credentials: "same-origin", cache: "no-store", headers: tenant ? tenantHeader(tenant) : undefined });
     if (res.status === 401) return { ok: false, reason: "signed_out" };
+    if (res.status === 409 && ((await res.json().catch(() => ({}))) as { error?: string }).error === "tenant_mismatch") return { ok: false, reason: "other_account" };
     if (!res.ok) return { ok: false, reason: "error" };
     return { ok: true, data: (await res.json()) as T };
   } catch {
@@ -17,37 +20,60 @@ async function fetchJson<T>(path: string): Promise<Fetched<T>> {
   }
 }
 
-/** Fresh from the server when there is signal, otherwise the copy saved on the phone. */
-async function freshOrCached<T>(path: string, key: string): Promise<{ data: T | undefined; fresh: boolean; signedOut: boolean }> {
-  const res = await fetchJson<T>(path);
-  if (res.ok) {
-    await kvSet(key, res.data);
-    return { data: res.data, fresh: true, signedOut: false };
+/** Who this phone's session is signed in as right now, straight from the server. */
+export const fetchMe = () => fetchJson<Me>("/auth/me");
+
+/**
+ * Whether a company's access has definitely ended (a demo past its end, or removed): true, false when
+ * the server knows nothing that says so (an expired session, say), null when it could not
+ * be asked. Only true ever justifies removing that company's data from the phone.
+ */
+export async function accessEnded(organizationId: string, demoTicket?: string): Promise<boolean | null> {
+  try {
+    const res = await fetch("/api/auth/access-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ organizationId, demoTicket }),
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return ((await res.json()) as { state?: string }).state === "ended";
+  } catch {
+    return null;
   }
-  return { data: await kvGet<T>(key), fresh: false, signedOut: res.reason === "signed_out" };
 }
 
-export const loadMe = () => freshOrCached<Me>("/auth/me", "me");
-
-export async function loadRoute() {
-  const r = await freshOrCached<{ date: string; items: Stop[] }>("/route", "route");
-  if (r.fresh && r.data) await kvSet("routeFetchedAt", new Date().toISOString());
-  return { route: r.data as CachedRoute | undefined, fresh: r.fresh, fetchedAt: await kvGet<string>("routeFetchedAt") };
+/** Fresh from the server when there is signal, otherwise the copy saved on the phone. */
+async function freshOrCached<T>(store: TenantStore, path: string, key: string): Promise<{ data: T | undefined; fresh: boolean }> {
+  const res = await fetchJson<T>(path, store.tenant);
+  if (res.ok) {
+    await store.kvSet(key, res.data);
+    return { data: res.data, fresh: true };
+  }
+  return { data: await store.kvGet<T>(key), fresh: false };
 }
 
-export async function loadActiveTemplate(): Promise<InspectionTemplate | undefined> {
-  const r = await freshOrCached<InspectionTemplate>("/inspection-template", "template:active");
-  if (r.data) await kvSet(`template:${r.data.id}`, r.data);
+export async function loadRoute(store: TenantStore) {
+  const r = await freshOrCached<{ date: string; items: Stop[] }>(store, "/route", "route");
+  if (r.fresh && r.data) await store.kvSet("routeFetchedAt", new Date().toISOString());
+  return { route: r.data as CachedRoute | undefined, fresh: r.fresh, fetchedAt: await store.kvGet<string>("routeFetchedAt") };
+}
+
+export async function loadActiveTemplate(store: TenantStore): Promise<InspectionTemplate | undefined> {
+  const r = await freshOrCached<InspectionTemplate>(store, "/inspection-template", "template:active");
+  if (r.data) await store.kvSet(`template:${r.data.id}`, r.data);
   return r.data;
 }
 
 /** The exact template version an inspection was started with. */
 export async function templateById(id: string): Promise<InspectionTemplate | undefined> {
-  const cached = await kvGet<InspectionTemplate>(`template:${id}`);
+  const store = activeStore();
+  const cached = await store.kvGet<InspectionTemplate>(`template:${id}`);
   if (cached) return cached;
-  const res = await fetchJson<InspectionTemplate>(`/inspection-templates/${id}`);
+  const res = await fetchJson<InspectionTemplate>(`/inspection-templates/${id}`, store.tenant);
   if (!res.ok) return undefined;
-  await kvSet(`template:${id}`, res.data);
+  await store.kvSet(`template:${id}`, res.data);
   return res.data;
 }
 
