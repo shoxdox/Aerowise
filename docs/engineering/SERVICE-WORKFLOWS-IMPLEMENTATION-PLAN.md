@@ -76,7 +76,12 @@ New tables, all with `organization_id`, `unique (organization_id, id)` and compo
   - Form: `template_id` (a form version from `inspection_templates`, see §5), `values` (jsonb), `status` (`draft | completed`), `validation_status`.
   - Field data: arrival and completion GPS, `access_issue`, `completed_at`.
   - Sign-off: `customer_signoff_id` (nullable, links to `signed_documents`, see §5).
-- **`work_attachments`**: photos and files for work. Columns: `offline_client_id` (unique per organization), `work_record_id` or `work_order_id`, `photo_key`, `storage_key` under `${org}/work/${workOrderId}/`, `content_type`, `byte_size`, `sha256`, `captured_at`, `lat`, `lng`, `uploaded_by`. This is a separate table: `attachments.inspection_id` stays `NOT NULL` and inspection code is untouched.
+- **`work_attachments`**: photos and files for work.
+  - Columns: `offline_client_id` (unique per organization), `photo_key`, `storage_key`, `content_type`, `byte_size`, `sha256`, `captured_at`, `lat`, `lng`, `uploaded_by`.
+  - **Exactly one owner:** nullable `work_record_id`, `disposal_load_group_id` (§2.2) and `work_sync_conflict_id` (§8.5). Each has a composite tenant foreign key `(organization_id, …)`, and a check `num_nonnulls(work_record_id, disposal_load_group_id, work_sync_conflict_id) = 1`.
+  - The storage key is fixed by the owner at upload time: `${org}/work/records/<clientId>/…`, `${org}/work/loads/<groupId>/…` or `${org}/work/conflicts/<id>/…`. Keys never move. When ownership changes (a held draft becomes a conflict, or the office attaches a conflict to a job, §8.5), only the owner column changes, in one transaction. Everything stays under the organization prefix, so `deleteOrganization` and demo reset remove it.
+  - The data export lists every attachment with its owner and path (`EXPORT_TABLES` plus the stored-documents list in `export-task.ts`).
+  - This is a separate table: `attachments.inspection_id` stays `NOT NULL`, and inspection code is untouched.
 
 Changes to existing tables, all additive and nullable:
 
@@ -84,15 +89,22 @@ Changes to existing tables, all additive and nullable:
   - Widen the `type` check to `('inspection', 'work')`.
   - Add `work_order_id` (composite foreign key) and `retest_of_inspection_id` (composite foreign key, which fixes the lost retest link).
   - Add a check: `type='inspection'` requires `work_order_id is null`; `type='work'` requires `work_order_id is not null`.
-  - Add `obligation_service_type` and a composite foreign key `(organization_id, obligation_id, obligation_service_type)` referencing a new `unique (organization_id, id, service_type)` on `service_obligations`. Two checks then hold in the database itself:
-    - `type='inspection'` requires `obligation_service_type is null or obligation_service_type = 'aerobic_inspection'`.
-    - `type='work'` requires `obligation_service_type is null or obligation_service_type <> 'aerobic_inspection'`.
-
-    A work job can never complete an aerobic visit, and an inspection job can never complete a pumping visit. These are table constraints, not application filters.
-  - `inspections` gains `job_type` with a composite foreign key `(organization_id, job_id, job_type)` and a check `job_type = 'inspection'`. Filings hang off inspections, so a work job cannot reach `openFiling` even through a bug in application code.
-  - **Several visits per work order are supported deliberately.** An installation over two days, or a repair needing a return visit for a part, is one work order with several jobs. `jobs.visit_number` is unique per work order. At most **one live, not-yet-completed** job per work order exists at a time (a unique partial index `where status in ('scheduled','in_progress')`). Earlier completed visits stay. Each job has its own `work_record`, with `job_id` unique. A record marked `final_visit = true` completes the work order. Otherwise, completing a visit returns the work order to `open` with "Another visit needed" and the reason.
+  - **Kind guards without a NULL bypass.** PostgreSQL accepts NULL in a `CHECK`, and a composite foreign key with any NULL column is not checked under the default `MATCH SIMPLE` ([PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)). So no guard relies on a nullable discriminator:
+    - `jobs` gains `obligation_service_type`, a composite foreign key `(organization_id, obligation_id, obligation_service_type)` to a new `unique (organization_id, id, service_type)` on `service_obligations`, and a pairing check `(obligation_id is null) = (obligation_service_type is null)`. With the pairing, the key is always fully non-null whenever an obligation is referenced, so it is always checked.
+    - **Old writers:** a binary from before SW-1 inserts jobs with `obligation_id` but no discriminator. A `BEFORE INSERT OR UPDATE OF obligation_id` trigger (`jobs_derive_obligation_kind`) derives `obligation_service_type` from the referenced obligation in the same organization, overwriting any value supplied, so a stale or forged discriminator cannot survive. An unknown obligation still fails the foreign key.
+    - **Allowed kinds** (§4.4 explains why work jobs never reference obligations):
+      - `type = 'work'` requires `obligation_id is null`.
+      - `type = 'inspection'` requires `obligation_id is null or obligation_service_type = 'aerobic_inspection'`. Because of the pairing check, that NULL can only mean "no obligation".
+    - `jobs` also gains `unique (organization_id, id, type)`.
+  - `inspections` gains `job_type text not null default 'inspection' check (job_type = 'inspection')`, with a composite foreign key `(organization_id, job_id, job_type)` to that new unique key. Adding the column with a default fills every existing row. An old writer that omits it gets the default, and an explicit NULL fails `NOT NULL`. An inspection can therefore never point at a work job, and filings hang off inspections, so a work job cannot reach `openFiling` even through a bug in application code.
+  - **Direct SQL tests** run in the migration test suite, so they fail regardless of application code:
+    - an explicit NULL and an explicit wrong discriminator on a job with an aerobic obligation (derived to aerobic, then a work job is refused);
+    - a work job with any `obligation_id`;
+    - an inspection with NULL `job_type`, and one pointing at a work job;
+    - an old-writer insert of a job without the discriminator (derived correctly).
+  - **Several visits per work order are supported deliberately.** An installation over two days, or a repair needing a return visit for a part, is one work order with several jobs. `jobs.visit_number` is unique per work order. At most **one open** job per work order exists at a time, through a new unique partial index on `work_order_id where status in ('scheduled','in_progress')`. That index is separate from, and does not change, the existing aerobic `jobs_one_live_per_obligation` index, whose `where status <> 'cancelled'` also counts completed jobs. Earlier completed visits stay. Each job has its own `work_record`, with `job_id` unique. A record marked `final_visit = true` completes the work order. Otherwise, completing a visit returns the work order to `open` with "Another visit needed" and the reason.
   - **Known limitation:** one technician per job, as today. A two-person crew is recorded by naming the second person in the record (`crew_note`). Multiple assignees per job is an unresolved design choice (§15).
-  - Backfill: existing rows get `type='inspection'` and `obligation_service_type='aerobic_inspection'` where `obligation_id` is set. Old retest jobs keep `retest_of_inspection_id = null`, because the link was never stored. The UI keeps showing them as "extra visit".
+  - Backfill: existing rows get `type='inspection'`. The migration sets `obligation_service_type` from the obligation (always `aerobic_inspection` today) wherever `obligation_id` is set, before adding the pairing check. Old retest jobs keep `retest_of_inspection_id = null`, because the link was never stored. The UI keeps showing them as "extra visit".
 - `issues`: add `work_order_id`, set when converted.
 - `service_requests`: add `work_order_id`. Fix the response join to `left join service_obligations`, so a response can cite a work job or a retest job. Classification and authority reporting of complaints are unchanged: a request turned into a work order still needs its reportable classification and response recorded exactly as today.
 
@@ -120,7 +132,7 @@ Changes to existing tables, all additive and nullable:
 | `GET /work-orders/:id` (detail with lines, events, notes, record, attachments via signed URLs) | `work:read` |
 | `PUT /work/sync`, `PUT /work/:clientId/photos/:photoClientId`, `PUT /work/:clientId/signatures/:signatureClientId` (phone, see §8.1) | `work:complete` |
 | `GET /work/conflicts`, `POST /work/conflicts/:id/resolve` (§8.5) | `work:write` |
-| `POST /work-orders/:id/invoice` (draft invoice from lines, idempotent per work order) | `invoices:write` |
+| `POST /work-orders/:id/invoice` (draft invoice from lines; one **non-void** invoice per work order, so a void allows a replacement, §3.6) | `invoices:write` |
 
 New permissions in `packages/domain/src/roles.ts`:
 
@@ -171,18 +183,25 @@ Pumping at a site and disposing of the load are separate events. One truck load 
   - Identity: `name`, `kind` (`wastewater_treatment_plant | land_application_site | transfer_station | other`), address, lat/lng, `permit_or_registration_number`.
   - Origin: `source` (`entered_by_provider | public_source`), `source_url`, `source_retrieved_on`, `notes`, `active`.
   - No shared dataset is shipped and nothing is copied from a competitor. An office can add facilities by hand. Later, if a pilot needs it, an admin import from a *named public source* can store `source_url` and the retrieval date per row, subject to that source's terms and gate **G-FAC**.
-- **`pumping_records`**: one per pump-out at a site, recorded on the job.
+- **Revision identity.** Pump-outs and loads are immutable rows grouped by a stable identity:
+  - `group_id` is the id of the first revision, and `revision` counts from 1.
+  - `is_current` is a boolean with a unique partial index `(group_id) where is_current`.
+  - A correction runs in one transaction: lock the group's current row (`FOR UPDATE`), set its `is_current = false`, then insert revision n+1 as current with `correction_reason`.
+  - Everything that counts or links uses the **group**, read through the current revision (views `current_pumping_records` and `current_disposal_loads`). Old and corrected volumes are therefore never both counted, and never both eligible for a load.
+- **`pumping_records`**: one group per pump-out at a site, recorded on the job.
   - Links: `work_order_id`, `job_id`, `work_record_id`, `site_id`, `technician_user_id`, `vehicle_id`.
   - What and when: `service_date`, `waste_type` (`septage | grease_trap | holding_tank | portable_toilet | other`, plus `waste_type_note`), `tanks` (jsonb list: compartment or tank label, volume).
-  - Volume: `volume` (numeric(10,1)) and `volume_unit` (`gallons | liters`; shown as recorded).
-  - Identity and history: `offline_client_id` (unique per organization), `status` (`recorded | corrected`), `supersedes_id`.
-- **`disposal_loads`**: one per delivery to a facility.
-  - What: `vehicle_id`, `disposal_facility_id`, `delivered_on`, `manifest_reference`, `total_volume`, `volume_unit`, `notes`.
+  - Volume: as entered, `entered_volume` (numeric(10,1)) and `entered_unit` (`gallons | liters`), shown to people as recorded. Canonical **`volume_milligallons`** (integer thousandths of a US gallon) is computed at write time. Liters convert with the exact definition 1 US gallon = 3.785411784 L, so `round(liters × 1000 / 3.785411784)`. All totals, comparisons and load sums use the canonical value. Mixed units in one load are therefore exact up to that single rounding, and the display shows both.
+  - Identity and history: `offline_client_id` (unique per organization), `group_id`, `revision`, `is_current`, `correction_reason`.
+- **`disposal_loads`**: one group per delivery to a facility.
+  - What: `vehicle_id`, `disposal_facility_id`, `delivered_on`, `manifest_reference`, the entered total plus its unit, canonical `total_milligallons`, and `notes`.
   - Who: `recorded_by` (technician or office).
-  - Identity and history: `offline_client_id`, `status` and `supersedes_id`, as above.
-- **`disposal_load_items`**: links pump-outs to their load. `pumping_record_id` is **unique**, so a pump-out is in at most one load, and the table has a foreign key to `disposal_loads`. A load whose items' volumes don't add up to its total gets a visible "volumes differ" note, not a refusal, because measurement methods differ.
-- **History:** a correction creates a new row that supersedes the old one, and rows are never edited in place, matching the immutable-report pattern. A correction to a pump-out keeps its load link through the new row.
-- **Files:** a manifest photo or the facility's receipt goes in `work_attachments`, attached to the load (`photo_key = manifest`).
+  - Identity and history: `offline_client_id`, `group_id`, `revision`, `is_current`, `correction_reason`, as above.
+- **`disposal_load_items`**: holds `(organization_id, load_group_id, pumping_group_id)` with tenant foreign keys to both groups.
+  - **`unique (pumping_group_id)`** means a pump-out is in at most one load, whatever its revisions.
+  - A load correction creates a new load revision. Its items stay attached to the group, and changing membership is an explicit add or remove, audited.
+  - A pump-out correction after its load was recorded keeps its membership, because the item points at the group. The load's "volumes differ" note is recomputed from the current revisions. Differences are shown, not refused, because measurement methods differ.
+- **Files:** a manifest photo or the facility's receipt goes in `work_attachments`, owned by the load group (`disposal_load_group_id`, `photo_key = manifest`), so it survives load corrections. It is stored under `${org}/work/loads/<groupId>/`, listed in the data export, and removed with the organization on demo reset or expiry.
 
 ### 2.3 Flow
 
@@ -202,10 +221,13 @@ The labels are "Disposal record" and "Manifest/reference number". Aerowise does 
 ### 2.5 Acceptance
 
 - Offline pumping completion with a manifest photo reaches the office exactly once.
-- A correction keeps the original row.
+- A pump-out correction after its load was recorded: the load counts only the new volume, and the item still points at the same group.
+- A load correction keeps its items and its manifest file.
+- Mixed units: a liters pump-out and a gallons pump-out in one load. The canonical total is exact and both entered values are displayed.
+- Adding a pump-out group to a second load is refused by the unique index, including after the pump-out is corrected.
 - A pumping job never touches aerobic obligations or filings.
-- The CSV export of a demo organization carries the notice column.
-- Deleting or expiring a demo removes its disposal rows and files.
+- The CSV export of a demo organization carries the notice column and lists load attachments.
+- After a public demo reset or demo expiry, the load rows, attachment rows and stored manifest objects are all gone, and a stored download link returns 404. A prospect demo's manifest is still retrievable after the nightly reseed.
 
 ---
 
@@ -261,7 +283,7 @@ Cancelling after acceptance is allowed only while the estimate's work order has 
 2. A draft final invoice is discarded. An issued final invoice blocks the cancellation: the office voids it first, using the existing void rules, which refuse an invoice with payments.
 3. The deposit is handled by its state:
    - An unpaid deposit invoice is voided.
-   - A paid deposit becomes **"deposit disposition needed"**, an inbox item. The office then either refunds it through the existing refund route (credit or reverse intent) or records it as retained under the estimate's terms with a reason. Both are written to `deposit_dispositions (estimate_id, deposit_invoice_id, kind refunded|retained, amount_cents, reason, refund_id?)`. Nothing is refunded or retained automatically.
+   - A paid deposit becomes **"deposit disposition needed"**, an inbox item. The office then either refunds it through the existing refund route (credit or reverse intent) or records it as retained under the estimate's terms with a reason. Both are written to the deposit ledger (§3.6). Nothing is refunded or retained automatically.
 
 If work has already been done, the estimate cannot be cancelled. The office invoices the completed visits from the actual lines, which applies the deposit, and cancels the rest of the work order.
 
@@ -278,18 +300,70 @@ If work has already been done, the estimate cannot be cancelled. The office invo
 ### 3.6 Conversion, deposits and invoices (exactly once)
 
 1. **On acceptance:** in the same transaction, create the work order (`source_kind='estimate'`, protected by the unique index) with lines copied from the accepted version and the chosen options.
-2. **Deposit:** if one is required, create and issue **one** deposit invoice. The link table `estimate_invoices (estimate_id, invoice_id, role)` has `unique (estimate_id, role)`, where `role` is `deposit` or `final`, so a retried accept cannot make a second deposit invoice. The deposit invoice has one line, "Deposit for EST-1001", on the deposit service item. It is paid through the existing `openCheckout`, which already charges the full amount due of *that* invoice, so no partial-checkout change is needed.
-3. **Final invoice:** after completion, `POST /work-orders/:id/invoice` makes the final invoice from the actual work order lines. A paid deposit is applied through `deposit_applications (deposit_invoice_id, final_invoice_id, amount_cents, shortfall_cents)` and a new `invoices.deposit_applied_cents`. The total check becomes `total = subtotal − discount + tax − deposit_applied`.
-4. **No double charge:** the checkout idempotency key already includes the invoice id and the amount due, and webhooks are already idempotent through `stripe_events`. New tests replay accept, checkout completion and the invoice route concurrently.
+2. **Deposit:** if one is required, create and issue **one** deposit invoice D. The deposit invoice has one line, "Deposit for EST-1001", on the deposit service item. It is paid through the existing `openCheckout`, which already charges the full amount due of *that* invoice, so no partial-checkout change is needed.
+3. **Final invoice:** after completion, `POST /work-orders/:id/invoice` makes the final invoice F from the actual work order lines and applies available deposit money (below). The total check becomes `total = subtotal − discount + tax − deposit_applied`.
+4. **No double charge:** the checkout idempotency key already includes the invoice id and the amount due, and webhooks are already idempotent through `stripe_events` and the unique `provider_refund_id`. New tests replay accept, checkout completion, the invoice route and refund webhooks concurrently.
 
-**Money invariants.** D is the deposit invoice, F the final invoice and A the sum of D's applications. They are enforced in one place (`recalcInvoice` plus a deferred constraint trigger) and covered by tests:
+**Invoice identity, with voids and replacements.** `estimate_invoices (estimate_id, invoice_id, role, replaces_invoice_id, voided_at)` links invoices to the estimate, with `role` either `deposit` or `final`. A unique partial index `(estimate_id, role) where voided_at is null` allows **at most one active** deposit invoice and one active final invoice, while keeping every voided one in history. Voiding an invoice sets `voided_at` on its link in the same transaction. A replacement final invoice F2 records `replaces_invoice_id = F`. A retried accept or invoice request returns the active row instead of creating another. Every work order follows the same rule: `invoices.work_order_id` with a unique partial index `(organization_id, work_order_id) where status <> 'void'`. So "one invoice per work order" never blocks re-invoicing after a void, and a concurrent pair of invoice requests still yields one.
 
-- **I1:** `A ≤ D.paid_cents` (cleared money, net of refunds) at all times. Only cleared money can be applied; a bank payment still clearing is not.
-- **I2:** for F, `deposit_applied ≤ subtotal − discount + tax`, so F's total is never negative. **A deposit larger than the final amount** is applied only up to F's amount. The remainder `D.paid_cents − A` raises "Unapplied deposit" in the inbox until it is refunded or retained through `deposit_dispositions`.
-- **I3:** an application exists only while F is a draft or issued and not void. Voiding F, which the existing rules allow only with no payment on F, deletes its applications in the same transaction, and D's unapplied amount grows back.
-- **I4:** refunds on D through Aerowise are limited to `D.paid_cents − A` (409 `deposit_applied` otherwise). To return applied money, the office voids F if it is unpaid and re-invoices, or refunds against F's own payments.
-- **I5:** a refund made **outside Aerowise**, such as in the Stripe dashboard, arrives by webhook and cannot be refused. If it breaks I1, the shortfall is written to `deposit_applications.shortfall_cents` and raises a high-severity inbox item, "Deposit refunded after it was applied". The office bills the shortfall on a supplemental invoice. An issued invoice is never edited.
-- **Ledger test:** for every estimate, what the homeowner paid in total equals F's total before the deposit, plus or minus any recorded disposition and any open shortfall or unapplied amount.
+**Deposit ledger.** For each deposit invoice D there is an append-only `deposit_ledger`. Rows are never updated or deleted, and corrections are new rows. Every entry carries `amount_cents > 0`, its kind, actor, reason and the related ids:
+
+| Kind | Meaning | Created by |
+|---|---|---|
+| `received` | Cleared payment on D | Payment success (webhook or manual) |
+| `refunded` | Refund of D's money started in Aerowise | Refund route |
+| `refunded_external` | Refund of D's money that Aerowise did not start (for example the Stripe dashboard), keyed by `provider_refund_id`, unique | Webhook |
+| `applied` / `unapplied` | Money moved to final invoice F / moved back when F is voided | Final invoice / void |
+| `retained` / `retain_reversed` | Kept under the estimate's terms / an explicit office reversal of that | Office, with reason |
+| `shortfall` | Recorded when an external refund takes more than the free balance; keyed by the same refund id, unique | Webhook, same transaction |
+| `deposit_reversal` | Applied deposit money returned to the customer after F was issued, paired with a credit on F | "Refund the job" flow |
+
+Per D, in cents, the balances are:
+
+- `R` = received
+- `X` = refunded + refunded_external + deposit_reversal
+- `A` = applied − unapplied − deposit_reversal
+- `T` = retained − retain_reversed
+- `S` = shortfall
+
+The free balance is `U = R − X − A − T + S`.
+
+**Rules.** Each rule is enforced in one transaction that first locks D's invoice row with `SELECT … FOR UPDATE`, which the webhook path takes too:
+
+- **I1 (reconciled):** `U ≥ 0` at all times. A deferred constraint trigger checks it at commit, so it never sees a half-written transaction.
+- **I2 (Aerowise-initiated movements):** `applied`, `retained` and `refunded` entries may each take at most `R − X − A − T`, the free balance *excluding* any shortfall. Only real money can be applied, kept or returned. A request for more gets 409 `deposit_not_available`. Retained money is outside the free balance, so it cannot later be refunded or applied unless an explicit `retain_reversed` entry puts it back first.
+- **I3 (external refunds are never refused):** the webhook records `refunded_external`. If that would make `R − X − A − T` negative, it records a `shortfall` of exactly the deficit in the same transaction, so `U` stays at least 0 and I1 holds. A replayed webhook finds the existing refund id and adds nothing. A shortfall is never deleted. It raises a high-severity inbox item until it is resolved by a supplemental invoice (linked) or an office write-off with a reason. The resolution is recorded separately; `S` itself stays as history.
+- **I4 (F never negative):** for each active F, `deposit_applied ≤ subtotal − discount + tax`. A deposit larger than the final amount is applied only up to F's total. The remainder stays free, and "Unapplied deposit" stays in the inbox until it is refunded or retained.
+- **I5 (voiding F):** the existing rules allow voiding only with no direct payment on F. Voiding writes `unapplied` for everything applied to F, and a replacement F2 can then apply again.
+
+**"Refund the job" after F was issued and paid**, partly or entirely by the deposit. One audited office action takes the amount to return and splits it:
+
+1. F's own direct payments, through the existing refund route (credit intent).
+2. Then the deposit-funded part, as a `deposit_reversal` entry on D, a Stripe refund of D's payment (or a manual refund record), and an equal **`deposit_reversal` credit on F**. A new credit kind counted in F's `credited_cents` by `recalcInvoice`, so F does not become owed again.
+
+This also covers a fully deposit-funded F with $0 due and no direct payments: everything goes through step 2.
+
+**Ledger equality** (tested for every estimate after every operation). The terms, in cents:
+
+- `P` = cleared payments on D and on every final invoice for the estimate, minus all refunds of those payments.
+- For each active F: `G_F = subtotal − discount + tax`, `C_F` = all credits on F (including deposit reversals), and `due_F = G_F − deposit_applied_F − C_F − paid_F`.
+
+The equality:
+
+`P + Σ due_F = Σ (G_F − C_F) + T + U − S`
+
+So the money held, plus what is still owed, equals the value of the work after credits, plus retained deposit, plus free deposit, less any shortfall not covered by real money. With no final invoice the F terms are zero.
+
+**Tests:**
+
+- a partly paid F with an applied D;
+- a fully deposit-funded F with $0 due;
+- a full refund of everything the customer paid;
+- a replayed external refund (one shortfall only);
+- a retained remainder followed by attempts to refund or apply it (refused) and a retain reversal (then allowed);
+- void and replacement F, applying again: F2 is created with `replaces_invoice_id = F` despite the per-work-order index, and a replayed request returns F2;
+- a deposit larger than the final amount;
+- concurrent apply and webhook refund (serialized by the lock).
 
 **Accounting hypotheses, not facts.** The software can implement either treatment behind a flag (`deposit_mode`), but neither is asserted as correct accounting:
 
@@ -402,16 +476,36 @@ The plan:
   - Constraints: `unique (contract_id, cycle_key)` and `unique (organization_id, id, service_type)`.
   - Written once at contract creation. Backfill creates one `aerobic` cycle for every existing contract.
 - **Obligations:**
-  - `service_obligations` gains `cycle_id`, with a composite foreign key `(organization_id, cycle_id, service_type)` to the cycle, so an obligation's kind always matches its cycle.
-  - The existing `unique (contract_id, sequence)` from migration 0002 is replaced by `unique (cycle_id, sequence)`, plus a partial `unique (contract_id, sequence) where service_type = 'aerobic_inspection'`. Each cycle numbers its visits from 1, and aerobic numbering keeps exactly today's meaning.
-  - `cycle_id` stays nullable. A trigger fills it with the contract's aerobic cycle when an aerobic obligation is inserted without one, so a binary from before the change can still create contracts (§9.1).
+  - `service_obligations` gains `cycle_id`, **`NOT NULL`**.
+    - The fill happens in a `BEFORE INSERT` trigger (`obligations_assign_cycle`), and PostgreSQL runs it before the `NOT NULL` check. For an aerobic obligation inserted without `cycle_id`, the trigger finds the contract's `aerobic` cycle, or **creates it** from the contract's own term, visits and service type (`insert … on conflict (contract_id, cycle_key) do nothing`, then select). An old binary creating a **new** contract (`insertContract`, then its obligations) therefore gets a valid cycle, not just existing contracts through the backfill.
+    - For a non-aerobic obligation without `cycle_id`, the trigger raises an error, so non-aerobic obligations always name their cycle.
+    - A pumping-only contract never gets an aerobic cycle, because the trigger acts only when an aerobic obligation is inserted.
+  - **Consistency:** a composite foreign key `(organization_id, contract_id, cycle_id, service_type)` references `contract_service_cycles (organization_id, contract_id, id, service_type)`, with a matching unique key. An obligation's cycle must belong to the same contract and have the same kind. All of these columns are `NOT NULL`, so `MATCH SIMPLE` cannot skip the check.
+  - **Numbering:** the existing `unique (contract_id, sequence)` from migration 0002 is replaced by `unique (cycle_id, sequence)`, plus a partial `unique (contract_id, sequence) where service_type = 'aerobic_inspection'`. Each cycle numbers its visits from 1, and aerobic numbering keeps exactly today's meaning.
+  - **Backfill order:** create the cycles, set `cycle_id` on every row, add `NOT NULL` and the keys, then swap the unique constraint, all in one migration transaction.
+  - **Direct SQL tests:**
+    - an old-writer insert of a new contract and its aerobic obligations creates one cycle, and a second obligation reuses it;
+    - a non-aerobic obligation without a cycle is refused;
+    - an obligation pointing at another contract's cycle, and one whose kind differs from its cycle's, are refused;
+    - two cycles on one contract both number from 1.
 - **Schedules:**
   - Aerobic visits use today's `buildTermSchedule` and `buildAnchoredSchedule`, including the authority more-visits rules and `acceptVisits`, unchanged.
   - Non-aerobic cycles support `{ kind: 'every_months', everyMonths, windowDays = 30 }`, **anchored to the contract start**. Due dates are start + k × everyMonths that fall inside the term. The window is the due date ± `windowDays`, clipped to the term.
   - A cycle with no due date inside a term (for example, every 36 months on a 12-month plan) is refused by the builder unless the office accepts "no visit this term". Carrying the anchor across renewals ("36 months after the last pump-out") is an unresolved choice (§15).
   - These cycles never pass through authority rules.
-- **Scheduling, idempotently:** scheduling a non-aerobic obligation creates a work order (`source_kind='contract_cycle'`, `source_id = obligation id`, protected by the live-duplicate index) of the cycle's work type, plus a `type='work'` job carrying the `obligation_id`. The existing `jobs_one_live_per_obligation` index still allows one live job. A final completed visit completes the obligation.
-- **Database enforcement:** the job/obligation kind foreign key from §1.2 rejects a work job on an aerobic obligation and an inspection job on a pumping obligation. The `inspections.job_type` key keeps work jobs away from filings.
+- **Scheduling, idempotently, with several visits:** a non-aerobic obligation is linked to its **work order**, not to its jobs.
+  - `work_orders` gains `obligation_id` and `obligation_service_type`. It gets the same NULL-proof scheme as jobs: a pairing check, a derivation trigger and a composite foreign key, plus a check `obligation_service_type <> 'aerobic_inspection'`.
+  - A unique partial index `work_orders_one_per_obligation on (obligation_id) where status <> 'cancelled'` gives one work order per obligation. It includes completed ones, mirroring the aerobic rule.
+  - Scheduling the obligation creates that work order (`source_kind='contract_cycle'`) of the cycle's work type. Visits are ordinary work jobs with `obligation_id` null, so visit 2 after a completed non-final visit 1 is allowed.
+  - The work order's final visit completes the obligation in the same transaction.
+  - Scheduling again after the final completion is refused twice over: the existing "This visit is completed" check, and the index above.
+  - The aerobic `jobs_one_live_per_obligation` index is **not** widened or changed. Aerobic visits keep exactly one non-cancelled inspection job per obligation, as today.
+  - **Tests:**
+    - two visits (non-final, then final) on one pumping-cycle obligation;
+    - scheduling the same obligation twice concurrently;
+    - scheduling again after final completion;
+    - aerobic schedule, cancel and reschedule tests unchanged.
+- **Database enforcement:** work jobs cannot reference obligations at all (§1.2). Work orders can reference only non-aerobic obligations. Inspection jobs can reference only aerobic ones. `inspections.job_type` keeps work jobs away from filings.
 - **Reporting and counts:** each of these filters by `service_type` or cycle:
   - the due list (aerobic is the default view, so today's office experience is unchanged; a service-type filter is added);
   - inbox overdue visits;
@@ -611,18 +705,55 @@ A record is sent as `completed` only after every required photo and signature op
 
 **Signature-bound snapshot.** Before signing, the phone builds the customer summary (work done, parts, pump-out volume, notes marked customer-visible). It hashes the canonical JSON with sha256, and the customer signs that summary. The fields in the summary are then locked on the phone; editing one clears the signature and asks for a new one. The server recomputes the hash from the submitted record. A mismatch returns 409 `signature_mismatch`, the record stays on the phone, and the conflict screen explains it.
 
+**Draft first, then uploads (R4).** The server must hold a record before any photo or signature can attach to it.
+
+- When a technician starts a stop, the phone enqueues a `work-sync` op with `status: 'draft'` before anything else for that record. Every `work-photo` and `signature` op carries the record's client id and `after: <draft op id>`. The outbox drain sends an upload only once that draft op is acknowledged (the phone stores `draftAckedAt` on the record). Later full-record syncs follow the same order.
+- `PUT /work/sync` with a draft creates the `work_record` idempotently on `(organization_id, offline_client_id)`. A completed record is still final, and reusing a client id for a different job is still refused.
+- The upload routes resolve the owner by the record's client id: a `work_record`, else a `work_sync_conflicts` row, else **409 `record_not_synced`**. The phone classifies that one code as `RetryLater`, so a drain-order bug delays an upload but never strands it. It is a defensive path; the ordering above means it should not occur.
+- **Signature identity.** A signature op carries its own `signatureClientId` and the snapshot sha256. The upload creates a `signed_documents` row with `unique (organization_id, offline_client_id)`, owned by the record or the conflict exactly like a photo. The record names its signature by client id, and the server resolves it at completion.
+- A client id lives in `work_records` or in `work_sync_conflicts`, never both. Every insert or move takes a transaction-level advisory lock on `(organization_id, offline_client_id)` and checks the other table.
+
+**Who may send: persisted assignment provenance.** A technician who has lost the job must still be able to hand in what they did, but an arbitrary technician must not.
+
+- New append-only table **`job_assignments`**: `organization_id`, `id`, `job_id`, `technician_user_id`, `assigned_at`, `assigned_by`, `ended_at`, `end_reason` (`reassigned | unassigned | cancelled | office_completed`). Composite tenant foreign keys to the job and the technician's membership. Every assignment change on a work job writes it in the same transaction as the job update, under the job's `FOR UPDATE` lock. Rows are never updated except to set `ended_at` and `end_reason` once.
+- `PUT /work/sync` and the upload routes decide by the caller and the job, in the caller's organization only:
+
+| Caller | Response |
+|---|---|
+| Current assignee of a live job | Normal path (200) |
+| Has a `job_assignments` row for this job (same organization, same user, still a member with `work:complete`), and the job was reassigned, cancelled, or its work order completed by the office | **202 `{ outcome: 'held_for_review', conflictId }`**, payload or blob stored on the conflict |
+| Same organization, no provenance row for this job | 403 `not_assigned`; nothing is stored |
+| Job, record or client id in another organization | 404, as everywhere else |
+
+- **202 is an acknowledgement, not an error.** The retry classifier treats every 2xx as delivered: `acknowledgeSync` runs, the op leaves the outbox, and the stop shows "Sent to office for review". So a held item can never be stranded as a failed 409 or retried forever. 409 is now reserved for cases where the technician must act: `signature_mismatch` (below) and client id reuse for a different job. Those stay visible with a Retry button, as today.
+- While a conflict is `held`, a repeat full sync replaces its payload and keeps the newest phone revision. Repeat uploads with the same client id are `ON CONFLICT DO NOTHING`. After the office resolves it, further sends return 200 `{ outcome: 'resolved', resolution }` and change nothing.
+
+**What the office does to the job converts a draft.** Reassigning, cancelling or office-completing a job, in the same transaction and under the job lock, ends the `job_assignments` row and moves any **draft** `work_record` for that job into a new `work_sync_conflicts` row (status `held`, same client id). Its photos and signature change owner to the conflict. That frees the job's unique `job_id` for the new assignee's own record. A completed record is already final and is never moved.
+
 **The office changed the job while the phone was offline.** Server responses:
 
 | Situation | Server response | What happens to the field record |
 |---|---|---|
-| Job reassigned to another technician | 409 `job_reassigned` | Stored in **`work_sync_conflicts`**, the full payload plus uploaded blobs under the work order's key prefix. The phone marks the item "Sent to office for review" and stops retrying. The office attaches it to the job (the record is accepted as submitted by the original technician, audited) or dismisses it with a reason. |
-| Job or work order cancelled | 409 `job_cancelled` | Same: kept in `work_sync_conflicts` for review. |
-| Office completed the work order without a field record | 409 `work_order_completed` | Same. The office may attach it as the field record, which replaces "completed without record". |
+| Job reassigned to another technician | 202 `held_for_review` (original assignee, by provenance) | Stored in **`work_sync_conflicts`**: the full payload, plus photos and signature owned by the conflict. The phone marks it "Sent to office for review". The office attaches it (accepted as submitted by the original technician, audited) or dismisses it with a reason. Attaching to a job that already has a completed record creates a new visit job on the same work order for it. |
+| Job or work order cancelled | 202 `held_for_review` | Same. Attaching to a cancelled job records it on a new completed visit job, so the cancellation and the work both stay in the history. |
+| Office completed the work order without a field record | 202 `held_for_review` | Same. The office may attach it as the field record, which replaces "completed without record". |
 | Form template changed | Accepted | The record is validated against the template version it was started with, which the phone pinned. Retired versions remain valid for records started before retirement. |
 | Prices or service items changed | Accepted | Field-added lines carry the price snapshot from download. At invoicing the office sees "price changed since the visit" per line and chooses which price to bill. |
 | Coverage changed (limit used by another work order) | Accepted | The phone's "Covered" badge was informational. The office invoice uses the reservation state (§4.3). |
 
-The phone's conflict screen lists each held item with the reason and "Sent to office for review" or "Needs your action" (signature mismatch). Retries reuse the same client ids, so a conflict entry is created at most once per record (`unique (organization_id, offline_client_id)` on `work_sync_conflicts`).
+The phone's conflict screen lists each held item with the reason and "Sent to office for review", or "Needs your action" for a signature mismatch. Retries reuse the same client ids, so a conflict entry is created at most once per record (`unique (organization_id, offline_client_id)` on `work_sync_conflicts`).
+
+**R4 tests** (API integration plus one Playwright offline run, each with two photos and a customer signature taken offline):
+
+1. Reassign **before the first draft sync**: the draft sync, both photos, the signature and the completed sync each get 202 for the same `conflictId`. There is one conflict row, two photo attachments and one `signed_documents` row owned by it. The outbox is empty afterwards and the stop says "Sent to office for review".
+2. Cancel before the first draft sync: same as test 1.
+3. Reassign **after the draft sync, before the first upload**: the reassign transaction moves the draft to a conflict. The uploads that follow get 202 and attach to it. The new assignee then starts and completes their own record for the same job without a unique violation.
+4. Cancel after the draft sync, before the first upload: same as test 3.
+5. Office-complete after the draft sync, before the first upload: same, and attaching replaces "completed without record".
+6. Forced out-of-order upload (test hook skips the drain order): 409 `record_not_synced`, retried, then accepted after the draft lands.
+7. A same-organization technician never assigned to the job gets 403 with nothing stored. Another organization gets 404.
+8. Replay of every op after a 202: no new rows and no duplicate blobs. After the office resolves the conflict, a replay gets 200 `resolved`.
+9. Office attach: the attachments change owner, storage keys are unchanged, and the record is credited to the original technician in `audit_events`.
 
 **Storage and failures.**
 
@@ -634,7 +765,7 @@ The phone's conflict screen lists each held item with the reason and "Sent to of
 
 **Tests:**
 
-- Reassign, cancel and office-complete while offline, then reconnect: one conflict row each, and the office resolves them.
+- Reassign, cancel and office-complete while offline, then reconnect: one conflict row each, and the office resolves them (R4 tests 1–9 above).
 - A template change while offline.
 - A signature mismatch after an edit.
 - A quota error simulated in the browser test.
@@ -649,17 +780,17 @@ Each PR is a draft until local checks pass on its exact head ([§9.2](#92-valida
 | # | PR | Depends on | Scope | Acceptance highlights | Migration |
 |---|---|---|---|---|---|
 | SW-0 | This plan | none | `docs/engineering/SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md`, a ROADMAP row | Links resolve; lint and typecheck pass | none |
-| SW-1 | **Work foundation** (flag `work_orders`) | SW-0 | `work_types`, `work_orders`, `work_order_events`, `work_order_notes`, `work_order_lines` (without service items); the `jobs` changes from §1.2 (type, `work_order_id`, `retest_of_inspection_id`, `visit_number`, kind-enforcing keys); `inspections.job_type`; `issues.work_order_id`; `service_requests.work_order_id` plus the response join fix; permissions; routes from §1.4 except sync, invoice and conflicts; **every existing `jobs` query filtered by `type` explicitly** (schedule, routing, inspections, inbox, readiness, SMS route and task, invoice lib, compliance packages); office `/work` pages; inbox conversion; schedule kind badge; demo story | §1.6; zero filings or aerobic obligation changes; the database rejects wrong job/obligation kinds; converting twice gives one work order | yes |
+| SW-1 | **Work foundation** (flag `work_orders`) | SW-0 | `work_types`, `work_orders`, `work_order_events`, `work_order_notes`, `work_order_lines` (without service items); the `jobs` changes from §1.2 (type, `work_order_id`, `retest_of_inspection_id`, `visit_number`, `obligation_service_type` with its pairing check, derivation trigger and composite key, the one-open-job-per-work-order index); `inspections.job_type` (not null, composite key); `issues.work_order_id`; `service_requests.work_order_id` plus the response join fix; permissions; routes from §1.4 except sync, invoice and conflicts; **every existing `jobs` query filtered by `type` explicitly** (schedule, routing, inspections, inbox, readiness, SMS route and task, invoice lib, compliance packages); office `/work` pages; inbox conversion; schedule kind badge; demo story | §1.6; zero filings or aerobic obligation changes; the §1.2 direct SQL tests (NULL and forged discriminators, old-writer insert); converting twice gives one work order | yes |
 | SW-2a | **Phone compatibility release** (rollback floor for the phone) | SW-0 | Client only: store-presence open, awareness of the work database name in cleanup and pending counts, unknown outbox ops wait (§8.1) | v1 data and pending ops survive; a later database opens without `VersionError`; ended demo removes both databases | none |
 | SW-F | **Shared form and signature foundation** | SW-1 | `inspection_templates.purpose` and the signature requirement block; distinct template keys per purpose (old readers select the inspection template by key, `apps/api/src/routes/inspections.ts` `activeTemplate`); generic repair and service-call templates; the signature pad component (phone and web); `signed_documents.kind` widened to `work_completion` and `estimate_acceptance`; the web intake-form renderer used later by SW-8 | Old binary still serves the inspection template after seeding; templates immutable per version; signature snapshot hash test | yes |
-| SW-2 | **Technician offline work** | SW-1, SW-F, SW-2a **deployed to staging** | Work database (§8.1), `work_records`, `work_attachments`, `work_sync_conflicts`, `/work/sync`, photo and signature routes, conflicts API and screens (§8.5), `/route` work stops, `/tech` work form | §8.1 and §8.5 acceptance; existing offline e2e unchanged | yes |
+| SW-2 | **Technician offline work** | SW-1, SW-F, SW-2a **deployed to staging** | Work database (§8.1), `work_records`, `work_attachments` (record and conflict owners), `work_sync_conflicts`, `job_assignments` (written by SW-1's assign routes from this PR on), draft-first ordering, `/work/sync`, photo and signature routes with `held_for_review`, conflicts API and screens (§8.5), `/route` work stops, `/tech` work form | §8.1 acceptance; §8.5 R4 tests 1–9; existing offline e2e unchanged | yes |
 | SW-3 | **Service items and work invoicing** (flag `service_items`) | SW-1 | `service_items`, `invoice_lines.service_item_id`/`quantity_milli`, invoice from a work order (idempotent per work order), QuickBooks `service_item` mapping with default-item fallback | One invoice per work order under concurrent calls; old invoices' QuickBooks payloads byte-identical; untaxed work invoices sync | yes |
 | SW-4 | **QuickBooks mixed tax** (per-connection `tax_mode`, off) | SW-0 | Tax code mapping, `TaxCodeRef`/`TxnTaxDetail`, deterministic `requestid` kept, compare after create, `quarantined` link state, held payments, review choices (§3.7) | Test provider: matching, mismatching and lost-response cases; no duplicate remote invoice; mode off is today's behavior | yes (small) |
-| SW-5 | **Estimates and deposits** (flag `estimates`; `deposit_mode` per organization) | SW-1, SW-3, SW-F; SW-4 for taxed sync | §3.3–§3.8, including cancellation after acceptance, `deposit_applications`, `deposit_dispositions`, invariants I1–I5 and QuickBooks deposit handling behind its conflict | Concurrent accept, checkout replay; deposit greater than final; refund attempt on applied deposit refused; webhook refund after application creates a shortfall item; ledger test | yes |
-| SW-6 | **Pumping and disposal** (flag `pumping`) | SW-2 | `vehicles`, `disposal_facilities`, `pumping_records`, `disposal_loads`, `disposal_load_items`, pumping starter template, "Record disposal" on phone and office, overdue-disposal inbox item, site history, CSV/PDF log, exports | §2.5 | yes |
+| SW-5 | **Estimates and deposits** (flag `estimates`; `deposit_mode` per organization) | SW-1, SW-3, SW-F; SW-4 for taxed sync | §3.3–§3.8, including cancellation after acceptance, `estimate_invoices` with void-aware uniqueness, the append-only `deposit_ledger`, invariants I1–I5, the "Refund the job" flow with the `deposit_reversal` credit, and QuickBooks deposit handling behind its conflict | Concurrent accept, checkout replay; the §3.6 test list, including the ledger equality after every operation | yes |
+| SW-6 | **Pumping and disposal** (flag `pumping`) | SW-2 | `vehicles`, `disposal_facilities`, `pumping_records` and `disposal_loads` as revision groups, canonical `volume_milligallons`, `disposal_load_items`, `work_attachments.disposal_load_group_id` (added here, widening the one-owner check), pumping starter template, "Record disposal" on phone and office, overdue-disposal inbox item, site history, CSV/PDF log, exports | §2.5 | yes |
 | SW-7 | **System categories, conventional and installation** | SW-2, SW-F | `wastewater_systems.system_category` plus backfill, aerobic-contract warning, conventional and installation templates, multi-visit installation flow, completion summary PDF, portal listing | No aerobic reporting on non-aerobic work; two-visit install with final sign-off exactly once | yes |
 | SW-8 | **Plan versions, terms, options, coverage** (flag `plan_builder`) | SW-1, SW-3, SW-F | `plan_versions` plus v1 backfill, `contracts`/`renewals.plan_version_id`, `contract_coverage_rules`, `coverage_uses`, agreement snapshot, builder tabs, intake at renewal (SW-F renderer), options, coverage evaluation and reservation (§4.3) | Existing contracts unchanged after backfill; concurrent exhaustion test; frozen rules ignore later plan edits; override audited | yes |
-| SW-9 | **Non-inspection service cycles** (flag `service_cycles`) | SW-8, SW-6 | `contract_service_cycles` plus backfill, `service_obligations.cycle_id`, unique-constraint replacement and fill trigger, interval schedules, cycle scheduling as work, service-type filters (§4.4) | Aerobic fixture schedules byte-identical; database-enforced kind tests; two cycles both number from 1 | yes |
+| SW-9 | **Non-inspection service cycles** (flag `service_cycles`) | SW-8, SW-6 | `contract_service_cycles` plus backfill, `service_obligations.cycle_id` (not null, creating fill trigger), unique-constraint replacement, `work_orders.obligation_id` with its NULL-proof key and `work_orders_one_per_obligation`, interval schedules, cycle scheduling as work orders with ordinary visit jobs, service-type filters (§4.4) | Aerobic fixture schedules byte-identical; §4.4 direct SQL tests; two-visit cycle obligation; two cycles both number from 1 | yes |
 | SW-10 | **Work on the street map** | #97 merged, SW-2 | `Stop.kind`/`workOrder`/`durationMinutes`, pins and filter, per-stop service time in `packages/routing` | Same-origin network check still passes; honest estimate labels; optimize includes work stops | none |
 | SW-11 | **Authority export framework** | SW-0 | Ruleset `export` block, `csv_export` method, export file in the submission package, Example County fixture only | Signed, sent and confirmed unchanged; demo notice column; no real-authority block | yes (check widening) |
 | SW-12 | **Cross-feature walkthrough** | all above | Full §12 matrix, scratch backup/restore with new data, rollback-floor drills, screenshots, handoff/README/ROADMAP update | Every row in §12 passes on one integration SHA, recorded with exceptions | none |
@@ -755,11 +886,11 @@ Effort is relative (S, M, L, XL) and assumes the conventions above. No calendar 
 | SW-1 Work foundation | L | Widening `jobs.type` affects every job query, including historical and completed rows | Explicit `type` filter in each existing query, with a test per query; database-enforced kinds; floor SW-1 |
 | SW-2a Phone compatibility | S | A lingering old binary on a phone | It must be deployed before SW-2; floor drill |
 | SW-F Forms and signatures | M | An old binary picking a work template as the inspection form | Distinct keys; upgrade-path test with the old binary |
-| SW-2 Offline work | XL | Two databases, blob durability, business conflicts, quota, physical phone behavior | §8.1 and §8.5 tests; G-DEVICE before pilot reliance |
+| SW-2 Offline work | XL | Two databases, blob durability, business conflicts, quota, physical phone behavior | §8.1 and §8.5 tests, including draft-first ordering and `held_for_review`; G-DEVICE before pilot reliance |
 | SW-3 Service items and invoicing | M | Fractional quantities change line math | `quantity_milli` only on new rows; payload snapshot tests; floor SW-3 |
 | SW-4 Mixed tax in QuickBooks | M | Automated sales tax recomputes; a wrong remote invoice exists before detection | Mode off for real companies until G-QBO-TAX; deterministic `requestid`; quarantine and held payments |
-| SW-5 Estimates and deposits | XL | Double conversion or charge; deposit larger than final; refunds after application; accounting treatment | Unique indexes, row locks, invariants I1–I5, ledger tests; G-TAX-TREATMENT, G-QBO-DEPOSIT |
-| SW-6 Pumping and disposal | M | Implying regulatory compliance; facility data licensing; load/volume mismatch | Neutral wording; provider-entered or cited public facility data; mismatch shown, not refused; G-HAUL, G-FAC |
+| SW-5 Estimates and deposits | XL | Double conversion or charge; deposit larger than final; refunds after application; accounting treatment | Unique indexes (void-aware), one lock on D for every ledger write, invariants I1–I5, ledger equality tests; G-TAX-TREATMENT, G-QBO-DEPOSIT |
+| SW-6 Pumping and disposal | M | Implying regulatory compliance; facility data licensing; load/volume mismatch | Neutral wording; provider-entered or cited public facility data; mismatch shown, not refused; revision groups and exact unit conversion; G-HAUL, G-FAC |
 | SW-7 Conventional and installation | M | Misclassified existing systems; multi-visit installs | Backfill only from aerobic contracts; warning not refusal; explicit `final_visit` |
 | SW-8 Plan versions and coverage | XL | Backfill must not change any existing contract; concurrent limit use; legal text | v1 backfill uses `terms_text=null`; locked reservation; snapshot equality tests; G-LEGAL, G-COVERAGE |
 | SW-9 Service cycles | L | Constraint replacement on obligations; a pumping obligation reaching filings | Fill trigger for old writers; database-enforced kinds; byte-identical aerobic fixtures |
@@ -802,15 +933,20 @@ SW-12 runs the full matrix on one integration SHA. Each feature PR runs its own 
 | 20 | Read-only (lapsed subscription) organization | Trial | Office + phone | Writes refused with `organization_read_only`; phone retries later without losing work |
 | 21 | Data export includes new CSVs; scratch backup and restore with new data | Trial and demo | Ops | New tables and files restored; demo CSVs marked |
 | 22 | Outbound requests during the demo | Demo | Both | No real email, SMS, payment, QuickBooks or geocoding call; test outbox only |
-| 23 | Deposit larger than the final amount; refund attempt on an applied deposit; webhook refund after application | Trial | Office + API | Applied only up to the final amount; unapplied item raised; 409 `deposit_applied`; shortfall item raised; ledger test passes |
+| 23 | Deposit larger than the final amount; refund attempt beyond the free balance; webhook refund after application | Trial | Office + API | Applied only up to the final amount; unapplied item raised; 409 `deposit_not_available`; exactly one shortfall item; ledger equality holds |
 | 24 | QuickBooks tax mismatch and lost-response retry (test provider) | Trial | Office | One remote invoice only; link quarantined; payments held; recheck releases |
 | 25 | Two covered work orders racing for the last allowed use; then cancel, void and override paths | Trial | API + office | Exactly one covered; counts restored correctly |
-| 26 | Job reassigned, cancelled and office-completed while the phone was offline | Trial | Phone + office | One conflict row each; record never lost; office resolves |
+| 26 | Job reassigned, cancelled and office-completed while the phone was offline | Trial | Phone + office | 202 "Sent to office for review", never a failed item; one conflict row each; record never lost; office resolves |
 | 27 | Customer signature, then an edit of a signed field; template change while offline | Trial | Phone | Re-sign required; server rejects a mismatched hash; old template version accepted |
 | 28 | Phone storage full; permanently failed upload | Trial | Phone | Nothing queued is dropped; clear message; Retry works |
 | 29 | Expired demo with pending work, photo and signature ops; real company with an expired session and pending work | Demo and trial | Phone | Demo databases removed; real work kept |
 | 30 | Two-visit installation with a final sign-off; work job against an aerobic obligation (API) | Trial | Phone + API | Second visit completes the work order; the database rejects the wrong kind |
 | 31 | Pumping-cycle plan with two cycles on one contract | Trial | Office | Both number from 1; scheduling twice gives one work order and one live job |
+| 32 | Work job, inspection and work order rows written with NULL or forged kind columns (direct SQL) | Test database | SQL | Every case in §1.2 and §4.4 refused or derived as specified |
+| 33 | Reassign or cancel before the first draft sync, and after it but before the first upload, each with two photos and a signature | Trial | Phone + office | §8.5 R4 tests 1–5: one conflict with all blobs; outbox empties; the new assignee completes their own record |
+| 34 | A same-organization technician never assigned to the job sends a record | Trial | API | 403 `not_assigned`, nothing stored |
+| 35 | Fully deposit-funded final invoice ($0 due), then "Refund the job"; void and re-invoice | Trial | Office + API | Deposit reversal credit keeps F at $0 due; F2 created after void; ledger equality holds |
+| 36 | Correct a pump-out after its load; liters and gallons in one load; load manifest after a demo reset | Trial and demo | Phone + office | §2.5: one current revision, exact canonical total, manifest follows the load group and is removed with the demo |
 
 ---
 
@@ -874,10 +1010,10 @@ SW-4 (QuickBooks tax, against the test provider) and SW-11 (export framework) ma
 |---|---|---|
 | 1 | Rollback compatibility invalid: a fixed `DB_VERSION=1` binary gets `VersionError` on a v2 database; cancelling work jobs doesn't make historical rows safe; deposit/fractional rows; arbitrary-SHA rollback | The inspection database version is never raised. Work data lives in a separate per-tenant database. **SW-2a**, a client-only compatibility release (store-presence open, cleanup and counts of the work database, waiting unknown ops), ships first and is the phone floor (§8.1). New ground rule 9 (expand, read, then write). §9.1 now has feature flags, a **rollback floor per schema-changing release**, the reason and forward recovery for each, and floor drills. Rollback to arbitrary SHAs is explicitly not promised. SW-1 now filters every existing job query by `type`, and its floor is SW-1 because historical work rows exist. SW-3 and SW-5 floors cover fractional quantities and applied deposits. |
 | 2 | Cycles collide on `UNIQUE(contract_id, sequence)`; identity, backfill and anchoring unspecified; rule 0.1 contradiction; app-only filters | §4.4: `contract_service_cycles` with a stable `cycle_key`, frozen snapshot and linked work type; `service_obligations.cycle_id` with a composite key matching service type; the unique constraint replaced by `unique(cycle_id, sequence)` plus an aerobic partial index; a fill trigger for old writers; contract-start anchoring and windows; idempotent scheduling; a list of count/report filters. Rule 0.1 now says "never changes **aerobic** obligations", and a work job may complete a non-aerobic cycle obligation. §1.2: job/obligation kinds and inspection/job kinds are **enforced by composite foreign keys and checks**. Tests cover both directions. |
-| 3 | Deposit lifecycle and accounting underspecified; "no wrong total is ever posted" was false | §3.4: cancellation after acceptance, its effect on the work order, draft and issued final invoices, and deposit disposition (refund or retain, never automatic). §3.6: invariants I1–I5 (deposit larger than final, refund after application, outside refunds create a shortfall item) and a ledger test. Untaxed deposit and the negative QuickBooks line are now **hypotheses H-DEP-1/H-DEP-2** behind G-TAX-TREATMENT and G-QBO-DEPOSIT, with tests of revenue, tax and deposit balance, not just `TotalAmt`. §3.7: the sentence is corrected. A mismatch is detected after the remote invoice exists; the deterministic `requestid` prevents duplicate creates; quarantine holds payments; review choices are defined. |
+| 3 | Deposit lifecycle and accounting underspecified; "no wrong total is ever posted" was false | §3.4: cancellation after acceptance, its effect on the work order, draft and issued final invoices, and deposit disposition (refund or retain, never automatic). §3.6: invariants I1–I5 (deposit larger than final, refund after application, outside refunds create a shortfall item) and a ledger test. Untaxed deposit and the negative QuickBooks line are now **hypotheses H-DEP-1/H-DEP-2** behind G-TAX-TREATMENT and G-QBO-DEPOSIT, with tests of revenue, tax and deposit balance, not just `TotalAmt`. §3.7: the sentence is corrected. A mismatch is detected after the remote invoice exists; the deterministic `requestid` prevents duplicate creates; quarantine holds payments; review choices are defined. The deposit model was then rebuilt by R3 (§15.1). |
 | 4 | Coverage limits: no `rule_key`; concurrency; lifecycle | §4.2: stable `ruleKey`, `optionKey` and `cycleKey`. §4.3: rules frozen per contract in `contract_coverage_rules`; `coverage_uses` with reserved, consumed and released states; reservation under a row lock; defined effects of cancel, void, override, refund, reschedule and line changes; no recomputation against newer plans; concurrent exhaustion tests. |
 | 5 | SW-8 missing a dependency on the form foundation; SW-2/SW-7 overlap; no integration owner; one live job and record per work order | New **SW-F** (forms, signatures, intake renderer), on which SW-2, SW-5, SW-7 and SW-8 depend. Starter templates are each owned by exactly one PR (§5.2). §10 names an **integration owner** (Worker A) for shared files, with `shared:` commits and migration numbering. §1.2/§1.3: several visits per work order are supported deliberately (`visit_number`, one *live* job at a time, `final_visit`). Pump-outs and disposal loads are separate records (§2.2). One technician per job is a disclosed limitation. |
-| 6 | Server/offline business conflicts | New §8.5: local completion versus server acceptance states; completion only after durable photo and signature uploads; signature-bound snapshot hash; `work_sync_conflicts` for reassignment, cancellation and office completion (record never discarded); template and price change rules; conflict screens; retry semantics; quota and failed uploads; expired-demo cleanup with pending ops. Matrix rows 26–29. |
+| 6 | Server/offline business conflicts | New §8.5: local completion versus server acceptance states; completion only after durable photo and signature uploads; signature-bound snapshot hash; `work_sync_conflicts` for reassignment, cancellation and office completion (record never discarded); template and price change rules; conflict screens; retry semantics; quota and failed uploads; expired-demo cleanup with pending ops. Matrix rows 26–29. Upload bootstrap and the conflict acknowledgement were then redone by R4 (§15.1). |
 | — | Sandbox credentials assumed | Corrected (§11, §13). Software tests use the built-in test QuickBooks provider. Live Intuit sandbox access is a separate prerequisite, **P-QBO-SANDBOX**, not verified in this session, and no account is created for it. |
 
 **Design choices left open on purpose** (each has a default, so the build doesn't wait on it):
@@ -888,3 +1024,15 @@ SW-4 (QuickBooks tax, against the test provider) and SW-11 (export framework) ma
 - **U4:** the QuickBooks representation of deposits. Default: H-DEP-2 behind its conflict, until G-QBO-DEPOSIT.
 - **U5:** deposit tax treatment. Default: H-DEP-1, selectable per organization, off for real companies until G-TAX-TREATMENT.
 - **U6:** whether a conflict record may be turned into a new work order automatically. Default: no, the office decides.
+
+### 15.1 Final targeted pass (Codex on `df8e51b`)
+
+| # | Finding | Where it is resolved | Tests |
+|---|---|---|---|
+| R1 | Kind guards could be bypassed with NULL (`CHECK` accepts NULL; `MATCH SIMPLE` skips a key with a NULL column) | §1.2 "Kind guards without a NULL bypass": `jobs.obligation_service_type` with a pairing check, the `jobs_derive_obligation_kind` trigger (overwrites supplied values) and a fully non-null composite key; `inspections.job_type` is `NOT NULL` with a default. §4.4: `service_obligations.cycle_id` is `NOT NULL`, filled or created by `obligations_assign_cycle`, with an all-non-null composite key; `work_orders.obligation_id` uses the same pairing scheme | §1.2 and §4.4 direct SQL test lists; matrix rows 30 and 32 |
+| R2 | Several visits per work order conflict with `jobs_one_live_per_obligation`, which also counts completed jobs | §1.2: work jobs never reference obligations; one open job per work order through a separate index; the aerobic index is unchanged. §4.4: a non-aerobic obligation links to its **work order** (`work_orders_one_per_obligation`), and its visits are ordinary work jobs | §4.4 scheduling tests (two visits, concurrent scheduling, scheduling after final); matrix rows 30 and 31 |
+| R3 | Deposit model inconsistent: I1 against external refunds, retained bounds, refund of a paid F (including $0 due), unique final invoice blocking void and re-invoice, no concrete cent equality | §3.6: `estimate_invoices` with an active-only unique index plus void-aware `invoices.work_order_id`; append-only `deposit_ledger`; balances R, X, A, T, S and `U`; I1 (deferred check), I2 (Aerowise moves limited to real money, retained money excluded), I3 (external refunds recorded with an exact shortfall, never refused), I4, I5; "Refund the job" with the `deposit_reversal` credit; the ledger equality `P + Σ due_F = Σ (G_F − C_F) + T + U − S` | §3.6 test list (eight cases); matrix rows 23 and 35 |
+| R4 | Offline uploads could precede the draft; the original technician had no path to the conflict queue; a 409 acknowledgement would be stranded by the retry classifier | §8.5: draft-first ordering with `record_not_synced` as a defensive retry; signature identity; append-only `job_assignments` provenance (same organization and user only, 403 otherwise); **202 `held_for_review`** acknowledged as success; drafts move to the conflict when the office reassigns, cancels or completes the job | §8.5 R4 tests 1–9 (before the first draft sync and before the first upload, each with photos and a signature); matrix rows 26, 33 and 34 |
+| R5 | Disposal loads lacked attachments, revision identity and a canonical unit | §1.2 `work_attachments` with exactly one owner, including `disposal_load_group_id`. §2.2: revision groups (`group_id`, `revision`, `is_current`), `disposal_load_items` keyed by pump-out group, entered value and unit kept, canonical `volume_milligallons` from the exact US gallon (3.785411784 L) | §2.5 acceptance list; matrix row 36 |
+
+This was the last design pass on the plan. Nothing in it starts implementation.
