@@ -7,9 +7,9 @@ test("the owner bills a contract and the homeowner pays it online", async ({ pag
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/inbox");
 
-  // Connect the (test) Stripe account, unless the demo story already did.
+  // Connect the built-in test payment provider, unless the demo story already did.
   await page.goto("/settings/billing");
-  const connected = page.getByText("Customers can pay invoices by card or bank transfer");
+  const connected = page.getByText("Try a simulated card or bank payment. No payment goes to Stripe or a bank.");
   const connect = page.getByRole("button", { name: "Connect Stripe" });
   await expect(connected.or(connect)).toBeVisible();
   if (await connect.isVisible()) await connect.click();

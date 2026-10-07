@@ -81,7 +81,7 @@ Public access belongs on a dedicated demo deployment with `DEMO_MODE=true`. `/de
 
 `DEMO_MODE` selects test stand-ins. `DEMO_LIVE_SERVICES` may allow selected providers for separately controlled staging integration checks; it never bypasses a demo organization's API/worker service gates. Keep these checks separate from public visitor access. Do not describe either configuration as a verified live environment until its actual host and health have been checked.
 
-The installed cron template schedules a demo reseed at 09:00 UTC. `pnpm db:reseed-demo` clears tenant data and stored files, preserves the documented exclusions and reloads the seed/story. This is a deployment-wide destructive reset, distinct from per-visitor expiry cleanup. Use only on a disposable, isolated demo database; never alongside real pilot-company data. Inspect the actual cron/database configuration before running it. Development permits seeding; production refuses unless explicitly in demo mode.
+The installed cron template schedules a demo reseed at 09:00 UTC. `pnpm db:reseed-demo` removes the public demo company and every visitor demo (their data, people and stored files under `FILE_STORAGE_DIR/<organization id>`), keeps prospect demos, real companies and trials, platform admins, authority rules and evidence and demo requests, then reloads the seed/story. Prospect demos still end on their own day (per-company expiry cleanup). It is still a destructive reset of the public demo: use it only on a demo database, never production. Inspect the actual cron/database configuration before running it. Development permits seeding; production refuses unless explicitly in demo mode.
 
 ## Keeping it up
 
