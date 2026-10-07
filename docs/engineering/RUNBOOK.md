@@ -193,3 +193,26 @@ Authorized by Justin: merge #93–96, deploy by hand to staging, repeat the walk
    sudo -u deploy /opt/aerowise/staging/deploy/vps/deploy.sh staging <handoff-commit>
    ```
    Verify server checkout, API/worker GIT_COMMIT, health, isolation, and unchanged production identity again; retain final deploy log locally. Open the brief/clean PDF for Justin. Close only browser sessions created in this run, leaving unrelated sessions alone. The tested active Example demo (TEST logo, expires October 20) and empty labeled TEST trial are retained; active entry link remains in the protected local record. This is safe for a fictional guided demo, not a claim of fourteen elapsed days or physical field readiness.
+
+## Phone compatibility release (SW-2a) and the phone rollback floor
+
+SW-2a changes only the technician app in the browser (`apps/web/lib/offline`, the sync banner and the sign-out check). It has no migration, no API change and no new setting. It is the **phone rollback floor** for the service-workflow program: once it is deployed to staging, staging is never rolled back below it, and SW-2 (offline work orders) merges only after it has been deployed here.
+
+What it guarantees, and what SW-2 must keep:
+
+- The inspection database `aerowise-tech:<organization>:<user>` (or the old shared `aerowise-tech`) is opened at whatever version it already has. A new one is still created at version 1, exactly as earlier releases create it. The version is raised only if a store the app needs is missing. **SW-2 must never raise this database's version.**
+- SW-2 keeps work in `aerowise-tech-work:<organization>:<user>`, with one record per unsent change in a store named `outbox`. SW-2a never creates or writes that database. It counts its `outbox` as unsent work in the sign-out warning, in other sign-ins' "saved on this phone" notice, and in the ended-demo count. It deletes that database together with the inspection database when a demo has ended.
+- An outbox op of a kind SW-2a does not know is never run, marked failed or deleted. It holds back later ops for the same record, and the banner says "N items will send after the app updates".
+
+Deploy to staging (Codex), with no settings change:
+
+```sh
+sudo -u deploy /opt/aerowise/staging/deploy/vps/deploy.sh staging <merged SW-2a commit>
+```
+
+Then check:
+
+1. Open `/tech` on a phone-sized browser with an inspection in progress and no signal, and reload. The draft is still there. With signal, it sends once and the banner reads "All changes sent".
+2. Record the deployed commit here as the phone floor. A later rollback picks a commit at or after it. Below the floor, inspections still work, because the database stays at version 1. Unsent SW-2 work would wait unsent, and an ended demo's work database would not be cleaned until a release at or above the floor returns.
+
+The browser tests for this are in `apps/web/e2e/phone-compat.spec.ts` (Pixel 7 emulation). A physical-phone close/reopen/reconnect check stays a separate gate (G-DEVICE) before pilot reliance.
