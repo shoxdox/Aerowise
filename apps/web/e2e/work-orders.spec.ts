@@ -18,8 +18,8 @@ test("the office creates, schedules and completes a work order, and the schedule
   await page.goto(`/sites/${site.id}`);
   await page.getByRole("link", { name: "Create work order" }).click();
   await page.waitForURL(/\/work\/new\?siteId=/);
-  await page.getByLabel("Kind of work").selectOption({ label: "Repair" });
-  await page.getByLabel("Title").fill("Replace the float switch");
+  await page.getByRole("combobox", { name: "Kind of work" }).selectOption({ label: "Repair" });
+  await page.getByRole("textbox", { name: /^Title/ }).fill("Replace the float switch");
   await page.getByLabel("What needs doing").fill("Alarm stays on after the pump runs.");
   await page.getByLabel("Line description").fill("Float switch");
   await page.getByLabel("Unit price in dollars").fill("85.50");
@@ -34,7 +34,7 @@ test("the office creates, schedules and completes a work order, and the schedule
   await page.getByLabel("Visit date").fill(today);
   await page.getByRole("button", { name: "Schedule visit" }).click();
   await expect(page.getByTestId("work-status")).toHaveText("Scheduled");
-  await expect(page.getByText("Visit 1", { exact: false })).toBeVisible();
+  await expect(page.locator(".card strong").filter({ hasText: "Visit 1" })).toBeVisible();
 
   // The office schedule lists it beside inspections, with its kind and number.
   const wo = await (await page.request.get(`/api/work-orders/${workOrderId}`)).json();
