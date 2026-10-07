@@ -29,6 +29,7 @@ Numbered screenshots and sanitized evidence are in [staging-fixed-2026-10](stagi
 
 ## Confusing / requested behavior gaps — open
 
+- **P3 / STG-12, observed October 7 map verification:** after an offline `/tech` reload, the demo banner has no role-switch buttons. Reconnecting restores the route/map, but the buttons return only after an online reload. Stop access remains usable. [Offline screen](staging-map-2026-10/phone-offline-fallback.jpg). Recorded for follow-up; this map deployment does not fix it.
 - **P2 / STG-04:** Comal/Hays are company metadata; all 55 demo sites remain fictional Example County. The creation screen says so. County-specific demo records did not pass the requested check. Logo is uploaded from owner settings, not the admin creator, and technician access uses the role switch instead of a separate link. [Creation](staging-fixed-2026-10/27-prospect-created-redacted.png), [counts](staging-fixed-2026-10/trial-counties.txt), [branding](staging-fixed-2026-10/58-prospect-session-logo-after-two-resets.png).
 - **P2 / STG-05:** the UI prepares v2 proposals for reviewed PRs; it cannot apply/revert live rulesets or delete append-only evidence. The fabricated call changed an answer state, not the Draft verification badge. [Proposal](staging-fixed-2026-10/43-v2-proposal-stays-draft.png). No authority was contacted or marked verified.
 
