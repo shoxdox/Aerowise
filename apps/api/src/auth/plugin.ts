@@ -41,6 +41,9 @@ declare module "fastify" {
 
 const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
+/** `<organizationId>:<userId>` of the sign-in a request is meant for; optional. */
+export const TENANT_HEADER = "x-aerowise-tenant";
+
 /**
  * Deny by default: registering a route without `config.permission` or `config.public`
  * throws at startup, and every request to a protected route must carry a valid session
@@ -113,6 +116,13 @@ export const authPlugin = fp(async (app: FastifyInstance, opts: { db: Database }
 
     if (config.public) return;
     const auth = req.requireAuth();
+    // The technician app names the sign-in a request is for (offline work queued on a phone).
+    // If the browser's session now belongs to someone else, refuse it rather than record one
+    // person's or company's work under another's. Requests without the header are unaffected.
+    const tenant = req.headers[TENANT_HEADER];
+    if (typeof tenant === "string" && tenant !== `${auth.organizationId}:${auth.userId}`) {
+      throw new HttpError(409, "tenant_mismatch", "This phone is signed in as someone else now. Sign in as the person who made these changes to send them.");
+    }
     if (!config.permission || !roleHasPermission(auth.role, config.permission)) throw forbidden();
     // Support looks and never touches: every write is refused, and the attempt is recorded.
     if (auth.support && (!SAFE_METHODS.includes(req.method) || config.changesState)) {

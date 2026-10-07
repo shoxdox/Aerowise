@@ -52,6 +52,8 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
   };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const knownIntros = (keys: string[]) => INTROS.filter((k) => keys.includes(k));
 
 /** Support sees the organization as its owner does, but signed in as themselves. */
@@ -143,6 +145,36 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
       if (req.auth) await revokeSession(db, req.auth.sessionId);
       reply.clearCookie(SESSION_COOKIE, cookieOptions);
       return reply.status(204).send(null);
+    },
+  );
+
+  // The technician app asks this after its sign-in is refused, to tell a demo that has ended
+  // (its data can leave the phone) from an expired session (its queued work must stay). Ending
+  // a demo deletes its sessions, so the refused cookie cannot say which. Only an ended demo
+  // company answers "ended"; every other id, live, deleted, unknown or malformed, answers
+  // "unknown" the same way, so this says nothing about any real company.
+  app.post(
+    "/auth/access-status",
+    {
+      config: { public: true, rateLimit: { max: 30, timeWindow: "1 minute", keyGenerator: (req) => req.ip } },
+      schema: {
+        tags: ["auth"],
+        summary: "Whether a demo company's access has ended, so a phone can clear its saved copy",
+        body: z.object({ organizationId: z.unknown() }).partial(),
+        response: { 200: z.object({ state: z.enum(["ended", "unknown"]) }) },
+      },
+    },
+    async (req) => {
+      const id = req.body.organizationId;
+      if (typeof id !== "string" || !UUID.test(id)) return { state: "unknown" as const };
+      const ended = await db
+        .selectFrom("organizations")
+        .select("id")
+        .where("id", "=", id)
+        .where("demo", "=", true)
+        .where("demoExpiresAt", "<=", new Date())
+        .executeTakeFirst();
+      return { state: ended ? ("ended" as const) : ("unknown" as const) };
     },
   );
 
