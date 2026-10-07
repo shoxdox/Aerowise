@@ -13,7 +13,7 @@ Hosting/deploy configuration, demo stand-ins, organization/admin onboarding and 
 - **W10.3:** populated guided story — done #86.
 - **W10.4:** intros and explanatory empty states — done #89, migration 0044.
 - **W10.5:** site/filing authority panel with partial confirmation — done #89, using #85.
-- **W10.6:** admin-created prospect demos and clean trial conversion — done #89, migration 0046. Invitations/deployment are separate.
+- **W10.6:** admin-created prospect demos and clean trial conversion — done #89, migration 0046. Invitations/deployment are separate. STG-01: the nightly reset now keeps prospect demos and real trials (draft PR, branch `claude/stg-01-preserve-prospect-demos-3vhznh`; staging retest pending).
 - **W11.1–W11.3:** two walkthrough rounds and material fixes/measurements — done #81/#90; three cosmetic leftovers recorded in [W11-WALKTHROUGH.md](../product/W11-WALKTHROUGH.md#left-open-cosmetic).
 - **W11.4:** accurate marketing coverage and demo-only "Try the demo" — done #90.
 - **W12.C1:** primary-source research packet — done #80.

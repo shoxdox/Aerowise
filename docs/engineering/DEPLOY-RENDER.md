@@ -74,7 +74,7 @@ To load or reset the demo data, open the API service's **Shell** and run:
 
 ```sh
 pnpm db:seed           # first time: loads the fictional company, its users and data
-pnpm db:reseed-demo    # later: empties everything except the authority rules and platform admins, removes stored files, seeds again
+pnpm db:reseed-demo    # later: replaces the public and visitor demo companies and their files, keeps prospect demos and real companies, seeds again
 ```
 
 Both refuse to run when `NODE_ENV=production` unless `DEMO_MODE=true`, so they cannot touch production. W1.3 runs the reseed every night.
