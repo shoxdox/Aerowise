@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEMO_ORG_NAME, reseedDemo } from "@aerowise/db";
+import { DEMO_ORG_NAME, DEMO_PASSWORD, reseedDemo } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
 import { sql } from "kysely";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,6 +35,29 @@ async function snapshot(organizationId: string) {
 async function ended(id: string) {
   const row = await ctx.db.selectFrom("organizations").select("id").where("id", "=", id).where("demo", "=", true).where("demoExpiresAt", "<=", new Date()).executeTakeFirst();
   return Boolean(row);
+}
+
+/**
+ * The renewal e2e's path through the API: run the campaign, the homeowner signs and pays on the
+ * test checkout, and the renewal activates with a signed document, a paid invoice and a new
+ * contract (renewal and signed document, renewal and new contract point at each other).
+ */
+async function activateRenewal(app: App, api: ReturnType<typeof client>) {
+  expect((await api.post("/billing/stripe/connect", {})).statusCode).toBeLessThan(300);
+  await api.post("/billing/stripe/refresh", {});
+  expect((await api.patch("/renewals/settings", { windowDays: 180 })).statusCode).toBe(200);
+  expect((await api.post("/renewals/campaign", {})).statusCode).toBe(200);
+  const pick = (await api.get("/renewals?status=upcoming")).json().items[0];
+  const token = ((await api.get(`/renewals/${pick.id}`)).json().link as string).split("/renew/")[1]!;
+  const anon = client(app);
+  const signed = await anon.post(`/renew/${token}/sign`, { version: 1, contact: { email: "pat@example.com", phone: "512-555-0101" }, signerName: "Pat Homeowner", signature: { kind: "typed" }, agree: true });
+  expect(signed.statusCode).toBe(200);
+  const url = new URL((await anon.post(`/renew/${token}/checkout`, {})).json().url);
+  const paid = await anon.post(`/pay/${url.pathname.split("/")[2]}/test-checkout`, { sessionId: url.searchParams.get("session"), outcome: "card" });
+  expect(paid.json().ok).toBe(true);
+  const done = (await api.get(`/renewals/${pick.id}`)).json();
+  expect(done).toMatchObject({ status: "activated", signedDocument: expect.anything(), invoice: { paymentStatus: "paid" } });
+  return done.id as string;
 }
 
 const cookieOf = (res: { cookies: { name: string; value: string }[] }) => `aw_session=${res.cookies.find((c) => c.name === "aw_session")!.value}`;
@@ -191,5 +214,30 @@ describe("the nightly demo reset", () => {
       earlier = now;
     }
     expect((await ctx.db.selectFrom("users").select("email").orderBy("email").execute()).map((u) => u.email)).toEqual(["office@example.com", "owner@example.com", "tech@example.com"]);
+  });
+  it("empties a public demo whose renewal was activated (signed, paid, new contract) and keeps one activated in a prospect demo", async () => {
+    const w = await world();
+    // As the renewal e2e does it, in the shared demo company (signed in with the development password)
+    // and in the prospect's demo (signed in by its link).
+    const login = await w.app.inject({ method: "POST", url: "/auth/login", payload: { email: "owner@example.com", password: DEMO_PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    await activateRenewal(w.app, client(w.app, cookieOf(login)));
+    const kept = await activateRenewal(w.app, client(w.app, w.prospect.cookie));
+    const prospectBefore = await snapshot(w.prospect.id);
+    const trialBefore = await snapshot(w.trial.org.id);
+    const renewalsOf = (id: string) => ctx.db.selectFrom("renewals").select(["id", "status", "newContractId", "signedDocumentId"]).where("organizationId", "=", id).execute();
+    const prospectRenewals = await renewalsOf(w.prospect.id);
+
+    for (let night = 0; night < 3; night++) {
+      await reseedDemo(ctx.db, { filesDir: w.files });
+      expect(await renewalsOf(w.publicId)).toEqual([]);
+      expect(await ctx.db.selectFrom("signedDocuments").select("id").where("organizationId", "=", w.publicId).execute()).toEqual([]);
+      expect(await ended(w.publicId)).toBe(true);
+      // The prospect's activated renewal, its signed document and new contract are untouched.
+      expect(await renewalsOf(w.prospect.id)).toEqual(prospectRenewals);
+      expect(prospectRenewals.find((r) => r.id === kept)).toMatchObject({ status: "activated", newContractId: expect.any(String), signedDocumentId: expect.any(String) });
+      expect(await snapshot(w.prospect.id)).toEqual(prospectBefore);
+      expect(await snapshot(w.trial.org.id)).toEqual(trialBefore);
+    }
   });
 });
