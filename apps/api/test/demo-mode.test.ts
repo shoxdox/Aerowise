@@ -204,13 +204,17 @@ describe("demo reseed", () => {
 
     await reseedDemo(ctx.db, { filesDir: files }); // nightly, again and again
 
-    const orgs = await ctx.db.selectFrom("organizations").select(["id", "name", "demo"]).orderBy("name").execute();
+    const orgs = await ctx.db.selectFrom("organizations").select(["id", "name", "demo"]).where("demoExpiresAt", "is", null).orderBy("name").execute();
     expect(orgs.map(({ name, demo }) => ({ name, demo }))).toEqual([
       // A demo company: it only ever reaches the stand-ins, and holds made-up contact details.
       { name: "Hill Country Aerobic Services (demo)", demo: true },
       { name: "Someone's real-looking company", demo: false },
     ]);
     expect(orgs[0]!.id).not.toBe(first.id);
+    // Earlier shared companies stay only as ended, emptied tombstones.
+    const tombstones = await ctx.db.selectFrom("organizations").select("id").where("demoExpiresAt", "is not", null).execute();
+    expect(tombstones.map((t) => t.id)).toContain(first.id);
+    expect(await ctx.db.selectFrom("customers").select("id").where("organizationId", "in", tombstones.map((t) => t.id)).execute()).toEqual([]);
     const users = await ctx.db.selectFrom("users").select("email").orderBy("email").execute();
     expect(users.map((u) => u.email)).toEqual(["office@example.com", "owner@example.com", "tech@example.com"]);
     expect(await ctx.db.selectFrom("platformAdmins").select("id").where("id", "=", admin.id).execute()).toHaveLength(1);
@@ -248,7 +252,7 @@ describe("demo reseed", () => {
     const payments = await ctx.db.selectFrom("payments").select("status").execute();
     expect(payments.map((p) => p.status)).toContain("succeeded");
     // Everything went to the stand-ins: the outbox, never a real provider.
-    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).executeTakeFirstOrThrow();
+    const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).where("demoExpiresAt", "is", null).executeTakeFirstOrThrow();
     expect(org.stripeAccountId).toMatch(/^acct_test_/);
   });
 

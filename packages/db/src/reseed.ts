@@ -9,7 +9,7 @@ import { seed } from "./seed.ts";
 const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface ReseedResult {
-  /** The public demo companies emptied and removed: the shared one and visitors' own. */
+  /** The public demo companies emptied and ended: the shared one and visitors' own. */
   removed: string[];
   /** Companies left exactly as they were: prospect demos and every real company or trial. */
   kept: number;
@@ -17,8 +17,10 @@ export interface ReseedResult {
 
 /**
  * The nightly reset of the hosted demo, and only of its public part: the shared demo company
- * and every visitor's own demo company (W10.2) are removed with their people and stored files,
- * then the shared one is seeded again. Prospect demos (W10.6) and real companies (trials
+ * and every visitor's own demo company (W10.2) are emptied with their people and stored files,
+ * then the shared one is seeded again as a new company. Each emptied company's row stays as an
+ * ended tombstone (like a visitor demo emptied at its end), so a phone that still holds its
+ * copy can learn it has ended (/auth/access-status) and clear it. Prospect demos (W10.6) and real companies (trials
  * included) are left alone, along with their people, sign-ins, files, queued work and outbox;
  * a prospect demo still ends on its own day (apps/api/src/lib/demo-lifecycle.ts). Platform
  * records (rules, authority evidence, platform admins, demo requests) are kept too. Only for
@@ -28,17 +30,36 @@ export async function reseedDemo(db: Database, opts: { filesDir?: string; log?: 
   const log = opts.log ?? (() => {});
   const result = await db.transaction().execute(async (trx) => {
     // Locked first, so nothing new can be written under these companies while they go.
+    // Tombstones already emptied and ended are left as they are.
     const removed = (
-      await trx.selectFrom("organizations").select("id").where("demo", "=", true).where("demoProspect", "is", null).orderBy("id").forUpdate().execute()
+      await trx
+        .selectFrom("organizations as o")
+        .select("o.id")
+        .where("o.demo", "=", true)
+        .where("o.demoProspect", "is", null)
+        .where((eb) =>
+          eb.or([
+            eb("o.demoExpiresAt", "is", null),
+            eb("o.demoExpiresAt", ">", new Date()),
+            eb.exists(eb.selectFrom("memberships as m").select("m.userId").whereRef("m.organizationId", "=", "o.id")),
+          ]),
+        )
+        .orderBy("o.id")
+        .forUpdate()
+        .execute()
     ).map((o) => o.id);
-    const all = await trx.selectFrom("organizations").select((eb) => eb.fn.countAll<string>().as("n")).executeTakeFirstOrThrow();
-    const kept = Number(all.n) - removed.length;
+    const others = await trx
+      .selectFrom("organizations")
+      .select((eb) => eb.fn.countAll<string>().as("n"))
+      .where((eb) => eb.or([eb("demo", "=", false), eb("demoProspect", "is not", null)]))
+      .executeTakeFirstOrThrow();
+    const kept = Number(others.n);
     if (removed.length) await removeCompanies(trx, removed, log);
     // Who started a visitor demo, for the hourly limit: never tied to a company, so all of it goes.
     await trx.deleteFrom("demoVisits").execute();
     return { removed, kept };
   });
-  log(`removed ${result.removed.length} public demo companies; kept ${result.kept} others`);
+  log(`emptied and ended ${result.removed.length} public demo companies; kept ${result.kept} others`);
   if (opts.filesDir) {
     // Each company's files live under a folder named by its id (packages/storage), so only the
     // removed companies' folders go.
@@ -118,7 +139,35 @@ async function removeCompanies(trx: Transaction<DB>, ids: string[], log: (msg: s
     remaining = left;
   }
   for (const t of guarded) await sql`alter table ${sql.table(t)} enable trigger user`.execute(trx);
-  await trx.deleteFrom("organizations").where("id", "in", ids).execute();
+  // Each row stays as an ended tombstone, emptied of its details, the way a visitor demo is
+  // left at its end (apps/api/src/lib/demo-lifecycle.ts). The seed makes a new shared company.
+  await trx
+    .updateTable("organizations")
+    .set((eb) => ({
+      demoExpiresAt: sql<Date>`least(${eb.ref("demoExpiresAt")}, now())`,
+      subscriptionState: "read_only",
+      subscriptionEndsOn: null,
+      phone: null,
+      email: null,
+      addressLine1: null,
+      addressLine2: null,
+      city: null,
+      state: null,
+      postalCode: null,
+      logoUrl: null,
+      logoStorageKey: null,
+      logoContentType: null,
+      stripeAccountId: null,
+      stripeChargesEnabled: false,
+      stripeDetailsSubmitted: false,
+      smsEnabled: false,
+      smsFromNumber: null,
+      routeStartAddress: null,
+      routeStartLat: null,
+      routeStartLng: null,
+    }))
+    .where("id", "in", ids)
+    .execute();
   await trx.deleteFrom("quickbooksTestCompanies").where("realmId", "in", [...realms]).execute();
 
   // A person still named by a record that stays is kept, emptied of who they were.

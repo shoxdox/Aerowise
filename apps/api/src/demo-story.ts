@@ -62,7 +62,7 @@ const afternoon = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00Z`
 export async function playDemoStory(opts: { db: Database; store: ObjectStore; organizationId?: string; now?: () => Date; log?: (msg: string) => void }): Promise<boolean> {
   const { db, store, now = () => new Date(), log = () => {} } = opts;
   const found = db.selectFrom("organizations").select(["id", "demo"]);
-  const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME)).executeTakeFirst();
+  const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
     log("demo story: no demo company; nothing to do");
     return false;

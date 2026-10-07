@@ -31,6 +31,12 @@ async function snapshot(organizationId: string) {
   return out;
 }
 
+/** Whether a company reads as an ended demo, the way /auth/access-status (STG-03) asks. */
+async function ended(id: string) {
+  const row = await ctx.db.selectFrom("organizations").select("id").where("id", "=", id).where("demo", "=", true).where("demoExpiresAt", "<=", new Date()).executeTakeFirst();
+  return Boolean(row);
+}
+
 const cookieOf = (res: { cookies: { name: string; value: string }[] }) => `aw_session=${res.cookies.find((c) => c.name === "aw_session")!.value}`;
 
 async function world() {
@@ -87,11 +93,16 @@ describe("the nightly demo reset", () => {
     expect(result.removed.sort()).toEqual([w.publicId, w.visitor.id].sort());
     expect(result.kept).toBe(2);
 
-    // The public demo: seeded afresh, the old one and the visitor's gone with their files and people.
-    const orgs = await ctx.db.selectFrom("organizations").select(["id", "name"]).orderBy("name").execute();
-    expect(orgs.map((o) => o.name)).toEqual(["Clean Trial Septic", DEMO_ORG_NAME, "Lone Star Aerobic (demo)"]);
-    const fresh = orgs.find((o) => o.name === DEMO_ORG_NAME)!;
+    // The public demo: seeded afresh as a new company; the old one and the visitor's emptied of
+    // their data, files and people, their rows left as ended tombstones.
+    const fresh = await ctx.db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null).executeTakeFirstOrThrow();
     expect(fresh.id).not.toBe(w.publicId);
+    for (const id of [w.publicId, w.visitor.id]) {
+      expect(await ended(id)).toBe(true);
+      expect(Object.values(await snapshot(id)).every((n) => n === 0)).toBe(true);
+    }
+    // Exactly what /auth/access-status (STG-03) asks: only a demo company past its end reads as ended.
+    for (const id of [fresh.id, w.prospect.id, w.trial.org.id, crypto.randomUUID()]) expect(await ended(id)).toBe(false);
     expect(await snapshot(fresh.id)).toMatchObject({ memberships: 3, attachments: 0 });
     expect(existsSync(join(w.files, w.publicId))).toBe(false);
     expect(existsSync(join(w.files, w.visitor.id))).toBe(false);
@@ -118,8 +129,11 @@ describe("the nightly demo reset", () => {
     // (the prospect now with the second sign-in its link just made).
     const prospectNow = await snapshot(w.prospect.id);
     expect(prospectNow).toEqual({ ...prospectBefore, sessions: prospectBefore.sessions + 1 });
-    await reseedDemo(ctx.db, { filesDir: w.files });
-    expect(await ctx.db.selectFrom("organizations").select("name").orderBy("name").execute()).toHaveLength(3);
+    const second = await reseedDemo(ctx.db, { filesDir: w.files });
+    expect(second.removed).toEqual([fresh.id]); // tombstones are left as they are
+    expect(await ended(fresh.id)).toBe(true);
+    expect(await ended(w.visitor.id)).toBe(true);
+    expect(await ctx.db.selectFrom("organizations").select("id").where("demoExpiresAt", "is", null).where("demo", "=", true).execute()).toHaveLength(1);
     expect(await snapshot(w.prospect.id)).toEqual(prospectNow);
     expect(await snapshot(w.trial.org.id)).toEqual(trialBefore);
   });
