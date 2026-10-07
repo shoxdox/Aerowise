@@ -1,12 +1,12 @@
 # Service workflows: implementation plan
 
-**Status: plan only.** Nothing in this document is built, validated, deployed or accepted by an authority. It proposes how to add general work orders, pumping/disposal records, estimates, plan-specific agreements, conventional/installation work, map participation and authority export interoperability to Aerowise. Justin authorized the planning on October 7, 2026 and wants these capabilities built. This plan does not start implementation. Implementation workers start only when Justin says so, in the order below.
+**Status: plan only.** Nothing in this document is built, validated, deployed or accepted by an authority. It proposes how to add general work orders, pumping/disposal records, estimates, plan-specific agreements, conventional/installation work, map participation and authority export interoperability to Aerowise. Justin authorized the planning on October 7, 2026 and wants these capabilities built. This plan does not start implementation. Implementation workers start only when Justin says so, in the order below. **Revised** after Codex's review of `54e2672` (see [§15](#15-review-response-codex-on-54e2672)).
 
 - **Baseline:** `09068280c2fcc036706734807167ff32524f7f8f` (`0906828`, "docs: record merged staging fixes and live prospect walkthrough"), fetched from `origin/main` at 2026-10-07 21:30Z. That commit includes the staging fixes #93–#96 and `5e491a0` (newer technician edits survive an in-flight sync). Migrations run through `0047_demo_request_delivery.sql`. No open PRs existed at that time.
 - **Map dependency:** "Street map for routes" is draft [PR #97](https://github.com/shoxdox/Aerowise/pull/97), branch `claude/route-street-map-ae4nrx`, head `a96f8b2b2469ac030b053c61c52293efddf8ead2` as read at 2026-10-07 21:40Z. It is not merged, and its local checks were still running when it was read. The interfaces this plan builds on are summarized in [§6](#6-shared-street-map-and-schedule). Nothing here edits or duplicates that work.
 - **Sources:** current `main` code and docs ([README](../../README.md), [handoff](../DEMO-PILOT-BRIEF.md), [delivery record](ROADMAP.md), [decisions](../DECISIONS.md), [pilot worksheet](../PILOT-CALL-SHEET.md), [agent guidance](../../CODEX.md)). It also uses the sanitized Fieldbase findings in Justin's request and the public pages cited in [§0.2](#02-outside-evidence-and-how-much-it-proves). No private Fieldbase data, credentials, customer files or proprietary assets were used. None may be used during implementation.
 
-Contents: [0 Ground rules](#0-ground-rules-that-apply-to-every-pr) · [1 Work orders](#1-general-work-orders) · [2 Pumping and disposal](#2-pumping-and-disposal-records) · [3 Estimates](#3-estimates-and-quotes) · [4 Plans and agreements](#4-plan-specific-agreements-coverage-and-service-cycles) · [5 Conventional and installation](#5-conventional-systems-and-installation-work) · [6 Map](#6-shared-street-map-and-schedule) · [7 Filing interoperability](#7-filing-interoperability) · [8 Cross-cutting](#8-cross-cutting-design) · [9 PR sequence](#9-pr-sequence) · [10 Workers](#10-implementation-workers-and-file-ownership) · [11 Risks](#11-risk-and-effort) · [12 Browser acceptance](#12-browser-acceptance-matrix) · [13 Gates and needs from Justin](#13-validation-gates-and-needs-from-justin) · [14 First step](#14-first-implementation-step)
+Contents: [0 Ground rules](#0-ground-rules-that-apply-to-every-pr) · [1 Work orders](#1-general-work-orders) · [2 Pumping and disposal](#2-pumping-and-disposal-records) · [3 Estimates](#3-estimates-and-quotes) · [4 Plans and agreements](#4-plan-specific-agreements-coverage-and-service-cycles) · [5 Conventional and installation](#5-conventional-systems-and-installation-work) · [6 Map](#6-shared-street-map-and-schedule) · [7 Filing interoperability](#7-filing-interoperability) · [8 Cross-cutting](#8-cross-cutting-design) · [9 PR sequence](#9-pr-sequence) · [10 Workers](#10-implementation-workers-and-file-ownership) · [11 Risks](#11-risk-and-effort) · [12 Browser acceptance](#12-browser-acceptance-matrix) · [13 Gates and needs from Justin](#13-validation-gates-and-needs-from-justin) · [14 First step](#14-first-implementation-step) · [15 Review response](#15-review-response-codex-on-54e2672)
 
 ---
 
@@ -14,12 +14,13 @@ Contents: [0 Ground rules](#0-ground-rules-that-apply-to-every-pr) · [1 Work or
 
 These restate standing rules from the handoff, the decisions log and Justin's request. Any implementation PR that breaks one is wrong, even if it passes its tests.
 
-1. **Work and compliance stay separate.** A pumping, repair, installation or other work order is never an aerobic inspection obligation. It never opens a filing, never produces an authority report, never counts as a contract visit and never moves a due date. Only `aerobic_inspection` obligations completed through an inspection job do those things, exactly as today (`apps/api/src/routes/inspections.ts` `completeJob`).
+1. **Work and compliance stay separate.** A pumping, repair, installation or other work order **never changes an aerobic inspection obligation**. It never opens a filing, never produces an authority report, never counts as an aerobic contract visit and never moves an aerobic due date. Only `aerobic_inspection` obligations completed through an inspection job do those things, exactly as today (`apps/api/src/routes/inspections.ts` `completeJob`). The one deliberate exception is the opposite direction: a work job may complete a **non-aerobic** cycle obligation, such as a pumping visit owed under a pumping plan (§4.4). The database enforces which job kinds can reference which obligation kinds (§4.4), and tests cover both directions.
 2. **Aerobic behavior is preserved.** Obligations, retests (Hays 10.V.4), due dates, the more-visits warning, the report release rules, MP signing (`reports:sign` plus the person's own active license), sent and confirmed kept apart, and the Montgomery/Hays handling are unchanged. In particular, Montgomery food sites never default to monthly without a recorded contract, permit or confirmation, and the Hays end-of-window rule stays a labeled interpretation. Each PR runs the existing aerobic API and browser tests unchanged.
 3. **Demo isolation is server-side and fails closed.** New tables carry `organization_id` with composite tenant foreign keys, so `removeCompanies` in `packages/db/src/reseed.ts` finds them automatically. New files are stored under the organization's key prefix, so `deleteOrganization` removes them. Any new outside service gets a stand-in and a gate in `packages/tasks/src/providers.ts` and `demo-gate.ts`. Demo contacts stay fictional (database triggers from migration 0040). Demo PDFs and CSVs are watermarked or carry the leading notice column.
 4. **Public rules, implemented behavior and authority acceptance are three different things.** Real authorities stay drafts. Nothing here says a format is accepted unless dated evidence from that authority says so. There is never a blanket "call every authority": each external question becomes a named gate tied to the pilot ([§13](#13-validation-gates-and-needs-from-justin)).
 5. **One accounting stack.** Estimates, deposits and work invoices reuse `invoices`/`invoice_lines`, `invoiceTotals`, `issueDraft`, `openCheckout`, Stripe Connect, refunds and the one-way QuickBooks sync. There is no second ledger, no separate payment path and no change to Aerowise subscription pricing.
-6. **Offline exactly once.** Any record a phone creates is keyed by a client-generated id with a unique `(organization_id, offline_client_id)` constraint and retried whole, following the existing inspection sync pattern and the `5e491a0` revision/acknowledge rule.
+6. **Offline exactly once, and no lost field work.** Any record a phone creates is keyed by a client-generated id with a unique `(organization_id, offline_client_id)` constraint and retried whole, following the existing inspection sync pattern and the `5e491a0` revision/acknowledge rule. A business conflict, such as a job reassigned or cancelled while the phone was offline, never discards the technician's record. It goes to a reviewable conflict queue instead (§8.5).
+9. **Expand, read, then write.** Every schema-changing release follows three steps: (1) an additive schema plus a release whose code can *read* the new shapes safely; (2) writers behind a feature flag that is off by default; (3) the flag is turned on. Rollback is promised only down to each release's declared **rollback floor** (§9.1), never to an arbitrary earlier SHA.
 7. **Environment boundaries.** Staging only. Twilio stays off. Keep `DEMO_MODE`, test providers, `EMAIL_REDIRECT_TO` and synthetic demo contacts. No production change, accounts, purchases, DNS or paid services. No migration of Fieldbase data.
 8. **Anything only Justin or the provider can supply** sits behind a stand-in and is listed under [Needs from Justin](#132-needs-from-justin). It is not a reason to leave the software path unplanned.
 
@@ -83,21 +84,28 @@ Changes to existing tables, all additive and nullable:
   - Widen the `type` check to `('inspection', 'work')`.
   - Add `work_order_id` (composite foreign key) and `retest_of_inspection_id` (composite foreign key, which fixes the lost retest link).
   - Add a check: `type='inspection'` requires `work_order_id is null`; `type='work'` requires `work_order_id is not null`.
-  - `obligation_id` may also be set on a `work` job only for a non-aerobic cycle obligation (§4.4).
-  - A unique partial index allows one live job per work order. A multi-visit work order is a later extension.
-  - Backfill: existing rows stay `inspection`. Old retest jobs keep `retest_of_inspection_id = null`, because the link was never stored. The UI keeps showing them as "extra visit".
+  - Add `obligation_service_type` and a composite foreign key `(organization_id, obligation_id, obligation_service_type)` referencing a new `unique (organization_id, id, service_type)` on `service_obligations`. Two checks then hold in the database itself:
+    - `type='inspection'` requires `obligation_service_type is null or obligation_service_type = 'aerobic_inspection'`.
+    - `type='work'` requires `obligation_service_type is null or obligation_service_type <> 'aerobic_inspection'`.
+
+    A work job can never complete an aerobic visit, and an inspection job can never complete a pumping visit. These are table constraints, not application filters.
+  - `inspections` gains `job_type` with a composite foreign key `(organization_id, job_id, job_type)` and a check `job_type = 'inspection'`. Filings hang off inspections, so a work job cannot reach `openFiling` even through a bug in application code.
+  - **Several visits per work order are supported deliberately.** An installation over two days, or a repair needing a return visit for a part, is one work order with several jobs. `jobs.visit_number` is unique per work order. At most **one live, not-yet-completed** job per work order exists at a time (a unique partial index `where status in ('scheduled','in_progress')`). Earlier completed visits stay. Each job has its own `work_record`, with `job_id` unique. A record marked `final_visit = true` completes the work order. Otherwise, completing a visit returns the work order to `open` with "Another visit needed" and the reason.
+  - **Known limitation:** one technician per job, as today. A two-person crew is recorded by naming the second person in the record (`crew_note`). Multiple assignees per job is an unresolved design choice (§15).
+  - Backfill: existing rows get `type='inspection'` and `obligation_service_type='aerobic_inspection'` where `obligation_id` is set. Old retest jobs keep `retest_of_inspection_id = null`, because the link was never stored. The UI keeps showing them as "extra visit".
 - `issues`: add `work_order_id`, set when converted.
 - `service_requests`: add `work_order_id`. Fix the response join to `left join service_obligations`, so a response can cite a work job or a retest job. Classification and authority reporting of complaints are unchanged: a request turned into a work order still needs its reportable classification and response recorded exactly as today.
 
 ### 1.3 Work order state machine (versioned, like `JOB_STATE_MACHINE`)
 
-`draft → open → scheduled → in_progress → completed`, with `cancelled` reachable from any state except `completed`. Rules:
+`draft → open → scheduled → in_progress → (open again for another visit) → completed`, with `cancelled` reachable from any state except `completed`. Rules:
 
 - `open` means ready to schedule.
-- `scheduled` follows its job. Cancelling the job returns the work order to `open`.
-- `completed` comes only from the technician's completed `work_record` or an office "complete without a field record" (reason required, audited).
+- `scheduled` follows its live job. Cancelling the live job returns the work order to `open`.
+- `completed` comes only from a completed `work_record` with `final_visit = true`, or from an office "complete without a field record" (reason required, audited).
+- Cancelling a work order that has completed visits keeps those visit records and their attachments. They are never deleted.
 - Invoicing is tracked separately (`billing_status`: `unbilled | invoiced | no_charge`). It is not a lifecycle state, so voiding an invoice never reopens field work.
-- Job status and work order status move in the same transaction.
+- Job status and work order status move in the same transaction, under a `FOR UPDATE` lock on the work order row.
 
 ### 1.4 API (new route file `apps/api/src/routes/work-orders.ts`)
 
@@ -110,7 +118,8 @@ Changes to existing tables, all additive and nullable:
 | `POST /issues/:id/work-order`, `POST /service-requests/:id/work-order` (idempotent conversion; copies description, links back, writes events on both sides) | `work:write` |
 | `POST /work-orders/:id/complete` (office completion with reason) | `work:write` |
 | `GET /work-orders/:id` (detail with lines, events, notes, record, attachments via signed URLs) | `work:read` |
-| `PUT /work/sync`, `PUT /work/:clientId/photos/:photoClientId` (phone, see §8.1) | `work:complete` |
+| `PUT /work/sync`, `PUT /work/:clientId/photos/:photoClientId`, `PUT /work/:clientId/signatures/:signatureClientId` (phone, see §8.1) | `work:complete` |
+| `GET /work/conflicts`, `POST /work/conflicts/:id/resolve` (§8.5) | `work:write` |
 | `POST /work-orders/:id/invoice` (draft invoice from lines, idempotent per work order) | `invoices:write` |
 
 New permissions in `packages/domain/src/roles.ts`:
@@ -132,11 +141,11 @@ A technician only sees and completes jobs assigned to them. That is the same che
   - The inbox issue and service request cards gain "Turn into work order". If a work order already exists, they show its link instead.
 - **`/tech`:** the stop list shows a kind badge, for example "Pumping · WO-1012" next to "Inspection". The stop card opens the work form (§8.1) instead of the inspection form. Safety flags, gate code and on-the-way behave exactly as before.
 - **Homeowner portal:** shows scheduled and completed work at their site, customer-visible notes and events, and the completion summary PDF. It never shows internal notes.
-- **Demo story:** add one completed pumping work order with a disposal record and invoice, one scheduled repair converted from an inspection issue, and one portal request converted to a work order. Add them in `playDemoStory` (`apps/api/src/demo-story.ts`) through the API, so the conversions are exercised. The public demo, personalized prospect demos and visitor demos all get them, because they share `seedDemoCompany` and `playDemoStory`. A new trial company gets the default work types and no work orders.
+- **Demo story:** add one completed pumping work order with its pump-out, a disposal load and an invoice, one scheduled repair converted from an inspection issue, and one portal request converted to a work order. Add them in `playDemoStory` (`apps/api/src/demo-story.ts`) through the API, so the conversions are exercised. The public demo, personalized prospect demos and visitor demos all get them, because they share `seedDemoCompany` and `playDemoStory`. A new trial company gets the default work types and no work orders.
 
 ### 1.6 Acceptance
 
-- A work order goes from draft through completion and invoice for each category, on office and phone, without creating any filing, report, compliance event or obligation change. Assert counts before and after.
+- A work order goes from draft through completion and invoice for each category, on office and phone, without creating any filing, report, compliance event or aerobic obligation change (pumping cycles in SW-9 deliberately complete their own non-aerobic obligations). Assert counts before and after.
 - Converting the same issue or request twice returns one work order. Both sides show the link and history.
 - A cross-tenant id returns 404 on every route. A technician cannot read another technician's work order or complete it.
 - Every existing aerobic test passes unchanged.
@@ -155,27 +164,36 @@ Nothing is recorded. Pumping exists only as a service request kind and an inspec
 
 ### 2.2 Model
 
+Pumping at a site and disposing of the load are separate events. One truck load may combine several sites' pump-outs, and disposal may happen later the same day or another day. The model therefore keeps them apart on purpose:
+
 - **`vehicles`**: `name`, `plate`, `capacity_gallons`, `registration_reference` (free text; Aerowise does not verify it), `active`.
-- **`disposal_facilities`**: organization-scoped. Columns:
+- **`disposal_facilities`**: organization-scoped.
   - Identity: `name`, `kind` (`wastewater_treatment_plant | land_application_site | transfer_station | other`), address, lat/lng, `permit_or_registration_number`.
   - Origin: `source` (`entered_by_provider | public_source`), `source_url`, `source_retrieved_on`, `notes`, `active`.
-  - No shared national dataset is shipped and nothing is copied from a competitor. An office can add facilities by hand. Later, if a pilot needs it, an admin import from a *named public source* can store `source_url` and the retrieval date per row, subject to that source's terms and gate **G-FAC**.
-- **`disposal_records`**: one per pumping event. Columns:
-  - Links: `work_order_id`, `job_id`, `work_record_id`, `site_id`, `technician_user_id`, `vehicle_id`, `disposal_facility_id`.
+  - No shared dataset is shipped and nothing is copied from a competitor. An office can add facilities by hand. Later, if a pilot needs it, an admin import from a *named public source* can store `source_url` and the retrieval date per row, subject to that source's terms and gate **G-FAC**.
+- **`pumping_records`**: one per pump-out at a site, recorded on the job.
+  - Links: `work_order_id`, `job_id`, `work_record_id`, `site_id`, `technician_user_id`, `vehicle_id`.
   - What and when: `service_date`, `waste_type` (`septage | grease_trap | holding_tank | portable_toilet | other`, plus `waste_type_note`), `tanks` (jsonb list: compartment or tank label, volume).
-  - Volume: `total_volume` (numeric(10,1)) and `volume_unit` (`gallons | liters`; reports always show the recorded unit).
-  - Delivery: `delivered_on`, `manifest_reference`, `notes`.
-  - Identity and history: `offline_client_id` (unique), `status` (`recorded | corrected`), `supersedes_id`.
-  - A correction creates a new row that supersedes the old one. Rows are never edited in place, matching the immutable-report pattern.
-  - Supporting files, such as a manifest photo or the facility's receipt, go in `work_attachments` with `photo_key = manifest`.
+  - Volume: `volume` (numeric(10,1)) and `volume_unit` (`gallons | liters`; shown as recorded).
+  - Identity and history: `offline_client_id` (unique per organization), `status` (`recorded | corrected`), `supersedes_id`.
+- **`disposal_loads`**: one per delivery to a facility.
+  - What: `vehicle_id`, `disposal_facility_id`, `delivered_on`, `manifest_reference`, `total_volume`, `volume_unit`, `notes`.
+  - Who: `recorded_by` (technician or office).
+  - Identity and history: `offline_client_id`, `status` and `supersedes_id`, as above.
+- **`disposal_load_items`**: links pump-outs to their load. `pumping_record_id` is **unique**, so a pump-out is in at most one load, and the table has a foreign key to `disposal_loads`. A load whose items' volumes don't add up to its total gets a visible "volumes differ" note, not a refusal, because measurement methods differ.
+- **History:** a correction creates a new row that supersedes the old one, and rows are never edited in place, matching the immutable-report pattern. A correction to a pump-out keeps its load link through the new row.
+- **Files:** a manifest photo or the facility's receipt goes in `work_attachments`, attached to the load (`photo_key = manifest`).
 
 ### 2.3 Flow
 
-- Dispatch: a pumping work order is scheduled like any work.
-- Completion: the phone form for a work type with `requires_disposal_record` shows the disposal section. The vehicle defaults to the technician's last vehicle, and the facility is picked from the organization's active list. Volume, waste type and manifest reference are entered in the field. Completion can't finish without volume, unit and waste type. The facility and manifest can be marked "delivered later", which raises an inbox item "Disposal not recorded" until filled in.
-- Billing: work order lines can price by gallon (`quantity_milli`). The invoice line description cites the volume.
-- History: the site page gets a "Pumping history" panel.
-- Export: `disposal_records.csv` joins the data export (`packages/tasks/src/export-task.ts` `EXPORT_TABLES`), with the demo notice column for demo organizations. A date-range "Disposal log" CSV and PDF is available from the office for the provider's own records.
+- **Dispatch:** a pumping work order is scheduled like any work.
+- **At the site:** the phone form for a work type with `requires_disposal_record` records the pump-out: volume, unit, waste type, tanks and vehicle. Completing the job needs only the pump-out.
+- **Disposal:** a separate "Record disposal" action on `/tech` and in the office creates a load. Its candidate items are the technician's pump-outs not yet in any load, for the same vehicle. It records the facility, manifest reference, delivery date and photo.
+  - Pump-outs older than the organization's `disposal_overdue_days` setting (default 2, configurable) and not in a load raise an inbox item "Disposal not recorded".
+  - The load can be recorded offline, and syncs with its own client id.
+- **Billing:** work order lines can price by gallon (`quantity_milli`). The invoice line cites the pump-out volume.
+- **History:** the site page gets a "Pumping history" panel listing pump-outs and their load.
+- **Export:** `pumping_records.csv`, `disposal_loads.csv` and `disposal_load_items.csv` join the data export (`packages/tasks/src/export-task.ts` `EXPORT_TABLES`), with the demo notice column. A date-range "Disposal log" CSV and PDF is available from the office for the provider's own records.
 
 ### 2.4 What the UI says and does not say
 
@@ -185,7 +203,7 @@ The labels are "Disposal record" and "Manifest/reference number". Aerowise does 
 
 - Offline pumping completion with a manifest photo reaches the office exactly once.
 - A correction keeps the original row.
-- A pumping job never touches obligations or filings.
+- A pumping job never touches aerobic obligations or filings.
 - The CSV export of a demo organization carries the notice column.
 - Deleting or expiring a demo removes its disposal rows and files.
 
@@ -235,7 +253,17 @@ Blockers found:
 
 ### 3.4 State machine
 
-`draft → sent → (viewed) → accepted | declined | expired`, plus `void` from `draft` or `sent`. After acceptance, `converted` is recorded through `work_order_id`. Expiry runs as a queued task on `expires_on`, using the organization's local day as renewals do.
+`draft → sent → (viewed) → accepted | declined | expired`. `void` is reachable from `draft` or `sent`. **`accepted → cancelled`** is the office's cancellation after acceptance; the homeowner asks the office, and there is no public route. Expiry runs as a queued task on `expires_on`, using the organization's local day as renewals do.
+
+Cancelling after acceptance is allowed only while the estimate's work order has **no completed visit** and **no issued final invoice**. In one transaction it does the following:
+
+1. The work order and its live job are cancelled, and coverage reservations are released (§4.3).
+2. A draft final invoice is discarded. An issued final invoice blocks the cancellation: the office voids it first, using the existing void rules, which refuse an invoice with payments.
+3. The deposit is handled by its state:
+   - An unpaid deposit invoice is voided.
+   - A paid deposit becomes **"deposit disposition needed"**, an inbox item. The office then either refunds it through the existing refund route (credit or reverse intent) or records it as retained under the estimate's terms with a reason. Both are written to `deposit_dispositions (estimate_id, deposit_invoice_id, kind refunded|retained, amount_cents, reason, refund_id?)`. Nothing is refunded or retained automatically.
+
+If work has already been done, the estimate cannot be cancelled. The office invoices the completed visits from the actual lines, which applies the deposit, and cancels the rest of the work order.
 
 ### 3.5 Acceptance and evidence
 
@@ -243,25 +271,34 @@ Blockers found:
 
 - A stale version gets 409 `estimate_revised`.
 - It inserts a `signed_documents` row with `kind = 'estimate_acceptance'` (the kind check is widened) containing the exact version snapshot, the selected options, totals, terms and consent text. It stores the sha256, IP address and user agent as renewals do.
-- **Accepting twice is a no-op** that returns the existing acceptance, enforced by a unique index on `estimates.accepted_document_id` and a row lock.
-- Decline records the reason. The office can mark an estimate accepted from a paper or phone approval, but must attach evidence (an uploaded file or a typed note). That acceptance is labeled "Recorded by office" and is never shown as a homeowner e-signature.
+- **Accepting twice is a no-op** that returns the existing acceptance. This is enforced by a unique index on `estimates.accepted_document_id` and a row lock.
+- A decline records the reason.
+- The office can mark an estimate accepted from a paper or phone approval, but must attach evidence (an uploaded file or a typed note). That acceptance is labeled "Recorded by office" and is never shown as a homeowner e-signature.
 
 ### 3.6 Conversion, deposits and invoices (exactly once)
 
 1. **On acceptance:** in the same transaction, create the work order (`source_kind='estimate'`, protected by the unique index) with lines copied from the accepted version and the chosen options.
-2. **Deposit:** if a deposit is required, create and issue **one** deposit invoice. The link table `estimate_invoices (estimate_id, invoice_id, role)` has `unique (estimate_id, role)` with `role ∈ {deposit, final}`, so a retried accept cannot make a second one.
-   - The deposit invoice has one untaxed line, "Deposit for EST-1001", tied to the deposit service item.
-   - It is paid through the existing `openCheckout`, which already charges the full amount due of *that* invoice, so no partial-checkout change is needed.
-3. **Final invoice:** after completion, `POST /work-orders/:id/invoice` makes the final invoice from the actual work order lines.
-   - A paid deposit is applied through a new `invoices.deposit_applied_cents` column, with the total check changed to `total = subtotal − discount + tax − deposit_applied`. The column defaults to 0, which keeps every existing row valid.
-   - Tax is computed on the full work, before the deposit. The deposit invoice is untaxed, so tax is counted exactly once.
-   - `deposit_applied_cents` can only be set from a paid deposit invoice of the same estimate, and only once (`unique (deposit_invoice_id)` on a small `deposit_applications` table).
-4. **Decline or void after a paid deposit:** use the existing refund flow (`/payments/:id/refund`, credit or reverse). Nothing is refunded automatically.
-5. **No double charge:** the checkout idempotency key already includes the invoice id and amount due. Webhooks are already idempotent through `stripe_events`. New tests replay accept, checkout completion and the invoice route concurrently.
+2. **Deposit:** if one is required, create and issue **one** deposit invoice. The link table `estimate_invoices (estimate_id, invoice_id, role)` has `unique (estimate_id, role)`, where `role` is `deposit` or `final`, so a retried accept cannot make a second deposit invoice. The deposit invoice has one line, "Deposit for EST-1001", on the deposit service item. It is paid through the existing `openCheckout`, which already charges the full amount due of *that* invoice, so no partial-checkout change is needed.
+3. **Final invoice:** after completion, `POST /work-orders/:id/invoice` makes the final invoice from the actual work order lines. A paid deposit is applied through `deposit_applications (deposit_invoice_id, final_invoice_id, amount_cents, shortfall_cents)` and a new `invoices.deposit_applied_cents`. The total check becomes `total = subtotal − discount + tax − deposit_applied`.
+4. **No double charge:** the checkout idempotency key already includes the invoice id and the amount due, and webhooks are already idempotent through `stripe_events`. New tests replay accept, checkout completion and the invoice route concurrently.
 
-**Rejected alternative:** a negative "deposit" line on the final invoice. It breaks the proportional discount math in `invoiceTotals` and the `min(0)` line validation.
+**Money invariants.** D is the deposit invoice, F the final invoice and A the sum of D's applications. They are enforced in one place (`recalcInvoice` plus a deferred constraint trigger) and covered by tests:
 
-**QuickBooks:** the deposit invoice syncs normally. The final invoice syncs with an extra non-taxable negative line on a configured "Customer deposits" item that equals `deposit_applied_cents`. That is the usual QuickBooks way to apply a deposit, and it keeps both totals equal. This is unproven against Intuit until gate **G-QBO-DEPOSIT**. Until the deposit item is mapped, such an invoice gets a new `deposit_mapping_missing` conflict, the same way `tax_mapping_missing` works today.
+- **I1:** `A ≤ D.paid_cents` (cleared money, net of refunds) at all times. Only cleared money can be applied; a bank payment still clearing is not.
+- **I2:** for F, `deposit_applied ≤ subtotal − discount + tax`, so F's total is never negative. **A deposit larger than the final amount** is applied only up to F's amount. The remainder `D.paid_cents − A` raises "Unapplied deposit" in the inbox until it is refunded or retained through `deposit_dispositions`.
+- **I3:** an application exists only while F is a draft or issued and not void. Voiding F, which the existing rules allow only with no payment on F, deletes its applications in the same transaction, and D's unapplied amount grows back.
+- **I4:** refunds on D through Aerowise are limited to `D.paid_cents − A` (409 `deposit_applied` otherwise). To return applied money, the office voids F if it is unpaid and re-invoices, or refunds against F's own payments.
+- **I5:** a refund made **outside Aerowise**, such as in the Stripe dashboard, arrives by webhook and cannot be refused. If it breaks I1, the shortfall is written to `deposit_applications.shortfall_cents` and raises a high-severity inbox item, "Deposit refunded after it was applied". The office bills the shortfall on a supplemental invoice. An issued invoice is never edited.
+- **Ledger test:** for every estimate, what the homeowner paid in total equals F's total before the deposit, plus or minus any recorded disposition and any open shortfall or unapplied amount.
+
+**Accounting hypotheses, not facts.** The software can implement either treatment behind a flag (`deposit_mode`), but neither is asserted as correct accounting:
+
+- **H-DEP-1:** a deposit is an untaxed prepayment, and tax belongs on F's work lines. Whether that is right for the pilot's services and Texas sales tax depends on the provider's own tax treatment (gate **G-TAX-TREATMENT**). The alternative, taxing the deposit when it is collected, is selectable.
+- **H-DEP-2:** in QuickBooks, the deposit invoice line goes to a "Customer deposits" item tied to a liability account, and F carries a non-taxable negative line on that same item for the applied amount. Then F's QuickBooks total matches Aerowise's, and the liability nets to the unapplied amount. The alternative is applying D's payment across invoices with QuickBooks' own linked transactions. Gate **G-QBO-DEPOSIT** decides between them.
+- **Tests use the built-in test QuickBooks provider.** They check matching `TotalAmt`, and also that revenue sits on the work items, tax only once, and that the deposit item's balance equals the unapplied amount.
+- **Real companies:** until the gates pass, an invoice involving a deposit stays out of QuickBooks with a `deposit_mapping_missing` conflict, the same way `tax_mapping_missing` works today.
+
+**Rejected alternative:** a negative "deposit" line on F inside Aerowise. It breaks the proportional discount math in `invoiceTotals` and the `min(0)` line validation.
 
 ### 3.7 Tax: mixed taxable lines in QuickBooks
 
@@ -269,10 +306,13 @@ Aerowise math already supports taxable and untaxed lines at one rate per invoice
 
 The plan:
 
-- Add tax mapping to `quickbooks_connections`: `tax_mode` (`off | taxcode`), `taxable_code_ref`, `nontaxable_code_ref` and `tax_rate_ref`.
-- When the mode is on, send `TaxCodeRef` per line and `TxnTaxDetail` with the rate and total. After the create, compare QuickBooks' `TotalAmt` and `TotalTax` with Aerowise's. A difference produces a new `tax_total_mismatch` conflict and nothing is retried silently.
-- With the mode off, today's `tax_mapping_missing` behavior and its "enter it yourself" message stay as they are.
-- The design must cover companies that use QuickBooks Online automated sales tax, where QuickBooks may recompute tax. That is unknown until gate **G-QBO-TAX**. The fallback is the current conflict, so no wrong total is ever posted.
+- Add tax mapping to `quickbooks_connections`: `tax_mode` (`off | taxcode`), `taxable_code_ref`, `nontaxable_code_ref` and `tax_rate_ref`. With the mode off, today's `tax_mapping_missing` conflict and its "enter it yourself" message stay as they are.
+- When the mode is on, send `TaxCodeRef` per line and `TxnTaxDetail` with the rate and total. Creates already pass a deterministic `requestid` (`packages/quickbooks/src/intuit.ts` `createInvoice`), so a retry after a lost response does not create a second remote invoice. The plan keeps and tests that behavior.
+- **A mismatch is found only after QuickBooks has created the invoice.** After the create, Aerowise compares QuickBooks' `TotalAmt` and `TotalTax` with its own. On a difference:
+  - The link becomes **`quarantined`** with a `tax_total_mismatch` conflict. The remote id is stored, so nothing is ever created again for it.
+  - No further updates are pushed, and payments and refunds for that invoice are held, so nothing compounds the error.
+  - The review screen shows both totals and offers two choices. "I corrected it in QuickBooks, check again" re-reads the invoice and releases the hold when the totals match. "Keep it as is and stop syncing this invoice" requires a reason. Aerowise never edits or deletes the remote invoice by itself, following the existing one-way rule.
+- Companies using QuickBooks Online automated sales tax may have tax recomputed by QuickBooks. How often that differs is unknown until gate **G-QBO-TAX**. Until then, tax mode stays off for real companies. Quarantine limits the damage of a mismatch; it does not prevent the first wrong remote invoice.
 
 ### 3.8 UI
 
@@ -304,34 +344,91 @@ The plan:
   - `plan_id`, `version`.
   - `terms_text`: nullable. Null means "use the organization terms", which keeps current behavior the default for every existing plan.
   - `intake_template_id`: nullable, a form version (§5) for questions asked at signing, with conditional fields through the existing `showWhen`.
-  - `options`: jsonb list of `{ addonId | serviceItemId, priceCents, taxable, required, default }`.
-  - `coverage`: jsonb list of `{ category | serviceItemId, rule: included | percent_off | excluded, percentOff?, limitPerTerm? }`.
-  - `service_cycles`: jsonb list of `{ serviceType, visitsPerTerm | everyMonths }`.
+  - `options`: jsonb list of `{ optionKey, addonId | serviceItemId, priceCents, taxable, required, default }`.
+  - `coverage`: jsonb list of coverage rules, `{ ruleKey, match: { category | serviceItemId }, effect: included | percent_off | excluded, percentOff?, limit?: { count, per: 'term' } }`.
+  - `service_cycles`: jsonb list of `{ cycleKey, serviceType, workTypeKey?, schedule }` (§4.4).
   - `created_by`, `created_at`.
+
+  `ruleKey`, `optionKey` and `cycleKey` are stable slugs, unique within a version. The builder carries a key forward to the next version unchanged unless the office says the meaning changed, in which case it gets a new key.
 
   `plans` gains `current_version_id`. Editing a plan in the office creates a new version. Contracts and renewals reference `plan_version_id` (new nullable columns on `contracts` and `renewals`).
 
-- **Backfill:** one migration creates v1 for every existing plan. It uses `terms_text = null`, no intake, no options or coverage, and `service_cycles = [{ serviceType: 'aerobic_inspection', visitsPerTerm }]`. It sets `contracts.plan_version_id` where `plan_id` matches. Contracts keep their copied columns (term, visits, price), which stay authoritative for existing obligations, so **nothing about an existing contract changes**.
-- **Agreement snapshot:** `AgreementContent` gains the plan version's resolved terms, the intake answers, the selected options with prices, the coverage summary and the cycles. It stays hashed and immutable in `signed_documents`. `contracts.agreement_document_id` already exists as `signed_document_id`. Office-created contracts without signing get a non-signed `agreement_snapshot` jsonb on the contract, so coverage on a repair invoice always reads a frozen copy.
-- **Basic, Gold and Platinum** are just plan names. Benefits come only from the `coverage` rules in the plan version the contract was made under. A Gold label with no coverage rules covers nothing, and the UI says "No coverage rules" rather than guessing.
+- **Backfill:** one migration creates v1 for every existing plan. It uses `terms_text = null`, no intake, no options or coverage, and one cycle `{ cycleKey: 'aerobic', serviceType: 'aerobic_inspection', schedule: { kind: 'visits_per_term', visitsPerTerm } }`. It sets `contracts.plan_version_id` where `plan_id` matches. Contracts keep their copied columns (term, visits, price), which stay authoritative for existing obligations, so **nothing about an existing contract changes**.
+- **Frozen per contract:** when a contract is created, its coverage rules and cycles are copied into `contract_coverage_rules` and `contract_service_cycles` (§4.3, §4.4). From then on, a contract is evaluated **only** against those rows, never against a newer plan version.
+- **Agreement snapshot:** `AgreementContent` gains the plan version's resolved terms, the intake answers, the selected options with prices, the coverage summary and the cycles. It stays hashed and immutable in `signed_documents`, which `contracts.signed_document_id` already links. Office-created contracts without signing get a non-signed `agreement_snapshot` jsonb on the contract.
+- **Basic, Gold and Platinum** are just plan names. Benefits come only from the frozen coverage rules. A Gold label with no coverage rules covers nothing, and the UI says "No coverage rules" rather than guessing.
 
-### 4.3 Coverage in practice
+### 4.3 Coverage in practice, and its concurrency rules
 
-- When a work order is created for a site with an active contract, Aerowise evaluates the frozen coverage and writes `work_orders.coverage_snapshot` (which contract, which rules matched, remaining uses).
-- **Office** sees "Covered by Gold (contract #…): pump replacement parts 100%, labor 20% off, 1 of 2 service calls used".
-- **Technician** sees a short "Covered" or "Not covered, quote needed" badge on the stop. No prices are shown to the technician unless the organization turns that on.
-- **Repair invoice:** covered lines are priced with the rule applied and carry `covered_by_contract_id` and a coverage note. The office can override with a reason, which is audited.
-- **`coverage_uses`**: `unique (contract_id, rule_key, work_order_id)` counts uses idempotently. A cancelled work order releases its use.
-- A covered amount of zero is still an invoice line at zero with the note, so the homeowner sees the benefit. Nothing changes the plan's own installment billing.
+**Tables**
+
+- **`contract_coverage_rules`**: holds `contract_id`, `rule_key`, `rule` (frozen jsonb), `plan_version_id`, `limit_count` (null means unlimited), `period_start` and `period_end` (the contract term). It has `unique (contract_id, rule_key)`, is written once at contract creation and is never updated.
+- **`coverage_uses`**: holds `contract_coverage_rule_id`, `work_order_id`, `state` (`reserved | consumed | released`), `invoice_id`, the time of each state change and `reason`. It has `unique (contract_coverage_rule_id, work_order_id)`. One work order uses a rule at most once, whatever its lines. Per-quantity limits, such as "up to 2,000 gallons", are an unresolved choice (§15).
+
+**Which contract applies:** the contract active at the site on the work order's `requested_on`. A work order requested within the term keeps its coverage even if the visit falls after the term ends. A renewal is a new contract with fresh rule rows and fresh limits.
+
+**Reserve, consume, release**
+
+- **Reserve:** when the office creates or converts a work order and accepts the suggested coverage, the transaction locks the rule row (`SELECT … FOR UPDATE` on `contract_coverage_rules`), counts uses that are `reserved` or `consumed`, and inserts `reserved` only if the count is below the limit. Two concurrent covered work orders on the last allowed use therefore serialize: exactly one gets it, and the other's snapshot says "limit reached, not covered".
+- **Consume:** when the work order's final invoice is issued, or when the work order is completed with `billing_status = no_charge`.
+- **Release:**
+  - Cancelling the work order releases its use.
+  - The office choosing "don't apply coverage" before invoicing releases it, with a reason.
+  - Voiding the invoice returns a consumed use to `reserved` while the work order is live, and releases it if the work order is cancelled.
+- **Unchanged by:**
+  - Refunds: the service was performed. "Restore benefit" is a separate, explicit office action with a reason, which releases the use.
+  - Rescheduling: no change.
+
+**Line changes, overrides and visibility**
+
+- **Line changes:** at invoicing, the covered amount is computed from the frozen rule against the *actual* lines. Adding a part in the field gets the same rule. The work order still uses one count per rule.
+- **Office override:** per line, with a reason, audited. An override that removes coverage from every line releases the use.
+- **Visibility:**
+  - `work_orders.coverage_snapshot` is refreshed from the frozen rules whenever the reservation changes.
+  - The **office** sees "Covered by Gold (contract #…): pump replacement parts 100%, labor 20% off, 1 of 2 service calls used".
+  - The **technician** sees "Covered" or "Not covered, quote needed" and no prices, unless the organization turns prices on.
+  - A covered line at zero is still printed with its note.
+  - Nothing changes the plan's own installment billing.
+- **Tests:**
+  - 10 concurrent reservations against a limit of 1 succeed exactly once.
+  - The cancel, void and override paths restore counts.
+  - Changing the plan after the contract was created does not change any of the contract's evaluations.
 
 ### 4.4 Recurring cycles that are not aerobic inspections
 
-- `SERVICE_TYPES` grows to `['aerobic_inspection', 'pumping', 'maintenance']`. `insertContract` (`packages/renewals/src/contracts.ts`) builds obligations per cycle:
-  - Aerobic visits use today's `buildTermSchedule` and `buildAnchoredSchedule`, including authority more-visits rules and `acceptVisits`, unchanged.
-  - Pumping and maintenance cycles use a plain interval schedule. They are **never** passed through authority rules and never become filings.
-- **Scheduling a non-aerobic obligation** creates a work order (`source_kind='contract_cycle'`) and a `type='work'` job carrying the `obligation_id`. Completing that job completes the obligation.
-- **Guards:** `openFiling`, `contractVisitDeadline`, the due list's compliance labels and the more-visits warning filter on `service_type = 'aerobic_inspection'`. A regression test asserts that a pumping obligation can never reach `openFiling`.
-- **Due list:** a service-type filter is added. Aerobic visits stay the default view, so the current office experience is unchanged.
+- **Service types:** `SERVICE_TYPES` grows to `['aerobic_inspection', 'pumping', 'maintenance']`.
+- **Cycle identity:** a new table, **`contract_service_cycles`**:
+  - Columns: `contract_id`, `cycle_key`, `service_type`, `work_type_id` (null for aerobic; required otherwise), `schedule` and `snapshot` (frozen jsonb from the plan version), `plan_version_id`.
+  - Constraints: `unique (contract_id, cycle_key)` and `unique (organization_id, id, service_type)`.
+  - Written once at contract creation. Backfill creates one `aerobic` cycle for every existing contract.
+- **Obligations:**
+  - `service_obligations` gains `cycle_id`, with a composite foreign key `(organization_id, cycle_id, service_type)` to the cycle, so an obligation's kind always matches its cycle.
+  - The existing `unique (contract_id, sequence)` from migration 0002 is replaced by `unique (cycle_id, sequence)`, plus a partial `unique (contract_id, sequence) where service_type = 'aerobic_inspection'`. Each cycle numbers its visits from 1, and aerobic numbering keeps exactly today's meaning.
+  - `cycle_id` stays nullable. A trigger fills it with the contract's aerobic cycle when an aerobic obligation is inserted without one, so a binary from before the change can still create contracts (§9.1).
+- **Schedules:**
+  - Aerobic visits use today's `buildTermSchedule` and `buildAnchoredSchedule`, including the authority more-visits rules and `acceptVisits`, unchanged.
+  - Non-aerobic cycles support `{ kind: 'every_months', everyMonths, windowDays = 30 }`, **anchored to the contract start**. Due dates are start + k × everyMonths that fall inside the term. The window is the due date ± `windowDays`, clipped to the term.
+  - A cycle with no due date inside a term (for example, every 36 months on a 12-month plan) is refused by the builder unless the office accepts "no visit this term". Carrying the anchor across renewals ("36 months after the last pump-out") is an unresolved choice (§15).
+  - These cycles never pass through authority rules.
+- **Scheduling, idempotently:** scheduling a non-aerobic obligation creates a work order (`source_kind='contract_cycle'`, `source_id = obligation id`, protected by the live-duplicate index) of the cycle's work type, plus a `type='work'` job carrying the `obligation_id`. The existing `jobs_one_live_per_obligation` index still allows one live job. A final completed visit completes the obligation.
+- **Database enforcement:** the job/obligation kind foreign key from §1.2 rejects a work job on an aerobic obligation and an inspection job on a pumping obligation. The `inspections.job_type` key keeps work jobs away from filings.
+- **Reporting and counts:** each of these filters by `service_type` or cycle:
+  - the due list (aerobic is the default view, so today's office experience is unchanged; a service-type filter is added);
+  - inbox overdue visits;
+  - readiness;
+  - `contractVisitDeadline` and `openFiling` (also blocked by the database);
+  - the more-visits warning;
+  - contract visit counts and renewal previews;
+  - SMS "inspection due" wording (per service type);
+  - `visits.csv` (adds `service_type` and `cycle_key`).
+
+  Aerowise subscription billing counts contracts, not obligations, so it is unaffected. A test covers it anyway.
+- **Tests:**
+  - Aerobic schedules for the Hays, Montgomery and Williamson fixtures are byte-identical before and after.
+  - A pumping obligation cannot reach `openFiling`.
+  - A work job cannot complete an aerobic obligation, and the database rejects the attempt.
+  - Two cycles on one contract both number from 1 without collision.
+  - Scheduling the same cycle obligation twice yields one work order and one live job.
 - A plan whose only cycle is pumping is a pumping service plan, not a relabeled aerobic inspection.
 
 ### 4.5 Builder UI
@@ -358,12 +455,15 @@ The plan:
 - `wastewater_systems.system_category`: nullable enum `aerobic | conventional | low_pressure_dosing | drip | holding_tank | lift_station | other | unknown`. The free-text columns are kept.
   - Backfill: `aerobic` for systems at sites with an `aerobic_inspection` contract, `unknown` otherwise. Nothing is guessed from text.
   - Creating an `aerobic_inspection` contract on a site whose systems are all non-aerobic returns a warning that needs explicit confirmation, like `acceptVisits`, rather than a hard refusal, because records may be wrong.
-- **Forms:** `inspection_templates` gains `purpose` (`inspection | work | intake`, default `inspection`). Existing rows stay `inspection`. The template definition schema is reused unchanged, with one addition: a `signature` requirement block, `{ key, label, signer: customer | technician, required }`.
+- **Forms (delivered by SW-F, the shared form foundation, §9):** `inspection_templates` gains `purpose` (`inspection | work | intake`, default `inspection`). Existing rows stay `inspection`. The template definition schema is reused unchanged, with one addition: a `signature` requirement block, `{ key, label, signer: customer | technician, required }`.
   - Work types point at a template key.
   - Templates stay immutable per version.
-  - Built-in starter templates are seeded for pumping (tank count, sludge/scum observations, lid condition, disposal section), conventional service (tank and baffle checks, distribution box, field observations), repair (problem, cause, parts used, photos before and after) and installation (existing or new system, bedrooms, tank sizes, line lengths, install-location photos, as-built sketch photo, customer completion signature).
+  - Built-in starter templates, each owned by exactly one PR:
+    - **SW-F:** generic repair (problem, cause, parts used, photos before and after) and generic service call. These exercise the framework.
+    - **SW-6:** pumping (tank count, sludge/scum observations, lid condition). The disposal part is structured records, not form values.
+    - **SW-7:** conventional service (tank and baffle checks, distribution box, field observations) and installation (existing or new system, bedrooms, tank sizes, line lengths, install-location photos, as-built sketch photo, customer completion signature), plus the completion summary PDF.
   - **Configurable:** every form's fields, photos and signature requirements, per organization, versioned. **Specialized (code):** the disposal section (§2, structured records rather than form values) and the aerobic inspection with its authority requirements (unchanged).
-- **Signatures on the phone:** a new drawn or typed signature pad in `/tech`. It is stored offline as a blob (§8.1) and uploaded to a `signed_documents` row with `kind = 'work_completion'`, holding a hashed snapshot of the work record summary the customer saw. Only a homeowner signature on a summary of the work done, not a regulatory signature. MP report signing is unchanged and remains office-side with license checks.
+- **Signatures on the phone (SW-F builds the pad and the `work_completion` document kind; SW-2 stores and syncs it offline):** a new drawn or typed signature pad in `/tech`. It is stored offline as a blob (§8.1) and uploaded to a `signed_documents` row with `kind = 'work_completion'`, holding a hashed snapshot of the work record summary the customer saw. Only a homeowner signature on a summary of the work done, not a regulatory signature. MP report signing is unchanged and remains office-side with license checks.
 - **Completion document:** a "Work completion summary" PDF (packages/reports) is customer-facing only. It is watermarked for demo organizations and listed in the portal. It is never an authority report.
 
 ### 5.3 Boundaries
@@ -431,27 +531,49 @@ The pilot authority's current accepted column specification and file naming, its
 
 **Today** (`apps/web/lib/offline`):
 
-- There is one IndexedDB database per tenant and user, at `DB_VERSION = 1`, with stores `kv`, `inspections` (keyed by `jobId`), `photos` and `outbox`.
+- There is one IndexedDB database per tenant and user, opened with a fixed `DB_VERSION = 1` (`db.ts`, `indexedDB.open(name, DB_VERSION)`). Its stores are `kv`, `inspections` (keyed by `jobId`), `photos` and `outbox`.
 - Outbox ops are `sync` or `photo`, keyed by `inspectionClientId`.
 - Retries are classified by `RetryLater`. Ops that fail permanently stay failed and visible.
 - The revision/acknowledge rule from `5e491a0` preserves newer edits.
 - Cache handling for ended demos (STG-03) is per tenant.
 - The service worker never caches `/api/`.
 
-**Plan:**
+**Why not a v2 bump of that database:** a binary that opens with a fixed version 1 fails with `VersionError` against a version-2 database before any of its own code runs ([W3C IndexedDB, "open a database connection", step 7](https://w3c.github.io/IndexedDB/#opening)). A guard shipped inside the new release cannot help an older binary. So the plan never raises that database's version, and ships a compatibility release first.
 
-- Bump to `DB_VERSION = 2`. The upgrade adds `work` (local work records keyed by `jobId`) and `signatures` (blobs keyed by `clientId`). The upgrade keeps every existing store and its data, and still adopts the legacy shared database. A test opens a v1 database holding pending inspection ops, upgrades it, and syncs those ops exactly once.
-- Outbox ops become a tagged union: `{ kind: 'inspection-sync' | 'inspection-photo' | 'work-sync' | 'work-photo' | 'signature', ... }`. Existing queued v1 ops (`sync`/`photo`) are read as their inspection equivalents, and no queued op is dropped.
-- `PUT /work/sync` mirrors `PUT /inspections/sync`. It sends the whole record every time, is idempotent on `offline_client_id`, treats a completed record as final, rejects reuse of a client id for a different job, and checks the assignee. Disposal records and signature references ride in the payload with their own client ids. The photo and signature uploads mirror the inspection photo route (`config.imageUpload`, sha256, `ON CONFLICT DO NOTHING`).
-- `/route` returns work stops with their form template ids. The phone caches each needed template version (generalizing `template:active` to `template:<id>`, which already exists for lookups). It also caches the organization's vehicles, facilities and work types for the day, so the form works without signal.
-- `acknowledgeSync` and the `RetryLater` classes are reused generically.
-- STG-03 cleanup (`forgetTenant`, `pendingFor`) counts pending work ops as well as inspection ops.
+**SW-2a: phone compatibility release.** Client-only, no schema change. It is deployed to staging before SW-2 and is the **phone rollback floor**. It does three things:
 
-**Acceptance:** two pumping and one install completed with no signal, each with photos and a customer signature. Then reload, reconnect, and confirm the office has each record exactly once. A newer phone edit made during an in-flight sync is preserved. An ended demo clears work data. Another company's sign-in on the same phone stays separate.
+1. **Opens by store presence, not a fixed number.** It opens with `indexedDB.open(name)` and no version, which opens whatever version exists. It upgrades (current + 1) only when a store it needs is missing. After this release, a future store never locks this binary out.
+2. **Knows the future work database's name**, `aerowise-tech-work:<org>:<user>`, without writing to it. `forgetTenant` deletes it for an ended demo, `pendingFor` and `tidyOthers` count its pending ops, and the sign-out screen shows them.
+3. **Outbox ops of an unknown kind wait.** They are neither run, failed nor deleted. A banner says "N items will send after the app updates".
+
+Tests: v1 data and pending ops survive opening under SW-2a. A database created by SW-2 or later opens without error under SW-2a. Ended-demo cleanup removes both databases.
+
+**SW-2: work storage in its own database.** Work records, work photo and signature blobs, and the work outbox live in `aerowise-tech-work:<org>:<user>`, which has its own stores and versioning. The existing inspection database stays at version 1, untouched. So even today's `0906828` binary can still open it.
+
+- Work ops never span the two databases, because each op references only its own database's rows. Inspection and work sync independently, using the same `navigator.locks` lock name, so one tab drains both.
+- Outbox ops in the work database are a tagged union: `work-sync`, `work-photo`, `signature`, `pumping-record`, `disposal-load`.
+- **Below the floor:** if staging were ever rolled back below SW-2a, inspection work would be unaffected. Pending work ops would stay on the phone unsent, and an ended demo's work database would not be cleaned, until a release at or above SW-2a returned. This is disclosed, which is why SW-2a is the floor.
+
+**Server side of SW-2:**
+
+- `PUT /work/sync` mirrors `PUT /inspections/sync`. It sends the whole record every time, is idempotent on `offline_client_id`, treats a completed record as final and rejects reuse of a client id for a different job.
+- Pump-outs, loads and signature references ride with their own client ids.
+- Photo and signature uploads mirror the inspection photo route (`config.imageUpload`, sha256, `ON CONFLICT DO NOTHING`).
+- `/route` returns work stops with their template version ids. The phone caches each needed template version (`template:<id>`, which already exists for lookups) plus the day's work types, vehicles and facilities, so the form works with no signal.
+- `acknowledgeSync` and the `RetryLater` classes are reused.
+- Business conflicts are covered in §8.5.
+
+**Acceptance:**
+
+- Two pumping jobs and one installation are completed with no signal, each with photos and a customer signature, then reloaded and reconnected. The office has each record exactly once.
+- A newer phone edit made during an in-flight sync is preserved.
+- An ended demo clears both databases.
+- Another company's sign-in on the same phone stays separate.
+- The rollback-floor tests above pass.
 
 ### 8.2 Data export, backup and restore, demo lifecycle
 
-- Every new table is added to `EXPORT_TABLES` where it is customer data (work orders, lines, events, disposal records, estimates, plan versions), and to the API test truncate list.
+- Every new table is added to `EXPORT_TABLES` where it is customer data (work orders, lines, events, pumping records, disposal loads, estimates, plan versions, coverage uses), and to the API test truncate list.
 - `pg_dump` and file backups pick up new tables and the `${org}/work/` and `${org}/estimates/` prefixes automatically. SW-12 repeats the scratch restore check from the RUNBOOK with the new data present.
 - Demo reset and expiry rely on `organization_id` (reseed's automatic table discovery) and the key prefix. A test asserts that a reseeded public demo leaves no work, disposal or estimate rows and that prospect demos keep theirs.
 
@@ -475,38 +597,102 @@ The pilot authority's current accepted column specification and file naming, its
 | Authority exports | Ruleset versions |
 | Disposal records | Superseding rows |
 
----
+### 8.5 Business conflicts while a technician is offline
+
+The `5e491a0` rule protects the phone's own newer edits. It does not settle what happens when the office changed the job meanwhile. Those cases are handled as follows, and the field record is never discarded.
+
+**Local completion is not server acceptance.** The phone shows three states per stop:
+
+- "Done on this phone, waiting to send"
+- "Sending: 2 photos, 1 signature left"
+- "Received by the office"
+
+A record is sent as `completed` only after every required photo and signature op for it is acknowledged. The draft downgrade already used for inspection photos is extended to signatures. The server accepts completion only when the required photo and signature counts are present server-side. Blobs are deleted from the phone only after the server acknowledges each upload.
+
+**Signature-bound snapshot.** Before signing, the phone builds the customer summary (work done, parts, pump-out volume, notes marked customer-visible). It hashes the canonical JSON with sha256, and the customer signs that summary. The fields in the summary are then locked on the phone; editing one clears the signature and asks for a new one. The server recomputes the hash from the submitted record. A mismatch returns 409 `signature_mismatch`, the record stays on the phone, and the conflict screen explains it.
+
+**The office changed the job while the phone was offline.** Server responses:
+
+| Situation | Server response | What happens to the field record |
+|---|---|---|
+| Job reassigned to another technician | 409 `job_reassigned` | Stored in **`work_sync_conflicts`**, the full payload plus uploaded blobs under the work order's key prefix. The phone marks the item "Sent to office for review" and stops retrying. The office attaches it to the job (the record is accepted as submitted by the original technician, audited) or dismisses it with a reason. |
+| Job or work order cancelled | 409 `job_cancelled` | Same: kept in `work_sync_conflicts` for review. |
+| Office completed the work order without a field record | 409 `work_order_completed` | Same. The office may attach it as the field record, which replaces "completed without record". |
+| Form template changed | Accepted | The record is validated against the template version it was started with, which the phone pinned. Retired versions remain valid for records started before retirement. |
+| Prices or service items changed | Accepted | Field-added lines carry the price snapshot from download. At invoicing the office sees "price changed since the visit" per line and chooses which price to bill. |
+| Coverage changed (limit used by another work order) | Accepted | The phone's "Covered" badge was informational. The office invoice uses the reservation state (§4.3). |
+
+The phone's conflict screen lists each held item with the reason and "Sent to office for review" or "Needs your action" (signature mismatch). Retries reuse the same client ids, so a conflict entry is created at most once per record (`unique (organization_id, offline_client_id)` on `work_sync_conflicts`).
+
+**Storage and failures.**
+
+- The app requests `navigator.storage.persist()`.
+- On a quota error the phone keeps every existing record and blob and blocks new photos with "Phone storage full: send waiting items first". Nothing queued is dropped.
+- A permanently failed upload (non-retryable 4xx) is shown with a Retry button and is never deleted.
+- An ended or expired demo deletes its pending work, photo and signature ops along with the demo's databases (fictional data, as STG-03 does for inspections).
+- For a real company, cleanup never deletes pending ops.
+
+**Tests:**
+
+- Reassign, cancel and office-complete while offline, then reconnect: one conflict row each, and the office resolves them.
+- A template change while offline.
+- A signature mismatch after an edit.
+- A quota error simulated in the browser test.
+- A permanently failed upload.
+- An expired demo with pending signature ops.
+- A real company with pending ops whose session expired: the work is kept.
 
 ## 9. PR sequence
 
-Each PR is a draft until local checks pass on its exact head ([§9.2](#92-validation-for-every-implementation-pr)). Codex reviews and merges. Migrations are forward-only and additive. Numbers are assigned in merge order starting after `0047`: **only one migration-carrying PR is open for merge at a time**, and a PR that loses the race renumbers before merge (DECISIONS records that renumbering leaves stale local test databases). Every PR updates its ROADMAP.md row, adds demo data for its feature, records ambiguous choices in DECISIONS.md and keeps the existing aerobic tests green.
+Each PR is a draft until local checks pass on its exact head ([§9.2](#92-validation-for-every-implementation-pr)). Codex reviews and merges. Migrations are forward-only and additive. Numbers are assigned in merge order starting after `0047` by the integration owner (§10): **only one migration-carrying PR is open for merge at a time**, and a PR that loses the race renumbers before merge (DECISIONS records that renumbering leaves stale local test databases). Every PR updates its ROADMAP.md row, adds demo data for its feature behind its flag, records ambiguous choices in DECISIONS.md and keeps the existing aerobic tests green.
 
 | # | PR | Depends on | Scope | Acceptance highlights | Migration |
 |---|---|---|---|---|---|
 | SW-0 | This plan | none | `docs/engineering/SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md`, a ROADMAP row | Links resolve; lint and typecheck pass | none |
-| SW-1 | **Work foundation** | SW-0 | `work_types`, `work_orders`, `work_order_events`, `work_order_notes`, `work_order_lines` (without service items), jobs `type='work'`/`work_order_id`/`retest_of_inspection_id`, `issues.work_order_id`, `service_requests.work_order_id` plus the response join fix, permissions, routes from §1.4 except sync and invoice, office `/work` list/detail/create/schedule, inbox conversion buttons, schedule kind badge, demo story entries | §1.6; zero filings or obligations touched; converting twice gives one work order; the retest link is stored for new retests | yes (one) |
-| SW-2 | **Technician offline work** | SW-1 | IndexedDB v2, outbox union, `work_records`, `work_attachments`, `/work/sync`, photo route, `/route` work stops, `/tech` work form (generic template renderer reused from `InspectionForm`), signature pad and `signed_documents.kind='work_completion'`, `purpose` on templates and the starter work templates | §8.1 acceptance; v1→v2 upgrade with pending inspection ops; existing offline e2e unchanged | yes |
-| SW-3 | **Service items and work invoicing** | SW-1 | `service_items`, `invoice_lines.service_item_id`/`quantity_milli`, invoice from a work order (idempotent per work order), QuickBooks `service_item` mapping with default-item fallback | One invoice per work order under concurrent calls; old invoices are byte-identical in QuickBooks payloads; untaxed work invoices sync | yes |
-| SW-4 | **QuickBooks mixed tax** | SW-0 (independent) | `tax_mode`/code refs on the connection, `TaxCodeRef`/`TxnTaxDetail` payload, `tax_total_mismatch` conflict, setup UI on `/quickbooks` | The test QuickBooks provider round-trips mixed lines; mode off keeps today's conflict; sandbox evidence for G-QBO-TAX recorded separately | yes (small) |
-| SW-5 | **Estimates** | SW-1, SW-3 (SW-4 for taxed sync) | §3.3–§3.8: estimates, versions, events, public page, acceptance (`signed_documents.kind='estimate_acceptance'`), deposit invoice, `deposit_applied_cents`, `deposit_applications`, conversion, expiry task, portal list, QuickBooks deposit line plus `deposit_mapping_missing` | Concurrent accept, accept replay and checkout replay create one work order, one deposit invoice and one charge; revised version gives 409; demo uses the test payment provider only | yes |
-| SW-6 | **Pumping and disposal** | SW-1, SW-2 | `vehicles`, `disposal_facilities`, `disposal_records`, the disposal section in the phone form, "delivered later" inbox item, site pumping history, CSV and PDF disposal log, export entries | §2.5; no compliance wording | yes |
-| SW-7 | **System categories, conventional and installation** | SW-2 | `wastewater_systems.system_category` plus backfill, the aerobic-contract warning, conventional, repair and install starter forms and intake, work completion summary PDF, portal listing | No aerobic reporting on non-aerobic work; install offline with signature exactly once | yes |
-| SW-8 | **Plan versions, terms, options, coverage** | SW-3 (service items), SW-1 | `plan_versions` plus v1 backfill, `contracts`/`renewals.plan_version_id`, `agreement_snapshot`, plan builder tabs, agreement preview, intake at renewal, options linked to add-ons, coverage evaluation, `coverage_uses`, covered lines on work invoices | Existing contracts unchanged after backfill (same obligations, same renewal text); covered repair invoice shows rule and note; override audited | yes |
-| SW-9 | **Non-inspection service cycles** | SW-8, SW-6 | `SERVICE_TYPES` += `pumping`, `maintenance`; cycle obligations; scheduling them as work jobs; filters on `openFiling`/deadlines/due list | A pumping cycle never reaches filings; aerobic schedules for Hays, Montgomery and Williamson fixtures are byte-identical | yes |
+| SW-1 | **Work foundation** (flag `work_orders`) | SW-0 | `work_types`, `work_orders`, `work_order_events`, `work_order_notes`, `work_order_lines` (without service items); the `jobs` changes from §1.2 (type, `work_order_id`, `retest_of_inspection_id`, `visit_number`, kind-enforcing keys); `inspections.job_type`; `issues.work_order_id`; `service_requests.work_order_id` plus the response join fix; permissions; routes from §1.4 except sync, invoice and conflicts; **every existing `jobs` query filtered by `type` explicitly** (schedule, routing, inspections, inbox, readiness, SMS route and task, invoice lib, compliance packages); office `/work` pages; inbox conversion; schedule kind badge; demo story | §1.6; zero filings or aerobic obligation changes; the database rejects wrong job/obligation kinds; converting twice gives one work order | yes |
+| SW-2a | **Phone compatibility release** (rollback floor for the phone) | SW-0 | Client only: store-presence open, awareness of the work database name in cleanup and pending counts, unknown outbox ops wait (§8.1) | v1 data and pending ops survive; a later database opens without `VersionError`; ended demo removes both databases | none |
+| SW-F | **Shared form and signature foundation** | SW-1 | `inspection_templates.purpose` and the signature requirement block; distinct template keys per purpose (old readers select the inspection template by key, `apps/api/src/routes/inspections.ts` `activeTemplate`); generic repair and service-call templates; the signature pad component (phone and web); `signed_documents.kind` widened to `work_completion` and `estimate_acceptance`; the web intake-form renderer used later by SW-8 | Old binary still serves the inspection template after seeding; templates immutable per version; signature snapshot hash test | yes |
+| SW-2 | **Technician offline work** | SW-1, SW-F, SW-2a **deployed to staging** | Work database (§8.1), `work_records`, `work_attachments`, `work_sync_conflicts`, `/work/sync`, photo and signature routes, conflicts API and screens (§8.5), `/route` work stops, `/tech` work form | §8.1 and §8.5 acceptance; existing offline e2e unchanged | yes |
+| SW-3 | **Service items and work invoicing** (flag `service_items`) | SW-1 | `service_items`, `invoice_lines.service_item_id`/`quantity_milli`, invoice from a work order (idempotent per work order), QuickBooks `service_item` mapping with default-item fallback | One invoice per work order under concurrent calls; old invoices' QuickBooks payloads byte-identical; untaxed work invoices sync | yes |
+| SW-4 | **QuickBooks mixed tax** (per-connection `tax_mode`, off) | SW-0 | Tax code mapping, `TaxCodeRef`/`TxnTaxDetail`, deterministic `requestid` kept, compare after create, `quarantined` link state, held payments, review choices (§3.7) | Test provider: matching, mismatching and lost-response cases; no duplicate remote invoice; mode off is today's behavior | yes (small) |
+| SW-5 | **Estimates and deposits** (flag `estimates`; `deposit_mode` per organization) | SW-1, SW-3, SW-F; SW-4 for taxed sync | §3.3–§3.8, including cancellation after acceptance, `deposit_applications`, `deposit_dispositions`, invariants I1–I5 and QuickBooks deposit handling behind its conflict | Concurrent accept, checkout replay; deposit greater than final; refund attempt on applied deposit refused; webhook refund after application creates a shortfall item; ledger test | yes |
+| SW-6 | **Pumping and disposal** (flag `pumping`) | SW-2 | `vehicles`, `disposal_facilities`, `pumping_records`, `disposal_loads`, `disposal_load_items`, pumping starter template, "Record disposal" on phone and office, overdue-disposal inbox item, site history, CSV/PDF log, exports | §2.5 | yes |
+| SW-7 | **System categories, conventional and installation** | SW-2, SW-F | `wastewater_systems.system_category` plus backfill, aerobic-contract warning, conventional and installation templates, multi-visit installation flow, completion summary PDF, portal listing | No aerobic reporting on non-aerobic work; two-visit install with final sign-off exactly once | yes |
+| SW-8 | **Plan versions, terms, options, coverage** (flag `plan_builder`) | SW-1, SW-3, SW-F | `plan_versions` plus v1 backfill, `contracts`/`renewals.plan_version_id`, `contract_coverage_rules`, `coverage_uses`, agreement snapshot, builder tabs, intake at renewal (SW-F renderer), options, coverage evaluation and reservation (§4.3) | Existing contracts unchanged after backfill; concurrent exhaustion test; frozen rules ignore later plan edits; override audited | yes |
+| SW-9 | **Non-inspection service cycles** (flag `service_cycles`) | SW-8, SW-6 | `contract_service_cycles` plus backfill, `service_obligations.cycle_id`, unique-constraint replacement and fill trigger, interval schedules, cycle scheduling as work, service-type filters (§4.4) | Aerobic fixture schedules byte-identical; database-enforced kind tests; two cycles both number from 1 | yes |
 | SW-10 | **Work on the street map** | #97 merged, SW-2 | `Stop.kind`/`workOrder`/`durationMinutes`, pins and filter, per-stop service time in `packages/routing` | Same-origin network check still passes; honest estimate labels; optimize includes work stops | none |
-| SW-11 | **Authority export framework** | SW-0 (independent, in compliance) | Ruleset `export` block, `csv_export` method, export file in the submission package, Example County fixture only | Signed, sent and confirmed unchanged; demo notice column; no real-authority block | yes (check widening) |
-| SW-12 | **Cross-feature walkthrough** | all above | Full §12 matrix, scratch backup/restore with new data, screenshots, handoff/README/ROADMAP update | Every row in §12 passes on one integration SHA, recorded with exceptions | none |
+| SW-11 | **Authority export framework** | SW-0 | Ruleset `export` block, `csv_export` method, export file in the submission package, Example County fixture only | Signed, sent and confirmed unchanged; demo notice column; no real-authority block | yes (check widening) |
+| SW-12 | **Cross-feature walkthrough** | all above | Full §12 matrix, scratch backup/restore with new data, rollback-floor drills, screenshots, handoff/README/ROADMAP update | Every row in §12 passes on one integration SHA, recorded with exceptions | none |
 
-### 9.1 Merge, deploy and rollback for each PR
+### 9.1 Merge, deploy, feature flags, rollback floors and forward recovery
 
-- **Merge:** Codex reviews the draft and the local check record, then squash-merges. A schema PR merges only after the previous migration PR is on `main`. The branch merges `main` and reruns checks if it moved.
-- **Deploy:** staging only, through the documented manual workflow in [DEPLOY.md](DEPLOY.md) and [RUNBOOK.md](RUNBOOK.md), run by Codex. `DEMO_MODE` stays on. Run the migration, then the public demo reseed so the new demo story appears, then a quick role walk (owner, office, tech) on the new feature. Production stays pinned until Justin separately authorizes it.
-- **Rollback:** every migration is additive, with nullable columns, new tables and widened checks. Rolling back the application to the previous SHA leaves the new columns unused and keeps old code working. Exceptions to watch:
-  1. SW-1 widens `jobs.type`. Old code reading a `type='work'` row in `stopQuery` would show it as an inspection. Rollback therefore means cancelling open work jobs first (a script in the RUNBOOK).
-  2. SW-2's IndexedDB v2 cannot be downgraded in the browser. The v1 code must tolerate a v2 database, so SW-2 ships a guard in which unknown stores are ignored. That is tested by loading v1 code against a v2 database.
-  3. SW-5's total check change is compatible because the default is 0.
+- **Merge:** Codex reviews the draft and the local check record, then squash-merges. A schema PR merges only after the previous migration PR is on `main`. The branch merges `main` and reruns checks if `main` moved.
+- **Deploy:** staging only, through the documented manual workflow in [DEPLOY.md](DEPLOY.md) and [RUNBOOK.md](RUNBOOK.md), run by Codex. `DEMO_MODE` stays on. The steps are: run the migration, deploy with the PR's flag **off**, check the existing walkthrough, turn the flag on, reseed the public demo so the new story appears, and walk owner, office and tech through the feature. Production stays pinned until Justin separately authorizes it.
+- **Feature flags:** `AEROWISE_FEATURES` is a comma-separated deployment setting read by API, worker and web. It is on for staging when Codex chooses and off elsewhere. A flag that is off:
+  - hides the create UI;
+  - refuses create routes with 409 `feature_off`;
+  - skips that feature's part of the demo story.
 
-  If a migration itself must be undone, restore from the pre-deploy backup as the RUNBOOK describes. No down migrations are written, following the repository's forward-only rule.
+  Existing records stay readable and can be finished, so nothing is stranded when a flag is turned off.
+- **Rollback floors:** rollback is promised only down to a release's **floor**, never to an arbitrary earlier SHA. Below a floor, the only route back is restoring the pre-deploy backup, per the RUNBOOK, which loses later data. That is a disaster step, not a rollback.
+
+| Release | Floor once its flag is on (or once it is deployed, if it has no flag) | Why | Forward recovery |
+|---|---|---|---|
+| SW-1 | SW-1 | Pre-SW-1 queries do not filter `jobs.type` and would treat any work job (live, completed or historical) as an inspection | Flag off stops new work; fix forward |
+| SW-2a | SW-2a (phone) | Earlier binaries open IndexedDB with a fixed version and cannot clean or count the work database | Redeploy SW-2a or later |
+| SW-F | SW-F | Work templates and new document kinds exist; earlier code ignores them safely by key, but SW-2 and later need them | Fix forward |
+| SW-2 | SW-2 (server) and SW-2a (phone) | Work records, conflicts and attachments exist | Flag off; pending phone work waits safely |
+| SW-3 | SW-3 | Earlier draft editing would rewrite `quantity_milli` lines | Flag off; fix forward |
+| SW-4 | SW-4 only if any link is `quarantined` | Earlier code doesn't know that state; with tax mode off, rollback to before SW-4 is safe | Set every connection's tax mode off and resolve quarantines first |
+| SW-5 | SW-5 once any invoice has `deposit_applied_cents > 0` | Earlier `recalcInvoice` would compute the wrong amount due | Flag off stops new estimates; existing deposits stay serviceable |
+| SW-6 | SW-2 floor still holds | Pumping tables are separate; earlier code ignores them | Flag off |
+| SW-7 | SW-2 floor still holds | A nullable column and templates under new keys | none needed |
+| SW-8 | SW-8 once a plan has a version with its own terms, options or coverage | Earlier renewal signing would use organization terms and ignore frozen coverage | Flag off; contracts keep frozen rows |
+| SW-9 | SW-9 once a non-aerobic obligation exists | Earlier due lists would show pumping visits as inspections. The database still blocks an inspection job on them. | Flag off; existing cycle obligations stay schedulable as work |
+| SW-10 | none beyond SW-2 | Display only | none |
+| SW-11 | SW-11 once a filing uses `csv_export` | Earlier code doesn't know that method | Fix forward |
+
+**Rollback drills:** SW-12, and each PR that declares a floor, deploy the floor SHA against the new data in a scratch environment and run the floor's tests. That proves the floor actually works.
 
 ### 9.2 Validation for every implementation PR
 
@@ -530,27 +716,35 @@ Also run the shellcheck and compose `config -q` steps from `.github/workflows/ci
 
 ## 10. Implementation workers and file ownership
 
-These are proposed only. **No worker starts until Justin says so.** Suggested concurrency is two or three at once, because of Justin's usage limits. Shared foundations land first through one owner.
+These are proposed only. **No worker starts until Justin says so.** Suggested concurrency is two or three at once, because of Justin's usage limits.
+
+**Integration owner.** One role, held by Worker A for the whole program, owns the shared files:
+
+- `packages/db/src/schema.ts` and migration numbering;
+- `packages/domain/src/roles.ts`;
+- `packages/db/src/seed.ts` and `apps/api/src/demo-story.ts`;
+- `packages/tasks/src/export-task.ts`, the task kind registry in `packages/tasks/src/index.ts` and `providers.ts`;
+- route registration in `apps/api/src/app.ts`;
+- `apps/api/test/helpers.ts` (the truncate list);
+- the feature-flag module, `docs/engineering/ROADMAP.md` and `docs/DECISIONS.md`.
+
+Other PRs change these files only in one clearly labeled commit (`shared: …`). The integration owner reviews that commit, resolves any conflicts in these files when rebasing ahead of Codex's merge, and assigns the migration number. Nobody else resolves conflicts in shared files.
 
 | Worker | PRs | Owns (edits only here, plus its own tests) | Must not edit |
 |---|---|---|---|
-| **A: Work foundation** | SW-1, then SW-3 | `packages/domain/src/work*.ts`, `service-items.ts`, roles additions, `apps/api/src/routes/work-orders.ts`, `schedule.ts` work job paths, `readiness.ts` response join, office `/work` pages and inbox buttons, its migrations, `schema.ts` sections for its tables, `apps/api/src/lib/invoices.ts` (SW-3) | Offline lib, compliance package, renewals package |
-| **B: Technician offline** | SW-2, then SW-10 | `apps/web/lib/offline/**`, `apps/web/app/tech/**`, `apps/web/components/tech/**`, `apps/api/src/routes/work-sync.ts`, template `purpose`, starter work templates; after #97 merges, `packages/routing` service time and pin props | Inspection sync server code (read-only reference), invoices, map files until merged |
-| **C: Billing and estimates** | SW-4, then SW-5 | `packages/quickbooks/**`, `packages/domain/src/estimates.ts`, `apps/api/src/routes/estimates.ts`, public `/estimate/[token]`, office `/estimates`, deposit columns in its migration, the checkout reuse layer | `invoices.ts` lib core (A owns it; C adds through a reviewed hook landed in SW-3), offline lib |
-| **D: Plans and contracts** | SW-8, then SW-9 | `packages/renewals/**`, `packages/domain/src/contracts.ts`, `renewals.ts`, `schedule.ts` (domain), `apps/api/src/routes/contracts.ts`, `renewals.ts`, `/plans` and `/renewals` pages, compliance `openFiling` service-type guard (single-line, coordinated with F) | Offline lib, quickbooks |
-| **E: Pumping and systems** | SW-6, SW-7 | Disposal/vehicle/facility domain and routes, site pumping history, `crm.ts` system category, reports work summary PDF, phone disposal section **delivered as a component that B mounts** | Offline store schema (asks B) |
-| **F: Filing interop** | SW-11 | `packages/compliance/**` (export framework), ruleset schema, Example County fixture | Real-authority rulesets (drafts stay as they are) |
+| **A: Work foundation and integration** | SW-1, SW-3, SW-12; integration owner | Work domain/routes, `schedule.ts` work paths, the `type` filters in existing job queries, `readiness.ts` response join, office `/work` pages, inbox buttons, `service_items`, `apps/api/src/lib/invoices.ts` core, shared files above | Offline lib, compliance internals, renewals package |
+| **B: Phone and forms** | SW-2a, SW-F, SW-2, SW-10 | `apps/web/lib/offline/**`, `apps/web/app/tech/**`, `apps/web/components/tech/**` (after #97 merges), template `purpose` and signature block, signature pad, generic templates, `work-sync.ts`, conflicts API and screens; after #97 merges, map pin props and `packages/routing` service time | Inspection sync server code (read-only reference), invoices, #97's files until it merges |
+| **C: Billing and estimates** | SW-4, SW-5 | `packages/quickbooks/**`, estimates domain/routes/pages, public `/estimate/[token]`, deposit tables and invariants (through a reviewed hook in A's invoice core landed in SW-3) | Offline lib, renewals |
+| **D: Plans and contracts** | SW-8, SW-9 | `packages/renewals/**`, `packages/domain/src/contracts.ts`, `renewals.ts`, domain `schedule.ts`, contracts/renewals routes and pages, coverage tables and reservation code, cycle tables and filters | Offline lib, quickbooks; `openFiling` only through the database constraint, not code |
+| **E: Pumping and systems** | SW-6, SW-7 | Pumping/disposal/vehicle/facility domain and routes, pumping, conventional and installation templates, `crm.ts` system category, completion summary PDF, phone disposal and installation sections **delivered as components that B's form renderer mounts** | Offline store schema (asks B) |
+| **F: Filing interop** | SW-11 | `packages/compliance/**` export framework, ruleset schema, Example County fixture | Real-authority rulesets (drafts stay as they are) |
 
-**Waves:**
+**Waves** (each starts only after Justin's go-ahead):
 
-1. A (SW-1). C (SW-4) and F (SW-11) may run alongside, because they touch separate packages. Their migrations queue behind SW-1.
-2. B (SW-2) and A (SW-3).
+1. A (SW-1), B (SW-2a), and optionally C (SW-4) and F (SW-11). These touch separate code; migrations queue through A.
+2. B (SW-F, then SW-2) and A (SW-3).
 3. C (SW-5), E (SW-6, then SW-7) and D (SW-8).
-4. D (SW-9), B (SW-10, after #97 merges), then one owner for SW-12.
-
-**Shared files:** `packages/db/src/schema.ts`, `apps/api/test/helpers.ts` (truncate list), `packages/tasks/src/export-task.ts`, `roles.ts`, `demo-story.ts`, ROADMAP.md and DECISIONS.md are edited by several PRs. Each PR appends only its own section and merges `main` before review, so conflicts stay small and textual.
-
----
+4. D (SW-9), B (SW-10, after #97 merges), then A (SW-12).
 
 ## 11. Risk and effort
 
@@ -558,20 +752,25 @@ Effort is relative (S, M, L, XL) and assumes the conventions above. No calendar 
 
 | Area | Effort | Main risks | Mitigation and assumptions |
 |---|---|---|---|
-| SW-1 Work foundation | L | Widening `jobs.type` affects every stop query and the due list; mixing work into inspection counts | Explicit `type` filters in each existing query, with a test per query; zero-filing assertions |
-| SW-2 Offline work | XL | IndexedDB upgrade with queued ops; signature blobs; exactly once across three record kinds; physical phone behavior | v1→v2 upgrade tests; reuse the revision/acknowledge rule; gate G-DEVICE on a real phone before pilot reliance |
-| SW-3 Service items and invoicing | M | Fractional quantities change line math | `quantity_milli` only on new rows; old rows untouched; QuickBooks payload snapshot tests |
-| SW-4 Mixed tax in QuickBooks | M | Automated sales tax may recompute; totals drift | Compare after create, raise a conflict and never post a wrong total; G-QBO-TAX |
-| SW-5 Estimates and deposits | L | Double conversion or charge; deposit application in QuickBooks | Unique indexes and row locks; replay tests; G-QBO-DEPOSIT; refunds stay manual |
-| SW-6 Pumping and disposal | M | Implying regulatory compliance; facility data licensing | Neutral wording; only provider-entered or cited public facility data; G-HAUL, G-FAC |
-| SW-7 Conventional and installation | M | Misclassified existing systems | Backfill only from aerobic contracts; warning instead of refusal |
-| SW-8 Plan versions and coverage | XL | Backfill must not change any existing contract, renewal text or obligation; legal text | v1 backfill uses `terms_text=null`; snapshot equality tests on seeded and demo data; G-LEGAL, G-COVERAGE |
-| SW-9 Service cycles | L | A pumping obligation reaching filings or deadlines | Service-type guards plus negative tests; aerobic fixture schedules byte-identical |
-| SW-10 Map work pins | S–M | Dependency on an unmerged branch | Start only after the merge; additive `Stop` fields |
+| SW-1 Work foundation | L | Widening `jobs.type` affects every job query, including historical and completed rows | Explicit `type` filter in each existing query, with a test per query; database-enforced kinds; floor SW-1 |
+| SW-2a Phone compatibility | S | A lingering old binary on a phone | It must be deployed before SW-2; floor drill |
+| SW-F Forms and signatures | M | An old binary picking a work template as the inspection form | Distinct keys; upgrade-path test with the old binary |
+| SW-2 Offline work | XL | Two databases, blob durability, business conflicts, quota, physical phone behavior | §8.1 and §8.5 tests; G-DEVICE before pilot reliance |
+| SW-3 Service items and invoicing | M | Fractional quantities change line math | `quantity_milli` only on new rows; payload snapshot tests; floor SW-3 |
+| SW-4 Mixed tax in QuickBooks | M | Automated sales tax recomputes; a wrong remote invoice exists before detection | Mode off for real companies until G-QBO-TAX; deterministic `requestid`; quarantine and held payments |
+| SW-5 Estimates and deposits | XL | Double conversion or charge; deposit larger than final; refunds after application; accounting treatment | Unique indexes, row locks, invariants I1–I5, ledger tests; G-TAX-TREATMENT, G-QBO-DEPOSIT |
+| SW-6 Pumping and disposal | M | Implying regulatory compliance; facility data licensing; load/volume mismatch | Neutral wording; provider-entered or cited public facility data; mismatch shown, not refused; G-HAUL, G-FAC |
+| SW-7 Conventional and installation | M | Misclassified existing systems; multi-visit installs | Backfill only from aerobic contracts; warning not refusal; explicit `final_visit` |
+| SW-8 Plan versions and coverage | XL | Backfill must not change any existing contract; concurrent limit use; legal text | v1 backfill uses `terms_text=null`; locked reservation; snapshot equality tests; G-LEGAL, G-COVERAGE |
+| SW-9 Service cycles | L | Constraint replacement on obligations; a pumping obligation reaching filings | Fill trigger for old writers; database-enforced kinds; byte-identical aerobic fixtures |
+| SW-10 Map work pins | S–M | Dependency on an unmerged PR | Start only after #97 merges; additive fields |
 | SW-11 Export framework | M | Over-claiming acceptance | Example County only; G-AUTH-CSV before any real block |
-| SW-12 Walkthrough | M | Sandbox interruptions | Record exceptions; one integration SHA |
+| SW-12 Walkthrough | M | Sandbox interruptions | Record exceptions; one integration SHA; floor drills |
 
-The largest assumptions are that the pilot actually uses pumping, installation or estimates (Needs from Justin) and that a QuickBooks sandbox is available for G-QBO checks with test credentials Codex already holds.
+The largest assumptions:
+
+- The pilot actually uses pumping, installation or estimates (Needs from Justin).
+- QuickBooks work can be built and tested entirely against the built-in test QuickBooks provider. **Live Intuit sandbox access was not verified in this session.** It is a separate prerequisite for the G-QBO gates (prerequisite P-QBO-SANDBOX in §13), and no account will be created for it.
 
 ---
 
@@ -581,15 +780,15 @@ SW-12 runs the full matrix on one integration SHA. Each feature PR runs its own 
 
 | # | Scenario | Org types | Device | Expected |
 |---|---|---|---|---|
-| 1 | Create, schedule and complete each work category (pumping, repair, install, other) | Public demo, personalized demo, trial, real-test | Office desktop + tech phone | Lifecycle and events correct; no filing, report, compliance event or obligation change |
+| 1 | Create, schedule and complete each work category (pumping, repair, install, other) | Public demo, personalized demo, trial, real-test | Office desktop + tech phone | Lifecycle and events correct; no filing, report, compliance event or aerobic obligation change |
 | 2 | Aerobic inspection regression: schedule, offline complete, sign, file, confirm, retest | Same | Both | Unchanged results versus `0906828` baseline tests |
 | 3 | Offline: two work jobs plus one inspection completed with no signal, photos and signatures, reload, reconnect | Demo and trial | Phone | Each record, photo and signature arrives exactly once; newer in-flight edits preserved |
-| 4 | IndexedDB v1→v2 upgrade with pending inspection ops | Trial | Phone | Pending ops sync once; nothing lost |
+| 4 | Phone compatibility: v1 database with pending inspection ops opened by SW-2a, then SW-2; rollback drill to the SW-2a floor | Trial | Phone | Pending ops sync once; no `VersionError`; pending work waits during the drill and sends after |
 | 5 | Convert an inspection issue and a portal request to work, twice each | All | Office | One work order each; history on both sides |
-| 6 | Pumping record with "delivered later", then completed; correction | Demo and trial | Phone + office | Inbox item raised then cleared; original row kept |
+| 6 | Two pump-outs at different sites, one disposal load later (offline), then a correction | Demo and trial | Phone + office | Overdue-disposal item raised then cleared; each pump-out in exactly one load; original rows kept |
 | 7 | Estimate send, view, revise, accept old version (409), accept current, pay deposit, convert, complete, final invoice | Demo (test payments) and trial | Homeowner phone + office | One work order, one deposit invoice, one charge; final amount due = total − deposit |
 | 8 | Concurrent double accept and checkout replay | Trial | API + browser | Idempotent; no double charge |
-| 9 | Decline after deposit, then refund through the existing flow | Trial | Office | Refund recorded; QuickBooks refund receipt where connected |
+| 9 | Cancel after acceptance with a paid deposit: refund it, and in a second case retain it with a reason | Trial | Office | Work order cancelled, reservations released, disposition recorded; QuickBooks refund receipt where connected |
 | 10 | Mixed taxable invoice with QuickBooks tax mode off and on (test provider) | Trial | Office | Off gives today's conflict; on syncs, or a mismatch conflict |
 | 11 | Plan builder: new version with terms, intake, options, coverage; renewal signed; repair invoice on covered site | Trial and personalized demo | Office + homeowner | Snapshot frozen; coverage shown to office and tech; covered line note; override audited |
 | 12 | Existing contracts after the plan-version backfill | Seeded and demo | Office | Same obligations, agreement text and renewal amounts as before |
@@ -603,6 +802,15 @@ SW-12 runs the full matrix on one integration SHA. Each feature PR runs its own 
 | 20 | Read-only (lapsed subscription) organization | Trial | Office + phone | Writes refused with `organization_read_only`; phone retries later without losing work |
 | 21 | Data export includes new CSVs; scratch backup and restore with new data | Trial and demo | Ops | New tables and files restored; demo CSVs marked |
 | 22 | Outbound requests during the demo | Demo | Both | No real email, SMS, payment, QuickBooks or geocoding call; test outbox only |
+| 23 | Deposit larger than the final amount; refund attempt on an applied deposit; webhook refund after application | Trial | Office + API | Applied only up to the final amount; unapplied item raised; 409 `deposit_applied`; shortfall item raised; ledger test passes |
+| 24 | QuickBooks tax mismatch and lost-response retry (test provider) | Trial | Office | One remote invoice only; link quarantined; payments held; recheck releases |
+| 25 | Two covered work orders racing for the last allowed use; then cancel, void and override paths | Trial | API + office | Exactly one covered; counts restored correctly |
+| 26 | Job reassigned, cancelled and office-completed while the phone was offline | Trial | Phone + office | One conflict row each; record never lost; office resolves |
+| 27 | Customer signature, then an edit of a signed field; template change while offline | Trial | Phone | Re-sign required; server rejects a mismatched hash; old template version accepted |
+| 28 | Phone storage full; permanently failed upload | Trial | Phone | Nothing queued is dropped; clear message; Retry works |
+| 29 | Expired demo with pending work, photo and signature ops; real company with an expired session and pending work | Demo and trial | Phone | Demo databases removed; real work kept |
+| 30 | Two-visit installation with a final sign-off; work job against an aerobic obligation (API) | Trial | Phone + API | Second visit completes the work order; the database rejects the wrong kind |
+| 31 | Pumping-cycle plan with two cycles on one contract | Trial | Office | Both number from 1; scheduling twice gives one work order and one live job |
 
 ---
 
@@ -614,15 +822,17 @@ These gates never stop the software from being built. Each one decides only whet
 
 | Gate | Question | Evidence needed | Blocks |
 |---|---|---|---|
-| **G-QBO-TAX** | Do mixed taxable invoices post with matching totals, including with automated sales tax? | Intuit sandbox round trip recorded by Codex | Turning tax mode on for a real company |
-| **G-QBO-DEPOSIT** | Does a deposit-item negative line keep the totals equal? | Sandbox round trip | Deposit invoices syncing for real companies |
+| **P-QBO-SANDBOX** (prerequisite) | Is live Intuit sandbox access available to Codex for this work? | Codex confirms existing access. Not verified in this session; no account is created. | Running G-QBO-TAX and G-QBO-DEPOSIT (software tests use the built-in test provider either way) |
+| **G-QBO-TAX** | Do mixed taxable invoices post with matching totals, including with automated sales tax? | Sandbox round trip recorded by Codex | Turning tax mode on for a real company |
+| **G-QBO-DEPOSIT** | Which QuickBooks representation of a deposit (H-DEP-2 or linked payments) keeps totals, revenue, tax and deposit balance coherent? | Sandbox round trip plus the provider's bookkeeper's preference | Deposit invoices syncing for real companies |
+| **G-TAX-TREATMENT** | Is a deposit on the pilot's services untaxed until the work is invoiced (H-DEP-1)? | The provider's own tax treatment or advisor | Choosing `deposit_mode` for a real company |
 | **G-HAUL** | Which transporter registration and manifest fields does the pilot provider's jurisdiction require, and what is the retention period? | The provider's current manifest form and registration, plus a primary-source citation | Any field marked "required by regulation" |
 | **G-FAC** | Which facilities does the pilot use, and is there a usable public list? | Provider list, or a named public source and its terms | Bulk facility import |
 | **G-AUTH-CSV** | What is the pilot authority's accepted export spec, upload channel and receipt? | Authority spec plus one accepted sample, logged as evidence | A real-authority `export` block |
-| **G-COVERAGE** | What do the provider's real tiers cover? | Redacted plan documents and contracts | Seeding real tier definitions (demo uses fictional tiers) |
+| **G-COVERAGE** | What do the provider's real tiers cover, and do pumping cycles restart at renewal? | Redacted plan documents and contracts | Seeding real tier definitions (demo uses fictional tiers) |
 | **G-LEGAL** | Is the estimate, agreement and sign-off text acceptable? | Legal review | Use with real homeowners |
-| **G-DEVICE** | Does a physical phone handle camera, signature, close, reopen and reconnect? | Physical-device run | Field-pilot reliance |
-| **G-STRIPE-DEPOSIT** | Do Stripe test-mode deposit, payment and refund work on staging? | Staging walkthrough with test keys (no new account) | Real deposits |
+| **G-DEVICE** | Does a physical phone handle camera, signature, storage limits, close, reopen and reconnect? | Physical-device run | Field-pilot reliance |
+| **G-STRIPE-DEPOSIT** | Do Stripe test-mode deposit, payment and refund work on staging? | Staging walkthrough with existing test keys (no new account) | Real deposits |
 
 ### 13.2 Needs from Justin
 
@@ -631,18 +841,50 @@ Each item has a stand-in so the build can go ahead without it.
 1. **Pilot provider and actual permit authority.** These are already open in the handoff. They decide G-AUTH-CSV and G-HAUL scope. Stand-in: Example County and fictional data. *Recommendation: answer this first. Nothing else here waits on it.*
 2. **Does the pilot do pumping, repairs, installation and estimates?** This sets the build order after SW-2. Stand-in: build everything in the plan's order. *Recommendation: keep the order and only reorder SW-5 to SW-7 if the pilot lacks a category.*
 3. **The provider's redacted plan, contract and estimate documents** (G-COVERAGE, G-LEGAL). Stand-in: fictional Basic, Gold and Platinum in the demo. *Recommendation: ask for them with the existing sample pack.*
-4. **Deposit policy and estimate expiry default.** Stand-in: no deposit and 30-day expiry by default, configurable per estimate. *Recommendation: accept these defaults.*
-5. **Whether the pilot uses QuickBooks and automated sales tax.** Stand-in: tax mode off, with today's conflict. *Recommendation: have Codex run G-QBO-TAX in the sandbox regardless.*
-6. **Approval to start workers** in the waves of §10. *Recommendation: start Wave 1 with Worker A only, which is the step in §14.*
+4. **Whether Codex has live Intuit sandbox access** (P-QBO-SANDBOX). Stand-in: the built-in test QuickBooks provider. *Recommendation: Codex checks what already exists. Create no new account.*
+5. **Deposit policy and estimate expiry default.** Stand-in: no deposit and 30-day expiry by default, configurable per estimate. *Recommendation: accept these defaults.*
+6. **Whether the pilot uses QuickBooks and automated sales tax.** Stand-in: tax mode off, with today's conflict. *Recommendation: run G-QBO-TAX once P-QBO-SANDBOX confirms access; tax mode stays off for real companies until then.*
+7. **Approval to start workers** in the waves of §10. *Recommendation: start Wave 1 with Worker A (SW-1) and Worker B (SW-2a), which is the step in §14.*
 
 ---
 
+
 ## 14. First implementation step
 
-When Justin authorizes it, start **Worker A on SW-1 (work foundation)** from the then-current `main`. The first commit is migration `0048` (or the next free number), creating:
+When Justin authorizes it, start two workers. The other waves follow §10.
 
-- the `work_types`, `work_orders`, `work_order_events`, `work_order_notes` and `work_order_lines` tables;
-- the `jobs.type` widening, `work_order_id` and `retest_of_inspection_id`;
-- `issues.work_order_id` and `service_requests.work_order_id`.
+- **Worker A on SW-1 (work foundation), flag `work_orders` off by default.**
+  - The first commit adds the explicit `type = 'inspection'` filter to every existing `jobs` query, with a test per query. That makes the code safe to read work rows before any exist.
+  - The next commit is migration `0048` (or the next free number), adding:
+    - the `work_types`, `work_orders`, `work_order_events`, `work_order_notes` and `work_order_lines` tables;
+    - the `jobs` changes, including the kind-enforcing composite keys and `visit_number`;
+    - `inspections.job_type`;
+    - `issues.work_order_id` and `service_requests.work_order_id`.
+  - Matching `schema.ts` types, the truncate-list entries and database tests that reject wrong job/obligation kinds come with it.
+  - Routes, office UI and the demo story follow in the same PR.
+- **Worker B on SW-2a (phone compatibility release).** This is client only and has no schema change. It must be deployed to staging before SW-2 can merge.
 
-That commit also adds the matching `schema.ts` types, the truncate-list entries and a test that a work job never opens a filing. Routes, office UI and demo story follow in the same PR. Nothing else in this plan should start before SW-1 merges, except SW-4 (QuickBooks tax) and SW-11 (export framework), which touch separate packages.
+SW-4 (QuickBooks tax, against the test provider) and SW-11 (export framework) may run alongside, because they touch separate packages.
+
+---
+
+## 15. Review response (Codex on `54e2672`)
+
+| # | Finding | Resolution in this revision |
+|---|---|---|
+| 1 | Rollback compatibility invalid: a fixed `DB_VERSION=1` binary gets `VersionError` on a v2 database; cancelling work jobs doesn't make historical rows safe; deposit/fractional rows; arbitrary-SHA rollback | The inspection database version is never raised. Work data lives in a separate per-tenant database. **SW-2a**, a client-only compatibility release (store-presence open, cleanup and counts of the work database, waiting unknown ops), ships first and is the phone floor (§8.1). New ground rule 9 (expand, read, then write). §9.1 now has feature flags, a **rollback floor per schema-changing release**, the reason and forward recovery for each, and floor drills. Rollback to arbitrary SHAs is explicitly not promised. SW-1 now filters every existing job query by `type`, and its floor is SW-1 because historical work rows exist. SW-3 and SW-5 floors cover fractional quantities and applied deposits. |
+| 2 | Cycles collide on `UNIQUE(contract_id, sequence)`; identity, backfill and anchoring unspecified; rule 0.1 contradiction; app-only filters | §4.4: `contract_service_cycles` with a stable `cycle_key`, frozen snapshot and linked work type; `service_obligations.cycle_id` with a composite key matching service type; the unique constraint replaced by `unique(cycle_id, sequence)` plus an aerobic partial index; a fill trigger for old writers; contract-start anchoring and windows; idempotent scheduling; a list of count/report filters. Rule 0.1 now says "never changes **aerobic** obligations", and a work job may complete a non-aerobic cycle obligation. §1.2: job/obligation kinds and inspection/job kinds are **enforced by composite foreign keys and checks**. Tests cover both directions. |
+| 3 | Deposit lifecycle and accounting underspecified; "no wrong total is ever posted" was false | §3.4: cancellation after acceptance, its effect on the work order, draft and issued final invoices, and deposit disposition (refund or retain, never automatic). §3.6: invariants I1–I5 (deposit larger than final, refund after application, outside refunds create a shortfall item) and a ledger test. Untaxed deposit and the negative QuickBooks line are now **hypotheses H-DEP-1/H-DEP-2** behind G-TAX-TREATMENT and G-QBO-DEPOSIT, with tests of revenue, tax and deposit balance, not just `TotalAmt`. §3.7: the sentence is corrected. A mismatch is detected after the remote invoice exists; the deterministic `requestid` prevents duplicate creates; quarantine holds payments; review choices are defined. |
+| 4 | Coverage limits: no `rule_key`; concurrency; lifecycle | §4.2: stable `ruleKey`, `optionKey` and `cycleKey`. §4.3: rules frozen per contract in `contract_coverage_rules`; `coverage_uses` with reserved, consumed and released states; reservation under a row lock; defined effects of cancel, void, override, refund, reschedule and line changes; no recomputation against newer plans; concurrent exhaustion tests. |
+| 5 | SW-8 missing a dependency on the form foundation; SW-2/SW-7 overlap; no integration owner; one live job and record per work order | New **SW-F** (forms, signatures, intake renderer), on which SW-2, SW-5, SW-7 and SW-8 depend. Starter templates are each owned by exactly one PR (§5.2). §10 names an **integration owner** (Worker A) for shared files, with `shared:` commits and migration numbering. §1.2/§1.3: several visits per work order are supported deliberately (`visit_number`, one *live* job at a time, `final_visit`). Pump-outs and disposal loads are separate records (§2.2). One technician per job is a disclosed limitation. |
+| 6 | Server/offline business conflicts | New §8.5: local completion versus server acceptance states; completion only after durable photo and signature uploads; signature-bound snapshot hash; `work_sync_conflicts` for reassignment, cancellation and office completion (record never discarded); template and price change rules; conflict screens; retry semantics; quota and failed uploads; expired-demo cleanup with pending ops. Matrix rows 26–29. |
+| — | Sandbox credentials assumed | Corrected (§11, §13). Software tests use the built-in test QuickBooks provider. Live Intuit sandbox access is a separate prerequisite, **P-QBO-SANDBOX**, not verified in this session, and no account is created for it. |
+
+**Design choices left open on purpose** (each has a default, so the build doesn't wait on it):
+
+- **U1:** several assignees per job. Default: one technician plus a free-text `crew_note`.
+- **U2:** per-quantity coverage limits, such as gallons. Default: one use per work order per rule.
+- **U3:** pumping-cycle anchoring across renewals. Default: anchored to each contract's start. Gate G-COVERAGE decides whether to carry it forward.
+- **U4:** the QuickBooks representation of deposits. Default: H-DEP-2 behind its conflict, until G-QBO-DEPOSIT.
+- **U5:** deposit tax treatment. Default: H-DEP-1, selectable per organization, off for real companies until G-TAX-TREATMENT.
+- **U6:** whether a conflict record may be turned into a new work order automatically. Default: no, the office decides.
