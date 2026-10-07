@@ -1,0 +1,22 @@
+{
+  "before": {
+    "inspections": 2,
+    "attachments": 4,
+    "completed": 2,
+    "filings": 2
+  },
+  "after": {
+    "inspections": 4,
+    "attachments": 8,
+    "completed": 4,
+    "filings": 4
+  },
+  "delta": {
+    "inspections": 2,
+    "attachments": 4,
+    "completed": 2,
+    "filings": 2
+  },
+  "lostCompletionResponseHttpStatus": 200,
+  "exactlyOnce": true
+}

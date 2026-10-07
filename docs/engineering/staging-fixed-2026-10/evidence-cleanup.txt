@@ -1,0 +1,21 @@
+BEGIN
+LOCK TABLE
+SELECT 1
+DO
+ALTER TABLE
+ALTER TABLE
+DELETE 1
+DELETE 1
+ALTER TABLE
+ALTER TABLE
+COMMIT
+ remaining_test_notes
+----------------------
+                    0
+(1 row)
+
+                tgname                | tgenabled
+--------------------------------------+-----------
+ authority_evidence_answers_immutable | O
+ authority_evidence_immutable         | O
+(2 rows)

@@ -1,0 +1,18 @@
+
+> aerowise@ db:reseed-demo /app
+> pnpm --filter @aerowise/db reseed-demo && pnpm --filter @aerowise/api demo-story
+
+
+> @aerowise/db@0.0.0 reseed-demo /app/packages/db
+> tsx src/cli.ts reseed-demo
+
+deleted 548 rows from 60 tables and 3 people
+emptied and ended 1 public demo companies; kept 7 others
+removed the stored files of 1 companies from /data/files
+production: no platform admin seeded; use cli.ts create-platform-admin
+seeded Hill Country Aerobic Services (demo) (94b45158-092f-49ad-a0ef-c9addc49a6b5) with 55 sites, 52 contracts and 9 scheduled jobs
+
+> @aerowise/api@0.0.0 demo-story /app/apps/api
+> tsx src/demo-story-cli.ts
+
+demo story: 2 inspections filed (one confirmed), 1 renewal sent, 2 invoices (one paid)

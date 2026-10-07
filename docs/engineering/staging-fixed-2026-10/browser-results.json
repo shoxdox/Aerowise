@@ -1,0 +1,76 @@
+{
+  "final-marketing": {
+    "orgId": "4ac164cb-0193-4a85-87e7-03ac156163c3",
+    "role": "owner",
+    "started": true
+  },
+  "final-admin-request": {
+    "requestRecorded": true,
+    "provider": "outbox",
+    "handled": true
+  },
+  "final-owner": {
+    "ownerPages": true,
+    "emailError": "A demo company only holds made-up email addresses (like name@example.com).",
+    "phoneError": "A demo company only holds made-up phone numbers (555-0100 to 555-0199).",
+    "orgId": "4ac164cb-0193-4a85-87e7-03ac156163c3"
+  },
+  "final-phone-inspections": {
+    "onlineCompleted": true,
+    "offlineCompleted": true,
+    "offlineReloadKept": true,
+    "customers": [
+      "Carlos Gonzales",
+      "Michael Whitfield"
+    ]
+  },
+  "final-reconnect": {
+    "lostCompletionResponse": 1,
+    "fetchedStatus": 200,
+    "allChangesSent": true
+  },
+  "final-email": {
+    "invitation": "outbox",
+    "resetRequested": true,
+    "orgId": "4ac164cb-0193-4a85-87e7-03ac156163c3"
+  },
+  "prospect-after-reseeds": {
+    "sameOrg": true,
+    "name": "Example Septic LLC (demo)",
+    "logo": true,
+    "role": "owner"
+  },
+  "prospect-tech": {
+    "orgId": "b07b91e1-0c88-4a15-9e09-8bada57055ed",
+    "name": "Example Septic LLC (demo)",
+    "role": "technician",
+    "entryLinkSurvived": true
+  },
+  "ended-cleared": {
+    "message": "This demo has ended\n\nTEST Fixed Ended Septic (demo) is no longer available. Its route, inspections and photos were removed from this phone.\n\n1 unsent change from the demo could not be sent, because the demo company no longer exists. Nothing was recorded for a real company.\n\nSign in",
+    "routeCards": 0,
+    "databases": []
+  },
+  "public-reset-cleared": {
+    "message": "This demo has ended\n\nHill Country Aerobic Services (your demo) is no longer available. Its route, inspections and photos were removed from this phone.\n\n1 unsent change from the demo could not be sent, because the demo company no longer exists. Nothing was recorded for a real company.\n\nSign in",
+    "routeCards": 0,
+    "databases": []
+  },
+  "ended-entry-proof": {
+    "entryRefused": true
+  },
+  "proposal": {
+    "proposalGenerated": true,
+    "published": false
+  },
+  "public-health": {
+    "httpsHealthStatus": 200,
+    "health": {
+      "ok": true
+    }
+  },
+  "paid-invoice-detail": {
+    "paidInvoiceDetail": true,
+    "paymentVisible": true
+  }
+}

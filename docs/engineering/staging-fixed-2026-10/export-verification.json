@@ -1,0 +1,92 @@
+[
+  {
+    "file": "customers.csv",
+    "rows": 50,
+    "marked": true
+  },
+  {
+    "file": "contacts.csv",
+    "rows": 50,
+    "marked": true
+  },
+  {
+    "file": "sites.csv",
+    "rows": 55,
+    "marked": true
+  },
+  {
+    "file": "systems.csv",
+    "rows": 55,
+    "marked": true
+  },
+  {
+    "file": "contracts.csv",
+    "rows": 52,
+    "marked": true
+  },
+  {
+    "file": "visits.csv",
+    "rows": 156,
+    "marked": true
+  },
+  {
+    "file": "jobs.csv",
+    "rows": 11,
+    "marked": true
+  },
+  {
+    "file": "inspections.csv",
+    "rows": 2,
+    "marked": true
+  },
+  {
+    "file": "inspection_values.csv",
+    "rows": 38,
+    "marked": true
+  },
+  {
+    "file": "invoices.csv",
+    "rows": 2,
+    "marked": true
+  },
+  {
+    "file": "invoice_lines.csv",
+    "rows": 4,
+    "marked": true
+  },
+  {
+    "file": "payments.csv",
+    "rows": 1,
+    "marked": true
+  },
+  {
+    "file": "reports/2f5f533c-872a-4832-950f-29aa99f666bd.pdf",
+    "marked": true,
+    "fontsEmbedded": true
+  },
+  {
+    "file": "reports/84666fc5-99b0-4ba5-8f53-cb25bbc2e9b2.pdf",
+    "marked": true,
+    "fontsEmbedded": true
+  },
+  {
+    "file": "reports/c921c78b-abc4-4a69-8682-cc0a5fff7bad.pdf",
+    "marked": true,
+    "fontsEmbedded": true
+  },
+  {
+    "file": "reports/fc31079d-d74b-47b5-96f6-eda27b28b462.pdf",
+    "marked": true,
+    "fontsEmbedded": true
+  },
+  {
+    "file": "invoices/1f280a31-28a8-4230-8a86-f0b1a35fbdcd.pdf",
+    "marked": true,
+    "fontsEmbedded": true
+  },
+  {
+    "file": "invoices/7a5e4f6f-7653-4178-9ce6-4aa8eb7113b7.pdf",
+    "marked": true,
+    "fontsEmbedded": true
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "firstChanges": [
+    {
+      "org": "2944c7d0-d75f-4c28-8eae-5dc3fe716196",
+      "table": "billing_periods",
+      "before": {
+        "rows": 0,
+        "hash": "d751713988987e9331980363e24189ce"
+      },
+      "after": {
+        "rows": 1,
+        "hash": "151d495a9632d6a778b030d2e551fcf2"
+      }
+    }
+  ],
+  "firstChangeExplanation": "Worker created a free zero-dollar trial billing period; no prior rows lost. See trial-worker-billing.txt.",
+  "secondChanges": [],
+  "activeProspectPreserved": true
+}

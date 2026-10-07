@@ -1,0 +1,41 @@
+[
+  {
+    "organization": "00000000-0000-0000-0000-000000000000",
+    "subject": "Demo request: TEST Final Build Septic",
+    "transport": "outbox",
+    "to": "walkthrough.admin@example.com",
+    "at": "2026-10-07T04:24:50.096Z"
+  },
+  {
+    "organization": "00000000-0000-0000-0000-000000000000",
+    "subject": "Demo request: TEST Request Example Septic LLC",
+    "transport": "outbox",
+    "to": "walkthrough.admin@example.com",
+    "at": "2026-10-06T23:25:41.570Z"
+  },
+  {
+    "organization": "00000000-0000-0000-0000-000000000000",
+    "subject": "Demo request: TEST Fixed Build Septic",
+    "transport": "outbox",
+    "to": "walkthrough.admin@example.com",
+    "at": "2026-10-07T04:06:21.892Z"
+  },
+  {
+    "organization": "4ac164cb-0193-4a85-87e7-03ac156163c3",
+    "subject": "Reset your Aerowise password",
+    "transport": "outbox",
+    "to": "owner.41171ef5f4@demo.example.com",
+    "at": "2026-10-07T04:27:38.659Z"
+  },
+  {
+    "organization": "4ac164cb-0193-4a85-87e7-03ac156163c3",
+    "subject": "Olivia Owner invited you to Hill Country Aerobic Services (your demo) on Aerowise",
+    "transport": "outbox",
+    "to": "fixed.tech@example.com",
+    "at": "2026-10-07T04:27:37.795Z"
+  }
+]
+ ended_demo_customers
+----------------------
+                    0
+(1 row)

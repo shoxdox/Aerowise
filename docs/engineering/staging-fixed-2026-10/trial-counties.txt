@@ -1,0 +1,10 @@
+              name              | demo | customers | sites | people
+--------------------------------+------+-----------+-------+--------
+ TEST Fixed Trial Septic        | f    |         0 |     0 |      0
+ TEST Fixed Trial Septic (demo) | t    |         0 |     0 |      0
+(2 rows)
+
+     county     | count
+----------------+-------
+ Example County |    55
+(1 row)

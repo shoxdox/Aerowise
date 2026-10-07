@@ -1,0 +1,21 @@
+{"commit":"5e491a0386fef627ebdaac9d8214c8ae5e7578b1","demo":"true","live":"","externalConfigured":[]}
+staging: backed up to /var/backups/aerowise/staging/db-20261007T042331Z.dump and files-20261007T042331Z.tar.gz
+staging: no R2 settings in /etc/aerowise/staging.env, so backups stay on this server only
+
+> aerowise@ db:reseed-demo /app
+> pnpm --filter @aerowise/db reseed-demo && pnpm --filter @aerowise/api demo-story
+
+
+> @aerowise/db@0.0.0 reseed-demo /app/packages/db
+> tsx src/cli.ts reseed-demo
+
+deleted 3061 rows from 60 tables and 15 people
+emptied and ended 5 public demo companies; kept 7 others
+removed the stored files of 5 companies from /data/files
+production: no platform admin seeded; use cli.ts create-platform-admin
+seeded Hill Country Aerobic Services (demo) (27e468c0-a86a-4e51-bd3f-1e33941ade0c) with 55 sites, 52 contracts and 9 scheduled jobs
+
+> @aerowise/api@0.0.0 demo-story /app/apps/api
+> tsx src/demo-story-cli.ts
+
+demo story: 2 inspections filed (one confirmed), 1 renewal sent, 2 invoices (one paid)

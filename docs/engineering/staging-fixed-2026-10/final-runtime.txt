@@ -1,0 +1,15 @@
+/aerowise-staging-api-1 healthy
+/aerowise-staging-worker-1 healthy
+/aerowise-staging-web-1 healthy
+{"ok":true}
+> @aerowise/worker@0.0.0 health /app/apps/worker
+> tsx src/health.ts
+
+worker ok (last pass 1s ago)
+# Staging only. Server cron uses UTC: reseed at 09:00 UTC (04:00 CDT / 03:00 CST).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root docker ps -q --filter label=com.docker.compose.project=aerowise-staging --filter label=aerowise.autoheal=true --filter health=unhealthy | xargs -r docker restart >> /var/log/aerowise-staging-autoheal.log 2>&1
+45 8 * * * root /opt/aerowise/staging/deploy/vps/backup.sh staging >> /var/log/aerowise-staging-backup.log 2>&1
+0 9 * * * root docker exec aerowise-staging-api-1 pnpm db:reseed-demo >> /var/log/aerowise-reseed.log 2>&1
+94b1e83679581aea27aa076ed6adede76f3df3e7f7d1e2d9befd6dff21d0707e 2026-10-06T00:20:04.215915794Z
