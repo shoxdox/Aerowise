@@ -24,6 +24,7 @@ export async function cancelOpenVisits(
     .updateTable("jobs")
     .set({ status: "cancelled", cancelledAt: args.at, cancelReason: args.reason, updatedAt: args.at })
     .where("organizationId", "=", args.organizationId)
+    .where("type", "=", "inspection")
     .where(
       "obligationId",
       "in",

@@ -167,7 +167,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           ? []
           : db
               .selectFrom("serviceObligations as o")
-              .leftJoin("jobs as j", (j) => j.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.status", "in", ["scheduled", "in_progress"]))
+              .leftJoin("jobs as j", (j) => j.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.type", "=", "inspection").on("j.status", "in", ["scheduled", "in_progress"]))
               .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "j.scheduledDate"])
               .where("o.organizationId", "=", organizationId)
               .where("o.siteId", "in", siteIds)
