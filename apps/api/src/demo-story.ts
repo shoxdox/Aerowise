@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { setTimeout as pause } from "node:timers/promises";
 import { OutboxTransport } from "@aerowise/compliance";
 import { DEMO_ORG_NAME, type Database } from "@aerowise/db";
 import { addDays, DEFAULT_TEMPLATE } from "@aerowise/domain";
@@ -78,7 +79,21 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   // Not production: every outside service is a stand-in and the fictional rules are loaded.
   const app = await buildApp({ db, store, now, mail, appUrl, production: false, loginRateLimit: 1000, logger: false });
   // Only the demo company's own tasks: any other company's stay queued for the real worker.
-  const worker = () => drainTasks({ db, store, now, mail, appUrl }, "demo-story", org.id);
+  const worker = async () => {
+    // The deployed worker can claim a report before this inline drain does. Wait for
+    // its in-flight work (and drain anything it queues) before advancing the story.
+    const deadline = Date.now() + 30_000;
+    while (true) {
+      await drainTasks({ db, store, now, mail, appUrl }, "demo-story", org.id);
+      const pending = await db.selectFrom("backgroundTasks").select("id")
+        .where("organizationId", "=", org.id).where("completedAt", "is", null)
+        .where("failedAt", "is", null).where("runAt", "<=", now())
+        .limit(1).executeTakeFirst();
+      if (!pending) return;
+      if (Date.now() >= deadline) throw new Error("demo story: timed out waiting for the worker");
+      await pause(50);
+    }
+  };
   try {
     const members = await db
       .selectFrom("memberships as m")
@@ -185,4 +200,3 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     await app.close();
   }
 }
-
