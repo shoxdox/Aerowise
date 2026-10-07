@@ -35,6 +35,8 @@ describe("the self-hosted server's settings", () => {
     "API_PORT", "API_URL", "HEALTH_INCLUDES_WORKER", "PLATFORM_ADMIN_PASSWORD", "R2_ENDPOINT", "SMS_WEBHOOK_BASE_URL", "TEST_DATABASE_URL",
     "BILLING_RUN_INTERVAL_MS", "LOGIN_RATE_LIMIT", "QUEUE_CHECK_INTERVAL_MS", "QUICKBOOKS_SYNC_INTERVAL_MS", "SMS_SWEEP_INTERVAL_MS", "WORKER_HEARTBEAT_FILE", "WORKER_HEARTBEAT_MAX_AGE_MS",
   ]);
+  // Read by the web app only; app.compose.yaml sets them on the web service.
+  const webOnly = new Set(["MAP_TILES_FILE"]);
   const read = (path: string) => readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), "utf8");
   const keys = (text: string, pattern: RegExp) => new Set([...text.matchAll(pattern)].map((m) => m[1]!));
 
@@ -45,6 +47,11 @@ describe("the self-hosted server's settings", () => {
   it("passes every setting in .env.example to the API and worker, unless it is listed as staying at its default", () => {
     const documented = keys(read(".env.example"), /^#? ?([A-Z][A-Z0-9_]+)=/gm);
     const passed = keys(read("deploy/vps/app.compose.yaml"), /^ {4}([A-Z][A-Z0-9_]+):/gm);
-    expect([...documented].filter((k) => !passed.has(k) && !notOnTheServer.has(k))).toEqual([]);
+    expect([...documented].filter((k) => !passed.has(k) && !notOnTheServer.has(k) && !webOnly.has(k))).toEqual([]);
+  });
+
+  it("gives the web app its own settings", () => {
+    const passedToWeb = keys(read("deploy/vps/app.compose.yaml"), /^ {6}([A-Z][A-Z0-9_]+):/gm);
+    for (const k of webOnly) expect(passedToWeb.has(k), k).toBe(true);
   });
 });

@@ -1,6 +1,11 @@
 "use client";
 
-import type { RouteDay } from "@aerowise/domain";
+import type { RouteDay, Stop } from "@aerowise/domain";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { StreetMap, type StreetMapRoute } from "@/components/map/StreetMap";
+import { SafetyBadges } from "@/components/SafetyBadges";
+import { day as formatDay, duration } from "@/lib/format";
 
 /** One color per technician column, in column order. */
 export const ROUTE_COLORS = ["#1f6f5c", "#2b59c3", "#b54708", "#7a3fb0", "#c4314b", "#4d7c0f"];
@@ -11,84 +16,95 @@ interface Props {
   technicianIds: string[];
   /** Stop number shown on each marker, by job id. */
   numbers: Map<string, number>;
+  /** The day's stops, for the details of a selected one. */
+  stops: Stop[];
 }
 
-const W = 640;
+const STATUS_LABEL: Record<string, string> = { scheduled: "To do", in_progress: "In progress", completed: "Done", cancelled: "Cancelled" };
 
 /**
- * The day's routes drawn to scale on a plain background: no map tiles, so it needs no
- * map service or key. Each route is a line from the start through its stops in order.
+ * The day's routes on a street map: numbered stops in each technician's color, the start,
+ * and straight dashed lines in visit order. Selecting a stop shows its details and a link
+ * to its site. The stop list beside it stays the way to work the schedule.
  */
-export function RouteMap({ day, technicianIds, numbers }: Props) {
-  const points = [
-    ...(day.start ? [day.start] : []),
-    ...day.technicians.flatMap((t) => t.stops.flatMap((s) => (s.lat !== null && s.lng !== null ? [{ lat: s.lat, lng: s.lng }] : []))),
-  ];
-  if (points.length === 0) return <p className="muted small">No stops on the map for this day.</p>;
+export function RouteMap({ day, technicianIds, numbers, stops }: Props) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const stopOf = useMemo(() => new Map(stops.map((s) => [s.jobId, s])), [stops]);
 
-  const lats = points.map((p) => p.lat);
-  const lngs = points.map((p) => p.lng);
-  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const k = Math.cos((midLat * Math.PI) / 180);
-  // Degrees across, with a margin and a floor so one stop is not drawn at infinite zoom.
-  const spanX = Math.max((Math.max(...lngs) - Math.min(...lngs)) * k, 0.05);
-  const spanY = Math.max(Math.max(...lats) - Math.min(...lats), 0.05);
-  const cx = ((Math.min(...lngs) + Math.max(...lngs)) / 2) * k;
-  const cy = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const H = Math.round(Math.min(420, Math.max(240, (W * spanY) / spanX)));
-  const scale = Math.min((W - 48) / spanX, (H - 48) / spanY);
-  const xy = (p: { lat: number; lng: number }) => [W / 2 + (p.lng * k - cx) * scale, H / 2 - (p.lat - cy) * scale] as const;
+  const routes: StreetMapRoute[] = useMemo(
+    () =>
+      day.technicians.map((t) => ({
+        id: t.technicianId,
+        name: t.technicianName,
+        color: ROUTE_COLORS[Math.max(0, technicianIds.indexOf(t.technicianId)) % ROUTE_COLORS.length]!,
+        stops: t.stops.map((s, i) => {
+          const full = stopOf.get(s.jobId);
+          return {
+            key: s.jobId,
+            lat: s.lat,
+            lng: s.lng,
+            number: numbers.get(s.jobId) ?? i + 1,
+            done: s.status === "completed",
+            title: full ? `${full.site.addressLine1}, ${full.site.city}` : "Stop",
+          };
+        }),
+      })),
+    [day, technicianIds, numbers, stopOf],
+  );
 
-  // A scale bar of a round number of miles, about a fifth of the width.
-  const milesPerPx = 69 / scale;
-  const barMiles = [1, 2, 5, 10, 20, 50, 100].find((m) => m / milesPerPx >= W / 8) ?? 100;
+  const sel = selected ? stopOf.get(selected) : undefined;
+  const selRoute = sel ? day.technicians.find((t) => t.technicianId === sel.technicianId) : undefined;
+  const leg = sel ? selRoute?.legs.find((l) => l.toJobId === sel.jobId) : undefined;
+  const color = sel ? routes.find((r) => r.id === sel.technicianId)?.color : undefined;
 
   return (
-    <svg className="route-map" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Map of ${day.technicians.length} routes`}>
-      <rect width={W} height={H} className="route-map-bg" />
-      {day.technicians.map((t) => {
-        const color = ROUTE_COLORS[Math.max(0, technicianIds.indexOf(t.technicianId)) % ROUTE_COLORS.length];
-        const path = [
-          ...(day.start ? [day.start] : []),
-          ...t.stops.flatMap((s) => (s.lat !== null && s.lng !== null ? [{ lat: s.lat, lng: s.lng }] : [])),
-          ...(day.start && day.returnToStart ? [day.start] : []),
-        ].map(xy);
-        return (
-          <g key={t.technicianId}>
-            <polyline points={path.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" opacity={0.75} />
-            {t.stops.map((s) => {
-              if (s.lat === null || s.lng === null) return null;
-              const [x, y] = xy({ lat: s.lat, lng: s.lng });
-              return (
-                <g key={s.jobId}>
-                  <circle cx={x} cy={y} r={11} fill={s.status === "completed" ? "#ffffff" : color} stroke={color} strokeWidth={2} />
-                  <text x={x} y={y + 4} textAnchor="middle" fontSize={11} fontWeight={600} fill={s.status === "completed" ? color : "#ffffff"}>
-                    {numbers.get(s.jobId) ?? ""}
-                  </text>
-                </g>
-              );
-            })}
-          </g>
-        );
-      })}
-      {day.start &&
-        (() => {
-          const [x, y] = xy(day.start);
-          return (
-            <g>
-              <rect x={x - 8} y={y - 8} width={16} height={16} rx={3} fill="#1c2321" />
-              <text x={x + 12} y={y + 4} fontSize={11} fill="#1c2321">
-                Start
-              </text>
-            </g>
-          );
-        })()}
-      <g transform={`translate(16, ${H - 16})`}>
-        <line x1={0} x2={barMiles / milesPerPx} y1={0} y2={0} stroke="#5d6b66" strokeWidth={2} />
-        <text x={0} y={-5} fontSize={10} fill="#5d6b66">
-          {barMiles} mi
-        </text>
-      </g>
-    </svg>
+    <div className="stack">
+      <StreetMap
+        routes={routes}
+        start={day.start}
+        returnToStart={day.returnToStart}
+        selected={selected}
+        onSelect={setSelected}
+        fitKey={day.date}
+        label={`Map of ${day.technicians.length} route${day.technicians.length === 1 ? "" : "s"} on ${formatDay(day.date, { month: "short", day: "numeric" })}`}
+      />
+      {sel && (
+        <div className="card tight map-detail" data-testid="map-stop-detail">
+          <div className="row">
+            <span className="stop-number" style={{ background: color }}>
+              {numbers.get(sel.jobId)}
+            </span>
+            <strong>
+              {sel.site.addressLine1}, {sel.site.city}
+            </strong>
+            <span className="spacer" />
+            <button className="link" aria-label="Close stop details" onClick={() => setSelected(null)}>
+              ✕
+            </button>
+          </div>
+          <div className="small">
+            {sel.technicianName} · stop {numbers.get(sel.jobId)} ·{" "}
+            <span className={`badge ${sel.status === "completed" ? "completed" : ""}`}>{STATUS_LABEL[sel.status] ?? sel.status}</span>
+          </div>
+          <div className="muted small">
+            {sel.customer.displayName}
+            {sel.obligation && (
+              <>
+                {" "}
+                · visit #{sel.obligation.sequence} · due {formatDay(sel.obligation.dueOn, { month: "short", day: "numeric" })}
+              </>
+            )}
+          </div>
+          {leg && (
+            <div className="muted small">
+              About {leg.miles} mi · {duration(leg.minutes)} from the {leg.fromJobId ? "previous stop" : "start"} (estimate from straight-line distance, no traffic)
+            </div>
+          )}
+          <SafetyBadges flags={sel.site.safetyFlags} />
+          {sel.site.schedulingNotes && <div className="small restriction">⚠ {sel.site.schedulingNotes}</div>}
+          <Link href={`/sites/${sel.site.id}`}>Open site</Link>
+        </div>
+      )}
+    </div>
   );
 }
