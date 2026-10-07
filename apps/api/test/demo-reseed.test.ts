@@ -23,7 +23,7 @@ const SNAPSHOT = ["customers", "sites", "inspections", "attachments", "filings",
 
 /** How many rows one company has in each of the tables that matter here. */
 async function snapshot(organizationId: string) {
-  const out: Record<string, number> = {};
+  const out = {} as Record<(typeof SNAPSHOT)[number], number>;
   for (const t of SNAPSHOT) {
     const r = await ctx.db.selectFrom(t).select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).executeTakeFirstOrThrow();
     out[t] = Number(r.n);
