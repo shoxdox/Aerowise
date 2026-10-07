@@ -32,9 +32,11 @@ Supported research corrections have landed; original packet `implemented: false`
 
 Choose one provider and actual permit authority; obtain a small redacted permit/contract/accepted-report pack; deploy and verify controlled staging/demo; compare one generated report and schedule; confirm the pilot's remaining acceptance details; log evidence and review any proposed new version. Before real operations, validate required integrations, credentials, legal text and backup/restore. These steps require fresh evidence, not automatic new coding workers.
 
-## Service workflows (planned, not built)
+## Service workflows (in progress)
 
-- **SW-0:** [implementation plan](SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md) for general work orders, pumping/disposal records, estimates, plan-specific agreements and coverage, conventional/installation work, work on the street map and authority export interoperability — draft documentation PR, branch `claude/service-workflows-plan-ttg7xh`, baseline `0906828`. SW-1–SW-12 are proposed; no implementation worker has started.
+- **SW-0:** [implementation plan](SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md) for general work orders, pumping/disposal records, estimates, plan-specific agreements and coverage, conventional/installation work, work on the street map and authority export interoperability — merged #98 (`2faf91c`, documentation only).
+- **SW-1:** work foundation, flag `work_orders` (off by default) — draft PR, branch `claude/sw-1-work-foundation-19alk9`, migration 0048. Kinds of work, work orders with lines, notes and an append-only timeline, work visits as `type = 'work'` jobs (several visits per order, one open at a time), database-enforced job/obligation/inspection kinds, the retest link stored, every existing jobs reader explicit about its kind, idempotent issue and request conversion, office `/work` pages, inbox buttons and schedule badges, demo story behind the flag. Not yet: phone work form and sync (SW-2), work invoicing from lines (SW-3), homeowner portal listing (SW-7). Not deployed; rollback floor SW-1 (service workflows plan §9.1).
+- **SW-2a:** phone compatibility release (phone rollback floor), client only, no migration — draft PR, branch `claude/sw-2a-phone-compat-s7hiv5`, separate from SW-1. The inspection IndexedDB opens by store presence, not a fixed version, and is never raised by later releases. The future work DB `aerowise-tech-work:<org>:<user>` (store `outbox`) is counted in pending/sign-out/other-sign-in notices and deleted with an ended demo. Unknown outbox op kinds wait with an "N items will send after the app updates" banner. Tests: `apps/web/e2e/phone-compat.spec.ts`. Waiting for Codex review/merge and its own staging deploy before SW-2.
 
 ## W9. Deferred
 

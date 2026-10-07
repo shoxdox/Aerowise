@@ -193,3 +193,14 @@ Authorized by Justin: merge #93–96, deploy by hand to staging, repeat the walk
    sudo -u deploy /opt/aerowise/staging/deploy/vps/deploy.sh staging <handoff-commit>
    ```
    Verify server checkout, API/worker GIT_COMMIT, health, isolation, and unchanged production identity again; retain final deploy log locally. Open the brief/clean PDF for Justin. Close only browser sessions created in this run, leaving unrelated sessions alone. The tested active Example demo (TEST logo, expires October 20) and empty labeled TEST trial are retained; active entry link remains in the protected local record. This is safe for a fictional guided demo, not a claim of fourteen elapsed days or physical field readiness.
+
+## Work orders (SW-1) on staging
+
+Not deployed by this PR. Steps for whoever deploys it to staging after review (Codex), following the service workflows plan §9.1. Production stays pinned and keeps the feature off.
+
+1. Back up staging (`deploy/vps/backup.sh staging`), then deploy the merged SHA with `deploy.sh staging <sha>` as usual. Migration 0048 runs; leave `AEROWISE_FEATURES` empty for this first deploy.
+2. With the feature off, repeat the existing walkthrough (owner, office, technician): schedule, offline inspection, filing, retest booking, inbox. Nothing about work orders should show. Existing jobs are all `type = 'inspection'` (`select type, count(*) from jobs group by 1`).
+3. Add `AEROWISE_FEATURES=work_orders` to the staging environment file (`deploy/vps/env.example` lists it) and redeploy the same SHA so the API, worker and web pick it up. `/api/app-info` then lists `"features":["work_orders"]`.
+4. Reseed the public demo (`pnpm db:reseed-demo` through the usual staging command) so its story gains the three work orders. Prospect demos and trials keep their data and gain no story.
+5. Walk owner and office through: Work list, a work order from a site, "Turn into work order" on an inbox issue and a customer request (twice, to see the same order), scheduling a visit, the schedule badge and filter, unscheduling, completing without a field record, cancelling. As technician: the phone route still lists inspections only (work visits arrive with SW-2).
+6. Rollback: turning the flag off (empty `AEROWISE_FEATURES`, redeploy) hides creation and keeps existing work readable. Once a work job exists, the floor is SW-1: do not deploy a SHA from before 0048 against that database.
