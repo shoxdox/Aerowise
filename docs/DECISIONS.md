@@ -715,6 +715,7 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Other sign-ins on the phone.** When someone else signs in, a previous sign-in with nothing waiting is removed, an ended demo is removed with a notice, and one with queued work is kept and named ("1 change made as Tess at … is saved on this phone"), so its person can sign in and send it.
 - **Outbox requests name their sign-in.** The technician app sends `x-aerowise-tenant: <organization>:<user>`, and the API refuses with 409 `tenant_mismatch` if the session belongs to anyone else. Requests without the header behave as before.
 - **Not covered:** a deleted real company and a deactivated or removed technician answer `unknown`. Their copy stays on the phone behind the "Sign in again" warning until another person signs in (when it is removed if nothing waits). Telling those apart safely needs a server-side revocation record, which is out of scope here.
+
 ## 2026-10-07 · STG-01 The nightly reset keeps prospect demos and trials
 
 - **Only the public demo is reset.** `pnpm db:reseed-demo` used to truncate every tenant table and empty the whole file directory, so a 14-day prospect demo and any real trial on staging were wiped at 09:00 UTC. It now removes only demo companies that are not prospect demos (`demo` and no `demo_prospect`): the shared seeded company and every visitor demo, live or ended. Prospect demos (live or ended tombstones) and every non-demo company keep their data, people, sessions, links, files, queued tasks, outbox and platform audit history, then the seed runs again.
@@ -723,4 +724,3 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Authority evidence is now kept.** Recorded authority calls/evidence are platform records, not public-demo data, so the reset no longer empties them (it used to, as a side effect of truncating everything).
 - **Prospect expiry is unchanged.** A prospect demo still ends on its day or by hand and is emptied by `apps/api/src/lib/demo-lifecycle.ts`; the reset neither extends nor ends it.
 - **Erasing a company deletes tables that point at each other together.** Company erasure (prospect End now, a demo reaching its end, `/admin/organizations/:id/erase`) used to null optional links between such tables first, which broke `renewals_check1` for an activated renewal (a 500 on End now or erase). It now deletes them in one statement, as the reset does; no check constraint or trigger beyond the append-only ones is switched off.
-
