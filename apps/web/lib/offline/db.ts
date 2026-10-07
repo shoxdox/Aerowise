@@ -76,6 +76,8 @@ export interface KnownTenant extends Tenant {
   dbName: string;
   organizationName: string;
   userName: string;
+  /** From /auth/me, for a demo company: what lets the server say it was removed. */
+  demoTicket?: string;
 }
 
 const LEGACY_DB_NAME = "aerowise-tech";
@@ -112,7 +114,7 @@ export const knownTenants = (): KnownTenant[] => readJson<KnownTenant[]>(REGISTR
 const known = (t: Tenant) => knownTenants().find((k) => sameTenant(k, t));
 
 /** Remembers a sign-in (and the names shown when its data is waiting on the phone). */
-export function rememberTenant(t: Tenant, names: { organizationName: string; userName: string }): KnownTenant {
+export function rememberTenant(t: Tenant, names: { organizationName: string; userName: string; demoTicket?: string }): KnownTenant {
   const list = knownTenants();
   const existing = list.find((k) => sameTenant(k, t));
   const entry: KnownTenant = { organizationId: t.organizationId, userId: t.userId, dbName: existing?.dbName ?? scopedName(t), ...names };

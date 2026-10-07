@@ -1,4 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 // STG-03: the technician app keeps each sign-in's route, inspections and photos apart, clears a
@@ -234,6 +236,59 @@ test("work saved by the earlier app version, before sign-ins had their own stora
     await expect(page.locator(".stop-card", { hasText: stop.customer.displayName })).toContainText("In progress");
     // It stays in the database it was saved in, now belonging to that sign-in only.
     expect(await databases(page)).toContain("aerowise-tech");
+  } finally {
+    await db.end();
+  }
+});
+
+// Last in this file: it runs the nightly demo reset, which removes every public demo company.
+test("a public visitor's technician copy is cleared once the nightly reset has removed their demo", async ({ page, context }) => {
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  const total = async () => Number((await db.query("select count(*) as n from inspections")).rows[0].n);
+  try {
+    await page.goto("/demo");
+    await page.getByRole("button", { name: "Start my demo" }).click();
+    await page.waitForURL("**/inbox", { timeout: 60_000 });
+    expect((await page.request.post("/api/demo/switch", { data: { role: "technician" } })).ok()).toBe(true);
+    await page.goto("/tech");
+    await expect(page.locator(".stop-card").first()).toBeVisible();
+    const me = await (await page.request.get("/api/auth/me")).json();
+    expect(me.demoTicket).toEqual(expect.any(String));
+    await waitForOfflineShell(page);
+
+    // At a site with no signal, an inspection is started and waits on the phone.
+    await context.setOffline(true);
+    await page.reload();
+    await startFirstStop(page);
+    await expect(page.getByTestId("sync-status")).toContainText("No signal. 1 change saved on this phone");
+
+    // The nightly reset removes the visitor's company outright (no row left to say it ended).
+    execFileSync("pnpm", ["db:reseed-demo"], {
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+      env: { ...process.env, DATABASE_URL: databaseUrl, FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true" },
+      stdio: "pipe",
+    });
+    expect((await db.query("select count(*) as n from organizations where id = $1", [me.organization.id])).rows[0].n).toBe("0");
+    const afterReset = await total();
+
+    // Still no signal: nothing is removed.
+    await page.reload();
+    await expect(page.locator(".stop-card", { hasText: "In progress" })).toHaveCount(1);
+    expect(await databases(page)).toContain(scoped(me.organization.id, me.user.id));
+
+    // Back in signal: refused, the server confirms (with the demo's ticket) that it is gone, and the phone clears it.
+    await context.setOffline(false);
+    await expect(page.getByTestId("access-ended")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("access-ended")).toContainText("1 unsent change from the demo could not be sent");
+    await expect(page.locator(".stop-card")).toHaveCount(0);
+    expect(await databases(page)).not.toContain(scoped(me.organization.id, me.user.id));
+    // Its queued work went nowhere: not into the reseeded shared demo, not into any other company.
+    expect(await total()).toBe(afterReset);
+
+    await page.reload();
+    await page.waitForURL("**/login**");
+    await expect(page.locator(".stop-card")).toHaveCount(0);
   } finally {
     await db.end();
   }

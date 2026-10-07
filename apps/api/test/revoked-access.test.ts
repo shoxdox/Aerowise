@@ -36,6 +36,43 @@ describe("access status", () => {
     expect(answers[0]).toEqual({ code: 200, body: JSON.stringify({ state: "unknown" }), type: expect.stringContaining("application/json") });
   });
 
+  it("says ended for a removed demo company only with that company's demo ticket", async () => {
+    const demo = await demoCompany("Visitor demo", new Date(Date.now() + 86_400_000));
+    const tech = await createUser(ctx.db, demo.id, "technician");
+    const me = (await client(ctx.app, await login(ctx.app, tech.email)).get("/auth/me")).json();
+    expect(me.demoTicket).toEqual(expect.any(String));
+    const ticket = me.demoTicket as string;
+    const real = await createOrg(ctx.db, "Real company");
+    const realOwner = await createUser(ctx.db, real.id, "owner");
+    expect((await client(ctx.app, await login(ctx.app, realOwner.email)).get("/auth/me")).json()).not.toHaveProperty("demoTicket");
+
+    // Live: the ticket changes nothing.
+    const ask = (organizationId: unknown, demoTicket: unknown, ip: string) =>
+      ctx.app.inject({ method: "POST", url: "/auth/access-status", payload: { organizationId, demoTicket }, remoteAddress: ip });
+    expect((await ask(demo.id, ticket, "198.18.0.1")).json()).toEqual({ state: "unknown" });
+
+    // The nightly reset removes the company, its people and sessions outright.
+    await ctx.db.deleteFrom("sessions").where("organizationId", "=", demo.id).execute();
+    await ctx.db.deleteFrom("memberships").where("organizationId", "=", demo.id).execute();
+    await ctx.db.deleteFrom("users").where("id", "=", tech.id).execute();
+    await ctx.db.deleteFrom("organizations").where("id", "=", demo.id).execute();
+    expect((await ask(demo.id, ticket, "198.18.0.2")).json()).toEqual({ state: "ended" });
+
+    // Without that exact ticket, a missing id is indistinguishable from a live real company.
+    const answers = [];
+    for (const [id, t] of [
+      [demo.id, undefined],
+      [demo.id, ticket.slice(0, -2) + (ticket.endsWith("AA") ? "BB" : "AA")],
+      [crypto.randomUUID(), ticket],
+      [real.id, ticket],
+      [real.id, undefined],
+    ] as const) {
+      const res = await ask(id, t, `198.18.1.${answers.length + 1}`);
+      answers.push({ code: res.statusCode, body: res.body });
+    }
+    expect(answers.every((a) => a.code === 200 && a.body === JSON.stringify({ state: "unknown" }))).toBe(true);
+  });
+
   it("is limited per address", async () => {
     for (let i = 0; i < 30; i++) expect((await status(crypto.randomUUID(), "192.0.2.1")).statusCode).toBe(200);
     expect((await status(crypto.randomUUID(), "192.0.2.1")).statusCode).toBe(429);

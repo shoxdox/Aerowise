@@ -24,16 +24,16 @@ async function fetchJson<T>(path: string, tenant?: Tenant): Promise<Fetched<T>> 
 export const fetchMe = () => fetchJson<Me>("/auth/me");
 
 /**
- * Whether a company's access has definitely ended (a demo past its end): true, false when
+ * Whether a company's access has definitely ended (a demo past its end, or removed): true, false when
  * the server knows nothing that says so (an expired session, say), null when it could not
  * be asked. Only true ever justifies removing that company's data from the phone.
  */
-export async function accessEnded(organizationId: string): Promise<boolean | null> {
+export async function accessEnded(organizationId: string, demoTicket?: string): Promise<boolean | null> {
   try {
     const res = await fetch("/api/auth/access-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId }),
+      body: JSON.stringify({ organizationId, demoTicket }),
       credentials: "same-origin",
       cache: "no-store",
     });

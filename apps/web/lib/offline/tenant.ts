@@ -18,7 +18,8 @@ import {
 // Which sign-in the technician app opens as, and when a sign-in's data leaves the phone.
 //
 // Data is removed from the phone only when that can lose nothing: the server says the
-// company's access has definitely ended (a demo that was ended or ran out), or another
+// company's access has definitely ended (a demo that was ended, ran out or was removed by
+// the nightly reset), or another
 // person is signed in and that sign-in has nothing waiting to send. No signal, a timeout,
 // a server error or an expired session never removes anything: the route stays readable
 // and queued inspections and photos wait for the same person to sign in again.
@@ -41,7 +42,7 @@ export type TechSession =
 
 /** Removes one sign-in's data if, and only if, the server says its company has ended. */
 export async function discardIfEnded(t: KnownTenant): Promise<EndedAccess | null> {
-  if ((await accessEnded(t.organizationId)) !== true) return null;
+  if ((await accessEnded(t.organizationId, t.demoTicket)) !== true) return null;
   const discarded = await pendingFor(t);
   await forgetTenant(t);
   return { organizationName: t.organizationName, discarded };
@@ -71,7 +72,11 @@ export async function openTechSession(): Promise<TechSession> {
   const res = await fetchMe();
   if (res.ok) {
     const me = res.data;
-    const t = rememberTenant({ organizationId: me.organization.id, userId: me.user.id }, { organizationName: me.organization.name, userName: me.user.name });
+    const t = rememberTenant({ organizationId: me.organization.id, userId: me.user.id }, {
+      organizationName: me.organization.name,
+      userName: me.user.name,
+      demoTicket: me.demoTicket,
+    });
     activateTenant(t);
     await activeStore().kvSet("me", me);
     return { kind: "signed_in", me, ...(await tidyOthers(t)) };
