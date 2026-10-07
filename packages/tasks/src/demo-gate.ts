@@ -4,6 +4,7 @@ import type { Database } from "@aerowise/db";
 import { isFictionalEmail } from "@aerowise/domain";
 import type { CheckoutInput, PaymentProvider, RefundInput } from "@aerowise/payments";
 import type { QuickBooksProvider } from "@aerowise/quickbooks";
+import type { AddressQuery, Geocoder } from "@aerowise/routing";
 import type { SmsProvider, SmsSendInput } from "@aerowise/sms";
 
 // A demo company (organizations.demo) is fictional, and nothing it does may reach a real outside
@@ -186,6 +187,16 @@ export class DemoGatedSms extends Gate<SmsProvider> implements SmsProvider {
   }
   verifyWebhook(url: string, params: Record<string, string>, signature: string) {
     return this.live.verifyWebhook(url, params, signature);
+  }
+}
+
+/** Finding addresses on the map: a demo company's made-up addresses only reach the test geocoder. */
+export class DemoGatedGeocoder extends Gate<Geocoder> implements Geocoder {
+  get kind() {
+    return this.live.kind;
+  }
+  async geocode(address: AddressQuery, organizationId?: string) {
+    return (await this.forOrganization(organizationId)).geocode(address, organizationId);
   }
 }
 

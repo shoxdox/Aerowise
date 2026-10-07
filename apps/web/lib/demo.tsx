@@ -63,6 +63,11 @@ export function useDemoMode(): boolean {
   return useDemoInfo().demo;
 }
 
+/** Whoever is signed in works in a demo company, whose sites are made up. */
+export function useDemoCompany(): boolean {
+  return useDemoInfo().demoCompany;
+}
+
 /** Shown at the top of every screen in the hosted demo, and to anyone in a demo company. */
 export function DemoBanner() {
   const { demoCompany, demoVisitor } = useDemoInfo();

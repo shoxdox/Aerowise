@@ -193,3 +193,32 @@ Authorized by Justin: merge #93–96, deploy by hand to staging, repeat the walk
    sudo -u deploy /opt/aerowise/staging/deploy/vps/deploy.sh staging <handoff-commit>
    ```
    Verify server checkout, API/worker GIT_COMMIT, health, isolation, and unchanged production identity again; retain final deploy log locally. Open the brief/clean PDF for Justin. Close only browser sessions created in this run, leaving unrelated sessions alone. The tested active Example demo (TEST logo, expires October 20) and empty labeled TEST trial are retained; active entry link remains in the protected local record. This is safe for a fictional guided demo, not a claim of fourteen elapsed days or physical field readiness.
+
+## Street map on staging
+
+**Not yet performed.** Prepared with the street-map change (branch `claude/route-street-map-ae4nrx`) for whoever deploys staging. Staging only; production is out of scope. No account, purchase, DNS or nginx change is needed. Background and coverage: [MAP.md](MAP.md).
+
+1. **Cut the map file** on any machine with internet access and the [`pmtiles` tool](https://github.com/protomaps/go-pmtiles/releases) (one binary, no account). It reads only the needed parts of a Protomaps OpenStreetMap build:
+   ```sh
+   pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles basemap.pmtiles --bbox=-99.0,29.4,-96.8,31.2 --maxzoom=15
+   pmtiles show basemap.pmtiles   # bounds as above, max zoom 15, attribution mentions OpenStreetMap
+   ls -lh basemap.pmtiles         # note the size in MAP.md
+   ```
+   Never install `apps/web/e2e/fixtures/map-fixture.pmtiles` (synthetic streets) on a server.
+2. **Put it on the server**, as root. The folder is mounted read-only into the web container (`deploy/vps/app.compose.yaml`) and can be shared by both environments:
+   ```sh
+   install -d -m 755 /var/lib/aerowise/map
+   install -m 644 basemap.pmtiles /var/lib/aerowise/map/basemap.pmtiles
+   ```
+   To use another folder, set `AW_MAP_DIR=<folder>` in `/etc/aerowise/staging.env`. The web container reads `MAP_TILES_FILE=/data/map/basemap.pmtiles`, set in the compose file; there is no secret.
+3. **Deploy** the merged commit by hand as usual (the compose file gained the mount, so one deploy is needed; later file swaps need none):
+   ```sh
+   sudo -u deploy /opt/aerowise/staging/deploy/vps/deploy.sh staging <full commit sha>
+   ```
+4. **Check it:**
+   ```sh
+   curl -s -o /dev/null -w '%{http_code} %header{content-range}\n' -H 'Range: bytes=0-6' https://staging.deshain.com/map-data/basemap.pmtiles   # 206 bytes 0-6/<size>
+   curl -s -o /dev/null -w '%{http_code}\n' 'https://staging.deshain.com/map/fonts/Noto%20Sans%20Regular/0-255.pbf'                       # 200
+   ```
+   In a browser: `/schedule` on a day with stops shows streets, numbered stops and "© OpenStreetMap contributors (ODbL)"; `/tech` on a phone, **Map** shows the technician's stops and tapping one opens it. The browser's network panel shows requests to the staging address only. nginx needs no change: it passes `Range` requests through as they are.
+5. **Undo:** delete or move `/var/lib/aerowise/map/basemap.pmtiles`. The maps then say they are unavailable and every list works as before. Deploying the previous commit removes the mount.

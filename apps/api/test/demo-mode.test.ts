@@ -13,7 +13,7 @@ import { IntuitQuickBooksProvider, TestQuickBooksProvider } from "@aerowise/quic
 import { CensusGeocoder, TestGeocoder } from "@aerowise/routing";
 import { RedirectingSmsProvider, TestSmsProvider, TwilioSmsProvider } from "@aerowise/sms";
 import { LocalDiskStore } from "@aerowise/storage";
-import { DemoGatedBilling, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport, demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
+import { DemoGatedBilling, DemoGatedGeocoder, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport, demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { playDemoStory } from "../src/demo-story.ts";
@@ -118,7 +118,7 @@ describe("demo mode providers", () => {
     expect(live(p.payments)).toBeInstanceOf(StripeProvider);
     expect(live(p.quickbooks?.provider)).toBeInstanceOf(IntuitQuickBooksProvider);
     expect(live(p.sms?.provider)).toBeInstanceOf(TwilioSmsProvider);
-    expect(p.geocoder).toBeInstanceOf(CensusGeocoder);
+    expect(live(p.geocoder)).toBeInstanceOf(CensusGeocoder);
     expect(live(p.billing)).toBeInstanceOf(StripeBillingProvider);
     // Each real one sits behind a gate that keeps demo companies on its stand-in.
     expect(p.mail).toBeInstanceOf(DemoGatedTransport);
@@ -126,13 +126,15 @@ describe("demo mode providers", () => {
     expect(p.quickbooks?.provider).toBeInstanceOf(DemoGatedQuickBooks);
     expect(p.sms?.provider).toBeInstanceOf(DemoGatedSms);
     expect(p.billing).toBeInstanceOf(DemoGatedBilling);
+    expect(p.geocoder).toBeInstanceOf(DemoGatedGeocoder);
   });
 
   it("turns unconfigured services off in production and uses stand-ins elsewhere", () => {
     const prod = providersFromEnv({ db: ctx.db, store, env: { DEMO_MODE: "false" }, production: true });
     expect([prod.payments, prod.quickbooks, prod.sms, prod.mailProvider, prod.billing]).toEqual([null, null, null, null, null]);
     expect(prod.mail).toBeInstanceOf(OutboxTransport);
-    expect(prod.geocoder).toBeInstanceOf(CensusGeocoder);
+    expect(live(prod.geocoder)).toBeInstanceOf(CensusGeocoder);
+    expect(prod.geocoder).toBeInstanceOf(DemoGatedGeocoder);
     const dev = providersFromEnv({ db: ctx.db, store, env: {}, production: false });
     expect(dev.payments).toBeInstanceOf(TestPaymentProvider);
     expect(dev.quickbooks?.provider).toBeInstanceOf(TestQuickBooksProvider);

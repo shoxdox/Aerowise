@@ -23,6 +23,7 @@ Hosting/deploy configuration, demo stand-ins, organization/admin onboarding and 
 - **W12.V2:** preparation of a next-version proposal/diff — done #82. Publication remains a separate reviewed immutable-version PR.
 - **W12.V3:** call sheet prepared; [repository worksheet](../PILOT-CALL-SHEET.md) now available. Pilot provider/authority not selected; no contact sent.
 - **W12.V4:** per-field confirmation in admin/coverage/marketing — done #85.
+- **Street map for routes:** office schedule and technician map/list toggle on a self-hosted OpenStreetMap basemap ([MAP.md](MAP.md)); demo addresses gated from real geocoders — draft PR, branch `claude/route-street-map-ae4nrx`. Staging map file not yet installed; no offline basemap.
 
 ## W12. County evidence and verification
 

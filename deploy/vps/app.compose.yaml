@@ -114,6 +114,12 @@ services:
     restart: unless-stopped
     labels: [aerowise.autoheal=true]
     command: pnpm --filter @aerowise/web start
+    # The street map's tiles (docs/engineering/MAP.md): one PMTiles file the operator puts in
+    # AW_MAP_DIR on the server, read-only here. Without it the map says it is unavailable and the
+    # stop lists work as before.
+    environment:
+      MAP_TILES_FILE: /data/map/basemap.pmtiles
+    volumes: ["${AW_MAP_DIR:-/var/lib/aerowise/map}:/data/map:ro"]
     depends_on:
       api: { condition: service_healthy }
     # Through the web app's /api proxy, so it fails when either is down.

@@ -21,7 +21,7 @@ export async function locatePendingSites(db: Database, geocoder: Geocoder, organ
   let located = 0;
   let notFound = 0;
   for (const s of sites.slice(0, limit)) {
-    const point = await geocoder.geocode(s);
+    const point = await geocoder.geocode(s, organizationId);
     // Only if nobody changed the address or placed the site meanwhile.
     const r = await db
       .updateTable("sites")
