@@ -99,9 +99,9 @@ export const userRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; 
         await audit(trx, req, { action: "invitation.sent", entityType: "invitation", entityId: inv.id, changes: { email: req.body.email, role: req.body.role } });
         return inv;
       });
-      const emailed = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: created.id, token: created.token, inviterName: await inviterName(userId) });
+      const sent = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: created.id, token: created.token, inviterName: await inviterName(userId) });
       const [invitation] = await listInvitations(db, organizationId, at, [created.id]);
-      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, created.token), emailed });
+      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, created.token), ...sent });
     },
   );
 
@@ -127,9 +127,9 @@ export const userRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; 
         await audit(trx, req, { action: "invitation.resent", entityType: "invitation", entityId: req.params.id });
         return t;
       });
-      const emailed = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: req.params.id, token, inviterName: await inviterName(userId) });
+      const sent = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: req.params.id, token, inviterName: await inviterName(userId) });
       const [invitation] = await listInvitations(db, organizationId, at, [req.params.id]);
-      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, token), emailed });
+      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, token), ...sent });
     },
   );
 

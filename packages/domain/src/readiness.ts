@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
+import { emailDelivery } from "./demo-requests.ts";
 import { SERVICE_REQUEST_KINDS } from "./portal.ts";
 
 // Filing readiness: who holds which license, which complaints and monitoring notices the
@@ -136,6 +137,8 @@ export const customerDelivery = z.object({
   status: z.enum(["accepted", "failed"]),
   attemptedAt: datetime,
   error: z.string().nullable(),
+  /** For an accepted send: the local test outbox (nobody received it) or a mail provider. */
+  delivery: emailDelivery.nullable(),
 });
 export type CustomerDelivery = z.infer<typeof customerDelivery>;
 

@@ -364,6 +364,14 @@ export default function AuthorityEvidencePage() {
           {data.key} · newest v{data.version} from {day(data.effectiveFrom)} · {data.versionInForce ? `v${data.versionInForce} in force today` : "no version in force today"}
         </span>
       </p>
+      {data.profileStatus !== "fictional" && (
+        <p className="row">
+          <a className="button secondary" href={`/api/admin/rulesets/${data.key}/call-sheet.pdf`} target="_blank" rel="noreferrer">
+            Call sheet (PDF)
+          </a>
+          <span className="muted small">Open and acceptance questions with the dated evidence below, and room for who was asked, when and what they said. Use only when this authority governs a selected pilot&apos;s permits; it names no contact and confirms nothing.</span>
+        </p>
+      )}
 
       <section className="card stack" aria-label="Acceptance questions">
         <h2>Acceptance questions</h2>

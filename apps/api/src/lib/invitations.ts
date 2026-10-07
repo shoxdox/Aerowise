@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { EmailTransport } from "@aerowise/compliance";
+import { deliveryOf, type EmailDelivery, type EmailTransport } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import { INVITE_DAYS, invitationStatus, type Invitation, type Role } from "@aerowise/domain";
 import type { FastifyBaseLogger } from "fastify";
@@ -116,7 +116,7 @@ export async function emailInvitation(
   m: InvitationMail,
   log: FastifyBaseLogger,
   inv: { organizationId: string; invitationId: string; token: string; inviterName: string },
-): Promise<boolean> {
+): Promise<{ emailed: boolean; delivery: EmailDelivery | null }> {
   const row = await db
     .selectFrom("invitations as i")
     .innerJoin("organizations as o", "o.id", "i.organizationId")
@@ -126,7 +126,7 @@ export async function emailInvitation(
     .executeTakeFirstOrThrow();
   const role = { owner: "an owner", office: "office staff", technician: "a technician", read_only: "a read-only user" }[row.role];
   try {
-    await m.mail.send({
+    const sent = await m.mail.send({
       organizationId: inv.organizationId,
       // One email per link: a new link (resend) is a new message.
       idempotencyKey: `invitation-${inv.invitationId}-${hashInviteToken(inv.token).toString("hex").slice(0, 16)}`,
@@ -144,9 +144,9 @@ export async function emailInvitation(
       ].join("\n"),
       attachments: [],
     });
-    return true;
+    return { emailed: true, delivery: deliveryOf(sent) };
   } catch (err) {
     log.warn({ err, invitationId: inv.invitationId }, "invitation email failed");
-    return false;
+    return { emailed: false, delivery: null };
   }
 }

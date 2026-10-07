@@ -1,6 +1,6 @@
 import type { Database, DB } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
-import { watermarkPdf } from "@aerowise/reports";
+import { DEMO_WATERMARK, watermarkPdf } from "@aerowise/reports";
 import { zipSync } from "fflate";
 import { sql, type Transaction } from "kysely";
 import { enqueue } from "./queue.ts";
@@ -52,8 +52,16 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(safe) || safe !== text ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+/**
+ * A demo company's CSVs start with this column, on the header and on every row, so a file
+ * (or a few rows) copied out of the zip still says it is fictional. It is an extra column
+ * in front, named so it cannot be mistaken for a database column; every real column keeps
+ * its name and order after it (STG-07).
+ */
+export const DEMO_CSV_COLUMN = "aerowise_demo_notice";
+
 /** One table's rows for the organization as CSV, with a header row even when empty. */
-async function tableCsv(db: Database, organizationId: string, table: string, omit: string[]) {
+async function tableCsv(db: Database, organizationId: string, table: string, omit: string[], demo: boolean) {
   const columns = (
     await sql<{ name: string }>`
       select column_name as name from information_schema.columns
@@ -67,7 +75,9 @@ async function tableCsv(db: Database, organizationId: string, table: string, omi
     select row_to_json(t)::text as j from (
       select ${sql.join(columns.map((c) => sql.ref(c)))} from ${sql.table(table)} where organization_id = ${organizationId} ${order}
     ) t`.execute(db);
-  const lines = [columns.join(","), ...rows.map((r) => (JSON.parse(r.j) as Record<string, unknown>)).map((r) => columns.map((c) => csvCell(r[c])).join(","))];
+  const lead = demo ? [DEMO_CSV_COLUMN] : [];
+  const notice = demo ? [csvCell(DEMO_WATERMARK)] : [];
+  const lines = [[...lead, ...columns].join(","), ...rows.map((r) => (JSON.parse(r.j) as Record<string, unknown>)).map((r) => [...notice, ...columns.map((c) => csvCell(r[c]))].join(","))];
   return { csv: `${lines.join("\r\n")}\r\n`, rows: rows.length };
 }
 
@@ -83,7 +93,7 @@ export async function buildExport(db: Database, store: ObjectStore, organization
   const files: Record<string, Uint8Array> = {};
   const contents: { file: string; rows: number }[] = [];
   for (const t of EXPORT_TABLES) {
-    const { csv, rows } = await tableCsv(db, organizationId, t.table, t.omit ?? []);
+    const { csv, rows } = await tableCsv(db, organizationId, t.table, t.omit ?? [], demo);
     files[t.file] = enc.encode(csv);
     contents.push({ file: t.file, rows });
   }
@@ -106,7 +116,7 @@ export async function buildExport(db: Database, store: ObjectStore, organization
   }
   files["README.txt"] = enc.encode(
     [
-      ...(demo ? [DEMO_EXPORT_NOTICE, ""] : []),
+      ...(demo ? [DEMO_EXPORT_NOTICE, `Every CSV file starts with a ${DEMO_CSV_COLUMN} column reading "${DEMO_WATERMARK}" on every row; the columns after it are the same as in a real export.`, ""] : []),
       `Aerowise data export, made ${now.toISOString()}.`,
       "",
       "Each CSV file holds one kind of record, one row per record, with every column Aerowise keeps.",

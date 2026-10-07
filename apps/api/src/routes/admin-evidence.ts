@@ -1,13 +1,18 @@
 import { loadCatalog, rulesetOn, type CatalogEntry } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
+import { CALL_SHEET_SHARED_QUESTION, renderCallSheet, type CallSheetQuestion } from "@aerowise/reports";
 import {
   ACCEPTANCE_TOPICS,
+  ANSWER_OUTCOME_LABELS,
+  EVIDENCE_CLASS_LABELS,
+  EVIDENCE_KIND_LABELS,
   authorityEvidence,
   authorityEvidenceInput,
   buildRulesetProposal,
   evidenceClass,
   ProposalError,
   profileStatus,
+  QUESTION_STATE_LABELS,
   QUESTION_TOPIC_LABELS,
   questionState,
   rulesetEvidencePage,
@@ -16,6 +21,7 @@ import {
   verifiedWith,
   type AuthorityEvidence,
   type EvidenceAnswer,
+  type QuestionState,
   type QuestionTopic,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -135,6 +141,61 @@ export const adminEvidenceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () 
       },
     },
     async (req) => page(req.params.key),
+  );
+
+  app.get(
+    "/admin/rulesets/:key/call-sheet.pdf",
+    {
+      config: { platformAdmin: true },
+      schema: {
+        tags: ["admin"],
+        summary: "A printable call sheet of this authority's open and acceptance questions, with the dated evidence on record. Read-only; names no contact and claims no acceptance.",
+        params: keyParams,
+      },
+    },
+    async (req, reply) => {
+      const { adminId } = req.requireAdmin();
+      const a = await authority(req.params.key);
+      const rules = a.newest.rules;
+      if (profileStatus(rules) === "fictional") throw unprocessable("Example rules are fictional: there is no authority to ask.");
+      const p = await page(req.params.key);
+      const admin = await db.selectFrom("platformAdmins").select("name").where("id", "=", adminId).executeTakeFirst();
+      const references = new Map(p.evidence.map((e) => [e.id, e.references]));
+      // Each answer on record, dated and attributed, so the sheet says where it came from.
+      const onRecord = (answers: EvidenceAnswer[]) =>
+        answers.map((x) => {
+          const refs = references.get(x.evidenceId) ?? [];
+          return [
+            `${x.obtainedOn}, ${EVIDENCE_CLASS_LABELS[x.evidenceClass]} (${EVIDENCE_KIND_LABELS[x.kind].toLowerCase()}${x.contactOrganization ? `, ${x.contactOrganization}` : ""}): ${ANSWER_OUTCOME_LABELS[x.outcome]}. ${x.answer}`,
+            refs.length ? ` Sources: ${refs.join("; ")}` : "",
+          ].join("");
+        });
+      const q = (text: string, state: QuestionState, answers: EvidenceAnswer[]): CallSheetQuestion => ({ text, state: QUESTION_STATE_LABELS[state], evidence: onRecord(answers) });
+      const at = now();
+      const pdf = await renderCallSheet({
+        authorityName: p.authorityName,
+        key: p.key,
+        statusLabel: p.verified ? "Verified" : "Draft",
+        verified: p.verified !== null,
+        version: p.version,
+        versionInForce: p.versionInForce,
+        sourcesCheckedOn: rules.profile?.sourcesCheckedOn ?? null,
+        requirementEffective: rules.profile?.requirementEffective ?? null,
+        sources: rules.profile?.sources ?? [],
+        open: p.unresolved.map((u) => q(u.item, u.state, u.answers)),
+        acceptance: p.acceptance.map((x) => q(x.label, x.state, x.answers)),
+        sharedQuestion: CALL_SHEET_SHARED_QUESTION,
+        generatedOn: p.today,
+        generatedAt: at.toISOString(),
+        preparedBy: admin?.name ?? "a platform admin",
+      });
+      return reply
+        .type("application/pdf")
+        .header("content-disposition", `inline; filename="aerowise-call-sheet-${p.key}-${p.today}.pdf"`)
+        .header("x-content-type-options", "nosniff")
+        .header("cache-control", "no-store")
+        .send(pdf);
+    },
   );
 
   app.post(

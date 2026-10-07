@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { FONTS, pdfkitFont, registerFonts } from "./fonts.ts";
 
 const MUTED = "#5d6b66";
 const FAIL = "#b42318";
@@ -20,7 +21,8 @@ export interface CoverSheet {
  * not the authority's original layout; the footer says which form it stands for.
  */
 export function renderCoverSheet(c: CoverSheet): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "LETTER", margin: 54, info: { Title: c.title, CreationDate: new Date(c.generatedAt) } });
+  const doc = new PDFDocument({ ...pdfkitFont(), size: "LETTER", margin: 54, info: { Title: c.title, CreationDate: new Date(c.generatedAt) } });
+  registerFonts(doc);
   const chunks: Buffer[] = [];
   doc.on("data", (b: Buffer) => chunks.push(b));
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -30,16 +32,16 @@ export function renderCoverSheet(c: CoverSheet): Promise<Buffer> {
   const left = 54;
   const width = doc.page.width - 108;
 
-  doc.font("Helvetica-Bold").fontSize(15).fillColor("#000").text(c.title, left, 72, { width, align: "center" });
+  doc.font(FONTS.bold).fontSize(15).fillColor("#000").text(c.title, left, 72, { width, align: "center" });
   doc.moveDown(1.5);
 
   for (const f of c.fields) {
     const y = doc.y;
-    doc.font("Helvetica-Bold").fontSize(10.5).fillColor("#000").text(f.label, left, y, { width: 200 });
-    if (f.required) doc.font("Helvetica").fontSize(7.5).fillColor(FAIL).text("REQUIRED", left, doc.y, { width: 200 });
+    doc.font(FONTS.bold).fontSize(10.5).fillColor("#000").text(f.label, left, y, { width: 200 });
+    if (f.required) doc.font(FONTS.regular).fontSize(7.5).fillColor(FAIL).text("REQUIRED", left, doc.y, { width: 200 });
     const labelBottom = doc.y;
     doc
-      .font(f.value ? "Helvetica" : "Helvetica-Oblique")
+      .font(f.value ? FONTS.regular : FONTS.italic)
       .fontSize(11)
       .fillColor(f.value ? "#000" : MUTED)
       .text(f.value ?? "", left + 210, y, { width: width - 210 });
@@ -55,12 +57,12 @@ export function renderCoverSheet(c: CoverSheet): Promise<Buffer> {
 
   if (c.instructions) {
     doc.moveDown(1);
-    doc.font("Helvetica-Bold").fontSize(12).fillColor("#000").text(c.instructions, left, doc.y, { width, align: "center" });
+    doc.font(FONTS.bold).fontSize(12).fillColor("#000").text(c.instructions, left, doc.y, { width, align: "center" });
   }
 
   const bottom = doc.page.height - 66;
   doc.page.margins.bottom = 0;
-  doc.font("Helvetica").fontSize(7.5).fillColor(MUTED).text(c.formReference, left, bottom, { width, align: "center" });
+  doc.font(FONTS.regular).fontSize(7.5).fillColor(MUTED).text(c.formReference, left, bottom, { width, align: "center" });
   doc.text(`Package ${c.packageReference} · prepared ${c.generatedAt.slice(0, 10)}`, left, bottom + 20, { width, align: "center", lineBreak: false });
   doc.end();
   return finished;

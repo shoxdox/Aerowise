@@ -1,3 +1,4 @@
+import { OutboxTransport } from "@aerowise/compliance";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { FakeMail } from "./fake-mail.ts";
@@ -28,6 +29,8 @@ describe("demo requests", () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ name: "Pat Rivera", email: "pat@example.com", company: "Rivera Aerobic Service", counties: "Travis, Williamson", status: "new", notifyError: null });
     expect(items[0].notifiedAt).toBe(ctx.now.toISOString());
+    // A mail provider took it, so it counts as emailed.
+    expect(items[0].notifyDelivery).toBe("provider");
 
     const sent = [...mail.delivered.values()];
     expect(sent).toHaveLength(1);
@@ -53,7 +56,19 @@ describe("demo requests", () => {
     expect((await submit(request, "198.51.100.3")).statusCode).toBe(202);
     mail.mode = "ok";
     const [item] = (await api.get("/admin/demo-requests")).json().items;
-    expect(item).toMatchObject({ notifiedAt: null, notifyError: expect.stringContaining("SMTP 451") });
+    expect(item).toMatchObject({ notifiedAt: null, notifyError: expect.stringContaining("SMTP 451"), notifyDelivery: null });
+  });
+
+  it("says an alert kept in the local test outbox was recorded there, not emailed (STG-08)", async () => {
+    const app = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, mail: new OutboxTransport(ctx.store, () => ctx.now) });
+    try {
+      const api = await admin();
+      expect((await submit(request, "198.51.100.9", app)).statusCode).toBe(202);
+      const [item] = (await api.get("/admin/demo-requests")).json().items;
+      expect(item).toMatchObject({ notifiedAt: ctx.now.toISOString(), notifyError: null, notifyDelivery: "outbox" });
+    } finally {
+      await app.close();
+    }
   });
 
   it("drops a request that fills the spam trap, answering as usual", async () => {

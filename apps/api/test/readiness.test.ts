@@ -517,7 +517,7 @@ describe("delivery evidence", () => {
     // The customer gets the copy signed with the authority report, never the unsigned one.
     const customerSignature = await ctx.db.selectFrom("reportSignatures").select("sha256").where("reportId", "=", customer.id).executeTakeFirstOrThrow();
     expect(customerSignature.sha256).not.toBe(customer.sha256);
-    expect(deliveries).toEqual([expect.objectContaining({ documentKind: "inspection_report", recipient: "pat@example.com", documentSha256: customerSignature.sha256, status: "accepted" })]);
+    expect(deliveries).toEqual([expect.objectContaining({ documentKind: "inspection_report", recipient: "pat@example.com", documentSha256: customerSignature.sha256, status: "accepted", delivery: "provider" })]);
     expect([...mail.delivered.values()][0]!.attachments.map((a) => a.filename)).toEqual(["inspection-report-signed.pdf"]);
     // The customer email is not a filing attempt, and the filing is still waiting to be sent.
     expect((await detailOf(s, filingId))).toMatchObject({ status: "ready", attempts: [] });

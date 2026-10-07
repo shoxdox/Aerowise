@@ -24,6 +24,14 @@ export interface EmailResult {
   response: Record<string, unknown>;
 }
 
+/**
+ * Where an accepted message went: "outbox" when the development/demo stand-in kept it in
+ * file storage (nobody received it), "provider" when a mail provider accepted it. Screens
+ * say "Emailed" only for the second.
+ */
+export type EmailDelivery = "outbox" | "provider";
+export const deliveryOf = (r: EmailResult): EmailDelivery => (r.response.transport === "outbox" ? "outbox" : "provider");
+
 export interface EmailTransport {
   readonly name: string;
   send(message: EmailMessage): Promise<EmailResult>;

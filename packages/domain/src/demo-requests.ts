@@ -24,6 +24,14 @@ export const demoRequestInput = z.object({
 });
 export type DemoRequestInput = z.input<typeof demoRequestInput>;
 
+/**
+ * Where an accepted email went: kept in the local test outbox (a stand-in; nobody received
+ * it) or accepted by a mail provider. Only the second is shown as emailed.
+ */
+export const EMAIL_DELIVERIES = ["outbox", "provider"] as const;
+export const emailDelivery = z.enum(EMAIL_DELIVERIES);
+export type EmailDeliveryKind = z.infer<typeof emailDelivery>;
+
 export const DEMO_REQUEST_STATUSES = ["new", "handled"] as const;
 
 export const demoRequest = z.object({
@@ -37,6 +45,8 @@ export const demoRequest = z.object({
   status: z.enum(DEMO_REQUEST_STATUSES),
   notifiedAt: z.iso.datetime({ offset: true }).nullable(),
   notifyError: z.string().nullable(),
+  /** Where the alert went, once sent. Null when not sent, or sent before this was recorded. */
+  notifyDelivery: emailDelivery.nullable(),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type DemoRequest = z.infer<typeof demoRequest>;

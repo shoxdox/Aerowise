@@ -354,9 +354,11 @@ export default function AdminOrganizationsPage() {
       {sent && (
         <div className="card stack" role="status">
           <p style={{ margin: 0 }}>
-            {sent.result.emailed
-              ? `Owner invitation for ${sent.org} emailed to ${sent.result.invitation.email}.`
-              : `The email to ${sent.result.invitation.email} could not be sent.`}{" "}
+            {!sent.result.emailed
+              ? `The email to ${sent.result.invitation.email} could not be sent.`
+              : sent.result.delivery === "outbox"
+                ? `Owner invitation for ${sent.org} recorded in the test outbox for ${sent.result.invitation.email}; no email was delivered.`
+                : `Owner invitation for ${sent.org} emailed to ${sent.result.invitation.email}.`}{" "}
             The link below works once, for 7 days.
           </p>
           <input

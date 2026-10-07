@@ -1,4 +1,4 @@
-import type { EmailTransport } from "@aerowise/compliance";
+import { deliveryOf, type EmailDelivery, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import { demoRequest, demoRequestInput, demoRequestStatusInput, id, type DemoRequest } from "@aerowise/domain";
 import type { FastifyBaseLogger } from "fastify";
@@ -21,7 +21,7 @@ export interface DemoRequestMail {
   appUrl: string;
 }
 
-type Row = { id: string; name: string; email: string; company: string; phone: string | null; counties: string | null; message: string | null; status: "new" | "handled"; notifiedAt: Date | null; notifyError: string | null; createdAt: Date };
+type Row = { id: string; name: string; email: string; company: string; phone: string | null; counties: string | null; message: string | null; status: "new" | "handled"; notifiedAt: Date | null; notifyError: string | null; notifyDelivery: "outbox" | "provider" | null; createdAt: Date };
 
 const toView = (r: Row): DemoRequest => ({ ...r, notifiedAt: r.notifiedAt?.toISOString() ?? null, createdAt: r.createdAt.toISOString() });
 
@@ -37,9 +37,10 @@ export const demoRequestRoutes: FastifyPluginAsyncZod<{ db: Database; now: () =>
       return;
     }
     const errors: string[] = [];
+    const deliveries = new Set<EmailDelivery>();
     for (const address of to) {
       try {
-        await demoMail.mail.send({
+        const sent = await demoMail.mail.send({
           organizationId: null,
           idempotencyKey: `demo-request-${r.id}-${address}`,
           from: `"Aerowise" <${demoMail.from}>`,
@@ -58,6 +59,7 @@ export const demoRequestRoutes: FastifyPluginAsyncZod<{ db: Database; now: () =>
           ].join("\n"),
           attachments: [],
         });
+        deliveries.add(deliveryOf(sent));
       } catch (err) {
         log.warn({ err, demoRequestId: r.id }, "demo request email failed");
         errors.push(`${address}: ${(err as Error).message || String(err)}`.slice(0, 500));
@@ -65,7 +67,8 @@ export const demoRequestRoutes: FastifyPluginAsyncZod<{ db: Database; now: () =>
     }
     await db
       .updateTable("demoRequests")
-      .set(errors.length === 0 ? { notifiedAt: now(), notifyError: null } : { notifyError: errors.join("; ") })
+      // Any alert a provider took counts as emailed; only all-outbox is "recorded in test outbox".
+      .set(errors.length === 0 ? { notifiedAt: now(), notifyError: null, notifyDelivery: deliveries.has("provider") ? "provider" : "outbox" } : { notifyError: errors.join("; ") })
       .where("id", "=", r.id)
       .execute();
   }
@@ -99,7 +102,10 @@ export const demoRequestRoutes: FastifyPluginAsyncZod<{ db: Database; now: () =>
   app.get(
     "/admin/demo-requests",
     { config: { platformAdmin: true }, schema: { tags: ["admin"], summary: "Demo requests, newest first", response: { 200: z.object({ items: z.array(demoRequest) }) } } },
-    async () => ({ items: (await db.selectFrom("demoRequests").selectAll().orderBy("createdAt", "desc").limit(500).execute()).map(toView) }),
+    async () => {
+      const rows = await db.selectFrom("demoRequests").selectAll().orderBy("createdAt", "desc").limit(500).execute();
+      return { items: rows.map(toView) };
+    },
   );
 
   app.put(

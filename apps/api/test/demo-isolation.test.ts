@@ -1,4 +1,3 @@
-import { inflateSync } from "node:zlib";
 import { createHash, randomUUID } from "node:crypto";
 import { OutboxTransport, type EmailMessage, type EmailResult, type EmailTransport } from "@aerowise/compliance";
 import { TestPaymentProvider, WebhookSignatureError, type CheckoutInput, type PaymentProvider, type RefundInput } from "@aerowise/payments";
@@ -22,6 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
 import { client, createUser, login, setupTestApp } from "./helpers.ts";
 import { completeValues, JPEG } from "./inspection-helpers.ts";
+import { pdfText } from "./pdf-text.ts";
 
 // A deployment with every real service configured (as production, or staging with
 // DEMO_LIVE_SERVICES), holding a demo company next to a real one. The "real" services here
@@ -184,21 +184,8 @@ async function invoiceFor(t: Awaited<ReturnType<typeof company>>, send = true) {
   return { ...inv, token: (inv.payUrl as string).split("/pay/")[1]! } as { id: string; token: string };
 }
 
-/** Whether a PDF carries the demo stamp: its text is drawn into a compressed content stream. */
-function stamped(pdf: Buffer) {
-  const mark = Buffer.from("DEMO - FICTIONAL DATA").toString("hex").toUpperCase();
-  const text = pdf.toString("latin1");
-  for (const m of text.matchAll(/stream\r?\n/g)) {
-    const start = m.index! + m[0].length;
-    const end = text.indexOf("endstream", start);
-    try {
-      if (inflateSync(pdf.subarray(start, end)).toString("latin1").toUpperCase().includes(mark)) return true;
-    } catch {
-      // Not a compressed stream.
-    }
-  }
-  return false;
-}
+/** Whether a PDF carries the demo stamp, read back as text through its embedded font. */
+const stamped = (pdf: Buffer) => pdfText(pdf).includes("DEMO - FICTIONAL DATA");
 
 describe("a demo company next to a real one, with real services configured", () => {
   it("connects payments, checks out and finishes payment only on the stand-in", async () => {
@@ -320,6 +307,24 @@ describe("a demo company next to a real one, with real services configured", () 
     const files = unzipSync(new Uint8Array(res.rawPayload));
     expect(new TextDecoder().decode(files["DEMO-FICTIONAL-DATA.txt"])).toMatch(/^DEMO: everything in this export is fictional/);
     expect(new TextDecoder().decode(files["README.txt"])).toMatch(/^DEMO:/);
+    // STG-07: each CSV says so on its own, header and every row, ahead of the usual columns.
+    const csvs = Object.keys(files).filter((f) => f.endsWith(".csv"));
+    expect(csvs).toHaveLength(12);
+    for (const name of csvs) {
+      const lines = new TextDecoder().decode(files[name]).trimEnd().split("\r\n");
+      expect(lines[0], name).toMatch(/^aerowise_demo_notice,(id,)?organization_id,/);
+      for (const line of lines.slice(1)) expect(line.startsWith("DEMO - FICTIONAL DATA - NOT FILED,"), name).toBe(true);
+    }
+    const customers = new TextDecoder().decode(files["customers.csv"]);
+    expect(customers.trimEnd().split("\r\n").length).toBeGreaterThan(1);
+
+    // A detached demo CSV cannot become a real company's records.
+    const real = await company("Real Septic", false);
+    const upload = { filename: "customers.csv", contentBase64: Buffer.from(customers).toString("base64") };
+    const refused = await real.api.post("/imports", upload);
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().message ?? refused.body).toMatch(/exported from an Aerowise demo company/);
+    expect((await demo.api.post("/imports", upload)).statusCode).toBe(201);
   });
 });
 
