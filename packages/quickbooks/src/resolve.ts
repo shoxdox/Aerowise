@@ -1,14 +1,19 @@
 import { QUICKBOOKS_CONFLICT_GUIDE, type QuickBooksAction, type QuickBooksResolveInput } from "@aerowise/domain";
-import type { QuickBooksContext } from "./connection.ts";
+import { openCompany, type QuickBooksContext } from "./connection.ts";
 import { customerPayloads, payloadHash } from "./records.ts";
-import type { Link, StoredCandidate } from "./sync.ts";
+import { HELD_FOR_INVOICE, LinkWriter, totalsCompared, type Link, type StoredCandidate } from "./sync.ts";
+
+/** remote_state of an invoice kept in QuickBooks with totals that differ from Aerowise's. */
+export const KEPT_MISMATCH = "kept_mismatch";
 
 export class ResolveError extends Error {}
 
 /** The choices a record offers now. */
-export function actionsFor(link: Pick<Link, "status" | "conflictKind">): QuickBooksAction[] {
-  if (link.status === "conflict" && link.conflictKind) return QUICKBOOKS_CONFLICT_GUIDE[link.conflictKind].actions;
+export function actionsFor(link: Pick<Link, "status" | "conflictKind"> & Partial<Pick<Link, "remoteState">>): QuickBooksAction[] {
+  if ((link.status === "conflict" || link.status === "quarantined") && link.conflictKind) return QUICKBOOKS_CONFLICT_GUIDE[link.conflictKind].actions;
   if (link.status === "failed") return QUICKBOOKS_CONFLICT_GUIDE.failed.actions;
+  // Kept with different totals: only a fresh comparison brings it back, never a plain retry.
+  if (link.status === "ignored" && link.remoteState === KEPT_MISMATCH) return ["recheck"];
   // Start syncing a record again after it was set aside.
   if (link.status === "ignored") return ["retry"];
   return [];
@@ -95,7 +100,76 @@ export async function resolveLink(ctx: QuickBooksContext, organizationId: string
       case "ignore":
         await set({ status: "ignored", force: false });
         break;
+      case "keep_remote": {
+        // The QuickBooks id stays, so nothing is created again; the reason is kept with the record.
+        const reason = input.reason?.trim();
+        if (!reason) throw new ResolveError("Say why the QuickBooks invoice is kept as it is");
+        await set({ status: "ignored", remoteState: KEPT_MISMATCH, syncError: `Kept as it is in QuickBooks: ${reason}`, force: false });
+        break;
+      }
+      case "recheck":
+        // Reads QuickBooks, so it is not done inside this transaction: see recheckInvoice.
+        throw new ResolveError("Check again reads QuickBooks; use recheckInvoice");
     }
     return trx.selectFrom("quickbooksLinks").selectAll().where("id", "=", link.id).executeTakeFirstOrThrow();
   });
+}
+
+/**
+ * "I corrected it in QuickBooks, check again": reads the invoice there and compares its totals
+ * with Aerowise's. When they match, the hold is released: the invoice is synced and its
+ * payments and refunds go on. When they still differ, it stays quarantined with the fresh
+ * totals. Aerowise never changes the QuickBooks invoice itself.
+ */
+export async function recheckInvoice(ctx: QuickBooksContext, organizationId: string, linkId: string): Promise<{ released: boolean; link: Link }> {
+  const { db } = ctx;
+  const link = await db.selectFrom("quickbooksLinks").selectAll().where("organizationId", "=", organizationId).where("id", "=", linkId).executeTakeFirst();
+  if (!link) throw new ResolveError("not_found");
+  if (!actionsFor(link).includes("recheck") || link.entityType !== "invoice" || !link.externalId) throw new ResolveError("That choice does not apply to this record any more");
+  const inv = await db.selectFrom("invoices").select(["totalCents", "taxCents"]).where("organizationId", "=", organizationId).where("id", "=", link.entityId).executeTakeFirstOrThrow();
+  const remote = await (await openCompany(ctx, organizationId)).getInvoice(link.externalId);
+  const write = new LinkWriter(ctx);
+  // A record that changed while QuickBooks was being read is left for the person to look at again.
+  const still = async () => (await db.selectFrom("quickbooksLinks").select(["status", "updatedAt"]).where("id", "=", link.id).executeTakeFirstOrThrow()).updatedAt.getTime() === link.updatedAt.getTime();
+  if (!(await still())) throw new ResolveError("This record changed meanwhile. Look again.");
+  let released = false;
+  if (!remote) {
+    await write.conflict(link, "deleted_in_quickbooks", {});
+  } else {
+    const compared = totalsCompared(inv, remote, remote.docNumber);
+    if (compared.matches) {
+      released = true;
+      await write.synced(link, { externalId: remote.id, syncToken: remote.syncToken, remoteState: remote.voided ? "void" : "open", remoteUpdatedAt: remote.updatedAt });
+      await release(ctx, organizationId, link.entityId);
+    } else {
+      await write.quarantined(link, remote, { ...compared, checkedAt: ctx.now().toISOString() });
+    }
+  }
+  return { released, link: await db.selectFrom("quickbooksLinks").selectAll().where("id", "=", link.id).executeTakeFirstOrThrow() };
+}
+
+/**
+ * Sends on what waited for an invoice: payments and refunds held while it was quarantined,
+ * and those set aside because it was kept out of the sync.
+ */
+async function release(ctx: QuickBooksContext, organizationId: string, invoiceId: string) {
+  const { db } = ctx;
+  const now = ctx.now();
+  const payments = db.selectFrom("payments").select("id").where("organizationId", "=", organizationId).where("invoiceId", "=", invoiceId);
+  await db
+    .updateTable("quickbooksLinks")
+    .set({ status: "queued", syncError: null, updatedAt: now })
+    .where("organizationId", "=", organizationId)
+    .where("entityType", "=", "payment")
+    .where("entityId", "in", payments)
+    .where((eb) => eb.or([eb.and([eb("status", "=", "queued"), eb("syncError", "=", HELD_FOR_INVOICE)]), eb.and([eb("status", "=", "ignored"), eb("syncError", "=", "The invoice is not synced to QuickBooks")])]))
+    .execute();
+  await db
+    .updateTable("quickbooksLinks")
+    .set({ status: "queued", syncError: null, updatedAt: now })
+    .where("organizationId", "=", organizationId)
+    .where("entityType", "=", "refund")
+    .where("entityId", "in", db.selectFrom("refunds").select("id").where("organizationId", "=", organizationId).where("paymentId", "in", payments))
+    .where((eb) => eb.or([eb.and([eb("status", "=", "queued"), eb("syncError", "=", HELD_FOR_INVOICE)]), eb.and([eb("status", "=", "ignored"), eb("syncError", "=", "The payment is not synced to QuickBooks")])]))
+    .execute();
 }

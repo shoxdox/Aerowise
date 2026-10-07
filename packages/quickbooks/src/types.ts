@@ -38,6 +38,14 @@ export interface QboAccount {
   active: boolean;
 }
 
+/** A sales tax code: TAX and NON for lines, or a code (rate) an invoice is taxed at. */
+export interface QboTaxCode {
+  id: string;
+  name: string;
+  taxable: boolean;
+  active: boolean;
+}
+
 export interface QboItem {
   id: string;
   name: string;
@@ -52,6 +60,8 @@ export interface QboInvoice {
   customerId: string;
   customerName: string | null;
   totalCents: number;
+  /** TxnTaxDetail.TotalTax: the sales tax QuickBooks has on it. */
+  taxCents: number;
   balanceCents: number;
   /** QuickBooks keeps a voided invoice, at zero, with "Voided" in its note. */
   voided: boolean;
@@ -63,8 +73,11 @@ export interface InvoicePayload {
   docNumber: string;
   txnDate: string;
   dueDate: string;
-  lines: { itemId: string; description: string; quantity: number; unitPriceCents: number; amountCents: number }[];
+  /** `taxCodeRef` only with tax mode on: the line's TAX or NON code. Left out, the payload is what it was before tax mode. */
+  lines: { itemId: string; description: string; quantity: number; unitPriceCents: number; amountCents: number; taxCodeRef?: string }[];
   discountCents: number;
+  /** Only with tax mode on: the invoice's sales tax code and Aerowise's tax total (TxnTaxDetail). */
+  txnTax?: { taxCodeRef: string; totalTaxCents: number };
   memo: string | null;
   privateNote: string;
   billEmail: string | null;
@@ -137,6 +150,8 @@ export interface QuickBooksCompany {
   /** Products and services, active and not. */
   listItems(): Promise<QboItem[]>;
   getItem(id: string): Promise<QboItem | null>;
+  /** Sales tax codes, active and not. */
+  listTaxCodes(): Promise<QboTaxCode[]>;
   findInvoiceByNumber(docNumber: string): Promise<QboInvoice | null>;
   /** Null when the invoice was deleted. */
   getInvoice(id: string): Promise<QboInvoice | null>;

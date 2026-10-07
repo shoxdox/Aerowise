@@ -13,6 +13,7 @@ import {
   quickbooksReview,
   quickbooksReviewDecision,
   quickbooksStatus,
+  quickbooksTaxCode,
   type QuickBooksStatus,
 } from "@aerowise/domain";
 import {
@@ -22,6 +23,7 @@ import {
   disconnect,
   openCompany,
   QuickBooksError,
+  recheckInvoice,
   refreshReview,
   resolveLink,
   ResolveError,
@@ -74,7 +76,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     const c = await db.selectFrom("quickbooksConnections").selectAll().where("organizationId", "=", organizationId).executeTakeFirst();
     const rows = await db
       .selectFrom("quickbooksLinks")
-      .select(["entityType", "status", sql<number>`count(*)::int`.as("n"), sql<number>`count(*) filter (where status = 'conflict' or (status = 'failed' and next_attempt_at is null))::int`.as("attention")])
+      .select(["entityType", "status", sql<number>`count(*)::int`.as("n"), sql<number>`count(*) filter (where status in ('conflict', 'quarantined') or (status = 'failed' and next_attempt_at is null))::int`.as("attention")])
       .where("organizationId", "=", organizationId)
       .where("status", "<>", "new")
       .groupBy(["entityType", "status"])
@@ -213,10 +215,41 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     },
   );
 
+  app.get(
+    "/quickbooks/tax-codes",
+    { config: { permission: "quickbooks:read" }, schema: { tags: ["quickbooks"], summary: "Sales tax codes in QuickBooks: TAX and NON for lines, and the codes invoices are taxed at", response: { 200: z.array(quickbooksTaxCode) } } },
+    async (req) => {
+      try {
+        const codes = await (await openCompany(ctx(), req.requireAuth().organizationId)).listTaxCodes();
+        return codes.sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+      } catch (err) {
+        asHttp(err);
+      }
+    },
+  );
+
   async function mapping(organizationId: string) {
     const c = await db
       .selectFrom("quickbooksConnections")
-      .select(["syncFrom", "defaultItemId", "defaultItemName", "refundItemId", "refundItemName", "stripeRefundAccountId", "stripeRefundAccountName", "manualRefundAccountId", "manualRefundAccountName"])
+      .select([
+        "environment",
+        "syncFrom",
+        "defaultItemId",
+        "defaultItemName",
+        "refundItemId",
+        "refundItemName",
+        "stripeRefundAccountId",
+        "stripeRefundAccountName",
+        "manualRefundAccountId",
+        "manualRefundAccountName",
+        "taxMode",
+        "taxableCodeRef",
+        "taxableCodeName",
+        "nontaxableCodeRef",
+        "nontaxableCodeName",
+        "taxRateRef",
+        "taxRateName",
+      ])
       .where("organizationId", "=", organizationId)
       .executeTakeFirst();
     if (!c) throw unprocessable("QuickBooks is not connected");
@@ -234,6 +267,13 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       refundItem: c.refundItemId ? { id: c.refundItemId, name: c.refundItemName ?? c.refundItemId } : null,
       stripeRefundAccount: c.stripeRefundAccountId ? { id: c.stripeRefundAccountId, name: c.stripeRefundAccountName ?? c.stripeRefundAccountId } : null,
       manualRefundAccount: c.manualRefundAccountId ? { id: c.manualRefundAccountId, name: c.manualRefundAccountName ?? c.manualRefundAccountId } : null,
+      tax: {
+        mode: c.taxMode,
+        taxableCode: c.taxableCodeRef ? { id: c.taxableCodeRef, name: c.taxableCodeName ?? c.taxableCodeRef } : null,
+        nontaxableCode: c.nontaxableCodeRef ? { id: c.nontaxableCodeRef, name: c.nontaxableCodeName ?? c.nontaxableCodeRef } : null,
+        taxRate: c.taxRateRef ? { id: c.taxRateRef, name: c.taxRateName ?? c.taxRateRef } : null,
+        allowed: taxModeAllowed(c.environment),
+      },
       plans: plans.map((p) => ({
         planId: p.id,
         planName: p.name,
@@ -282,6 +322,44 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
         }
         if (wantedAccounts.some((w) => !accountNames.has(w))) throw unprocessable("Pick active QuickBooks accounts only");
       }
+      // Sales tax codes: each must be an active QuickBooks code of the right kind.
+      const taxRefs = { taxableCodeRef: true, nontaxableCodeRef: false, taxRateRef: true } as const;
+      const codeNames = new Map<string, string>();
+      if ((Object.keys(taxRefs) as (keyof typeof taxRefs)[]).some((k) => body[k])) {
+        let codes;
+        try {
+          codes = await (await openCompany(ctx(), organizationId)).listTaxCodes();
+        } catch (err) {
+          asHttp(err);
+        }
+        for (const [k, taxable] of Object.entries(taxRefs) as [keyof typeof taxRefs, boolean][]) {
+          const chosen = body[k];
+          if (!chosen) continue;
+          const code = codes.find((x) => x.id === chosen && x.active);
+          if (!code) throw unprocessable("Pick active QuickBooks tax codes only");
+          if (code.taxable !== taxable) throw unprocessable(taxable ? "Pick a taxable code for taxable lines and the invoice's tax" : "Pick a non-taxable code for untaxed lines");
+          codeNames.set(chosen, code.name);
+        }
+      }
+      const current = await db
+        .selectFrom("quickbooksConnections")
+        .select(["environment", "taxMode", "taxableCodeRef", "nontaxableCodeRef", "taxRateRef"])
+        .where("organizationId", "=", organizationId)
+        .executeTakeFirst();
+      if (!current) throw unprocessable("QuickBooks is not connected");
+      const nextTax = {
+        mode: body.taxMode ?? current.taxMode,
+        taxableCodeRef: body.taxableCodeRef !== undefined ? body.taxableCodeRef : current.taxableCodeRef,
+        nontaxableCodeRef: body.nontaxableCodeRef !== undefined ? body.nontaxableCodeRef : current.nontaxableCodeRef,
+        taxRateRef: body.taxRateRef !== undefined ? body.taxRateRef : current.taxRateRef,
+      };
+      if (nextTax.mode === "taxcode") {
+        if (current.taxMode !== "taxcode" && !taxModeAllowed(current.environment)) {
+          throw unprocessable("Sales tax sync stays off for live QuickBooks companies until it has been checked against a QuickBooks sandbox");
+        }
+        if (!nextTax.taxableCodeRef || !nextTax.nontaxableCodeRef || !nextTax.taxRateRef) throw unprocessable("Choose all three sales tax codes before turning on sales tax sync");
+      }
+      const turnedOn = current.taxMode !== "taxcode" && nextTax.mode === "taxcode";
       if (body.plans?.length) {
         const known = await db.selectFrom("plans").select("id").where("organizationId", "=", organizationId).where("id", "in", body.plans.map((p) => p.planId)).execute();
         if (known.length !== new Set(body.plans.map((p) => p.planId)).size) throw notFound("Plan");
@@ -303,6 +381,13 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
           if (chosen === undefined) continue;
           conn[`${key}Id`] = chosen;
           conn[`${key}Name`] = chosen ? accountNames.get(chosen)! : null;
+        }
+        if (body.taxMode !== undefined) conn.taxMode = body.taxMode;
+        for (const key of ["taxableCode", "nontaxableCode", "taxRate"] as const) {
+          const chosen = body[`${key}Ref`];
+          if (chosen === undefined) continue;
+          conn[`${key}Ref`] = chosen;
+          conn[`${key}Name`] = chosen ? codeNames.get(chosen)! : null;
         }
         await trx.updateTable("quickbooksConnections").set(conn).where("organizationId", "=", organizationId).execute();
         for (const p of body.plans ?? []) {
@@ -326,6 +411,18 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
           .where("entityType", "=", "invoice")
           .where("conflictKind", "=", "item_missing")
           .execute();
+        // Turning sales tax on sends the taxed invoices that waited for it. One already entered
+        // in QuickBooks by hand under the same number is found there, not created again.
+        if (turnedOn) {
+          await trx
+            .updateTable("quickbooksLinks")
+            .set({ status: "queued", conflictKind: null, conflict: null, updatedAt: at })
+            .where("organizationId", "=", organizationId)
+            .where("entityType", "=", "invoice")
+            .where("status", "=", "conflict")
+            .where("conflictKind", "=", "tax_mapping_missing")
+            .execute();
+        }
         await audit(trx, req, { action: "quickbooks.mapping_changed", entityType: "organization", entityId: organizationId, changes: body });
         await queueQuickBooksSync(trx, organizationId, at);
       });
@@ -466,7 +563,8 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     async (req) => {
       const { organizationId } = req.requireAuth();
       try {
-        await resolveLink(ctx(), organizationId, req.params.id, req.body);
+        if (req.body.action === "recheck") await recheckInvoice(ctx(), organizationId, req.params.id);
+        else await resolveLink(ctx(), organizationId, req.params.id, req.body);
       } catch (err) {
         asHttp(err);
       }
@@ -490,6 +588,12 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     },
   );
 };
+
+/**
+ * Sales tax sync is off for live QuickBooks companies until gate G-QBO-TAX: a sandbox round
+ * trip, including automated sales tax, recorded by Codex. Lifting this is a reviewed code change.
+ */
+const taxModeAllowed = (environment: "test" | "sandbox" | "production") => environment !== "production";
 
 async function listQuickBooksRecordById(db: Database, organizationId: string, linkId: string) {
   const link = await db.selectFrom("quickbooksLinks").select(["entityType", "entityId"]).where("organizationId", "=", organizationId).where("id", "=", linkId).executeTakeFirstOrThrow();

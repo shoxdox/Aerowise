@@ -19,6 +19,19 @@ test("the owner connects QuickBooks, reviews customer matches and starts syncing
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved")).toBeVisible();
 
+  // Sales tax sync is off until the owner turns it on with the company's tax codes.
+  const taxOn = page.getByLabel("Send sales tax to QuickBooks");
+  await expect(taxOn).not.toBeChecked();
+  await taxOn.check();
+  await page.locator('select[name="taxableCode"]').selectOption({ label: "TAX" });
+  await page.locator('select[name="nontaxableCode"]').selectOption({ label: "NON" });
+  await page.locator('select[name="taxRate"]').selectOption({ label: "Travis County 8.25%" });
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Send sales tax to QuickBooks")).toBeChecked();
+  await expect(page.locator('select[name="taxRate"]')).toHaveValue("TX825");
+
   // The review reads QuickBooks on the first visit and asks about the uncertain ones.
   await page.getByRole("link", { name: "Review customer matches" }).click();
   await page.waitForURL("**/quickbooks/review");
