@@ -46,6 +46,13 @@ Intentional differences: marketing submission stays on the public page with a su
 8. **Outbound isolation:** API and worker both have DEMO_MODE=true, empty DEMO_LIVE_SERVICES and zero configured external credentials ([check](staging-walkthrough-2026-10/provider-isolation.txt)). Resend absent; EMAIL_REDIRECT_TO not needed. Password reset and invite requests produced local `.eml`/`.json` outbox artifacts, never delivered mail ([sanitized subjects/recipients/transport](staging-walkthrough-2026-10/outbox-evidence.json)); screenshots 46–47, 54–55. Real-looking email and non-reserved phone rejected in demo Company settings, screenshots 18–19. Restored synthetic values afterward.
 9. **Operations:** HTTPS, /api/health, worker health; nightly reset installed and manually run once before creating walkthrough data; final backup and scratch restore passed ([complete backup check](staging-walkthrough-2026-10/backup-restore-check.txt)): dump `db-20261006T233953Z.dump`, 73 tables, 1,328 rows, 5 organizations, migration 0046, 59 files. Backups remain local because offsite services are disabled. This is a restore check into scratch, not an overwrite of the live database.
 
+## Cross-cutting — October 7 fix round
+
+- **Dependency audit:** `pnpm audit` found 2 moderate advisories, uuid ([GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)) and csv-parse ([GHSA-8cw4-87c7-c6xx](https://github.com/advisories/GHSA-8cw4-87c7-c6xx)), and no high or critical. They are logged as dependency findings, not proven exploits.
+- **Not addressed this round:** STG-04 and STG-05 stay open as described above.
+- **CI:** hosted Actions did not run because of the account quota. Results come from local runs on exact heads, recorded on each PR.
+- **Staging:** live staging is still `665cf09`, all services healthy, with DEMO_MODE on and no external credentials configured. None of this round's PRs is deployed.
+
 ## Justin's next actions and limits
 
 No DNS, account or paid integration is needed to show the public demo. Resolve GitHub's account restriction if automatic deployments are wanted. Keep staging test-only. Fix STG-01 before promising durable personalized demos, and STG-03 before real customer use. Do not claim Comal/Hays acceptance, live ruleset editing, all-file export marking, physical-phone validation or in-app PDF generation passed.
