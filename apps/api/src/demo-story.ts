@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 import { OutboxTransport } from "@aerowise/compliance";
 import { DEMO_ORG_NAME, type Database } from "@aerowise/db";
-import { addDays, DEFAULT_TEMPLATE } from "@aerowise/domain";
+import { addDays, DEFAULT_TEMPLATE, parseFeatures, type Feature } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
 import { drainTasks } from "@aerowise/tasks";
 import { buildApp, type App } from "./app.ts";
@@ -20,6 +20,9 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     The county answered one, so it is confirmed with a reference; the other waits.
 //   - A contract ending in three weeks has a renewal sent to the customer.
 //   - Invoices: one sent and unpaid, one paid by card on the test checkout.
+//   - With work orders switched on (AEROWISE_FEATURES): the inspections noted a repair and a
+//     pump-out; the pump-out became a work order done yesterday and invoiced, the repair one
+//     scheduled for tomorrow, and a homeowner's portal request became a third, ready to schedule.
 //
 // Today's and tomorrow's route is left alone for the visitor to work through.
 
@@ -60,8 +63,9 @@ const afternoon = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00Z`
  * Plays the story once, in the shared demo company or the one named. Returns false when
  * there is no such demo company or the story was already played there.
  */
-export async function playDemoStory(opts: { db: Database; store: ObjectStore; organizationId?: string; now?: () => Date; log?: (msg: string) => void }): Promise<boolean> {
-  const { db, store, now = () => new Date(), log = () => {} } = opts;
+export async function playDemoStory(opts: { db: Database; store: ObjectStore; organizationId?: string; now?: () => Date; log?: (msg: string) => void; features?: ReadonlySet<Feature> }): Promise<boolean> {
+  const { db, store, now = () => new Date(), log = () => {}, features = parseFeatures(process.env.AEROWISE_FEATURES) } = opts;
+  const work = features.has("work_orders");
   const found = db.selectFrom("organizations").select(["id", "demo"]);
   const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
@@ -77,7 +81,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   const mail = new OutboxTransport(store, now);
   const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3000";
   // Not production: every outside service is a stand-in and the fictional rules are loaded.
-  const app = await buildApp({ db, store, now, mail, appUrl, production: false, loginRateLimit: 1000, logger: false });
+  const app = await buildApp({ db, store, now, mail, appUrl, production: false, loginRateLimit: 1000, logger: false, features });
   // Only the demo company's own tasks: any other company's stay queued for the real worker.
   const worker = async () => {
     // The deployed worker can claim a report before this inline drain does. Wait for
@@ -149,7 +153,13 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         pumping_needed: n === 1,
         notes: n === 1 ? "Sludge is near the top of the pretreatment tank; pumping recommended before the next visit." : "Everything working. Tablets topped up.",
       });
-      const done = await tech.put("/inspections/sync", { ...base, status: "completed", completedAt: afternoon(yesterday, n === 0 ? "19:40" : "21:05"), values });
+      // What the technician noted for the office to follow up, when there is work to turn it into.
+      const issues = !work
+        ? []
+        : n === 0
+          ? [{ clientId: randomUUID(), type: "repair_needed", severity: "medium", description: "Alarm light flickers; float switch wiring looks loose." }]
+          : [{ clientId: randomUUID(), type: "pump_out", severity: "high", description: "Sludge near the top of the pretreatment tank." }];
+      const done = await tech.put("/inspections/sync", { ...base, status: "completed", completedAt: afternoon(yesterday, n === 0 ? "19:40" : "21:05"), values, issues });
       if (done.status !== "completed") throw new Error(`demo story: inspection did not complete: ${JSON.stringify(done.validationProblems ?? done)}`);
       inspections.push(done.id);
     }
@@ -192,7 +202,40 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       if (sessionId) await visitor.post(`/pay/${paying.token}/test-checkout`, { sessionId, outcome: "card" });
     }
     await worker();
-    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid)`);
+
+    // ---- Work orders, when switched on: through the same conversions the office uses ----
+    let workOrders = 0;
+    if (work) {
+      const issues = await db.selectFrom("issues").select(["id", "type", "siteId"]).where("organizationId", "=", org.id).where("inspectionId", "in", inspections).execute();
+      const pumpOut = issues.find((i) => i.type === "pump_out");
+      if (pumpOut) {
+        const wo = await office.post(`/issues/${pumpOut.id}/work-order`);
+        const visit = await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: yesterday, notes: "Pump the pretreatment and aerobic tanks." });
+        const jobId = visit.visits[0].jobId as string;
+        await office.post(`/work-orders/${wo.id}/complete`, { reason: "Fictional: pumped yesterday; the technician's phone records arrive with the next phone update." });
+        const site = await db.selectFrom("sites").select("customerId").where("id", "=", pumpOut.siteId).executeTakeFirstOrThrow();
+        const draft = await office.post("/invoices", { customerId: site.customerId, siteId: pumpOut.siteId, lines: [{ description: "Pumping: pretreatment and aerobic tanks", quantity: 1, unitPriceCents: 42500, jobId }] });
+        await office.post(`/invoices/${draft.id}/issue`, { send: false });
+        workOrders++;
+      }
+      const repair = issues.find((i) => i.type === "repair_needed");
+      if (repair) {
+        const wo = await office.post(`/issues/${repair.id}/work-order`);
+        await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: addDays(today, 1), notes: "Bring a float switch." });
+        workOrders++;
+      }
+      // A homeowner asks from their portal; the office turns it into a work order.
+      const site = await db.selectFrom("sites").select(["id", "customerId"]).where("organizationId", "=", org.id).orderBy("addressLine1").limit(1).executeTakeFirst();
+      if (site) {
+        const link = await office.post(`/customers/${site.customerId}/portal-link`, { send: false });
+        const token = String(link.url).split("/").pop()!;
+        const asked = await as(app, "").post(`/portal/${token}/service-requests`, { siteId: site.id, kind: "odor", description: "Smell near the spray heads after the rain." });
+        await office.post(`/service-requests/${asked.id}/work-order`);
+        workOrders++;
+      }
+      await worker();
+    }
+    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders`);
     return true;
   } finally {
     // The story's own sign-ins end with it.

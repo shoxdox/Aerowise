@@ -167,7 +167,7 @@ describe("the API in demo mode", () => {
   it("is off by default, and production keeps the fictional rules and test checkout out", async () => {
     const db = await fresh();
     const app = await buildApp({ db, production: true, fileSigningSecret: "s" });
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, features: [] });
     expect(await exampleRules(db)).toHaveLength(0);
     expect(app.hasRoute({ method: "POST", url: "/pay/:token/test-checkout" })).toBe(false);
     await app.close();
@@ -177,7 +177,7 @@ describe("the API in demo mode", () => {
   it("says so, loads the fictional rules and offers test checkout, in production", async () => {
     const db = await fresh();
     const app = await buildApp({ db, production: true, demo: true, fileSigningSecret: "s" });
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: false });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: false, features: [] });
     expect(await exampleRules(db)).toHaveLength(1);
     expect(app.hasRoute({ method: "POST", url: "/pay/:token/test-checkout" })).toBe(true);
     await app.close();
@@ -254,6 +254,41 @@ describe("demo reseed", () => {
     // Everything went to the stand-ins: the outbox, never a real provider.
     const org = await ctx.db.selectFrom("organizations").select(["stripeAccountId"]).where("demo", "=", true).where("demoExpiresAt", "is", null).executeTakeFirstOrThrow();
     expect(org.stripeAccountId).toMatch(/^acct_test_/);
+    // Work orders are switched off by default, so the story leaves them out.
+    expect(await ctx.db.selectFrom("workOrders").select("id").execute()).toEqual([]);
+  });
+
+  it("adds the work order story when work orders are switched on, and the nightly reset clears it", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders"]) })).toBe(true);
+    const orders = await ctx.db
+      .selectFrom("workOrders as w")
+      .select(["w.organizationId", "w.category", "w.status", "w.sourceKind", "w.completedWithoutRecordReason"])
+      .orderBy("w.number")
+      .execute();
+    expect(orders.map((w) => [w.category, w.status, w.sourceKind])).toEqual([
+      ["pumping", "completed", "inspection_issue"],
+      ["repair", "scheduled", "inspection_issue"],
+      ["other", "open", "portal_request"],
+    ]);
+    expect(orders[0]!.completedWithoutRecordReason).toMatch(/^Fictional:/);
+    const organizationId = orders[0]!.organizationId;
+    // The pump-out's visit is billed; the inspections' filings are the story's two, nothing more.
+    const billed = await ctx.db
+      .selectFrom("invoiceLines as l")
+      .innerJoin("jobs as j", "j.id", "l.jobId")
+      .select(["j.type"])
+      .where("l.organizationId", "=", organizationId)
+      .execute();
+    expect(billed).toEqual([{ type: "work" }]);
+    expect((await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "is not", null).execute()).length).toBe(2);
+
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["workOrders", "workOrderEvents", "workOrderLines", "workOrderNotes"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", organizationId).execute()).toEqual([]);
+    }
   });
 
   it("refuses to seed or reseed a production database outside demo mode", async () => {

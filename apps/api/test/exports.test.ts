@@ -48,6 +48,11 @@ describe("full data export", () => {
         "sites.csv",
         "systems.csv",
         "visits.csv",
+        "work_order_events.csv",
+        "work_order_lines.csv",
+        "work_order_notes.csv",
+        "work_orders.csv",
+        "work_types.csv",
       ].sort(),
     );
     const customers = csvRows(files, "customers.csv");

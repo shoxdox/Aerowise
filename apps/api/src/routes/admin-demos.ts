@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { seedDemoCompany, type Database } from "@aerowise/db";
-import { dateInZone, initialPlan, type SubscriptionConfig } from "@aerowise/domain";
+import { dateInZone, initialPlan, type Feature, type SubscriptionConfig } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -49,7 +49,9 @@ export const adminDemoRoutes: FastifyPluginAsyncZod<{
   production: boolean;
   appUrl: string;
   subscription: SubscriptionConfig;
-}> = async (app, { db, store, now, production, appUrl, subscription }) => {
+  /** The deployment's switched-on features, which the demo story follows. */
+  features: ReadonlySet<Feature>;
+}> = async (app, { db, store, now, production, appUrl, subscription, features }) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
   async function load(id?: string) {
@@ -146,7 +148,7 @@ export const adminDemoRoutes: FastifyPluginAsyncZod<{
         expiresAt: endsAt,
         prospect: { name: prospect, serviceCounties },
       });
-      await playDemoStory({ db, store, organizationId, now });
+      await playDemoStory({ db, store, organizationId, now, features });
       const link = await issueLink(organizationId, adminId, endsAt);
       await platformAudit(db, req, {
         adminId,
