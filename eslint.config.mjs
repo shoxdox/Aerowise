@@ -3,7 +3,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/.next/**", "**/dist/**", "**/next-env.d.ts"] },
+  { ignores: ["**/node_modules/**", "**/.next/**", "**/dist/**", "**/next-env.d.ts", "apps/web/public/map/maplibre/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ["apps/web/public/sw.js"], languageOptions: { globals: globals.serviceworker } },

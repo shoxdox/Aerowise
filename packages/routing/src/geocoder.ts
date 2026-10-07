@@ -8,10 +8,14 @@ export interface AddressQuery {
   postalCode?: string | null;
 }
 
-/** Finds an address on the map. Returns null when the address cannot be found. */
+/**
+ * Finds an address on the map. Returns null when the address cannot be found.
+ * `organizationId` names the company the address belongs to, so a demo company's made-up
+ * addresses never reach a real geocoder (the gate in @aerowise/tasks decides by it).
+ */
 export interface Geocoder {
   readonly kind: "test" | "census";
-  geocode(address: AddressQuery): Promise<Point | null>;
+  geocode(address: AddressQuery, organizationId?: string): Promise<Point | null>;
 }
 
 export function oneLine(a: AddressQuery): string {

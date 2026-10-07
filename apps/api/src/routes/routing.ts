@@ -156,7 +156,7 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (!point) {
           if (!geocoder) throw unprocessable("Finding addresses is turned off on this server. Enter the start's latitude and longitude.");
           try {
-            point = await geocoder.geocode(start);
+            point = await geocoder.geocode(start, organizationId);
           } catch (err) {
             if (err instanceof GeocodeError) throw new HttpError(502, "geocoder_unavailable", "The map service did not answer. Try again, or enter latitude and longitude.");
             throw err;

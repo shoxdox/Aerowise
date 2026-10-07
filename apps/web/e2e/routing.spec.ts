@@ -24,7 +24,7 @@ test("the office sees tomorrow's route on the map with its driving, and puts a s
   await page.goto("/schedule");
   await page.locator('input[type="date"]').fill(date);
   await lateAnswer;
-  await expect(page.getByRole("img", { name: /Map of 1 route/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: /Map of 1 route/ })).toBeVisible();
   const column = page.locator(".column", { hasText: "4 stops" });
   await expect(column.getByText(/\d+(\.\d)? mi · .* driving/)).toBeVisible();
   await expect(column.getByText(/from the start/)).toBeVisible();

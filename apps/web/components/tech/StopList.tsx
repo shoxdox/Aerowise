@@ -1,5 +1,7 @@
 import type { Stop } from "@aerowise/domain";
+import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
+import { TechRouteMap } from "@/components/tech/TechRouteMap";
 import type { LocalInspection } from "@/lib/offline/db";
 import { clock, day } from "@/lib/format";
 
@@ -10,19 +12,27 @@ export function stopStatus(stop: Stop, insp: LocalInspection | undefined): { lab
   return { label: "To do", tone: "" };
 }
 
+export type RouteView = "list" | "map";
+
 export function StopList({
   route,
   fetchedAt,
   inspections,
   onOpen,
   onRefresh,
+  view = "list",
+  onView,
 }: {
   route: { date: string; items: Stop[] } | null;
   fetchedAt: string | undefined;
   inspections: Map<string, LocalInspection>;
   onOpen: (jobId: string) => void;
   onRefresh: () => void;
+  view?: RouteView;
+  onView?: (view: RouteView) => void;
 }) {
+  // The map could not be shown (no signal, no map installed): the list shows under the note.
+  const [mapFailed, setMapFailed] = useState(false);
   if (!route) {
     return (
       <div className="card stack">
@@ -48,26 +58,39 @@ export function StopList({
         </button>
       </div>
       {route.items.length === 0 && <p className="muted">No stops on your route today.</p>}
-      <ol className="stops">
-        {route.items.map((s, i) => {
-          const status = stopStatus(s, inspections.get(s.jobId));
-          return (
-            <li key={s.jobId}>
-              <button className="stop-card" onClick={() => onOpen(s.jobId)}>
-                <span className="stop-num">{i + 1}</span>
-                <span className="stop-body">
-                  <strong>{s.customer.displayName}</strong>
-                  <span className="muted">
-                    {s.site.addressLine1}, {s.site.city}
+      {route.items.length > 0 && onView && (
+        <div className="view-toggle" role="group" aria-label="Show the route as">
+          <button type="button" aria-pressed={view === "list"} onClick={() => onView("list")}>
+            List
+          </button>
+          <button type="button" aria-pressed={view === "map"} onClick={() => onView("map")}>
+            Map
+          </button>
+        </div>
+      )}
+      {view === "map" && route.items.length > 0 && <TechRouteMap route={route} inspections={inspections} onOpen={onOpen} onUnavailable={() => setMapFailed(true)} />}
+      {(view === "list" || mapFailed) && (
+        <ol className="stops">
+          {route.items.map((s, i) => {
+            const status = stopStatus(s, inspections.get(s.jobId));
+            return (
+              <li key={s.jobId}>
+                <button className="stop-card" onClick={() => onOpen(s.jobId)}>
+                  <span className="stop-num">{i + 1}</span>
+                  <span className="stop-body">
+                    <strong>{s.customer.displayName}</strong>
+                    <span className="muted">
+                      {s.site.addressLine1}, {s.site.city}
+                    </span>
+                    <SafetyBadges flags={s.site.safetyFlags} />
                   </span>
-                  <SafetyBadges flags={s.site.safetyFlags} />
-                </span>
-                <span className={`badge ${status.tone}`}>{status.label}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+                  <span className={`badge ${status.tone}`}>{status.label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }

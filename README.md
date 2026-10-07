@@ -11,6 +11,7 @@ Software for Texas aerobic septic maintenance providers: customers, sites and co
 - [Delivery record](docs/engineering/ROADMAP.md): completed work and deferred features; no active coding kickoff.
 - [Agent working guidance](CODEX.md): document precedence and engineering boundaries.
 - [Deployment runbook](docs/engineering/DEPLOY.md) and [configuration](.env.example).
+- [Street map](docs/engineering/MAP.md): coverage, licences and installing the map file.
 - [County evidence archive](docs/jurisdictions/research/2026-10-06/ARCHIVE.md): originals, hashes, extraction and research limits.
 - [Walkthrough results](docs/product/W11-WALKTHROUGH.md) and [decisions](docs/DECISIONS.md).
 

@@ -6,7 +6,7 @@ import { quickBooksFromEnv, TestQuickBooksProvider, TokenCipher, type QuickBooks
 import { geocoderFromEnv, TestGeocoder, type Geocoder } from "@aerowise/routing";
 import { isE164, smsFromEnv, TestSmsProvider, type SmsConfig } from "@aerowise/sms";
 import type { ObjectStore } from "@aerowise/storage";
-import { demoCheck, DemoGatedBilling, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport } from "./demo-gate.ts";
+import { demoCheck, DemoGatedBilling, DemoGatedGeocoder, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport } from "./demo-gate.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -108,6 +108,7 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
         : chosen.quickbooks,
     sms: chosen.sms && chosen.sms.provider.kind !== "test" ? { ...chosen.sms, provider: new DemoGatedSms(chosen.sms.provider, standIns.sms, isDemo) } : chosen.sms,
     billing: chosen.billing && chosen.billing.kind !== "test" ? new DemoGatedBilling(chosen.billing, standIns.billing, isDemo) : chosen.billing,
+    geocoder: chosen.geocoder && chosen.geocoder.kind !== "test" ? new DemoGatedGeocoder(chosen.geocoder, new TestGeocoder(), isDemo) : chosen.geocoder,
   };
 }
 
