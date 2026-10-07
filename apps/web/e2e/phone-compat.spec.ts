@@ -26,7 +26,16 @@ async function makeProspectDemo(admin: APIRequestContext, prospect: string) {
   return { id: demo.id as string, url: new URL(link.url as string) };
 }
 
+// Opening a demo link is limited to 10 a minute from one address, and this file opens six.
+// Later files open more, so the last test here waits until this file's minute has passed.
+let lastEntry = 0;
+test.afterAll(async () => {
+  const wait = lastEntry + 61_000 - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+});
+
 async function enterAsTechnician(page: Page, url: URL): Promise<Me> {
+  lastEntry = Date.now();
   await page.goto(url.pathname + url.hash);
   await page.waitForURL("**/inbox");
   expect((await page.request.post("/api/demo/switch", { data: { role: "technician" } })).ok()).toBe(true);
