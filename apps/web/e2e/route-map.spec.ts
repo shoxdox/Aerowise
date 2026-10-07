@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import pg from "pg";
 
 // The street map on the office schedule and in the technician app. The e2e web server serves the
@@ -23,6 +23,28 @@ function watchOrigins(page: Page) {
     if (!url.startsWith("data:") && !url.startsWith("blob:")) origins.add(new URL(url).origin);
   });
   return origins;
+}
+
+/** Holds every request for the map file unanswered (not failed) until released. */
+async function holdMapData(page: Page) {
+  const held: Route[] = [];
+  await page.route("**/map-data/**", (route) => {
+    held.push(route);
+  });
+  return {
+    held,
+    async release() {
+      await page.unroute("**/map-data/**");
+      for (const route of held) await route.continue().catch(() => {});
+    },
+  };
+}
+
+/** Errors thrown in the page. */
+function watchErrors(page: Page) {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  return errors;
 }
 
 async function tomorrow(page: Page) {
@@ -132,6 +154,73 @@ test.describe("office schedule map", () => {
     await expect(column.locator(".card.tight")).toHaveCount(4);
     await expect(column.getByRole("button", { name: "Optimize route" })).toBeEnabled();
   });
+
+  test("gives up on a map file that never answers, and keeps the list", async ({ page }) => {
+    const errors = watchErrors(page);
+    const mapData = await holdMapData(page);
+    await signIn(page, "owner@example.com", "/inbox");
+    const date = await tomorrow(page);
+    await page.goto("/schedule");
+    await page.locator('input[type="date"]').fill(date);
+    await expect(page.getByText("Loading map…")).toBeVisible();
+    await expect.poll(() => mapData.held.length).toBeGreaterThan(0);
+    // The start-up deadline (20 s) covers the map file's first answer, which never comes.
+    await expect(page.getByTestId("map-unavailable")).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByText("Loading map…")).toHaveCount(0);
+    await expect(page.locator(".maplibregl-map")).toHaveCount(0);
+    const column = page.locator(".column", { hasText: "4 stops" });
+    await expect(column.locator(".card.tight")).toHaveCount(4);
+    await expect(column.getByRole("button", { name: "Optimize route" })).toBeEnabled();
+
+    // The answer arriving late changes nothing.
+    await mapData.release();
+    await page.waitForTimeout(1_000);
+    await expect(page.locator(".street-map")).toHaveAttribute("data-status", "failed");
+    await expect(page.locator(".maplibregl-map")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("takes the map down when no stop has a location, and draws it again when they come back", async ({ page }) => {
+    const errors = watchErrors(page);
+    // The day's routes as the API gives them, with no start, and with every stop's location
+    // removed while `hide` is set.
+    let hide = false;
+    await page.route(/\/api\/routing\/day\?/, async (route) => {
+      const response = await route.fetch();
+      const day = await response.json();
+      day.start = null;
+      if (hide) for (const t of day.technicians) for (const s of t.stops) Object.assign(s, { lat: null, lng: null });
+      await route.fulfill({ response, json: day });
+    });
+    await signIn(page, "owner@example.com", "/inbox");
+    const date = await tomorrow(page);
+    await openDay(page, date);
+    const column = page.locator(".column", { hasText: "4 stops" });
+    const markers = page.locator(".map-stop");
+    const count = await markers.count();
+    expect(count).toBeGreaterThanOrEqual(4);
+    await expect(page.locator(".map-start")).toHaveCount(0);
+    // Marks the map's surroundings, to show they stay mounted throughout.
+    await page.getByTestId("street-map").evaluate((el) => (el.parentElement!.dataset.probe = "kept"));
+
+    // No stop located: the map area goes, and its map with it.
+    hide = true;
+    await column.locator(".card.tight").first().getByRole("button", { name: "Move down" }).click();
+    await expect(page.getByTestId("map-empty")).toHaveText("None of these stops has a map location yet, so there is no map. Use the list.");
+    await expect(page.getByTestId("street-map")).toHaveCount(0);
+    await expect(page.locator(".maplibregl-map")).toHaveCount(0);
+    await expect(column.locator(".card.tight")).toHaveCount(4);
+
+    // Located again: a fresh map, drawn and with every marker.
+    hide = false;
+    await column.locator(".card.tight").nth(1).getByRole("button", { name: "Move up" }).click();
+    await expect(page.locator(".street-map")).toHaveAttribute("data-status", "ready");
+    await expect(page.locator(".maplibregl-map")).toHaveCount(1);
+    await expect(markers).toHaveCount(count);
+    expect(await page.locator(".maplibregl-canvas").evaluate((c) => (c as HTMLCanvasElement).width)).toBeGreaterThan(0);
+    await expect(page.locator('[data-probe="kept"] [data-testid="street-map"]')).toHaveCount(1);
+    expect(errors).toEqual([]);
+  });
 });
 
 test.describe("technician route map", () => {
@@ -211,6 +300,73 @@ test.describe("technician route map", () => {
     } finally {
       await context.setOffline(false);
     }
+  });
+});
+
+// The service worker would answer these requests itself, out of the tests' reach.
+test.describe("technician route map without its data", () => {
+  test.use({ serviceWorkers: "block", geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"] });
+
+  test("falls back to the stop list when the map file never answers", async ({ page }) => {
+    const errors = watchErrors(page);
+    const mapData = await holdMapData(page);
+    await signIn(page, "tech@example.com", "/tech");
+    await expect(page.locator(".stop-card").first()).toBeVisible();
+    const count = await page.locator(".stop-card").count();
+    await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByText("Loading map…")).toBeVisible();
+    await expect(page.locator(".stop-card")).toHaveCount(0);
+    await expect(page.getByTestId("map-unavailable")).toBeVisible({ timeout: 25_000 });
+    await expect(page.locator(".stop-card")).toHaveCount(count);
+    const customer = await page.locator(".stop-card strong").first().innerText();
+    await page.locator(".stop-card").first().click();
+    await expect(page.getByRole("heading", { name: customer })).toBeVisible();
+    await mapData.release();
+    expect(errors).toEqual([]);
+  });
+
+  test("leaves the map while it is still starting, then opens it afresh", async ({ page }) => {
+    const errors = watchErrors(page);
+    const mapData = await holdMapData(page);
+    await signIn(page, "tech@example.com", "/tech");
+    await expect(page.locator(".stop-card").first()).toBeVisible();
+    const count = await page.locator(".stop-card").count();
+    await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByText("Loading map…")).toBeVisible();
+    await expect.poll(() => mapData.held.length).toBeGreaterThan(0);
+
+    // Back to the list before the map file answers: the half-started map is dropped.
+    await page.getByRole("button", { name: "List" }).click();
+    await expect(page.getByTestId("street-map")).toHaveCount(0);
+    await mapData.release();
+    // Past the first start's deadline: nothing from it fails the list or a later map.
+    await page.waitForTimeout(21_000);
+    await expect(page.locator(".stop-card")).toHaveCount(count);
+    await expect(page.getByTestId("map-unavailable")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.locator(".street-map")).toHaveAttribute("data-status", "ready");
+    await expect(page.locator(".maplibregl-map")).toHaveCount(1);
+    await expect(page.locator(".map-stop").first()).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("shows the full stop list in Map view when no stop has a location", async ({ page }) => {
+    await page.route(/\/api\/route(\?|$)/, async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      for (const s of body.items) Object.assign(s.site, { lat: null, lng: null });
+      await route.fulfill({ response, json: body });
+    });
+    await signIn(page, "tech@example.com", "/tech");
+    await expect(page.locator(".stop-card").first()).toBeVisible();
+    const count = await page.locator(".stop-card").count();
+    await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByTestId("map-empty")).toBeVisible();
+    await expect(page.locator(".stop-card")).toHaveCount(count);
+    const customer = await page.locator(".stop-card strong").first().innerText();
+    await page.locator(".stop-card").first().click();
+    await expect(page.getByRole("heading", { name: customer })).toBeVisible();
   });
 });
 

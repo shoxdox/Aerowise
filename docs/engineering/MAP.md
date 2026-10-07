@@ -19,7 +19,7 @@ The office schedule and the technician app draw routes on a street map. This pag
 
 ## When the map cannot show
 
-No installed file, no signal, a blocked request or no WebGL: the map area says "The street map is not available right now. Every stop is still in the list." On the office schedule the stop list is always beside the map. In the technician app the List/Map switch defaults to the list, and if the map fails the full stop list appears under the note. Inspections, photos and syncing never touch the map.
+No installed file, no signal, a blocked request or no WebGL: the map area says "The street map is not available right now. Every stop is still in the list." The map has 20 seconds to start, counted from loading its library (so a request for the map file that never answers also ends here, not in an endless "Loading map…"); anything that answers later is ignored. When no stop has a location the map area is removed (and its map with it) until one does. On the office schedule the stop list is always beside the map. In the technician app the List/Map switch defaults to the list, and if the map fails, or no stop has a location, the full stop list appears in Map view too. Inspections, photos and syncing never touch the map.
 
 **Offline:** the basemap is **not** available offline. The service worker does not cache tiles (they come from the network or not at all), so with no signal the technician sees the note and the list. The route, inspections and sync work offline as before. Offline basemap support is not implemented.
 

@@ -35,13 +35,15 @@ interface Props {
   /** The view fits the stops again when this changes (a different day, say). */
   fitKey: string;
   label: string;
-  /** Called once if the map cannot be shown. */
+  /** Called when the map cannot be shown: it failed to start, or no stop has a location. */
   onUnavailable?: () => void;
 }
 
 export const TILES_URL = "/map-data/basemap.pmtiles";
 const SOURCE = "basemap";
 type Status = "loading" | "ready" | "failed";
+/** How long the map may take to start, from loading its library to the first drawn view. */
+const START_TIMEOUT_MS = 20_000;
 
 let protocolAdded = false;
 
@@ -91,22 +93,43 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
   const plan = useMemo(() => planRouteMap({ routes, start, returnToStart, coverage }), [routes, start, returnToStart, coverage]);
   const located = plan.placed.length > 0 || !!start;
 
-  // Create the map once there is something to put on it.
+  // Create the map while there is something to put on it, and take it down when the map area
+  // goes (no stop located any more) or the component unmounts. The deadline covers the whole
+  // start-up, from loading the library to the first drawn view, so a request that never
+  // answers ends in the note and the list, not an endless "Loading map…". Anything that
+  // finishes after the deadline or the teardown is ignored.
   useEffect(() => {
-    if (!located || map.current || status === "failed") return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!located) {
+      unavailable.current?.();
+      return;
+    }
+    let settled = false;
+    let loaded = false;
+    let created: MapLibreMap | null = null;
+    const teardown = () => {
+      for (const marker of markers.current.values()) marker.remove();
+      markers.current.clear();
+      startMarker.current?.remove();
+      startMarker.current = null;
+      created?.remove();
+      created = null;
+      map.current = null;
+      lib.current = null;
+      fitted.current = null;
+    };
     const fail = () => {
-      if (cancelled) return;
-      cancelled = true;
-      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      teardown();
       setStatus("failed");
       unavailable.current?.();
     };
+    const deadline = setTimeout(fail, START_TIMEOUT_MS);
     (async () => {
       try {
         const [maplibre, pmtiles, basemaps] = await Promise.all([import("maplibre-gl"), import("pmtiles"), import("@protomaps/basemaps")]);
-        if (cancelled || !container.current) return;
+        if (settled || !container.current) return;
         const url = `${window.location.origin}${TILES_URL}`;
         const archive = new pmtiles.PMTiles(url);
         if (!protocolAdded) {
@@ -118,8 +141,9 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
         (globalThis as { __awPmtiles?: InstanceType<typeof pmtiles.Protocol> }).__awPmtiles!.add(archive);
         // No installed map (or no signal) shows here, before any map is drawn.
         const header = await archive.getHeader();
+        if (settled) return;
         const metadata = (await archive.getMetadata().catch(() => ({}))) as { attribution?: string };
-        if (cancelled || !container.current) return;
+        if (settled || !container.current) return;
         setCoverage([header.minLon, header.minLat, header.maxLon, header.maxLat]);
 
         const layers = basemaps
@@ -132,7 +156,6 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
             delete layout["icon-image"];
             return { ...l, layout };
           });
-        lib.current = maplibre;
         // Copied next to the fonts at build time (scripts/copy-map-worker.mjs).
         maplibre.setWorkerUrl(`${window.location.origin}/map/maplibre/maplibre-gl-worker.mjs`);
         const m = new maplibre.Map({
@@ -151,12 +174,10 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
           pitchWithRotate: false,
           touchPitch: false,
         });
+        created = m;
         m.touchZoomRotate.disableRotation();
         m.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-right");
         m.addControl(new maplibre.ScaleControl({ unit: "imperial" }), "bottom-left");
-        map.current = m;
-        let loaded = false;
-        timer = setTimeout(() => !loaded && fail(), 20_000);
         m.on("error", (e: { error?: { message?: string; url?: string } }) => {
           const where = `${e.error?.url ?? ""} ${e.error?.message ?? ""}`;
           // A missing glyph range only costs a few characters of a label.
@@ -165,9 +186,10 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
           else setPartial(true);
         });
         m.on("load", () => {
-          if (cancelled) return;
+          if (settled) return;
+          settled = true;
           loaded = true;
-          clearTimeout(timer);
+          clearTimeout(deadline);
           m.addSource("aw-order", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
           m.addLayer({
             id: "aw-order-line",
@@ -182,6 +204,8 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
             layout: { "symbol-placement": "line-center", "text-field": ["get", "label"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-allow-overlap": false },
             paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 2 },
           });
+          lib.current = maplibre;
+          map.current = m;
           setStatus("ready");
         });
       } catch {
@@ -189,19 +213,15 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
       }
     })();
     return () => {
-      cancelled = true;
-      clearTimeout(timer);
+      // Taken down (no stop located any more, or unmounted): the next map starts afresh.
+      settled = true;
+      clearTimeout(deadline);
+      teardown();
+      setStatus("loading");
+      setPartial(false);
     };
     // plan.fit is only the first view; later changes fit in the effect below.
   }, [located]);
-
-  useEffect(
-    () => () => {
-      map.current?.remove();
-      map.current = null;
-    },
-    [],
-  );
 
   // Draw the stops, the start and the visit-order lines; fit the view when the day changes.
   useEffect(() => {
