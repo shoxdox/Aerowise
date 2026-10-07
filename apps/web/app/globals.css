@@ -250,3 +250,5 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .intro-reopen { align-self: flex-start; }
 .empty-state { display: flex; flex-direction: column; gap: 4px; }
 .empty-state p { margin: 0; }
+/* Work order visits on the schedule (SW-1). */
+.badge.work { background: #efe8fb; color: #4b2a86; border-color: transparent; text-decoration: none; }
