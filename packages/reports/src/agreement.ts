@@ -1,5 +1,6 @@
 import type { AgreementContent } from "@aerowise/domain";
 import PDFDocument from "pdfkit";
+import { FONTS, pdfkitFont, registerFonts } from "./fonts.ts";
 
 const ACCENT = "#1f6f5c";
 const MUTED = "#5d6b66";
@@ -33,11 +34,13 @@ export interface AgreementSignature {
  */
 export function renderAgreement(c: AgreementContent, sig: AgreementSignature): Promise<Buffer> {
   const doc = new PDFDocument({
+    ...pdfkitFont(),
     size: "LETTER",
     margin: 54,
     bufferPages: true,
     info: { Title: c.title, Author: c.provider.name, CreationDate: sig.signedAt },
   });
+  registerFonts(doc);
   const chunks: Buffer[] = [];
   doc.on("data", (b: Buffer) => chunks.push(b));
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -51,22 +54,22 @@ export function renderAgreement(c: AgreementContent, sig: AgreementSignature): P
   const heading = (text: string) => {
     if (doc.y > doc.page.height - 120) doc.addPage();
     doc.moveDown(0.8);
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(MUTED).text(text.toUpperCase(), left, doc.y, { width });
+    doc.font(FONTS.bold).fontSize(9).fillColor(MUTED).text(text.toUpperCase(), left, doc.y, { width });
     doc.moveTo(left, doc.y + 2).lineTo(left + width, doc.y + 2).strokeColor(RULE).lineWidth(0.5).stroke();
     doc.moveDown(0.5);
   };
   const row = (label: string, value: string) => {
     const y = doc.y;
-    doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(label, left, y, { width: width * 0.3 });
+    doc.font(FONTS.regular).fontSize(10).fillColor(MUTED).text(label, left, y, { width: width * 0.3 });
     const labelBottom = doc.y;
     doc.fillColor("#000").text(value, left + width * 0.32, y, { width: width * 0.68 });
     doc.y = Math.max(labelBottom, doc.y) + 3;
   };
 
-  doc.fillColor(ACCENT).font("Helvetica-Bold").fontSize(18).text(c.provider.name, left, 54, { width });
-  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text([c.provider.address, c.provider.phone, c.provider.email].filter(Boolean).join(" · "), { width });
+  doc.fillColor(ACCENT).font(FONTS.bold).fontSize(18).text(c.provider.name, left, 54, { width });
+  doc.fillColor(MUTED).font(FONTS.regular).fontSize(9).text([c.provider.address, c.provider.phone, c.provider.email].filter(Boolean).join(" · "), { width });
   doc.moveDown(1);
-  doc.fillColor("#000").font("Helvetica-Bold").fontSize(16).text(c.title, { width });
+  doc.fillColor("#000").font(FONTS.bold).fontSize(16).text(c.title, { width });
 
   heading("Parties and property");
   row("Customer", [c.customer.name, c.customer.email, c.customer.phone].filter(Boolean).join("\n"));
@@ -85,27 +88,27 @@ export function renderAgreement(c: AgreementContent, sig: AgreementSignature): P
   row("Total", money(c.charges.totalCents));
 
   heading("Terms");
-  doc.font("Helvetica").fontSize(9.5).fillColor("#000").text(c.terms, left, doc.y, { width, lineGap: 1.5 });
+  doc.font(FONTS.regular).fontSize(9.5).fillColor("#000").text(c.terms, left, doc.y, { width, lineGap: 1.5 });
 
   heading("Signature");
   if (doc.y > doc.page.height - 200) doc.addPage();
-  doc.font("Helvetica-Oblique").fontSize(9.5).fillColor(MUTED).text(sig.consentText, left, doc.y, { width });
+  doc.font(FONTS.italic).fontSize(9.5).fillColor(MUTED).text(sig.consentText, left, doc.y, { width });
   doc.moveDown(0.6);
   const sigTop = doc.y;
   if (sig.kind === "drawn" && sig.image) {
     try {
       doc.image(sig.image, left, sigTop, { fit: [width * 0.5, 70] });
     } catch {
-      doc.font("Helvetica").fontSize(9).fillColor(MUTED).text("(drawn signature on file)", left, sigTop);
+      doc.font(FONTS.regular).fontSize(9).fillColor(MUTED).text("(drawn signature on file)", left, sigTop);
     }
     doc.y = sigTop + 74;
   } else {
-    doc.font("Times-Italic").fontSize(24).fillColor("#000").text(sig.signerName, left, sigTop, { width: width * 0.6 });
+    doc.font(FONTS.signature).fontSize(24).fillColor("#000").text(sig.signerName, left, sigTop, { width: width * 0.6 });
     doc.moveDown(0.2);
   }
   doc.moveTo(left, doc.y).lineTo(left + width * 0.5, doc.y).strokeColor("#000").lineWidth(0.5).stroke();
   doc.moveDown(0.3);
-  doc.font("Helvetica").fontSize(9).fillColor("#000").text(`${sig.signerName}, signed electronically ${signedWhen}`, left, doc.y, { width });
+  doc.font(FONTS.regular).fontSize(9).fillColor("#000").text(`${sig.signerName}, signed electronically ${signedWhen}`, left, doc.y, { width });
 
   heading("Signing certificate");
   doc.fontSize(8.5);
@@ -122,7 +125,7 @@ export function renderAgreement(c: AgreementContent, sig: AgreementSignature): P
     doc.switchToPage(i);
     doc.page.margins.bottom = 0;
     doc
-      .font("Helvetica")
+      .font(FONTS.regular)
       .fontSize(7.5)
       .fillColor(MUTED)
       .text(`${c.title} · ${sig.documentId} · page ${i - range.start + 1} of ${range.count}`, left, doc.page.height - 36, { width, align: "center", lineBreak: false });

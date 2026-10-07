@@ -33,6 +33,14 @@ import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
 
+type DeliveryRow = { id: string; documentKind: "inspection_report" | "signed_agreement"; channel: "email"; recipient: string; documentSha256: string; status: "accepted" | "failed"; attemptedAt: Date; error: string | null; transportResponse: unknown };
+/** A customer delivery for the screen, saying whether an accepted send stayed in the local test outbox. */
+const deliveryView = ({ transportResponse, ...d }: DeliveryRow) => ({
+  ...d,
+  attemptedAt: d.attemptedAt.toISOString(),
+  delivery: d.status !== "accepted" ? null : (transportResponse as { transport?: string } | null)?.transport === "outbox" ? ("outbox" as const) : ("provider" as const),
+});
+
 /**
  * The written notice a provider owes when a contract ends (30 TAC 285.7(d)(3)): to the
  * permitting authority and the manufacturer, and to the owner too when the provider ends
@@ -705,7 +713,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         c.signedDocumentId
           ? db
               .selectFrom("customerDeliveries")
-              .select(["id", "documentKind", "channel", "recipient", "documentSha256", "status", "attemptedAt", "error"])
+              .select(["id", "documentKind", "channel", "recipient", "documentSha256", "status", "attemptedAt", "error", "transportResponse"])
               .where("organizationId", "=", organizationId)
               .where("signedDocumentId", "=", c.signedDocumentId)
               .orderBy("attemptedAt", "desc")
@@ -731,7 +739,7 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           uploadedAt: u.createdAt.toISOString(),
           url: signer.url(organizationId, u.id, now().getTime(), "contract-files"),
         })),
-        customerCopy: deliveries.map((d) => ({ ...d, attemptedAt: d.attemptedAt.toISOString() })),
+        customerCopy: deliveries.map(deliveryView),
         authority: filing
           ? {
               filingId: filing.id,
@@ -828,12 +836,12 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       const rows = await db
         .selectFrom("customerDeliveries as d")
         .innerJoin("reports as r", (j) => j.onRef("r.id", "=", "d.reportId").onRef("r.organizationId", "=", "d.organizationId"))
-        .select(["d.id", "d.documentKind", "d.channel", "d.recipient", "d.documentSha256", "d.status", "d.attemptedAt", "d.error"])
+        .select(["d.id", "d.documentKind", "d.channel", "d.recipient", "d.documentSha256", "d.status", "d.attemptedAt", "d.error", "d.transportResponse"])
         .where("d.organizationId", "=", organizationId)
         .where("r.inspectionId", "=", insp.id)
         .orderBy("d.attemptedAt", "desc")
         .execute();
-      return { items: rows.map((d) => ({ ...d, attemptedAt: d.attemptedAt.toISOString() })) };
+      return { items: rows.map(deliveryView) };
     },
   );
 };

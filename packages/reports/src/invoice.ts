@@ -1,5 +1,6 @@
 import type { InvoiceSnapshot } from "@aerowise/domain";
 import PDFDocument from "pdfkit";
+import { FONTS, pdfkitFont, registerFonts } from "./fonts.ts";
 
 const ACCENT = "#1f6f5c";
 const MUTED = "#5d6b66";
@@ -17,11 +18,13 @@ const day = (iso: string) => {
  */
 export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null } = {}): Promise<Buffer> {
   const doc = new PDFDocument({
+    ...pdfkitFont(),
     size: "LETTER",
     margin: 54,
     bufferPages: true,
     info: { Title: `Invoice ${s.number}`, Author: s.provider.name, CreationDate: new Date(`${s.issuedOn}T12:00:00Z`) },
   });
+  registerFonts(doc);
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -33,20 +36,20 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
   const width = doc.page.width - 108;
   const right = left + width;
 
-  doc.fillColor(ACCENT).font("Helvetica-Bold").fontSize(18).text(s.provider.name, left, 54, { width: width * 0.6 });
-  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text([s.provider.address, s.provider.phone, s.provider.email].filter(Boolean).join("\n"), { width: width * 0.6 });
-  doc.fillColor("#000").font("Helvetica-Bold").fontSize(20).text("Invoice", left, 54, { width, align: "right" });
-  doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(s.number, { width, align: "right" });
+  doc.fillColor(ACCENT).font(FONTS.bold).fontSize(18).text(s.provider.name, left, 54, { width: width * 0.6 });
+  doc.fillColor(MUTED).font(FONTS.regular).fontSize(9).text([s.provider.address, s.provider.phone, s.provider.email].filter(Boolean).join("\n"), { width: width * 0.6 });
+  doc.fillColor("#000").font(FONTS.bold).fontSize(20).text("Invoice", left, 54, { width, align: "right" });
+  doc.font(FONTS.regular).fontSize(10).fillColor(MUTED).text(s.number, { width, align: "right" });
   doc.moveDown(2.2);
 
   const top = Math.max(doc.y, 150);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(MUTED).text("BILL TO", left, top);
-  doc.font("Helvetica").fontSize(10).fillColor("#000").text([s.billTo.name, s.billTo.address].filter(Boolean).join("\n"), left, doc.y, { width: width * 0.45 });
+  doc.font(FONTS.bold).fontSize(9).fillColor(MUTED).text("BILL TO", left, top);
+  doc.font(FONTS.regular).fontSize(10).fillColor("#000").text([s.billTo.name, s.billTo.address].filter(Boolean).join("\n"), left, doc.y, { width: width * 0.45 });
   let leftBottom = doc.y;
   if (s.serviceAddress) {
     doc.moveDown(0.6);
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(MUTED).text("SERVICE ADDRESS", left);
-    doc.font("Helvetica").fontSize(10).fillColor("#000").text(s.serviceAddress, { width: width * 0.45 });
+    doc.font(FONTS.bold).fontSize(9).fillColor(MUTED).text("SERVICE ADDRESS", left);
+    doc.font(FONTS.regular).fontSize(10).fillColor("#000").text(s.serviceAddress, { width: width * 0.45 });
     leftBottom = doc.y;
   }
   const meta: [string, string][] = [
@@ -56,8 +59,8 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
   ];
   let y = top;
   for (const [label, value] of meta) {
-    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(label, left + width * 0.55, y, { width: width * 0.2 });
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text(value, left + width * 0.75, y, { width: width * 0.25, align: "right" });
+    doc.font(FONTS.regular).fontSize(9).fillColor(MUTED).text(label, left + width * 0.55, y, { width: width * 0.2 });
+    doc.font(FONTS.bold).fontSize(10).fillColor("#000").text(value, left + width * 0.75, y, { width: width * 0.25, align: "right" });
     y += 16;
   }
   doc.y = Math.max(leftBottom, y) + 20;
@@ -66,7 +69,7 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
   const cols = { desc: left, qty: left + width * 0.6, unit: left + width * 0.7, amount: left + width * 0.85 };
   const header = () => {
     const hy = doc.y;
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(MUTED);
+    doc.font(FONTS.bold).fontSize(9).fillColor(MUTED);
     doc.text("Description", cols.desc, hy, { width: width * 0.58 });
     doc.text("Qty", cols.qty, hy, { width: width * 0.08, align: "right" });
     doc.text("Price", cols.unit, hy, { width: width * 0.13, align: "right" });
@@ -81,7 +84,7 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
       header();
     }
     const ly = doc.y;
-    doc.font("Helvetica").fontSize(10).fillColor("#000").text(line.description + (line.taxable && s.taxRateBps > 0 ? " *" : ""), cols.desc, ly, { width: width * 0.58 });
+    doc.font(FONTS.regular).fontSize(10).fillColor("#000").text(line.description + (line.taxable && s.taxRateBps > 0 ? " *" : ""), cols.desc, ly, { width: width * 0.58 });
     const bottom = doc.y;
     doc.text(String(line.quantity), cols.qty, ly, { width: width * 0.08, align: "right" });
     doc.text(money(line.unitPriceCents), cols.unit, ly, { width: width * 0.13, align: "right" });
@@ -97,25 +100,25 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
   totals.push(["Total", money(s.totalCents), true]);
   for (const [label, value, bold] of totals) {
     const ty = doc.y;
-    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 12 : 10).fillColor("#000");
+    doc.font(bold ? FONTS.bold : FONTS.regular).fontSize(bold ? 12 : 10).fillColor("#000");
     doc.text(label, left + width * 0.5, ty, { width: width * 0.3, align: "right" });
     doc.text(value, cols.amount, ty, { width: width * 0.15, align: "right" });
     doc.y = ty + (bold ? 18 : 15);
   }
   if (s.taxRateBps > 0 && s.lines.some((l) => l.taxable)) {
-    doc.font("Helvetica").fontSize(8).fillColor(MUTED).text("* Taxable", left, doc.y + 4);
+    doc.font(FONTS.regular).fontSize(8).fillColor(MUTED).text("* Taxable", left, doc.y + 4);
   }
 
   if (s.memo) {
     doc.moveDown(1.2);
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(MUTED).text("NOTES", left, doc.y);
-    doc.font("Helvetica").fontSize(10).fillColor("#000").text(s.memo, { width });
+    doc.font(FONTS.bold).fontSize(9).fillColor(MUTED).text("NOTES", left, doc.y);
+    doc.font(FONTS.regular).fontSize(10).fillColor("#000").text(s.memo, { width });
   }
 
   doc.moveDown(1.5);
-  doc.font("Helvetica-Bold").fontSize(10).fillColor(ACCENT).text("How to pay", left, doc.y);
+  doc.font(FONTS.bold).fontSize(10).fillColor(ACCENT).text("How to pay", left, doc.y);
   doc
-    .font("Helvetica")
+    .font(FONTS.regular)
     .fontSize(10)
     .fillColor("#000")
     .text(
@@ -130,7 +133,7 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
     doc.switchToPage(i);
     doc.page.margins.bottom = 0;
     doc
-      .font("Helvetica")
+      .font(FONTS.regular)
       .fontSize(7.5)
       .fillColor(MUTED)
       .text(`${s.provider.name} · ${s.number} · page ${i - range.start + 1} of ${range.count}`, left, doc.page.height - 36, { width, align: "center", lineBreak: false });

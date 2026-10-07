@@ -373,9 +373,9 @@ export const adminRoutes: FastifyPluginAsyncZod<{
         });
         return inv;
       });
-      const emailed = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: created.id, token: created.token, inviterName: "The Aerowise team" });
+      const sent = await emailInvitation(db, invitations, req.log, { organizationId, invitationId: created.id, token: created.token, inviterName: "The Aerowise team" });
       const [invitation] = await listInvitations(db, organizationId, at, [created.id]);
-      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, created.token), emailed });
+      return reply.status(201).send({ invitation: invitation!, url: inviteUrlFor(invitations.appUrl, created.token), ...sent });
     },
   );
 

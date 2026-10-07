@@ -4,6 +4,7 @@ import type { AuthorityConfirmation, AuthorityEvidence, PublicOverview, RulesetC
 import { sql } from "kysely";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { adminLogin, client, createAdmin, createTenant, setupTestApp } from "./helpers.ts";
+import { pdfFonts, pdfText } from "./pdf-text.ts";
 
 const ctx = setupTestApp();
 const FIXTURES = bundledRulesets(fileURLToPath(new URL("./fixtures/rulesets", import.meta.url)));
@@ -182,5 +183,54 @@ describe("authority evidence", () => {
     expect((await t.api.get("/admin/rulesets/tx-fixture-draft")).statusCode).toBe(401);
     expect((await t.api.post("/admin/rulesets/tx-fixture-draft/evidence", call)).statusCode).toBe(401);
     expect((await t.api.post("/admin/rulesets/tx-fixture-draft/proposal", { effectiveFrom: "2026-03-01" })).statusCode).toBe(401);
+    expect((await t.api.get("/admin/rulesets/tx-fixture-draft/call-sheet.pdf")).statusCode).toBe(401);
+  });
+
+  it("prints a call sheet from the open questions and dated evidence, naming no contact and claiming nothing", async () => {
+    const api = await admin();
+    // Before any evidence: every question open, the sheet says draft, sources are dated.
+    const blank = await api.get("/admin/rulesets/tx-fixture-draft/call-sheet.pdf");
+    expect(blank.statusCode, blank.body).toBe(200);
+    expect(blank.headers["content-type"]).toBe("application/pdf");
+    expect(blank.headers["content-disposition"]).toMatch(/^inline; filename="aerowise-call-sheet-tx-fixture-draft-\d{4}-\d{2}-\d{2}\.pdf"$/);
+    const before = pdfText(blank.rawPayload).replace(/\s+/g, " ");
+    expect(before).toContain("DRAFT / UNVERIFIED");
+    expect(before).toContain("NOT A RECORD OF CONTACT");
+    expect(before).toContain(OPEN);
+    expect(before).toContain("No evidence recorded yet.");
+    expect(before).toContain("FICTIONAL fixture source (read 2026-01-10) https://tx-fixture-draft.example/rules");
+    expect(before).toContain("This sheet adds no contact details.");
+    // Room to record who was asked, when and what they said.
+    for (const label of ["Contact name", "Date and time", "Channel (call, email, letter, meeting)", "Answer, scope and exact words:"]) expect(before).toContain(label);
+    // Every font is embedded, so it prints evenly anywhere.
+    expect(pdfFonts(blank.rawPayload).every((f) => f.embedded)).toBe(true);
+
+    // With evidence: each answer appears dated and attributed; the contact's number does not.
+    expect((await api.post("/admin/rulesets/tx-fixture-draft/evidence", call)).statusCode).toBe(201);
+    const after = pdfText((await api.get("/admin/rulesets/tx-fixture-draft/call-sheet.pdf")).rawPayload).replace(/\s+/g, " ");
+    expect(after).toContain("Now: Confirmed by the authority");
+    expect(after).toContain("On record: 2026-02-20, Authority's own answer (call with the authority, Draft Fixture County (fictional)): Settles it. Yes, as a PDF attachment. Sources: Call notes, 2026-02-20");
+    expect(after).toContain("Now: Partly confirmed by the authority");
+    expect(after.match(/Only a drawn or wet-ink signature/g)).toHaveLength(1);
+    // An answer on no listed question still prints, under its topic.
+    const fees = {
+      kind: "published_rule",
+      obtainedOn: "2026-02-21",
+      references: ["https://tx-fixture-draft.example/fees, section 2"],
+      answers: [{ question: "What is the filing fee?", topic: "fees", answer: "FICTIONAL: $10 per report.", outcome: "partial" }],
+    };
+    expect((await api.post("/admin/rulesets/tx-fixture-draft/evidence", fees)).statusCode).toBe(201);
+    const withFees = pdfText((await api.get("/admin/rulesets/tx-fixture-draft/call-sheet.pdf")).rawPayload).replace(/\s+/g, " ");
+    expect(withFees).toContain("Other evidence on record");
+    expect(withFees).toContain("Fees: 2026-02-21, Published rule (published rule or form): Answers part of it. FICTIONAL: $10 per report. Sources: https://");
+    expect(withFees).toContain("tx-fixture-draft.example/fees, section 2");
+    expect(after).not.toContain("555-0100");
+    expect(after).not.toContain("Pat Example");
+    // Still a draft: recorded evidence verifies nothing.
+    expect(after).toContain("DRAFT / UNVERIFIED");
+
+    // Example rules have no authority to ask; an unknown authority is not found.
+    expect((await api.get("/admin/rulesets/tx-example-county/call-sheet.pdf")).statusCode).toBe(422);
+    expect((await api.get("/admin/rulesets/tx-nowhere/call-sheet.pdf")).statusCode).toBe(404);
   });
 });

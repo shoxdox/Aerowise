@@ -26,7 +26,7 @@ import {
   type SavedColumn,
 } from "@aerowise/domain";
 import { loadCatalog, resolveSite } from "@aerowise/compliance";
-import { queueSiteLocating } from "@aerowise/tasks";
+import { DEMO_CSV_COLUMN, queueSiteLocating } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Insertable, type Transaction } from "kysely";
 import { z } from "zod";
@@ -275,6 +275,11 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       if (bytes.length === 0) throw unprocessable("The file is empty");
       if (bytes.length > MAX_IMPORT_BYTES) throw unprocessable("The file is larger than 10 MB");
       const sheets = await parseSpreadsheet(req.body.filename, bytes);
+      // A file exported from a demo company is fictional: it never becomes a real company's records.
+      if (sheets.some((sh) => sh.headers.some((h) => h.trim().toLowerCase() === DEMO_CSV_COLUMN))) {
+        const { demo } = await db.selectFrom("organizations").select("demo").where("id", "=", auth.organizationId).executeTakeFirstOrThrow();
+        if (!demo) throw unprocessable("This file was exported from an Aerowise demo company and holds fictional records. It cannot be imported into a real company.");
+      }
       const created = await db.transaction().execute(async (trx) => {
         // Open on the sheet that looks most like a customer list (the first, on a tie).
         const choices = await Promise.all(

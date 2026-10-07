@@ -51,8 +51,9 @@ test("a visitor asks for a demo and it shows up in the admin console", async ({ 
   await page.waitForURL(/\/admin\/demo-requests$/);
   const request = page.getByRole("article", { name: "Demo request from Rivera Aerobic Service" });
   await expect(request).toBeVisible();
-  // The e2e API has no mail provider, so the alert went to the outbox.
-  await expect(request.getByText("Emailed")).toBeVisible();
+  // The e2e API has no mail provider, so the alert went to the outbox and is not called emailed (STG-08).
+  await expect(request.getByText("Recorded in test outbox")).toBeVisible();
+  await expect(request.getByText("Emailed", { exact: true })).toHaveCount(0);
   await request.getByRole("button", { name: "Mark handled" }).click();
   await expect(request.getByText("Handled")).toBeVisible();
 });

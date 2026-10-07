@@ -682,6 +682,8 @@ export interface DemoRequestsTable {
   status: Generated<"new" | "handled">;
   notifiedAt: Date | null;
   notifyError: string | null;
+  /** Where the alert went once accepted: the local outbox (nobody got it) or a mail provider. */
+  notifyDelivery: "outbox" | "provider" | null;
   createdAt: Generated<Date>;
 }
 

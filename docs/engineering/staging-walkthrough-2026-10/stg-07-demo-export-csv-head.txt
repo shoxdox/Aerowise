@@ -1,0 +1,15 @@
+Local build of a seeded demo company's export (fresh database at this branch; fictional seed data). First lines of two CSVs and the README.
+<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
+# Hill Country Aerobic Services (demo): 12 CSVs
+## customers.csv
+aerowise_demo_notice,id,organization_id,display_name,billing_line1,billing_line2,billing_city,billing_state,billing_postal_code,status,source,tags,notes,created
+DEMO - FICTIONAL DATA - NOT FILED,012a0666-320d-41f2-beaf-01412e7e2117,1509ec65-7baf-450b-8a67-f6c005f16b40,Lupe Pruitt,7338 Pecan Hollow,,Spicewood,TX,78669,ac
+DEMO - FICTIONAL DATA - NOT FILED,102bbfd5-d707-4810-8670-9ff5b3cf4d7b,1509ec65-7baf-450b-8a67-f6c005f16b40,Linda Ramirez,8741 Deer Creek Dr,,Blanco,TX,78606,ac
+## invoices.csv
+aerowise_demo_notice,id,organization_id,customer_id,site_id,number,status,payment_status,memo,terms_days,tax_rate_bps,discount_cents,subtotal_cents,taxable_cent
+DEMO - FICTIONAL DATA - NOT FILED,0f8e1d68-c1db-47ae-95ba-c9b20f80e9d0,1509ec65-7baf-450b-8a67-f6c005f16b40,fe3b2e0c-ab09-486a-9767-9d0515e8918f,263cbaad-3d38-4
+DEMO - FICTIONAL DATA - NOT FILED,46dbdd50-3238-4228-83ea-9eea13de35e3,1509ec65-7baf-450b-8a67-f6c005f16b40,b22584a6-7e9b-470f-ace1-8e19497baa2a,eee0c7fa-e96e-4
+## README.txt
+DEMO: everything in this export is fictional, from an Aerowise demo company. Nothing in it was emailed, texted, filed or charged.
+Every CSV file starts with an aerowise_demo_notice column reading "DEMO - FICTIONAL DATA - NOT FILED" on every row; the columns after it are the same as in a real export.
+

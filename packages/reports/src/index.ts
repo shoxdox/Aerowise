@@ -5,3 +5,5 @@ export * from "./agreement.ts";
 export * from "./cover-sheet.ts";
 export * from "./fill-form.ts";
 export * from "./watermark.ts";
+export * from "./call-sheet.ts";
+export * from "./fonts.ts";

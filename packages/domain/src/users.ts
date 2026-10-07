@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { emailDelivery } from "./demo-requests.ts";
 import { ROLES, type Role } from "./roles.ts";
 
 // Company users: invitations, and the people in an organization.
@@ -51,7 +52,11 @@ export const invitation = z.object({
 export type Invitation = z.infer<typeof invitation>;
 
 /** Returned once when an invitation is sent: the link to copy, and whether the email went out. */
-export const invitationSent = z.object({ invitation, url: z.string(), emailed: z.boolean() });
+/**
+ * `emailed` is whether the email was accepted; `delivery` says by what: the local test
+ * outbox (nobody received it) or a mail provider. Null when it was not sent.
+ */
+export const invitationSent = z.object({ invitation, url: z.string(), emailed: z.boolean(), delivery: emailDelivery.nullable() });
 export type InvitationSent = z.infer<typeof invitationSent>;
 
 export const member = z.object({

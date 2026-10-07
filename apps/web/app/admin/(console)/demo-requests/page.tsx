@@ -8,7 +8,21 @@ import { api, ApiError } from "@/lib/api";
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" });
 
 function EmailStatus({ r }: { r: DemoRequest }) {
-  if (r.notifiedAt) return <span className="badge ok">Emailed</span>;
+  // The local outbox (staging, demo, development) keeps the message in file storage: nobody got it.
+  if (r.notifiedAt && r.notifyDelivery === "outbox")
+    return (
+      <span className="badge inactive" title="Kept in this deployment's local test outbox. No email was delivered.">
+        Recorded in test outbox
+      </span>
+    );
+  if (r.notifiedAt && r.notifyDelivery === "provider") return <span className="badge ok">Emailed</span>;
+  // Sent before Aerowise recorded where alerts go: it may have stayed in the outbox.
+  if (r.notifiedAt)
+    return (
+      <span className="badge inactive" title="Sent before Aerowise recorded whether alerts go to a mail provider or the test outbox.">
+        Sent (delivery not recorded)
+      </span>
+    );
   if (r.notifyError) return <span className="badge danger" title={r.notifyError}>Email failed</span>;
   return <span className="badge inactive">Not emailed</span>;
 }

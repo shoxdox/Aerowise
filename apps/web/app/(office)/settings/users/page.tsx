@@ -61,7 +61,11 @@ export default function UsersPage() {
       {sent && (
         <div className="card stack" role="status">
           <p style={{ margin: 0 }}>
-            {sent.emailed ? `Invitation emailed to ${sent.invitation.email}.` : `The email to ${sent.invitation.email} could not be sent.`} You can also share this
+            {!sent.emailed
+              ? `The email to ${sent.invitation.email} could not be sent.`
+              : sent.delivery === "outbox"
+                ? `Invitation for ${sent.invitation.email} recorded in the test outbox; no email was delivered.`
+                : `Invitation emailed to ${sent.invitation.email}.`} You can also share this
             link with them. It works once and expires on {day(sent.invitation.expiresAt)}.
           </p>
           <input readOnly value={sent.url} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} />

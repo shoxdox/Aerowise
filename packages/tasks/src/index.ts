@@ -45,7 +45,7 @@ export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } fr
 export { cancelOpenVisits, serviceEndForVisit } from "./contract-end.ts";
 export { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 export { BILLING_RUN, scheduleBillingRuns } from "./billing-task.ts";
-export { buildExport, EXPORT_DATA, EXPORT_TABLES, queueExport } from "./export-task.ts";
+export { buildExport, DEMO_CSV_COLUMN, EXPORT_DATA, EXPORT_TABLES, queueExport } from "./export-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {

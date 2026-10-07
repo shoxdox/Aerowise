@@ -176,7 +176,15 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
         )}
       </dd>
       <dt>Customer copy</dt>
-      <dd>{emailed ? `Emailed to ${emailed.recipient} ${when(emailed.attemptedAt)} (accepted by the mail provider)` : <span className="muted">Not emailed from Aerowise</span>}</dd>
+      <dd>
+        {!emailed ? (
+          <span className="muted">Not emailed from Aerowise</span>
+        ) : emailed.delivery === "outbox" ? (
+          `Recorded in the test outbox for ${emailed.recipient} ${when(emailed.attemptedAt)}; no email was delivered`
+        ) : (
+          `Emailed to ${emailed.recipient} ${when(emailed.attemptedAt)} (accepted by the mail provider)`
+        )}
+      </dd>
       <dt>Authority</dt>
       <dd>
         {a ? (

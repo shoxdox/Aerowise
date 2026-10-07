@@ -1,4 +1,6 @@
+import { OutboxTransport } from "@aerowise/compliance";
 import { describe, expect, it } from "vitest";
+import { buildApp } from "../src/app.ts";
 import { FakeMail } from "./fake-mail.ts";
 import { adminLogin, client, createAdmin, createOrg, createTenant, createUser, login, PASSWORD, setupTestApp } from "./helpers.ts";
 
@@ -11,7 +13,7 @@ const emailsTo = (to: string) => [...mail.delivered.values()].filter((m) => m.to
 async function invite(api: ReturnType<typeof client>, body: { email: string; role: string; name?: string }) {
   const res = await api.post("/invitations", body);
   expect(res.statusCode, res.body).toBe(201);
-  return res.json() as { invitation: { id: string; status: string; role: string; invitedBy: string }; url: string; emailed: boolean };
+  return res.json() as { invitation: { id: string; status: string; role: string; invitedBy: string }; url: string; emailed: boolean; delivery: string | null };
 }
 
 const accept = (token: string, body: { name?: string; password: string }) =>
@@ -23,6 +25,8 @@ describe("invitations", () => {
     const t = await createTenant(ctx, "Org A");
     const sent = await invite(t.api, { email: "Tina.Tech@Example.com", role: "technician", name: "Tina Tech" });
     expect(sent.emailed).toBe(true);
+    // A mail provider took it (the fake here), so the screen may say emailed.
+    expect(sent.delivery).toBe("provider");
     expect(sent.invitation).toMatchObject({ status: "pending", role: "technician", invitedBy: "owner user" });
     const [email] = emailsTo("tina.tech@example.com");
     expect(email?.subject).toBe("owner user invited you to Org A on Aerowise");
@@ -191,6 +195,18 @@ describe("owner invitations from /admin", () => {
     expect(list.find((o: { id: string }) => o.id === org.id).users).toBe(1);
   });
 
+  it("says an invitation kept in the local test outbox was not delivered (STG-08)", async () => {
+    const app = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, mail: new OutboxTransport(ctx.store, () => ctx.now) });
+    try {
+      const t = await createTenant(ctx, "Org Outbox");
+      const res = await client(app, t.cookie).post("/invitations", { email: "olive@example.com", role: "office" });
+      expect(res.statusCode, res.body).toBe(201);
+      expect(res.json()).toMatchObject({ emailed: true, delivery: "outbox" });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("answers 404 for an unknown organization", async () => {
     await createAdmin(ctx);
     const admin = client(ctx.app, await adminLogin(ctx));
@@ -206,7 +222,7 @@ describe("owner invitations from /admin", () => {
     try {
       const res = await admin.post(`/admin/organizations/${org.id}/invitations`, { email: "c@example.com", name: "C" });
       expect(res.statusCode).toBe(201);
-      expect(res.json().emailed).toBe(false);
+      expect(res.json()).toMatchObject({ emailed: false, delivery: null });
       expect((await accept(tokenOf(res.json().url), { password: "a strong password" })).statusCode).toBe(200);
     } finally {
       mail.mode = "ok";
