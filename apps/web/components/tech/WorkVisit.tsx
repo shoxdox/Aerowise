@@ -1,12 +1,15 @@
 "use client";
 
 import {
+  formatEntered,
+  pumpOutProblems,
   signatureProblems,
   snapshotSha256,
   validateInspection,
   visibleFields,
   visiblePhotos,
   type FormTemplate,
+  type PumpingFieldData,
   type InspectionValue,
   type InspectionValues,
   type TemplateDefinition,
@@ -19,6 +22,7 @@ import { TemplateSections } from "@/components/forms/TemplateFields";
 import { currentPosition, preparePhoto, workFormById } from "@/lib/offline/data";
 import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 import { withSentState, type LocalWork, type WorkBlob, type WorkSignatureLocal, type WorkStore } from "@/lib/offline/work";
+import { PumpOutSection, sendablePumpOut } from "./PumpOut";
 import { heldText, workStatus } from "./WorkStops";
 
 // One work visit on the phone (SW-2): what the office asked for, then the visit's work form,
@@ -38,7 +42,8 @@ function display(def: TemplateDefinition, key: string, value: InspectionValue): 
 }
 
 /** What the customer reads and signs: the work done, as answered, and whether another visit is needed. */
-export function workSummary(stop: WorkStop, def: TemplateDefinition, values: InspectionValues, finalVisit: boolean) {
+export function workSummary(stop: WorkStop, def: TemplateDefinition, values: InspectionValues, finalVisit: boolean, pumpOut?: LocalWork["pumpOut"]) {
+  const pumped = sendablePumpOut(pumpOut);
   return {
     workOrder: `${stop.workOrderLabel} · ${stop.title}`,
     customer: stop.customerName,
@@ -48,6 +53,8 @@ export function workSummary(stop: WorkStop, def: TemplateDefinition, values: Ins
       .filter((f) => values[f.key] !== undefined && values[f.key] !== null && values[f.key] !== "")
       .map((f) => ({ label: f.label, answer: display(def, f.key, values[f.key]!) })),
     anotherVisitNeeded: !finalVisit,
+    // SW-6: only on a visit with a pump-out, so every other summary (and its hash) stays as it was.
+    ...(pumped ? { pumped: formatEntered(pumped.volume, pumped.unit) } : {}),
   };
 }
 
@@ -165,6 +172,11 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   useEffect(() => {
     void workFormById(store, initial.templateId).then((f) => setForm(f ?? null));
   }, [store, initial.templateId]);
+  // SW-6: the company's trucks, cached for the pump-out.
+  const [field, setField] = useState<PumpingFieldData | undefined>(undefined);
+  useEffect(() => {
+    if (stop.requiresDisposalRecord) void store.kvGet<PumpingFieldData>("pumping-field").then(setField);
+  }, [store, stop.requiresDisposalRecord]);
 
   const persist = async (next: LocalWork, extra?: Parameters<WorkStore["saveWork"]>[1]) => {
     if (timer.current) clearTimeout(timer.current);
@@ -246,7 +258,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
 
   /** Checks the form; with a sign-off on the form, shows the summary to sign next. */
   function review() {
-    const found = validateInspection(def, latest.current.values, counts);
+    const found = [...validateInspection(def, latest.current.values, counts), ...pumpOutProblems(stop.requiresDisposalRecord, sendablePumpOut(latest.current.pumpOut))];
     setProblems(found);
     if (found.length) {
       document.querySelector(".problems")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -260,7 +272,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   async function finish(signed: { requirementKey: string; signerName: string; image: string } | null) {
     setBusy(true);
     const base = latest.current;
-    const summary = signed ? workSummary(stop, def, base.values, base.finalVisit) : null;
+    const summary = signed ? workSummary(stop, def, base.values, base.finalVisit, base.pumpOut) : null;
     const sigs: WorkSignatureLocal[] = signed
       ? [
           {
@@ -319,7 +331,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
 
       {signing && !readOnly ? (
         <SignOff
-          summary={workSummary(stop, def, rec.values, rec.finalVisit)}
+          summary={workSummary(stop, def, rec.values, rec.finalVisit, rec.pumpOut)}
           requirements={signatures}
           busy={busy}
           onBack={() => setSigning(false)}
@@ -330,6 +342,18 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
         <>
           <fieldset disabled={readOnly} className="stack plain">
             <TemplateSections fields={fields} values={rec.values} problemFor={problemFor} onChange={setValue} />
+
+            {(stop.requiresDisposalRecord || rec.pumpOut) && (
+              <PumpOutSection
+                value={rec.pumpOut}
+                vehicles={field?.vehicles ?? []}
+                problem={problemFor("pump_out")?.message ?? null}
+                onChange={(pumpOut) => {
+                  update({ ...latest.current, pumpOut });
+                  if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== "pump_out"));
+                }}
+              />
+            )}
 
             {photos.length > 0 && (
               <section className="card stack">
@@ -423,6 +447,12 @@ function SignOff({
             <dd style={{ whiteSpace: "pre-wrap" }}>{a.answer}</dd>
           </div>
         ))}
+        {summary.pumped && (
+          <>
+            <dt>Pumped</dt>
+            <dd>{summary.pumped}</dd>
+          </>
+        )}
         <dt>Another visit needed</dt>
         <dd>{summary.anotherVisitNeeded ? "Yes" : "No"}</dd>
       </dl>

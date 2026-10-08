@@ -24,6 +24,7 @@ function NewWorkOrder() {
   const types = useLoad<{ items: WorkType[] }>("/work-types");
   const catalogOn = useFeature("service_items");
   const catalog = useLoad<{ items: ServiceItem[] }>(catalogOn ? "/service-items" : null);
+  const pumping = useFeature("pumping");
   const list = useLoad<{ items: SiteOption[] }>(fixedSite ? null : `/sites?limit=50${search ? `&search=${encodeURIComponent(search)}` : ""}`);
   const one = useLoad<{ id: string; addressLine1: string; city: string; customer: { displayName: string } }>(fixedSite ? `/sites/${fixedSite}` : null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +45,7 @@ function NewWorkOrder() {
       const priceCents = v.linePrice !== undefined ? Math.round(Number(v.linePrice) * 100) : item?.unitPriceCents;
       const lines =
         description && priceCents !== undefined
-          ? [{ description, quantity: Number(v.lineQuantity ?? "1"), unitPriceCents: priceCents, taxable: item?.taxable ?? false, serviceItemId: item?.id ?? null }]
+          ? [{ description, quantity: Number(v.lineQuantity ?? "1"), unitPriceCents: priceCents, taxable: item?.taxable ?? false, serviceItemId: item?.id ?? null, billPumpedVolume: v.billPumpedVolume === "on" }]
           : [];
       const wo = await api<{ id: string }>("/work-orders", {
         method: "POST",
@@ -129,6 +130,11 @@ function NewWorkOrder() {
           <input name="lineQuantity" type="number" min="0.001" step="0.001" defaultValue="1" aria-label="Quantity" />
           <input name="linePrice" type="number" min="0" step="0.01" placeholder="Unit price ($)" aria-label="Unit price in dollars" />
         </div>
+        {pumping && (
+          <label className="row">
+            <input name="billPumpedVolume" type="checkbox" /> Bill at the gallons pumped (the price is per gallon; the invoice uses the recorded pump-out volume)
+          </label>
+        )}
       </fieldset>
       <label className="row">
         <input name="draft" type="checkbox" /> Save as a draft (not ready to schedule yet)

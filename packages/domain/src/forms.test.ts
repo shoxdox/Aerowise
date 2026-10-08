@@ -65,6 +65,7 @@ describe("starter work templates", () => {
       [DEFAULT_TEMPLATE_KEY, "inspection"],
       ["work-repair", "work"],
       ["work-service-call", "work"],
+      ["work-pumping", "work"],
     ]);
     expect(BUILT_IN_FORMS[0]).toMatchObject({ version: DEFAULT_TEMPLATE.version, definition: DEFAULT_TEMPLATE.definition });
   });

@@ -40,21 +40,22 @@ const old = {
 };
 
 describe("work forms", () => {
-  it("lists the starter work forms and points repair and service calls at them", async () => {
+  it("lists the starter work forms and points pumping, repair and service calls at them", async () => {
     const t = await createTenant(ctx, "Org A");
     const forms = (await t.api.get("/form-templates?purpose=work")).json().items;
     expect(forms.map((f: { key: string; version: number; purpose: string; builtIn: boolean }) => [f.key, f.version, f.purpose, f.builtIn])).toEqual([
+      ["work-pumping", 1, "work", true],
       ["work-repair", 1, "work", true],
       ["work-service-call", 1, "work", true],
     ]);
-    expect(forms[0].definition.signatures).toEqual([{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: false }]);
+    expect(forms[1].definition.signatures).toEqual([{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: false }]);
     // The inspection form is listed under its own purpose, and never as a work form.
     const inspection = (await t.api.get("/form-templates?purpose=inspection")).json().items;
     expect(inspection.map((f: { key: string }) => f.key)).toEqual([DEFAULT_TEMPLATE_KEY]);
 
     const types = (await t.api.get("/work-types")).json().items as { key: string; defaultFormTemplateKey: string | null }[];
     expect(types.map((x) => [x.key, x.defaultFormTemplateKey])).toEqual([
-      ["pumping", null],
+      ["pumping", "work-pumping"],
       ["repair", "work-repair"],
       ["installation", null],
       ["service_call", "work-service-call"],
@@ -209,6 +210,7 @@ describe("upgrading a database written by the earlier release", () => {
       const other = (await raw.query<{ id: string }>("insert into organizations (name) values ('Other Co') returning id")).rows[0]!;
       await raw.query("insert into inspection_templates (organization_id, key, version, name, definition) values ($1, $2, 1, 'Ours', $3)", [org.id, DEFAULT_TEMPLATE_KEY, JSON.stringify(DEFAULT_TEMPLATE.definition)]);
       await raw.query("update work_types set default_form_template_key = 'our-repair' where organization_id = $1 and key = 'repair'", [other.id]);
+      await raw.query("update work_types set default_form_template_key = 'our-pumping' where organization_id = $1 and key = 'pumping'", [other.id]);
       await raw.end();
 
       await migrate(url);
@@ -217,17 +219,20 @@ describe("upgrading a database written by the earlier release", () => {
       expect(templates.filter((r) => r.organizationId === org.id)).toEqual([{ organizationId: org.id, key: DEFAULT_TEMPLATE_KEY, purpose: "inspection" }]);
       expect(templates.filter((r) => r.organizationId === null).map((r) => [r.key, r.purpose])).toEqual([
         [DEFAULT_TEMPLATE_KEY, "inspection"],
+        ["work-pumping", "work"],
         ["work-repair", "work"],
         ["work-service-call", "work"],
       ]);
       const links = await db.selectFrom("workTypes").select(["organizationId", "key", "defaultFormTemplateKey"]).where("key", "in", ["repair", "service_call", "pumping"]).orderBy("key").execute();
       const linkOf = (o: string, k: string) => links.find((l) => l.organizationId === o && l.key === k)?.defaultFormTemplateKey;
-      expect([linkOf(org.id, "repair"), linkOf(org.id, "service_call"), linkOf(org.id, "pumping")]).toEqual(["work-repair", "work-service-call", null]);
+      expect([linkOf(org.id, "repair"), linkOf(org.id, "service_call"), linkOf(org.id, "pumping")]).toEqual(["work-repair", "work-service-call", "work-pumping"]);
       expect(linkOf(other.id, "repair")).toBe("our-repair");
+      // SW-6 (0058) links pumping only where the company had not linked it itself.
+      expect(linkOf(other.id, "pumping")).toBe("our-pumping");
       // A company created after the upgrade starts linked too.
       const fresh = await db.insertInto("organizations").values({ name: "New Co" } as never).returning("id").executeTakeFirstOrThrow();
       const freshTypes = await db.selectFrom("workTypes").select(["key", "defaultFormTemplateKey"]).where("organizationId", "=", fresh.id).orderBy("position").execute();
-      expect(freshTypes.map((x) => x.defaultFormTemplateKey)).toEqual([null, "work-repair", null, "work-service-call"]);
+      expect(freshTypes.map((x) => x.defaultFormTemplateKey)).toEqual(["work-pumping", "work-repair", null, "work-service-call"]);
       // The older release still finds its own inspection form, not a work form.
       expect(await old.activeTemplate(db, org.id)).toMatchObject({ key: DEFAULT_TEMPLATE_KEY, version: 1 });
       // Adding the built-in forms again changes nothing.

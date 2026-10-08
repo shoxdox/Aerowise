@@ -1,9 +1,10 @@
 "use client";
 
-import type { InspectionTemplate, Stop, WorkStop } from "@aerowise/domain";
+import type { InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IntroCard } from "@/components/Intro";
 import { InspectionForm } from "@/components/tech/InspectionForm";
+import { DisposalScreen } from "@/components/tech/PumpOut";
 import { StopDetail } from "@/components/tech/StopDetail";
 import { StopList, type RouteView } from "@/components/tech/StopList";
 import { SyncBanner } from "@/components/tech/SyncBanner";
@@ -13,13 +14,13 @@ import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
-import { currentPosition, loadActiveTemplate, loadRoute, loadWorkRoute } from "@/lib/offline/data";
+import { currentPosition, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
 import type { Me } from "@/lib/session";
 
-type View = { name: "list" } | { name: "stop"; jobId: string } | { name: "inspect"; jobId: string } | { name: "work"; jobId: string };
+type View = { name: "list" } | { name: "stop"; jobId: string } | { name: "inspect"; jobId: string } | { name: "work"; jobId: string } | { name: "disposal" };
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -45,6 +46,8 @@ export default function TechApp() {
   const [workStops, setWorkStops] = useState<WorkStop[]>([]);
   const [works, setWorks] = useState<Map<string, LocalWork>>(new Map());
   const [failedWork, setFailedWork] = useState<Set<string>>(new Set());
+  // SW-6: trucks, facilities and pump-outs in no load; undefined unless pumping is on.
+  const [pumpingField, setPumpingField] = useState<PumpingFieldData | undefined>();
   const [sync, setSync] = useState<SyncState>({ kind: "idle", pending: 0, failed: 0 });
   const [view, setView] = useState<View>({ name: "list" });
   // List or map of the route; kept while a stop is open, so Back returns to the same one.
@@ -79,6 +82,7 @@ export default function TechApp() {
     setFailures([]);
     setWorkStops([]);
     setWorks(new Map());
+    setPumpingField(undefined);
     setView({ name: "list" });
   }, []);
 
@@ -106,7 +110,10 @@ export default function TechApp() {
     setDisplayTimeZone(m.organization.timezone);
     setMe(m);
     const store = activeStore();
-    const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(workStoreFor(store.tenant))]);
+    const work = workStoreFor(store.tenant);
+    const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(work)]);
+    const p = await loadPumpingField(work, !!w?.items.some((s) => s.requiresDisposalRecord));
+    setPumpingField(p);
     setRoute(r.route ?? null);
     setWorkStops(w?.items ?? []);
     setFetchedAt(r.fetchedAt);
@@ -296,6 +303,24 @@ export default function TechApp() {
           />
         )}
         {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} numbers={numbers} onOpen={(jobId) => setView({ name: "work", jobId })} />}
+        {/* Off on the server, /pumping/field answers empty lists: nothing to record a disposal with yet. */}
+        {view.name === "list" && pumpingField && (pumpingField.facilities.length > 0 || pumpingField.unloaded.length > 0) && (
+          <button className="secondary" data-testid="open-disposal" onClick={() => setView({ name: "disposal" })}>
+            Record disposal
+            {pumpingField.unloaded.length > 0 && ` (${pumpingField.unloaded.length} pump-out${pumpingField.unloaded.length === 1 ? "" : "s"} waiting)`}
+          </button>
+        )}
+        {view.name === "disposal" && workStore && (
+          <DisposalScreen
+            store={workStore}
+            field={pumpingField}
+            onDone={() => {
+              void refreshLocal();
+              void syncNow();
+              setView({ name: "list" });
+            }}
+          />
+        )}
         {view.name === "work" && workStop && workStore && (
           <WorkVisit
             stop={workStop}
@@ -332,7 +357,7 @@ export default function TechApp() {
             }}
           />
         )}
-        {view.name !== "list" && !stop && !workStop && <p className="muted">This stop is no longer on your route.</p>}
+        {view.name !== "list" && view.name !== "disposal" && !stop && !workStop && <p className="muted">This stop is no longer on your route.</p>}
       </main>
     </>
   );

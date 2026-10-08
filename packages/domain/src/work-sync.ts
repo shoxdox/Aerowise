@@ -3,6 +3,7 @@ import { id } from "./crm.ts";
 import { signatureCapture } from "./forms.ts";
 import { validationProblem } from "./inspections.ts";
 import { COVERAGE_EFFECTS } from "./plans.ts";
+import { pumpOutInput } from "./pumping.ts";
 import { WORK_CATEGORIES } from "./work.ts";
 
 // What the phone sends for a work visit (SW-2) and what the server answers. Mirrors the
@@ -33,6 +34,8 @@ export const workSync = z.object({
   summary: workSummary.nullish(),
   /** False when another visit is needed: the work order goes back to ready to schedule. */
   finalVisit: z.boolean().default(true),
+  /** The pump-out, on a kind of work that needs a disposal record (SW-6). Recorded once, when the record completes. */
+  pumpOut: pumpOutInput.nullish(),
 });
 export type WorkSync = z.input<typeof workSync>;
 
@@ -154,6 +157,8 @@ export const workStop = z.object({
   notes: z.string().nullable(),
   /** The form version this visit is filled in on, or null when the kind of work has none. */
   templateId: id.nullable(),
+  /** The visit records a pump-out before it can be completed (SW-6, flag pumping). */
+  requiresDisposalRecord: z.boolean().default(false),
   /** This technician's record for the visit, if the server has one. */
   record: z.object({ clientId: z.string(), status: z.enum(["draft", "completed"]) }).nullable(),
   /**

@@ -37,6 +37,7 @@ export const EXCEPTION_KINDS = [
   "deposit_unapplied",
   "deposit_disposition",
   "deposit_shortfall",
+  "disposal_overdue",
 ] as const;
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number];
 

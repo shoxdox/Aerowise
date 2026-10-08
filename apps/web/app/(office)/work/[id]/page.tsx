@@ -4,6 +4,7 @@ import { roleHasPermission, WORK_ORDER_STATUS_LABELS, type Technician, type Work
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { PumpingHistory } from "@/components/PumpingHistory";
 import { useLoad } from "@/components/useLoad";
 import { HeldFieldRecords, useWorkForms, VisitFieldRecord } from "@/components/WorkFieldRecords";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -160,6 +161,8 @@ export default function WorkOrderPage() {
 
       {fieldWork && <HeldFieldRecords key={w.events.length} workOrderId={w.id} forms={forms} editable={editable} onChanged={() => void reload()} />}
 
+      {fieldWork && <PumpingHistory key={`p${w.events.length}`} workOrderId={w.id} />}
+
       <section className="stack">
         <h2>Charges</h2>
         {w.lines.length === 0 ? (
@@ -181,6 +184,7 @@ export default function WorkOrderPage() {
                     <td>
                       {l.description}
                       {l.taxable && <span className="muted small"> · taxable</span>}
+                      {l.billPumpedVolume && <span className="muted small"> · billed at the gallons pumped</span>}
                     </td>
                     <td>{l.quantity}</td>
                     <td>{money(l.unitPriceCents)}</td>
