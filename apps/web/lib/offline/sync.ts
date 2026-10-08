@@ -343,6 +343,9 @@ export async function retryFailed(): Promise<void> {
 
 /** Starts sending queued changes; safe to call as often as you like. */
 export function syncNow(): Promise<void> {
+  // Something may have just been saved: until a pass has counted the queues again, the banner
+  // must not keep saying everything was sent (a pass already running counts them on its next turn).
+  emit({ ...state, kind: "syncing" });
   if (running) {
     again = true;
     return running;

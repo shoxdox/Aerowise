@@ -42,6 +42,11 @@ export function SyncBanner({
             </button>
           )}
         </p>
+      ) : state.kind === "syncing" ? (
+        // A pass is counting what is queued; nothing is claimed sent until it has.
+        <p className="sync" role="status" data-testid="sync-status">
+          Checking for changes to send…
+        </p>
       ) : (
         waiting === 0 && (
           <p className="sync ok" role="status" data-testid="sync-status">

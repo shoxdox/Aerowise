@@ -132,6 +132,8 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
     await page.getByRole("button", { name: "Finish without a signature" }).click();
     await expect(card).toContainText("Done · not sent yet");
     expect((await db.query("select count(*)::int as n from pumping_records p join work_records r on r.id = p.work_record_id where r.job_id = $1", [wo.jobId])).rows[0].n).toBe(0);
+    // The banner says what is waiting before the phone has signal, so "All changes sent" below is about this record.
+    await expect(page.getByTestId("sync-status")).toHaveText(/^No signal\. \d+ changes? saved on this phone/);
 
     await context.setOffline(false);
     await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
@@ -151,6 +153,7 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
     await expect(screen).toContainText("Manifest photo added");
     await screen.getByRole("button", { name: "Save disposal record" }).click();
     await expect(page.getByTestId("work-stops")).toBeVisible();
+    await expect(page.getByTestId("sync-status")).toHaveText(/^No signal\. \d+ changes? saved on this phone/);
     await context.setOffline(false);
     await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
     const load = (
