@@ -9,6 +9,7 @@ import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
+import { useFeature } from "@/lib/features";
 import { canEdit, useSession } from "@/lib/session";
 
 const SEVERITY_CLASS: Record<InboxException["severity"], string> = { high: "danger", medium: "warn", low: "" };
@@ -76,6 +77,44 @@ function HandledButton({ e, onDone }: { e: InboxException; onDone: () => void })
     <>
       <button className="secondary" onClick={() => void done()}>
         Mark handled
+      </button>
+      {error && <span className="error">{error}</span>}
+    </>
+  );
+}
+
+/**
+ * Turn an inspection issue or a customer's request into a work order, or open the one it
+ * already became. The API makes one per issue or request however often this is pressed.
+ */
+function WorkOrderAction({ e, canCreate }: { e: InboxException; canCreate: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (e.workOrder) {
+    return (
+      <Link href={`/work/${e.workOrder.id}`} className="button secondary">
+        {e.workOrder.label}
+      </Link>
+    );
+  }
+  if (!canCreate) return null;
+  async function convert() {
+    setBusy(true);
+    setError(null);
+    try {
+      const path = e.target.type === "issue" ? `/issues/${e.target.id}/work-order` : `/service-requests/${e.target.id}/work-order`;
+      const wo = await api<{ id: string }>(path, { method: "POST", body: {} });
+      router.push(`/work/${wo.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not make the work order");
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button className="secondary" disabled={busy} onClick={() => void convert()}>
+        Turn into work order
       </button>
       {error && <span className="error">{error}</span>}
     </>
@@ -172,6 +211,7 @@ export default function InboxPage() {
   const setup = me.role === "owner" || me.role === "office";
   const checklist = useLoad<OnboardingChecklistData>(setup ? "/onboarding" : null);
   const editable = canEdit(me);
+  const workOrders = useFeature("work_orders");
 
   if (technician) return null;
   if (error) return <p className="error">{error}</p>;
@@ -232,6 +272,7 @@ export default function InboxPage() {
                     <strong>{e.title}</strong>
                     {e.dueOn && <span className="muted small">{day(e.dueOn)}</span>}
                     <span className="spacer" />
+                    {(e.kind === "issue_open" || e.kind === "service_request") && (e.workOrder || editable) && <WorkOrderAction e={e} canCreate={editable && workOrders} />}
                     {inline && <InlineAction e={e} onDone={() => void reload()} />}
                     {retest && <RetestAction e={e} today={data.today} onDone={() => void reload()} />}
                     {editable && e.target.type === "sms_message" && <HandledButton e={e} onDone={() => void reload()} />}

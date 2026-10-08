@@ -10,6 +10,7 @@ import { SiteAuthority } from "@/components/SiteAuthority";
 import { SiteContracts } from "@/components/SiteContracts";
 import { SiteLabTests } from "@/components/SiteLabTests";
 import { SiteServiceRequests } from "@/components/SiteServiceRequests";
+import { SiteWorkOrders } from "@/components/SiteWorkOrders";
 import { SystemMonitoring } from "@/components/SystemMonitoring";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -227,6 +228,7 @@ export default function SitePage() {
       <SiteContracts siteId={site.id} editable={editable} />
       <SiteLabTests siteId={site.id} editable={editable} />
       <SiteServiceRequests siteId={site.id} editable={editable} />
+      <SiteWorkOrders siteId={site.id} editable={editable} />
       <ComplianceTimeline siteId={site.id} editable={editable} />
 
       <section className="stack">

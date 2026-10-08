@@ -60,7 +60,7 @@ export async function contractProvider(db: Executor, organizationId: string, ins
   const row = await db
     .selectFrom("inspections as i")
     .innerJoin("organizations as org", "org.id", "i.organizationId")
-    .leftJoin("jobs as j", (j) => j.onRef("j.id", "=", "i.jobId").onRef("j.organizationId", "=", "i.organizationId"))
+    .leftJoin("jobs as j", (j) => j.onRef("j.id", "=", "i.jobId").onRef("j.organizationId", "=", "i.organizationId").on("j.type", "=", "inspection"))
     .leftJoin("serviceObligations as o", (j) => j.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
     .leftJoin("contracts as c", (j) => j.onRef("c.id", "=", "o.contractId").onRef("c.organizationId", "=", "o.organizationId"))
     .select(["c.providerCredentialId", "org.responsibleCredentialId"])

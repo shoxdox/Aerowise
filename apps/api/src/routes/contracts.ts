@@ -479,6 +479,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           join
             .onRef("j.obligationId", "=", "o.id")
             .onRef("j.organizationId", "=", "o.organizationId")
+            .on("j.type", "=", "inspection")
             .on("j.status", "<>", "cancelled"),
         )
         .leftJoin("users as tu", "tu.id", "j.technicianUserId")

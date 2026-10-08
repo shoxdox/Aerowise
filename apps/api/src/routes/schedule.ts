@@ -1,5 +1,5 @@
 import { loadCatalog, requirementsOf, resolveSite } from "@aerowise/compliance";
-import type { Database } from "@aerowise/db";
+import type { Database, DB } from "@aerowise/db";
 import {
   canTransition,
   id,
@@ -10,16 +10,18 @@ import {
   scheduleInput,
   stop,
   technician,
+  workOrderLabel,
   type JobStatus,
   type Stop,
 } from "@aerowise/domain";
 import { serviceEndForVisit } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { organizationToday } from "../lib/today.ts";
+import { afterWorkVisitCancelled, lockWorkOrder, workOrderEvent } from "../lib/work-orders.ts";
 
 const params = z.object({ id });
 const date = z.iso.date();
@@ -36,8 +38,17 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       .innerJoin("customers as c", (k) => k.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"))
       .innerJoin("users as u", "u.id", "j.technicianUserId")
       .leftJoin("serviceObligations as o", (k) => k.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
+      .leftJoin("workOrders as wo", (k) => k.onRef("wo.id", "=", "j.workOrderId").onRef("wo.organizationId", "=", "j.organizationId"))
+      .leftJoin("workTypes as wt", (k) => k.onRef("wt.id", "=", "wo.workTypeId").onRef("wt.organizationId", "=", "wo.organizationId"))
       .select([
         "j.id as jobId",
+        "j.type as kind",
+        "j.visitNumber",
+        "wo.id as workOrderId",
+        "wo.number as workOrderNumber",
+        "wo.title as workOrderTitle",
+        "wo.category as workOrderCategory",
+        "wt.name as workTypeName",
         "j.status",
         "j.routePosition",
         "j.scheduledDate",
@@ -126,6 +137,11 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     },
     customer: { id: r.customerId, displayName: r.customerName, phone: r.customerPhone ?? null },
     system: (r.system as unknown as Stop["system"]) ?? null,
+    kind: r.kind,
+    workOrder:
+      r.workOrderId && r.workOrderNumber !== null && r.workOrderTitle && r.workOrderCategory && r.workTypeName
+        ? { id: r.workOrderId, number: r.workOrderNumber, label: workOrderLabel(r.workOrderNumber), title: r.workOrderTitle, category: r.workOrderCategory, workTypeName: r.workTypeName, visitNumber: r.visitNumber ?? 1 }
+        : null,
   });
 
   async function assertAssignable(organizationId: string, userId: string) {
@@ -149,13 +165,28 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       .where("organizationId", "=", organizationId)
       .where("technicianUserId", "=", technicianId)
       .where("scheduledDate", "=", scheduledDate)
+      // Inspection and work visits share the technician's day.
+      .where("type", "in", ["inspection", "work"])
       .where("status", "<>", "cancelled")
       .executeTakeFirstOrThrow();
     return Number(r.next);
   };
 
+  /** The job row, locked for this change. */
+  const lockJob = async (trx: Transaction<DB>, organizationId: string, jobId: string) => {
+    const row = await trx
+      .selectFrom("jobs")
+      .select(["status", "technicianUserId", "scheduledDate"])
+      .where("organizationId", "=", organizationId)
+      .where("id", "=", jobId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!row) throw notFound("Job");
+    return row;
+  };
+
   const loadStop = async (organizationId: string, jobId: string) => {
-    const row = await stopQuery(organizationId).where("j.id", "=", jobId).executeTakeFirst();
+    const row = await stopQuery(organizationId).where("j.type", "in", ["inspection", "work"]).where("j.id", "=", jobId).executeTakeFirst();
     if (!row) throw notFound("Job");
     return toStop(row);
   };
@@ -205,7 +236,8 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
-      let q = stopQuery(organizationId).where("j.scheduledDate", ">=", req.query.from).where("j.scheduledDate", "<=", req.query.to);
+      // The office sees inspection and work visits side by side, each with its kind.
+      let q = stopQuery(organizationId).where("j.type", "in", ["inspection", "work"]).where("j.scheduledDate", ">=", req.query.from).where("j.scheduledDate", "<=", req.query.to);
       if (req.query.technicianId) q = q.where("j.technicianUserId", "=", req.query.technicianId);
       return { items: (await q.execute()).map(toStop) };
     },
@@ -225,7 +257,9 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       const day = req.query.date ?? (await organizationToday(db, organizationId, now()));
-      const rows = await stopQuery(organizationId).where("j.technicianUserId", "=", userId).where("j.scheduledDate", "=", day).execute();
+      // Inspection stops only: the phone has no work form until SW-2 (the service workflows plan),
+      // and an older phone would open a work visit as an inspection.
+      const rows = await stopQuery(organizationId).where("j.type", "=", "inspection").where("j.technicianUserId", "=", userId).where("j.scheduledDate", "=", day).execute();
       // The phone checks the authority's requirements offline, so each stop carries them.
       const catalog = await loadCatalog(db);
       const items = rows.map((r) => {
@@ -276,8 +310,10 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .insertInto("jobs")
           .values({
             organizationId,
+            type: "inspection",
             siteId: ob.siteId,
             obligationId: ob.id,
+            retestOfInspectionId: ob.id ? null : retestOfInspectionId!,
             stateMachineVersion: JOB_STATE_MACHINE.version,
             scheduledDate,
             technicianUserId: technicianId,
@@ -309,19 +345,28 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const { organizationId } = req.requireAuth();
       const job = await db
         .selectFrom("jobs")
-        .select(["id", "status", "technicianUserId", "scheduledDate", "obligationId"])
+        .select(["id", "type", "status", "technicianUserId", "scheduledDate", "obligationId", "workOrderId"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", req.params.id)
         .executeTakeFirst();
       if (!job) throw notFound("Job");
       if (job.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${job.status.replace("_", " ")} job cannot be moved`);
-      const technicianId = req.body.technicianId ?? job.technicianUserId;
-      const scheduledDate = req.body.scheduledDate ?? job.scheduledDate;
-      if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, scheduledDate);
-      const moved = technicianId !== job.technicianUserId || scheduledDate !== job.scheduledDate;
-      if (req.body.technicianId) await assertAssignable(organizationId, technicianId);
-      const routePosition = moved ? await nextPosition(organizationId, technicianId, scheduledDate) : undefined;
+      // Only the fields sent are checked here; they don't depend on the job's current values.
+      if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, req.body.scheduledDate);
+      if (req.body.technicianId) await assertAssignable(organizationId, req.body.technicianId);
       await db.transaction().execute(async (trx) => {
+        // A work visit's order is locked before the visit, the same order the work order
+        // routes use, so a move racing the office completing or cancelling the order waits
+        // instead of deadlocking. The job is then re-read under its lock: the status read
+        // above may be stale, and a field this request leaves out keeps its current value,
+        // not the one read before another dispatcher's change.
+        const wo = job.type === "work" && job.workOrderId ? await lockWorkOrder(trx, organizationId, job.workOrderId) : null;
+        const current = await lockJob(trx, organizationId, job.id);
+        if (current.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${current.status.replace("_", " ")} job cannot be moved`);
+        const technicianId = req.body.technicianId ?? current.technicianUserId;
+        const scheduledDate = req.body.scheduledDate ?? current.scheduledDate;
+        const moved = technicianId !== current.technicianUserId || scheduledDate !== current.scheduledDate;
+        const routePosition = moved ? await nextPosition(organizationId, technicianId, scheduledDate) : undefined;
         await trx
           .updateTable("jobs")
           .set({
@@ -335,6 +380,9 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .where("id", "=", job.id)
           .execute();
         await audit(trx, req, { action: "job.rescheduled", entityType: "job", entityId: job.id, changes: req.body });
+        if (wo && moved) {
+          await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "visit_moved", summary: `Visit moved to ${scheduledDate}`, details: { technicianId, scheduledDate }, homeownerVisible: true, at: new Date() });
+        }
       });
       return loadStop(organizationId, job.id);
     },
@@ -356,7 +404,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const { organizationId } = req.requireAuth();
       const job = await db
         .selectFrom("jobs")
-        .select(["id", "status"])
+        .select(["id", "type", "status", "workOrderId", "scheduledDate"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", req.params.id)
         .executeTakeFirst();
@@ -365,6 +413,12 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         throw new HttpError(409, "invalid_transition", `A ${job.status.replace("_", " ")} job cannot be cancelled`);
       }
       await db.transaction().execute(async (trx) => {
+        // Work order before job, then the job's status re-checked under its lock (see PATCH).
+        if (job.type === "work" && job.workOrderId) await lockWorkOrder(trx, organizationId, job.workOrderId);
+        const current = await lockJob(trx, organizationId, job.id);
+        if (!canTransition(current.status as JobStatus, "cancelled")) {
+          throw new HttpError(409, "invalid_transition", `A ${current.status.replace("_", " ")} job cannot be cancelled`);
+        }
         await trx
           .updateTable("jobs")
           .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: req.body.reason, updatedAt: new Date() })
@@ -372,6 +426,10 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .where("id", "=", job.id)
           .execute();
         await audit(trx, req, { action: "job.cancelled", entityType: "job", entityId: job.id, changes: req.body });
+        // A work order waiting on this visit goes back to ready to schedule.
+        if (job.type === "work" && job.workOrderId) {
+          await afterWorkVisitCancelled(trx, req, { organizationId, workOrderId: job.workOrderId, scheduledDate: job.scheduledDate, reason: req.body.reason, at: new Date() });
+        }
       });
       return reply.status(204).send(null);
     },
@@ -399,6 +457,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .where("organizationId", "=", organizationId)
           .where("technicianUserId", "=", technicianId)
           .where("scheduledDate", "=", scheduledDate)
+          .where("type", "in", ["inspection", "work"])
           .where("status", "<>", "cancelled")
           .forUpdate()
           .execute();
@@ -412,6 +471,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         await audit(trx, req, { action: "route.reordered", entityType: "technician_day", entityId: technicianId, changes: req.body });
       });
       const rows = await stopQuery(organizationId)
+        .where("j.type", "in", ["inspection", "work"])
         .where("j.technicianUserId", "=", technicianId)
         .where("j.scheduledDate", "=", scheduledDate)
         .execute();

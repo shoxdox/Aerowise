@@ -1,5 +1,11 @@
 # Aerowise — current demo and pilot handoff
 
+## Shared forms staging update — October 7, 2026
+
+**Staging https://staging.deshain.com is on `4d3fdadd4f202d29118c82e3a1322518e06350e3`**, merged #103 (shared form/signature foundation). Demo entry remains **Try the demo → Start my demo**, then Owner / Office / Technician. This release preserves the deployed street map and phone rollback floor. Configuration, migration/seed and API/web/database/worker health passed; live inspection fields retained the earlier fictional draft. Independent lint, full typecheck and 143 domain tests passed. [Deployment record and screenshot](engineering/RUNBOOK.md#shared-forms-review-and-staging-deploy--october-7-2026).
+
+**Fieldbase expansion is still incomplete.** #100 is fixing P2 scheduling concurrency/partial-update issues; #102 is fixing P2 CSV corruption of date-looking identifiers. #101's earlier payment/refund hold and concurrent-review fixes passed rereview but still need combined integration checks. Those three PRs and shared forms part 2 are not deployed. Hosted Actions still cannot start because of account billing/spending restrictions; manual deploy works. Existing provider/authority acceptance and physical-device gates remain open. Test stand-ins remain enabled, Twilio/Resend absent, production untouched. Justin needs no new account, keys or DNS change for this release.
+
 ## Phone compatibility staging update — October 7, 2026
 
 **Staging is now on `a39e875023abe72b1e8ae237f3fdd2ee53dff2bd`**, the merged phone compatibility release (#99). This is the phone rollback floor: do not deploy an earlier application commit once offline work is introduced. API/web/database/worker health passed. A 390×844 browser retained an inspection draft and its answers through offline reload, sent one sync request on reconnect, and kept exactly one server inspection after another online reload. This was a draft regression check, not a physical-phone camera or full completed-photo inspection test. [Deployment record and screenshots](engineering/RUNBOOK.md#phone-compatibility-review-and-staging-deploy--october-7-2026).

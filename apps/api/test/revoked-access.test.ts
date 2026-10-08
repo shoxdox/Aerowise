@@ -55,6 +55,7 @@ describe("access status", () => {
     await ctx.db.deleteFrom("sessions").where("organizationId", "=", demo.id).execute();
     await ctx.db.deleteFrom("memberships").where("organizationId", "=", demo.id).execute();
     await ctx.db.deleteFrom("users").where("id", "=", tech.id).execute();
+    await ctx.db.deleteFrom("workTypes").where("organizationId", "=", demo.id).execute();
     await ctx.db.deleteFrom("organizations").where("id", "=", demo.id).execute();
     expect((await ask(demo.id, ticket, "198.18.0.2")).json()).toEqual({ state: "ended" });
 

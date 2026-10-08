@@ -336,6 +336,7 @@ async function unsentPriorReports(db: Executor, organizationId: string, contract
             .select("f.id")
             .whereRef("j.obligationId", "=", "o.id")
             .whereRef("j.organizationId", "=", "o.organizationId")
+            .where("j.type", "=", "inspection")
             .where("f.kind", "=", "inspection_report")
             .where("f.status", "in", ["sent", "confirmed"]),
         ),

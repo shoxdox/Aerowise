@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
+import { workOrderLink } from "./work.ts";
 
 // The office home screen: only what needs a person, most urgent first.
 
@@ -62,6 +63,8 @@ export const inboxException = z.object({
   customer: z.object({ id, displayName: z.string() }),
   /** The record to open to deal with it. */
   target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice", "quickbooks", "renewal", "service_request", "sms_message"]), id }),
+  /** An issue or request already turned into a work order: its link instead of "Turn into work order". */
+  workOrder: workOrderLink.nullable().optional(),
 });
 export type InboxException = z.infer<typeof inboxException>;
 
