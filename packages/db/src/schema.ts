@@ -1156,6 +1156,11 @@ export interface SignedDocumentsTable {
   pdfStorageKey: string | null;
   pdfSha256: string | null;
   pdfByteSize: number | null;
+  // SW-2 (0055): a work-completion signature's own phone client id, its record's client id
+  // and the form's signature requirement it fulfils.
+  offlineClientId: ColumnType<string | null, string | null | undefined, never>;
+  recordClientId: ColumnType<string | null, string | null | undefined, never>;
+  requirementKey: ColumnType<string | null, string | null | undefined, never>;
   /** Set on an estimate acceptance (SW-5). */
   estimateId: ColumnType<string | null, string | null | undefined, never>;
   createdAt: CreatedAt;
@@ -1652,4 +1657,91 @@ export interface DB {
   workOrderLines: WorkOrderLinesTable;
   workOrderEvents: WorkOrderEventsTable;
   workOrderNotes: WorkOrderNotesTable;
+  jobAssignments: JobAssignmentsTable;
+  workRecords: WorkRecordsTable;
+  workSyncConflicts: WorkSyncConflictsTable;
+  workAttachments: WorkAttachmentsTable;
+}
+
+// ---- SW-2: field records for work visits (0055) ----
+
+export type AssignmentEndReason = "reassigned" | "unassigned" | "cancelled" | "office_completed";
+export type WorkConflictReason = "reassigned" | "cancelled" | "office_completed";
+
+/** Written by the jobs trigger; append-only apart from ending a row once. */
+export interface JobAssignmentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  jobId: string;
+  jobType: Generated<"work">;
+  technicianUserId: string;
+  assignedAt: Generated<Date>;
+  endedAt: Date | null;
+  endReason: AssignmentEndReason | null;
+}
+
+export interface WorkRecordsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  jobId: string;
+  jobType: Generated<"work">;
+  workOrderId: string;
+  siteId: string;
+  technicianUserId: string;
+  templateId: string;
+  status: Generated<"draft" | "completed">;
+  validationStatus: Generated<"pending" | "valid" | "invalid">;
+  validationProblems: ColumnType<unknown, string | undefined, string>;
+  answers: ColumnType<unknown, string | undefined, string>;
+  summary: ColumnType<unknown, string | null | undefined, string | null>;
+  summarySha256: string | null;
+  finalVisit: Generated<boolean>;
+  phoneRevision: Generated<number>;
+  arrivedAt: Timestamp;
+  completedAt: Timestamp | null;
+  arrivalLat: number | null;
+  arrivalLng: number | null;
+  completionLat: number | null;
+  completionLng: number | null;
+  attachedBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkSyncConflictsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  jobId: string;
+  jobType: Generated<"work">;
+  workOrderId: string;
+  technicianUserId: string;
+  reason: WorkConflictReason;
+  status: Generated<"held" | "attached" | "dismissed">;
+  payload: ColumnType<unknown, string | null | undefined, string | null>;
+  phoneRevision: Generated<number>;
+  resolutionNote: string | null;
+  resolvedAt: Timestamp | null;
+  resolvedBy: string | null;
+  attachedJobId: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkAttachmentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  recordClientId: string;
+  photoKey: string;
+  storageKey: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  capturedAt: Timestamp | null;
+  lat: number | null;
+  lng: number | null;
+  uploadedBy: string;
+  createdAt: CreatedAt;
 }

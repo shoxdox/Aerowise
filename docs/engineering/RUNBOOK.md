@@ -370,3 +370,12 @@ Completed on staging only. No paid service, account, DNS, pricing or production 
 1. At Justin's request, inspect all four Claude worker replies in the Personal Brave Septic tab and refresh GitHub open PR heads. Three wait for Codex review; SW-4 is still testing deposits. No new deploy/runtime mutation.
 2. Fetch #107/#110/#111 to origin/review refs. Verify current #110 71ac4d2 differs from the full-run head 85d8a77 in four API test files only (+23/-4). Read exact-head evidence on #110/#107/#111, preserving the distinction between Claude-reported test results and independent Codex approval. Attach #111 to this task.
 3. Save [complete continuation instructions](CODEX-CLAUDE-HANDOFF-2026-10-08.md), commit/push the documentation only, and create a local Septic Codex continuation chat with those instructions. The outgoing chat stops review/deploy work so the successor has one owner. Preserve both untracked web guidance files. All expansion PRs remain draft/unmerged; staging remains c004148.
+
+## Field records from the phone (SW-2, server part) on staging
+
+Not deployed by this PR. Migration 0055 adds field records for work visits, held records, work photos, and the assignment history of each work visit (kept by a trigger on `jobs`, so every code path that moves, cancels or completes a work visit records it). The flag `field_work` switches the phone routes on; with it off, `/work/sync` and the uploads refuse anything new with 409 `feature_off` and `/work/route` is empty, while anything already started can still be finished and the office can still settle held records.
+
+1. Deploy the merged SHA to staging with `AEROWISE_FEATURES=work_orders` (as now). Check `select count(*) from job_assignments` equals the number of live work visits (`select count(*) from jobs where type = 'work' and status in ('scheduled', 'in_progress')`).
+2. Add `field_work` (`AEROWISE_FEATURES=work_orders,field_work`) and redeploy the same SHA. `/api/app-info` lists both.
+3. The phone screens arrive with the SW-2 phone PR; until then this part is exercised through the API tests (`apps/api/test/work-sync.test.ts`), including the R4 cases from the plan §8.5.
+4. Rollback: turning `field_work` off stops new field records and keeps every stored one. An earlier release ignores the new tables; the jobs trigger keeps writing assignment history under it. Do not roll back below the phone floor a39e875 or below SW-1 once work jobs exist.
