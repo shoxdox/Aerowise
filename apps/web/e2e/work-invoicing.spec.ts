@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// SW-3: the e2e API runs with AEROWISE_FEATURES=work_orders,service_items (playwright.config.ts),
-// so the demo story has given the company a small catalog.
+// SW-3: the e2e API runs with AEROWISE_FEATURES=work_orders,service_items (playwright.config.ts).
 
 async function signIn(page: Page) {
   await page.goto("/login");
@@ -15,8 +14,8 @@ test("the office adds a service item, bills a work order by the hour from it, an
   await signIn(page);
   // The office menu links the catalog once the deployment says service items are on.
   await expect(page.locator('#office-nav a[href="/settings/service-items"]')).toHaveCount(1);
+  // Earlier specs may have reset the demo company, so this does not rely on the story's catalog.
   await page.goto("/settings/service-items");
-  await expect(page.getByTestId("service-items")).toContainText("Labor");
   await page.getByLabel("Name").fill("Diagnostic hour");
   await page.getByLabel("Price ($)").fill("110");
   await page.getByLabel("Charged").selectOption({ label: "per hour" });
