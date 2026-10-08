@@ -315,6 +315,31 @@ describe("demo reseed", () => {
     }
   });
 
+  it("adds the installation story when field work is on: two visits on the phone, signed off once, cleared by the nightly reset", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "field_work"]) })).toBe(true);
+    const wo = await ctx.db.selectFrom("workOrders").select(["id", "organizationId", "status", "completedWithoutRecordReason"]).where("category", "=", "installation").executeTakeFirstOrThrow();
+    expect([wo.status, wo.completedWithoutRecordReason]).toEqual(["completed", null]);
+    const records = await ctx.db.selectFrom("workRecords").select(["finalVisit", "status", "offlineClientId"]).where("workOrderId", "=", wo.id).orderBy("completedAt").execute();
+    expect(records.map((r) => [r.finalVisit, r.status])).toEqual([
+      [false, "completed"],
+      [true, "completed"],
+    ]);
+    const signed = await ctx.db.selectFrom("signedDocuments").select(["recordClientId", "kind"]).where("organizationId", "=", wo.organizationId).where("kind", "=", "work_completion").execute();
+    expect(signed).toEqual([{ recordClientId: records[1]!.offlineClientId, kind: "work_completion" }]);
+    const photos = await ctx.db.selectFrom("workAttachments").select("storageKey").where("organizationId", "=", wo.organizationId).execute();
+    expect(photos).toHaveLength(2);
+    expect(await store.get(photos[0]!.storageKey)).not.toBeNull();
+
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["workRecords", "workAttachments", "signedDocuments", "workOrders"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", wo.organizationId).execute()).toEqual([]);
+    }
+    expect(await store.get(photos[0]!.storageKey)).toBeNull();
+  });
+
   it("adds the estimate story when estimates are switched on: one waiting, one signed and made a work order", async () => {
     const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
     await reseedDemo(ctx.db, { filesDir: files });
