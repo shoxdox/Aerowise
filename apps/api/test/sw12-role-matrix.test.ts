@@ -113,7 +113,7 @@ describe("SW-12 row 18: role matrix over the service-workflow routes", () => {
       expect([...allowed.get(k)!], k).toEqual(["owner"]);
     }
     // Office runs the work itself.
-    for (const k of ["POST /work-orders", "POST /work-orders/:id/schedule", "POST /estimates"]) expect(allowed.get(k)!.has("office"), k).toBe(true);
+    for (const k of ["POST /work-orders", "POST /work-orders/:id/schedule", "POST /estimates", "POST /obligations/:id/work-order"]) expect(allowed.get(k)!.has("office"), k).toBe(true);
     // A technician never sees prices.
     for (const k of ["GET /estimates", "GET /estimates/:id"]) expect(allowed.get(k)!.has("technician"), k).toBe(false);
 

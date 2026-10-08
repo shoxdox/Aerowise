@@ -12,7 +12,7 @@ import { BODIES, EXTRA_PROBES, fingerprint, LIST_QUERY, NO_FOREIGN_IDS, pumpOut,
 // so a refusal comes from the tenant check, not from validation: it must be the very same answer
 // (status, error and message) an id nobody has gets, never a schema 400 and never a success. Lists must answer 200
 // with items and carry none of the other company's ids, and nothing of the other company may
-// change. Scope is current through SW-7; SW-9's routes and fixtures are added when it merges.
+// change. Scope is current through SW-9.
 
 // Every flag the build knows, so each slice's routes are registered and swept as it merges.
 const ctx = setupTestApp({ features: [...FEATURES], payments: new TestPaymentProvider() });
@@ -111,6 +111,25 @@ describe("SW-12 row 17: tenant sweep over the service-workflow routes", () => {
     const unknown = await summary(a.cookie, crypto.randomUUID());
     expect(`${theirs.statusCode} ${theirs.body}`).toBe(`${unknown.statusCode} ${unknown.body}`);
     expect((await summary(b.cookie, b.ids["work-orders"]!)).statusCode, "B's completed repair has a summary too").toBe(200);
+
+    // SW-9: B's visit that already has its work order answers A as an unknown visit would (a
+    // missing guard would hand back B's order), and B's own call returns that same order.
+    const bookCall = (cookie: string, id: string) => ctx.app.inject({ method: "POST", url: `/obligations/${id}/work-order`, headers: { cookie }, payload: {} });
+    const shape = (r: Awaited<ReturnType<typeof bookCall>>) => `${r.statusCode} ${r.body}`;
+    expect(shape(await bookCall(a.cookie, b.ids["obligations:booked"]!))).toBe(shape(await bookCall(a.cookie, crypto.randomUUID())));
+    const replay = await bookCall(b.cookie, b.ids["obligations:booked"]!);
+    expect(replay.statusCode, replay.body).toBe(200);
+    expect(replay.json().id).toBe(b.cycles.workOrder);
+    // Scheduling B's pumping visit as an inspection: A gets the unknown-visit answer, never B's
+    // "this is a pumping visit", which would show the visit exists and its kind.
+    const asJob = (id: string) => ctx.app.inject({ method: "POST", url: "/jobs", headers: { cookie: a.cookie }, payload: { obligationId: id, technicianId: aTech.id, scheduledDate: "2026-03-02" } });
+    const foreignJob = await asJob(b.ids.obligations!);
+    expect(foreignJob.json().error).not.toBe("not_an_inspection");
+    expect(shape(foreignJob)).toBe(shape(await asJob(crypto.randomUUID())));
+    // A's due list by kind carries none of B's cycle visits (the list sweep above checked it too).
+    const due = await ctx.app.inject({ method: "GET", url: "/obligations/due?serviceType=pumping&through=2027-12-31", headers: { cookie: a.cookie } });
+    expect(due.statusCode).toBe(200);
+    expect(due.body).not.toContain(b.ids.obligations!);
 
     // Forms are keyed per company: A sees its own repair form, never B's saved version.
     expect(b.formSaved).toBe(201);

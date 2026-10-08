@@ -2,7 +2,8 @@
 // Scratch only: it talks to http://localhost:4000 and the scratch database it is given.
 //
 //   node drills/app-floor.mjs fixtures                 service-workflow records for the demo company
-//                                                      (core, SW-6 pumping and disposal, SW-7 installation)
+//                                                      (core, SW-6 pumping and disposal, SW-7 installation,
+//                                                      SW-9 pumping cycle)
 //   node drills/app-floor.mjs smoke <label> [floor]    every list and every record of the signed-in company
 //   node drills/app-floor.mjs files <label>            every stored photo downloads with its recorded checksum
 //
@@ -137,6 +138,33 @@ try {
       must(await isync("completed", 2), 200, "installation visit completion");
     }
 
+    // SW-9: a pumping-only plan with a six-monthly pumping cycle, contracted on a new site; its first
+    // visit booked as a work order and done on the phone with a pump-out, its second left open.
+    const customer = must(await owner.get("/customers?limit=1"), 200, "customers").items[0];
+    const cplan = must(await owner.post("/plans", { name: "Drill B pumping cycle", termMonths: 12, visitsPerTerm: 2, priceCents: 40000 }), 201, "cycle plan");
+    must(
+      await owner.post(`/plans/${cplan.id}/versions`, {
+        termsText: null,
+        options: [],
+        coverage: [],
+        aerobic: false,
+        serviceCycles: [{ cycleKey: "pumping", label: "Tank pumping", serviceType: "pumping", workTypeId: types.find((t) => t.key === "pumping").id, schedule: { kind: "every_months", everyMonths: 6, windowDays: 30 }, allowNoVisit: false }],
+      }),
+      201,
+      "cycle plan version",
+    );
+    const csite = must(await owner.post(`/customers/${customer.id}/sites`, { addressLine1: `${clientId.slice(0, 4)} Drill Cycle Rd`, city: "Austin" }), 201, "cycle site");
+    const ccontract = must(await owner.post(`/sites/${csite.id}/contracts`, { planId: cplan.id, startOn: today }), 201, "cycle contract");
+    const cvisits = ccontract.obligations.filter((o) => o.serviceType === "pumping").sort((x, y) => x.sequence - y.sequence);
+    check(cvisits.length >= 2, `the cycle contract has its pumping visits (${cvisits.length})`);
+    const cwo = must(await owner.post(`/obligations/${cvisits[0].id}/work-order`, {}), 201, "cycle visit booked");
+    const cjob = must(await owner.post(`/work-orders/${cwo.id}/schedule`, { technicianId: tessId, scheduledDate: today }), 201, "cycle visit schedule").visits[0].jobId;
+    const cclient = crypto.randomUUID();
+    const csync = (status, revision) =>
+      tech.put("/work/sync", { clientId: cclient, jobId: cjob, templateId: pform.id, status, revision, arrivedAt: `${today}T17:00:00Z`, completedAt: status === "completed" ? `${today}T18:00:00Z` : null, values: { tank_count: 1, lid_condition: "good" }, pumpOut: { clientId: crypto.randomUUID(), volume: 900, unit: "gallons", wasteType: "septage", tanks: [{ label: "Tank 1", volume: 900 }], vehicleId: truck.id } });
+    must(await csync("draft", 1), 200, "cycle visit draft");
+    must(await csync("completed", 2), 200, "cycle visit completion");
+
     const rec = (await db.query("select status, validation_status from work_records where job_id = $1", [jobId])).rows[0];
     check(rec?.status === "completed" && rec?.validation_status === "valid", "a repair record completed on the phone, with two photos and a signature");
     check(Number((await db.query("select count(*) n from work_attachments where organization_id = $1", [org])).rows[0].n) >= 2, "work photos stored");
@@ -145,6 +173,12 @@ try {
     check(
       Number((await db.query("select count(*) n from signed_documents d join work_records r on r.organization_id = d.organization_id and r.offline_client_id = d.record_client_id where r.work_order_id = $1 and d.kind = 'work_completion'", [iwo.id])).rows[0].n) === 1,
       "one completion sign-off for the installation",
+    );
+    check((await db.query("select status from service_obligations where id = $1", [cvisits[0].id])).rows[0].status === "completed", "the booked pumping visit completed with its work order");
+    check((await db.query("select status from service_obligations where id = $1", [cvisits[1].id])).rows[0].status === "open", "the next pumping visit stays open");
+    check(
+      Number((await db.query("select count(*) n from work_orders where obligation_id = $1 and obligation_service_type = 'pumping' and status = 'completed'", [cvisits[0].id])).rows[0].n) === 1,
+      "one completed pumping work order for the visit",
     );
   }
 
@@ -184,6 +218,11 @@ try {
     if (!skip("/work-orders/x/completion-summary.pdf")) check(installs.length > 0, `the company has completed installations to read (${installs.length})`);
     for (const id of installs) await expect200("owner", owner, `/work-orders/${id}/completion-summary.pdf`);
     for (const id of await ids("select job_id as id from work_records where organization_id = $1")) await expect200("owner", owner, `/jobs/${id}/work-record`);
+    // SW-9: every contract with a pumping or maintenance cycle, and the due list of those visits.
+    const cycleContracts = await ids("select distinct contract_id as id from contract_service_cycles where organization_id = $1 and service_type <> 'aerobic_inspection'");
+    check(cycleContracts.length > 0, `the company has cycle contracts to read (${cycleContracts.length})`);
+    for (const id of cycleContracts) await expect200("owner", owner, `/contracts/${id}`);
+    await expect200("owner", owner, "/obligations/due?serviceType=pumping");
   }
 
   if (mode === "files") {
@@ -227,6 +266,15 @@ try {
       check(signed.length === 1 && /^[0-9a-f]{64}$/.test(signed[0].sha256 ?? ""), `installation ${id} keeps its one completion sign-off with its checksum`);
     }
     check(installs.length >= 1, `${installs.length} completed installations summarized`);
+
+    // SW-9: each cycle contract reads back its cycles, and each booked visit names its work order.
+    const booked = (await db.query("select o.contract_id, o.id, w.id as wo from service_obligations o join work_orders w on w.obligation_id = o.id and w.status <> 'cancelled' where o.organization_id = $1 and o.service_type <> 'aerobic_inspection'", [org])).rows;
+    for (const b of booked) {
+      const c = must(await owner.get(`/contracts/${b.contract_id}`), 200, "cycle contract");
+      const visit = c.obligations.find((o) => o.id === b.id);
+      check(c.cycles.some((y) => y.serviceType !== "aerobic_inspection") && visit?.workOrder?.id === b.wo, `cycle visit ${b.id} keeps its cycle and its work order`);
+    }
+    check(booked.length >= 1, `${booked.length} booked cycle visits read back`);
   }
 } catch (e) {
   fails++;

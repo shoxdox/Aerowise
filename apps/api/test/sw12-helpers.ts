@@ -23,6 +23,8 @@ export const SCOPE = [
   /^\/jobs\/:id\/work-record/,
   // SW-6 (flag pumping).
   /^\/(vehicles|disposal|pumping)/,
+  // SW-9 (flag service_cycles): booking a cycle visit, and the due list by kind.
+  /^\/obligations/,
 ];
 
 /** Each route Fastify knows, as [method, full path], from its printed route tree. */
@@ -119,6 +121,10 @@ export async function richTenant(c: TestContext) {
   // SW-7: a two-visit installation finished on its final visit with the completion sign-off.
   const installation = await install(s.api, s.techApi, { techId: s.tech.id, siteId: s.site.id });
 
+  // SW-9: a pumping-only plan with a six-monthly pumping cycle, contracted on a second site; its
+  // first visit booked as a work order, its second left open (what a missing guard would book).
+  const cycles = await serviceCycleContract(s.api, s.customer.id);
+
   const one = async (q: ReturnType<typeof sql<{ id: string }>>) => (await q.execute(c.db)).rows[0]?.id;
   const org = s.org.id;
   const ids: Record<string, string | undefined> = {
@@ -144,8 +150,11 @@ export async function richTenant(c: TestContext) {
     "disposal/loads": loaded.json().groupId,
     // Keyed by parameter name where one path prefix takes two kinds of id.
     "disposal/loads:clientId": loadClient,
+    obligations: cycles.openVisit,
+    "obligations:booked": cycles.bookedVisit,
+    "work-orders:cycle": cycles.workOrder,
   };
-  return { ...s, ids, installation, formSaved: form.statusCode };
+  return { ...s, ids, installation, cycles, formSaved: form.statusCode };
 }
 
 /**
@@ -181,6 +190,31 @@ export async function install(office: Api, phone: Api, at: { techId: string; sit
 }
 
 type Api = ReturnType<typeof client>;
+
+/**
+ * SW-9: a pumping-only plan version with a pumping cycle every six months, a contract on a new site
+ * of `customerId`, its first pumping visit booked as a work order and its second left open.
+ */
+export async function serviceCycleContract(office: Api, customerId: string, startOn = "2026-01-01") {
+  const pumping = ((await office.get("/work-types")).json().items as { id: string; key: string }[]).find((t) => t.key === "pumping")!;
+  const plan = (await office.post("/plans", { name: "Pumping every six months", termMonths: 12, visitsPerTerm: 2, priceCents: 40000 })).json();
+  const version = await office.post(`/plans/${plan.id}/versions`, {
+    termsText: null,
+    options: [],
+    coverage: [],
+    aerobic: false,
+    serviceCycles: [{ cycleKey: "pumping", label: "Tank pumping", serviceType: "pumping", workTypeId: pumping.id, schedule: { kind: "every_months", everyMonths: 6, windowDays: 30 }, allowNoVisit: false }],
+  });
+  expect(version.statusCode, version.body).toBe(201);
+  const site = (await office.post(`/customers/${customerId}/sites`, { addressLine1: "2 Cycle Rd", city: "Austin" })).json();
+  const made = await office.post(`/sites/${site.id}/contracts`, { planId: plan.id, startOn });
+  expect(made.statusCode, made.body).toBe(201);
+  const visits = (made.json().obligations as { id: string; serviceType: string; sequence: number }[]).filter((o) => o.serviceType === "pumping").sort((x, y) => x.sequence - y.sequence);
+  expect(visits.length, "pumping visits on the contract").toBeGreaterThanOrEqual(2);
+  const booked = await office.post(`/obligations/${visits[0]!.id}/work-order`, {});
+  expect(booked.statusCode, booked.body).toBe(201);
+  return { planId: plan.id as string, siteId: site.id as string, contractId: made.json().id as string, bookedVisit: visits[0]!.id, openVisit: visits[1]!.id, workOrder: booked.json().id as string };
+}
 
 /** A pumping visit scheduled for the technician and completed on their phone with a pump-out on
  * `truckId`; returns the pump-out's group id. */
@@ -259,6 +293,8 @@ export const BODIES: Record<string, (a: Own) => object> = {
   "PATCH /service-items/:id": () => ({ name: "Sweep" }),
   "PATCH /plans/:id": () => ({ name: "Sweep" }),
   "POST /plans/:id/versions": () => ({ termsText: "Fictional sweep terms text.", options: [], coverage: [] }),
+  // SW-9: book a visit of company B's pumping cycle.
+  "POST /obligations/:id/work-order": () => ({}),
   "PATCH /work-types/:id": () => ({ name: "Sweep" }),
   "PATCH /work-orders/:id": () => ({ title: "Sweep" }),
   "POST /work-orders/:id/schedule": (a) => ({ technicianId: a.techId, scheduledDate: "2026-03-02" }),
@@ -309,6 +345,10 @@ export const EXTRA_PROBES: Record<string, ((a: Own) => object)[]> = {
   "POST /disposal/loads/:groupId/items": [(a) => ({ pumpingGroupId: a.b["pumping-records:unloaded"] })],
   // The caller's own pump-out, "removed" from company B's load.
   "POST /disposal/loads/:groupId/items/remove": [(a) => ({ pumpingGroupId: a.pumpOut, reason: "Sweep" })],
+  // SW-9: a new version of company B's plan carrying a cycle of the caller's own kind of work.
+  "POST /plans/:id/versions": [
+    (a) => ({ termsText: null, options: [], coverage: [], aerobic: false, serviceCycles: [{ cycleKey: "pumping", label: "Sweep", serviceType: "pumping", workTypeId: a.workTypeId, schedule: { kind: "every_months", everyMonths: 6, windowDays: 30 }, allowNoVisit: false }] }),
+  ],
 };
 
 /** Writes whose body names no record at all: nothing of another company to reach. */
@@ -327,4 +367,5 @@ export const LIST_QUERY: Record<string, string> = {
   "/work/route": "?date=2026-03-01",
   "/disposal/log.csv": "?from=2026-02-01&to=2026-03-31",
   "/disposal/log.pdf": "?from=2026-02-01&to=2026-03-31",
+  "/obligations/due": "?serviceType=pumping&through=2027-12-31",
 };
