@@ -59,6 +59,14 @@ export type OutboxOp =
   | { seq?: number; kind: "sync"; inspectionClientId: string; failed?: string }
   | { seq?: number; kind: "photo"; inspectionClientId: string; photoClientId: string; failed?: string };
 
+/**
+ * Anything found in an outbox, including ops a later app version queued that this one cannot
+ * send. Those are never run, failed or deleted here: they wait for the version that knows them.
+ */
+export type StoredOp = { seq: number; kind: string; inspectionClientId?: string; failed?: string };
+const KNOWN_KINDS: ReadonlySet<string> = new Set<OutboxOp["kind"]>(["sync", "photo"]);
+export const isKnownOp = (op: StoredOp): op is QueuedOp => KNOWN_KINDS.has(op.kind) && typeof op.inspectionClientId === "string";
+
 export interface CachedRoute {
   date: string;
   items: Stop[];
@@ -83,7 +91,6 @@ export interface KnownTenant extends Tenant {
 }
 
 const LEGACY_DB_NAME = "aerowise-tech";
-const DB_VERSION = 1;
 const REGISTRY_KEY = "aerowise-tech:tenants";
 const ACTIVE_KEY = "aerowise-tech:active";
 const LEGACY_CHECKED_KEY = "aerowise-tech:legacy-checked";
@@ -93,6 +100,16 @@ export const sameTenant = (a: Tenant | null | undefined, b: Tenant | null | unde
   !!a && !!b && a.organizationId === b.organizationId && a.userId === b.userId;
 
 const scopedName = (t: Tenant) => `aerowise-tech:${t.organizationId}:${t.userId}`;
+
+/**
+ * Where a later release (SW-2) keeps a sign-in's offline work orders, apart from the inspection
+ * database above. This version never creates or writes it. It only counts the work still waiting
+ * in its outbox store, and deletes it with the rest of an ended demo's data.
+ * Contract for that release: this name, and a store named WORK_OUTBOX_STORE holding one record
+ * per unsent change.
+ */
+export const workDbName = (t: Tenant) => `aerowise-tech-work:${t.organizationId}:${t.userId}`;
+export const WORK_OUTBOX_STORE = "outbox";
 
 function readJson<T>(key: string): T | undefined {
   try {
@@ -144,27 +161,61 @@ export function activateTenant(t: Tenant) {
 
 export const activeTenant = (): KnownTenant | null => active;
 
+// The inspection database's stores, as every version since sign-ins got their own databases
+// has created them, at version 1.
+const STORES: Record<StoreName, IDBObjectStoreParameters | undefined> = {
+  kv: undefined,
+  inspections: { keyPath: "jobId" },
+  photos: { keyPath: "clientId" },
+  outbox: { keyPath: "seq", autoIncrement: true },
+};
+const missingStores = (db: IDBDatabase) => (Object.keys(STORES) as StoreName[]).filter((s) => !db.objectStoreNames.contains(s));
+
+function openAt(name: string, version?: number): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = version === undefined ? indexedDB.open(name) : indexedDB.open(name, version);
+    req.onupgradeneeded = () => {
+      for (const store of missingStores(req.result)) req.result.createObjectStore(store, STORES[store]);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Opens the database at whatever version it already has, so a database a later app version
+ * moved on never locks this one out (a fixed version would fail with VersionError before any
+ * code ran). A new database is created at version 1, exactly as earlier versions create it, so
+ * they can still open it. The version is raised only when a store this version needs is missing.
+ */
+async function openByStores(name: string): Promise<IDBDatabase> {
+  for (let attempt = 0; ; attempt++) {
+    const db = await openAt(name);
+    if (missingStores(db).length === 0) return db;
+    const next = db.version + 1;
+    db.close();
+    try {
+      const upgraded = await openAt(name, next);
+      if (missingStores(upgraded).length === 0) return upgraded;
+      upgraded.close();
+    } catch (err) {
+      // Another tab raised the version first: look again at what it left.
+      if (!(err instanceof DOMException && err.name === "VersionError")) throw err;
+    }
+    if (attempt >= 2) throw new Error(`Could not open ${name} with the stores this app needs`);
+  }
+}
+
 function openDb(name: string): Promise<IDBDatabase> {
   let opening = connections.get(name);
   if (!opening) {
-    opening = new Promise((resolve, reject) => {
-      const req = indexedDB.open(name, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        db.createObjectStore("kv");
-        db.createObjectStore("inspections", { keyPath: "jobId" });
-        db.createObjectStore("photos", { keyPath: "clientId" });
-        db.createObjectStore("outbox", { keyPath: "seq", autoIncrement: true });
+    opening = openByStores(name).then((db) => {
+      // Another tab deleting this database (an ended demo) must not wait on us.
+      db.onversionchange = () => {
+        db.close();
+        connections.delete(name);
       };
-      req.onsuccess = () => {
-        // Another tab deleting this database (an ended demo) must not wait on us.
-        req.result.onversionchange = () => {
-          req.result.close();
-          connections.delete(name);
-        };
-        resolve(req.result);
-      };
-      req.onerror = () => reject(req.error);
+      return db;
     });
     connections.set(name, opening);
     opening.catch(() => connections.delete(name));
@@ -172,15 +223,32 @@ function openDb(name: string): Promise<IDBDatabase> {
   return opening;
 }
 
-/** Opens a database only if it already exists; never creates one. */
-function openExisting(name: string): Promise<IDBDatabase | null> {
+/** Opens a database at its current version only if it already exists; never creates one. */
+async function openExisting(name: string): Promise<IDBDatabase | null> {
+  if (typeof indexedDB.databases === "function") {
+    const names = await indexedDB.databases().then((list) => list.map((d) => d.name), () => null);
+    if (names && !names.includes(name)) return null;
+  }
   return new Promise((resolve) => {
     const req = indexedDB.open(name);
     req.onupgradeneeded = () => req.transaction?.abort();
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      // Read briefly; never hold up a later version upgrading or deleting it.
+      req.result.onversionchange = () => req.result.close();
+      resolve(req.result);
+    };
     req.onerror = () => resolve(null);
   });
 }
+
+const deleteDb = (name: string) =>
+  new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(name);
+    req.onsuccess = () => resolve();
+    req.onerror = () => resolve();
+    // Another tab still has it open: it closes on versionchange, and the delete finishes then.
+    req.onblocked = () => resolve();
+  });
 
 /**
  * A phone that saved data before sign-ins had their own databases: that database belongs to
@@ -215,8 +283,9 @@ export async function adoptLegacyStore() {
 }
 
 /**
- * Deletes one sign-in's database from this phone. Only for data that can never be sent or
- * shown again: a demo company that has ended, or a sign-in with nothing waiting to send.
+ * Deletes one sign-in's databases (inspections, and work from a later version) from this phone.
+ * Only for data that can never be sent or shown again: a demo company that has ended, or a
+ * sign-in with nothing waiting to send in either.
  */
 export async function forgetTenant(t: Tenant) {
   const entry = known(t);
@@ -226,17 +295,12 @@ export async function forgetTenant(t: Tenant) {
   );
   if (sameTenant(readJson<Tenant>(ACTIVE_KEY), t)) writeJson(ACTIVE_KEY, undefined);
   if (sameTenant(active, t)) active = null;
+  await deleteDb(workDbName(t));
   if (!entry) return;
   const conn = connections.get(entry.dbName);
   connections.delete(entry.dbName);
   if (conn) (await conn.catch(() => null))?.close();
-  await new Promise<void>((resolve) => {
-    const req = indexedDB.deleteDatabase(entry.dbName);
-    req.onsuccess = () => resolve();
-    req.onerror = () => resolve();
-    // Another tab still has it open: it closes on versionchange, and the delete finishes then.
-    req.onblocked = () => resolve();
-  });
+  await deleteDb(entry.dbName);
 }
 
 function requireActive(): KnownTenant {
@@ -280,7 +344,10 @@ export function storeFor(t: KnownTenant) {
     getInspection: (jobId: string) => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").get(jobId)) as Promise<LocalInspection | undefined>),
     allInspections: () => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").getAll()) as Promise<LocalInspection[]>),
     getPhotoBlob: (clientId: string) => run(["photos"], "readonly", (trx) => done(trx.objectStore("photos").get(clientId)) as Promise<PhotoBlob | undefined>),
-    allOps: () => run(["outbox"], "readonly", (trx) => done(trx.objectStore("outbox").getAll()) as Promise<QueuedOp[]>),
+    /** Every op in the outbox, including ones only a later version can send. */
+    allOps: () => run(["outbox"], "readonly", (trx) => done(trx.objectStore("outbox").getAll()) as Promise<StoredOp[]>),
+    /** Changes a later version saved in the separate work database; this version cannot send them. */
+    pendingWork: () => countOutbox(workDbName(t), WORK_OUTBOX_STORE),
 
     /**
      * Saves the inspection and queues a sync in the same transaction, so a change on the
@@ -291,7 +358,7 @@ export function storeFor(t: KnownTenant) {
         const existing = await done(trx.objectStore("inspections").get(insp.jobId)) as LocalInspection | undefined;
         trx.objectStore("inspections").put({ ...insp, revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
-        const ops = (await done(outbox.getAll())) as QueuedOp[];
+        const ops = (await done(outbox.getAll())) as StoredOp[];
         const mine = ops.filter((o) => o.inspectionClientId === insp.clientId && !o.failed);
         if (photo) {
           trx.objectStore("photos").put(photo);
@@ -320,7 +387,7 @@ export function storeFor(t: KnownTenant) {
           inspections.put(updated);
           outbox.delete(op.seq);
           if (!unchanged) {
-            const queued = (await done(outbox.getAll())) as QueuedOp[];
+            const queued = (await done(outbox.getAll())) as StoredOp[];
             const last = queued.filter(o => o.inspectionClientId === sent.clientId && !o.failed).at(-1);
             if (!last || last.kind !== "sync") outbox.add({ kind: "sync", inspectionClientId: sent.clientId } satisfies OutboxOp);
           }
@@ -345,16 +412,23 @@ export type TenantStore = ReturnType<typeof storeFor>;
 /** The active sign-in's store. */
 export const activeStore = () => storeFor(requireActive());
 
-/** Another sign-in's queued changes, read without making it active; empty if it has no database. */
-export async function pendingFor(t: KnownTenant): Promise<number> {
-  const db = await openExisting(t.dbName);
+async function countOutbox(name: string, store: string): Promise<number> {
+  const db = await openExisting(name);
   if (!db) return 0;
   try {
-    if (!db.objectStoreNames.contains("outbox")) return 0;
-    return await done(db.transaction(["outbox"], "readonly").objectStore("outbox").count());
+    if (!db.objectStoreNames.contains(store)) return 0;
+    return await done(db.transaction([store], "readonly").objectStore(store).count());
   } finally {
     db.close();
   }
+}
+
+/**
+ * A sign-in's queued changes in both its databases, read without making it active; 0 if it has
+ * none. Counts everything queued, including what only a later version can send.
+ */
+export async function pendingFor(t: KnownTenant): Promise<number> {
+  return (await countOutbox(t.dbName, "outbox")) + (await countOutbox(workDbName(t), WORK_OUTBOX_STORE));
 }
 
 export const kvGet = <T>(key: string) => activeStore().kvGet<T>(key);
