@@ -21,6 +21,9 @@ import type {
   WorkCategory,
   WorkOrderStatus,
   WorkSourceKind,
+  EstimateStatus,
+  EstimateSourceKind,
+  EstimateAcceptanceKind,
 } from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
@@ -53,6 +56,7 @@ export interface OrganizationsTable {
   nextInvoiceNumber: Generated<number>;
   /** Next work order number (WO-1001 onward), gapless per company. */
   nextWorkOrderNumber: Generated<number>;
+  nextEstimateNumber: Generated<number>;
   stripeAccountId: string | null;
   stripeChargesEnabled: Generated<boolean>;
   stripeDetailsSubmitted: Generated<boolean>;
@@ -1075,6 +1079,8 @@ export interface SignedDocumentsTable {
   pdfStorageKey: string | null;
   pdfSha256: string | null;
   pdfByteSize: number | null;
+  /** Set on an estimate acceptance (SW-5). */
+  estimateId: ColumnType<string | null, string | null | undefined, never>;
   createdAt: CreatedAt;
 }
 
@@ -1322,6 +1328,99 @@ export interface WorkTypesTable {
   updatedAt: Timestamp;
 }
 
+type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>;
+
+export interface EstimatesTable {
+  id: Generated<string>;
+  organizationId: string;
+  number: number;
+  customerId: string;
+  siteId: string;
+  workTypeId: Nullable<string>;
+  title: string;
+  status: Generated<EstimateStatus>;
+  currentVersion: Generated<number>;
+  taxRateBps: Generated<number>;
+  discountCents: Generated<number>;
+  termsText: Generated<string>;
+  expiresOn: Nullable<string>;
+  sourceKind: Generated<EstimateSourceKind>;
+  sourceId: Nullable<string>;
+  sentAt: Nullable<Date>;
+  viewedAt: Nullable<Date>;
+  acceptedVersion: Nullable<number>;
+  acceptedAt: Nullable<Date>;
+  acceptanceKind: Nullable<EstimateAcceptanceKind>;
+  acceptedDocumentId: Nullable<string>;
+  officeEvidence: Nullable<string>;
+  acceptedBy: Nullable<string>;
+  acceptedSelection: ColumnType<unknown, string | null | undefined, string | null>;
+  workOrderId: Nullable<string>;
+  declinedAt: Nullable<Date>;
+  declinedReason: Nullable<string>;
+  expiredAt: Nullable<Date>;
+  voidedAt: Nullable<Date>;
+  voidReason: Nullable<string>;
+  cancelledAt: Nullable<Date>;
+  cancelReason: Nullable<string>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface EstimateLinesTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  position: number;
+  description: string;
+  quantityMilli: number;
+  unitPriceCents: number;
+  taxable: Generated<boolean>;
+  optional: Generated<boolean>;
+  selectedByDefault: Generated<boolean>;
+  createdAt: CreatedAt;
+}
+
+export interface EstimateVersionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  version: number;
+  lines: ColumnType<unknown, string, never>;
+  taxRateBps: number;
+  discountCents: number;
+  totals: ColumnType<unknown, string, never>;
+  termsText: string;
+  expiresOn: string | null;
+  contentSha256: string;
+  sentAt: Date;
+  sentBy: string | null;
+}
+
+export interface EstimateEventsTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  eventType: string;
+  summary: string;
+  actorUserId: string | null;
+  details: ColumnType<unknown, string | undefined, never>;
+  occurredAt: Timestamp;
+}
+
+export interface EstimateLinksTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  tokenHash: Buffer;
+  source: "email" | "office";
+  sentTo: string | null;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
 export interface WorkOrdersTable {
   id: Generated<string>;
   organizationId: string;
@@ -1435,6 +1534,11 @@ export interface DB {
   renewalAddons: RenewalAddonsTable;
   renewals: RenewalsTable;
   signedDocuments: SignedDocumentsTable;
+  estimates: EstimatesTable;
+  estimateLines: EstimateLinesTable;
+  estimateVersions: EstimateVersionsTable;
+  estimateEvents: EstimateEventsTable;
+  estimateLinks: EstimateLinksTable;
   portalLinks: PortalLinksTable;
   serviceRequests: ServiceRequestsTable;
   smsMessages: SmsMessagesTable;

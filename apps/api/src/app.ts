@@ -52,6 +52,7 @@ import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { demoVisitRoutes } from "./routes/demo-visits.ts";
 import { legalRoutes } from "./routes/legal.ts";
 import { workOrderRoutes } from "./routes/work-orders.ts";
+import { estimateRoutes } from "./routes/estimates.ts";
 import { formRoutes } from "./routes/forms.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
@@ -291,6 +292,7 @@ export async function buildApp({
   await app.register(scheduleRoutes, { db, now });
   await app.register(workOrderRoutes, { db, now, features });
   await app.register(formRoutes, { db, features });
+  await app.register(estimateRoutes, { db, now, features, appUrl });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });
