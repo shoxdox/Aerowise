@@ -5,6 +5,7 @@ import { planRouteMap, type MapBounds, type MapPoint, type RouteMapStopInput } f
 import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDemoCompany } from "@/lib/demo";
+import { MAP_KIND_LABEL, MAP_KIND_LETTER, MAP_STOP_KINDS, type MapStopKind } from "./kinds";
 
 // A street map of one or more routes: numbered stops in each route's color over a street
 // basemap served from this site (/map-data/basemap.pmtiles, fonts under /map/fonts). Nothing
@@ -15,6 +16,8 @@ import { useDemoCompany } from "@/lib/demo";
 export interface StreetMapStop extends RouteMapStopInput {
   /** What the stop is, for its label: an address or a customer. */
   title: string;
+  /** Inspection or a kind of work, for the marker's shape and letter; omitted is an inspection. */
+  kind?: MapStopKind;
 }
 
 export interface StreetMapRoute {
@@ -58,15 +61,20 @@ function attributionFor(text: string | undefined): string {
   return escapeHtml(text.replace(/<[^>]*>/g, ""));
 }
 
-function stopElement(s: { number: number; done: boolean; title: string; outside: boolean }, color: string, routeName: string | undefined, onClick: () => void) {
+function stopElement(s: { number: number; done: boolean; title: string; outside: boolean; kind: MapStopKind }, color: string, routeName: string | undefined, onClick: () => void) {
   const el = document.createElement("button");
   el.type = "button";
-  el.className = `map-stop${s.done ? " done" : ""}`;
+  // Work is a rounded square with its kind's letter in a corner; an inspection stays round.
+  el.className = `map-stop${s.done ? " done" : ""}${s.kind === "inspection" ? "" : " work"}`;
+  el.dataset.kind = s.kind;
+  if (MAP_KIND_LETTER[s.kind]) el.dataset.letter = MAP_KIND_LETTER[s.kind];
   el.style.setProperty("--route", color);
   el.textContent = String(s.number);
   const who = routeName ? `${routeName}, ` : "";
-  el.setAttribute("aria-label", `${who}stop ${s.number}: ${s.title}${s.done ? ", done" : ""}${s.outside ? ", outside the street map" : ""}`);
-  el.title = `${s.number}. ${s.title}${s.done ? " (done)" : ""}`;
+  // Inspections are the usual stop and read as before; work says its kind.
+  const kind = s.kind === "inspection" ? "" : `, ${MAP_KIND_LABEL[s.kind]}`;
+  el.setAttribute("aria-label", `${who}stop ${s.number}${kind}: ${s.title}${s.done ? ", done" : ""}${s.outside ? ", outside the street map" : ""}`);
+  el.title = `${s.number}.${kind ? ` ${MAP_KIND_LABEL[s.kind]}:` : ""} ${s.title}${s.done ? " (done)" : ""}`;
   el.addEventListener("click", (e) => {
     e.stopPropagation();
     onClick();
@@ -234,10 +242,11 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
     startMarker.current = null;
 
     const routeOf = new Map(routes.map((r) => [r.id, r]));
-    const titleOf = new Map(routes.flatMap((r) => r.stops.map((s) => [s.key, s.title] as const)));
+    const stopOf = new Map(routes.flatMap((r) => r.stops.map((s) => [s.key, s] as const)));
     for (const p of plan.placed) {
       const route = routeOf.get(p.routeId)!;
-      const el = stopElement({ ...p, title: titleOf.get(p.key) ?? "" }, route.color, routes.length > 1 ? route.name : undefined, () => select.current(p.key));
+      const stop = stopOf.get(p.key);
+      const el = stopElement({ ...p, title: stop?.title ?? "", kind: stop?.kind ?? "inspection" }, route.color, routes.length > 1 ? route.name : undefined, () => select.current(p.key));
       el.dataset.stop = p.key;
       el.dataset.route = p.routeId;
       if (p.key === selected) el.classList.add("selected");
@@ -280,6 +289,10 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
   const multi = routes.length > 1;
   const nameOf = (routeId: string) => (multi ? `${routes.find((r) => r.id === routeId)?.name ?? ""}'s ` : "");
   const outside = plan.placed.filter((p) => p.outside);
+  const kinds = useMemo(() => {
+    const present = new Set(routes.flatMap((r) => r.stops.map((s) => s.kind ?? "inspection")));
+    return MAP_STOP_KINDS.filter((k) => present.has(k));
+  }, [routes]);
 
   if (!located) {
     return (
@@ -302,6 +315,16 @@ export function StreetMap({ routes, start = null, returnToStart = false, selecte
         {demo && status !== "failed" && <span className="map-chip">Demo: made-up locations</span>}
       </div>
       <p className="map-key small muted">Numbers are the visit order. Dashed lines join visits in that order; they are straight lines, not roads.</p>
+      {kinds.some((k) => k !== "inspection") && (
+        <p className="map-kinds small muted" data-testid="map-kinds">
+          {kinds.map((k) => (
+            <span key={k} className="map-kind">
+              <span className={`map-kind-mark${k === "inspection" ? "" : " work"}`} data-letter={MAP_KIND_LETTER[k] || undefined} aria-hidden="true" />
+              {MAP_KIND_LABEL[k]}
+            </span>
+          ))}
+        </p>
+      )}
       {partial && status === "ready" && <p className="small muted">Part of the street map could not load. The stops are still placed correctly.</p>}
       {plan.unlocated.length > 0 && (
         <p className="small warn-text" data-testid="map-unlocated">

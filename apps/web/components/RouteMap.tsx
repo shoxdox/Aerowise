@@ -3,6 +3,7 @@
 import type { RouteDay, Stop } from "@aerowise/domain";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { MAP_KIND_LABEL, MAP_STOP_KINDS, stopKind, type MapStopKind } from "@/components/map/kinds";
 import { StreetMap, type StreetMapRoute } from "@/components/map/StreetMap";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { day as formatDay, duration } from "@/lib/format";
@@ -25,11 +26,24 @@ const STATUS_LABEL: Record<string, string> = { scheduled: "To do", in_progress: 
 /**
  * The day's routes on a street map: numbered stops in each technician's color, the start,
  * and straight dashed lines in visit order. Selecting a stop shows its details and a link
- * to its site. The stop list beside it stays the way to work the schedule.
+ * to its site. The stop list beside it stays the way to work the schedule. Kinds of stop can
+ * be hidden from the map; that changes only what is drawn, never the route or its numbers.
  */
 export function RouteMap({ day, technicianIds, numbers, stops }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<ReadonlySet<MapStopKind>>(new Set());
   const stopOf = useMemo(() => new Map(stops.map((s) => [s.jobId, s])), [stops]);
+  const kinds = useMemo(() => {
+    const present = new Set(
+      day.technicians.flatMap((t) =>
+        t.stops.map((s) => {
+          const full = stopOf.get(s.jobId);
+          return full ? stopKind(full) : "inspection";
+        }),
+      ),
+    );
+    return MAP_STOP_KINDS.filter((k) => present.has(k));
+  }, [day, stopOf]);
 
   const routes: StreetMapRoute[] = useMemo(
     () =>
@@ -37,19 +51,23 @@ export function RouteMap({ day, technicianIds, numbers, stops }: Props) {
         id: t.technicianId,
         name: t.technicianName,
         color: ROUTE_COLORS[Math.max(0, technicianIds.indexOf(t.technicianId)) % ROUTE_COLORS.length]!,
-        stops: t.stops.map((s, i) => {
-          const full = stopOf.get(s.jobId);
-          return {
-            key: s.jobId,
-            lat: s.lat,
-            lng: s.lng,
-            number: numbers.get(s.jobId) ?? i + 1,
-            done: s.status === "completed",
-            title: full ? `${full.site.addressLine1}, ${full.site.city}` : "Stop",
-          };
-        }),
+        stops: t.stops
+          .map((s, i) => {
+            const full = stopOf.get(s.jobId);
+            return {
+              key: s.jobId,
+              lat: s.lat,
+              lng: s.lng,
+              number: numbers.get(s.jobId) ?? i + 1,
+              done: s.status === "completed",
+              title: full ? `${full.site.addressLine1}, ${full.site.city}` : "Stop",
+              kind: full ? stopKind(full) : ("inspection" as const),
+            };
+          })
+          // Hidden kinds leave the map only; the lines join the stops still shown, labelled with their own numbers.
+          .filter((s) => !hidden.has(s.kind)),
       })),
-    [day, technicianIds, numbers, stopOf],
+    [day, technicianIds, numbers, stopOf, hidden],
   );
 
   const sel = selected ? stopOf.get(selected) : undefined;
@@ -57,8 +75,26 @@ export function RouteMap({ day, technicianIds, numbers, stops }: Props) {
   const leg = sel ? selRoute?.legs.find((l) => l.toJobId === sel.jobId) : undefined;
   const color = sel ? routes.find((r) => r.id === sel.technicianId)?.color : undefined;
 
+  const toggle = (k: MapStopKind) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (!next.delete(k)) next.add(k);
+      return next;
+    });
+
   return (
     <div className="stack">
+      {kinds.length > 1 && (
+        <fieldset className="map-filter small" data-testid="map-kind-filter">
+          <legend className="muted">Show on the map</legend>
+          {kinds.map((k) => (
+            <label key={k} className="row">
+              <input type="checkbox" checked={!hidden.has(k)} onChange={() => toggle(k)} />
+              {MAP_KIND_LABEL[k]}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <StreetMap
         routes={routes}
         start={day.start}
@@ -86,6 +122,11 @@ export function RouteMap({ day, technicianIds, numbers, stops }: Props) {
             {sel.technicianName} · stop {numbers.get(sel.jobId)} ·{" "}
             <span className={`badge ${sel.status === "completed" ? "completed" : ""}`}>{STATUS_LABEL[sel.status] ?? sel.status}</span>
           </div>
+          {sel.workOrder && (
+            <div className="small">
+              {sel.workOrder.label} · {sel.workOrder.workTypeName} · {sel.workOrder.title}
+            </div>
+          )}
           <div className="muted small">
             {sel.customer.displayName}
             {sel.obligation && (

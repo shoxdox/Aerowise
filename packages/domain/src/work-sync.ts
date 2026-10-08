@@ -2,6 +2,7 @@ import { z } from "zod";
 import { id } from "./crm.ts";
 import { signatureCapture } from "./forms.ts";
 import { validationProblem } from "./inspections.ts";
+import { WORK_CATEGORIES } from "./work.ts";
 
 // What the phone sends for a work visit (SW-2) and what the server answers. Mirrors the
 // inspection sync: the whole record every time, idempotent on the phone's client id. See the
@@ -136,6 +137,10 @@ export const workStop = z.object({
   title: z.string(),
   description: z.string(),
   workTypeName: z.string(),
+  /** For the map pin. Optional because a route saved on the phone before it was sent has none. */
+  category: z.enum(WORK_CATEGORIES).optional(),
+  /** Minutes on site from the kind of work; null means the company's average stop length. */
+  durationMinutes: z.number().int().nullable().optional(),
   visitNumber: z.number().int(),
   scheduledDate: z.iso.date(),
   routePosition: z.number().int(),

@@ -207,6 +207,16 @@ button.tile { background: var(--surface); text-align: left; cursor: pointer; fon
 .map-stop.done::after { content: "✓"; position: absolute; right: -6px; top: -6px; width: 14px; height: 14px; border-radius: 50%; background: var(--route); color: #ffffff; font-size: 9px; display: grid; place-items: center; }
 .map-stop.selected { outline: 3px solid var(--text); outline-offset: 2px; z-index: 2; }
 .map-stop:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+/* Work stops: a rounded square with the kind's letter at the bottom left (the done tick stays top right). */
+.map-stop.work { border-radius: 6px; }
+.map-stop[data-letter]::before { content: attr(data-letter); position: absolute; left: -7px; bottom: -7px; width: 15px; height: 15px; border-radius: 3px; background: #1c2321; color: #ffffff; border: 1px solid #ffffff; font-size: 9px; font-weight: 700; display: grid; place-items: center; }
+.map-kinds { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.map-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-width: 0; }
+.map-filter label { display: inline-flex; align-items: center; gap: 6px; }
+.map-kind { display: inline-flex; align-items: center; gap: 6px; }
+.map-kind-mark { position: relative; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); flex: none; }
+.map-kind-mark.work { border-radius: 3px; }
+.map-kind-mark[data-letter]::before { content: attr(data-letter); position: absolute; inset: 0; color: #ffffff; font-size: 9px; font-weight: 700; display: grid; place-items: center; }
 .map-start { width: 20px; height: 20px; display: grid; place-items: center; background: var(--text); color: #ffffff; font-size: 0.7rem; font-weight: 700; border: 2px solid #ffffff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
 .map-detail { display: flex; flex-direction: column; gap: 4px; }
 .view-toggle { align-self: flex-start; display: inline-flex; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; }
