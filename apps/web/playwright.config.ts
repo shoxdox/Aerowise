@@ -23,8 +23,9 @@ export default defineConfig({
       cwd: "../..",
       url: "http://localhost:4000/health",
       // Demo mode, as on the hosted demo: every outside service is a test stand-in and the banner shows.
-      // Work orders on, as staging will run them (SW-1); the flag-off paths are covered by the API tests.
-      env: { DATABASE_URL: databaseUrl, API_PORT: "4000", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true", LOGIN_RATE_LIMIT: "100", AEROWISE_FEATURES: "work_orders" },
+      // Work orders and field work on the phone on, as staging will run them (SW-1, SW-2); the flag-off
+      // paths are covered by the API tests.
+      env: { DATABASE_URL: databaseUrl, API_PORT: "4000", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true", LOGIN_RATE_LIMIT: "100", AEROWISE_FEATURES: "work_orders,field_work" },
       timeout: 120_000,
       stdout: "pipe",
     },
