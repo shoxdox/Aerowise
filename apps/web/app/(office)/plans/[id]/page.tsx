@@ -53,7 +53,8 @@ interface RuleRow {
 
 export default function PlanPage() {
   const { id } = useParams<{ id: string }>();
-  const builder = useFeature("plan_builder") && canEdit(useSession());
+  const me = useSession();
+  const builder = useFeature("plan_builder") && canEdit(me);
   const { data: plan, error, reload } = useLoad<PlanDetail>(`/plans/${id}`);
   const items = useLoad<{ items: ServiceItem[] }>(builder ? "/service-items?active=all" : null);
   const intakeForms = useLoad<{ items: FormTemplate[] }>(builder ? "/form-templates?purpose=intake" : null);

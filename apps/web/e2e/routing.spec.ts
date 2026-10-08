@@ -7,7 +7,8 @@ test("the office sees tomorrow's route on the map with its driving, and puts a s
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/inbox");
 
-  // The seed puts four stops on the technician's route tomorrow, leaving from the office.
+  // The seed puts four stops on the technician's route tomorrow, leaving from the office (five with
+  // work orders on: the demo story adds a repair visit).
   const { today } = await (await page.request.get("/api/obligations/due?limit=1")).json();
   const tomorrow = new Date(`${today}T00:00:00Z`);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
@@ -25,7 +26,7 @@ test("the office sees tomorrow's route on the map with its driving, and puts a s
   await page.locator('input[type="date"]').fill(date);
   await lateAnswer;
   await expect(page.getByRole("region", { name: /Map of 1 route/ })).toBeVisible();
-  const column = page.locator(".column", { hasText: "4 stops" });
+  const column = page.locator(".column", { has: page.getByRole("heading", { name: "Tess Tech" }) });
   await expect(column.getByText(/\d+(\.\d)? mi · .* driving/)).toBeVisible();
   await expect(column.getByText(/from the start/)).toBeVisible();
   await expect(column.getByText(/back to the start/)).toBeVisible();

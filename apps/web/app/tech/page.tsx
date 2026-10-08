@@ -8,7 +8,8 @@ import { DisposalScreen } from "@/components/tech/PumpOut";
 import { StopDetail } from "@/components/tech/StopDetail";
 import { StopList, type RouteView } from "@/components/tech/StopList";
 import { SyncBanner } from "@/components/tech/SyncBanner";
-import { WorkStopList } from "@/components/tech/WorkStops";
+import { routeNumbers, routeOrder } from "@/components/tech/route-order";
+import { WorkStopList, workStatus } from "@/components/tech/WorkStops";
 import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
@@ -207,6 +208,19 @@ export default function TechApp() {
   // One store object per sign-in, so the work form does not reload on every render.
   const tenant = activeTenant();
   const workStore = useMemo(() => (tenant ? workStoreFor(tenant) : null), [tenant]);
+  // Inspections and work visits in one visit order, numbered alike in the lists and on the map.
+  const numbers = useMemo(() => routeNumbers(routeOrder(route, workStops)), [route, workStops]);
+  const work = useMemo(
+    () => ({
+      stops: workStops,
+      done: (jobId: string) => {
+        const s = workStops.find((w) => w.jobId === jobId);
+        const rec = works.get(jobId);
+        return !!s && workStatus(s.record, rec, !!rec && failedWork.has(rec.clientId)).tone === "ok";
+      },
+    }),
+    [workStops, works, failedWork],
+  );
 
   if (loading) return <p className="muted pad">Loading your route…</p>;
 
@@ -277,13 +291,15 @@ export default function TechApp() {
             route={route}
             fetchedAt={fetchedAt}
             inspections={inspections}
-            onOpen={(jobId) => setView({ name: "stop", jobId })}
+            onOpen={(jobId) => setView(workStops.some((w) => w.jobId === jobId) ? { name: "work", jobId } : { name: "stop", jobId })}
             onRefresh={() => void refresh()}
             view={routeView}
             onView={setRouteView}
+            work={work}
+            numbers={numbers}
           />
         )}
-        {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} onOpen={(jobId) => setView({ name: "work", jobId })} />}
+        {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} numbers={numbers} onOpen={(jobId) => setView({ name: "work", jobId })} />}
         {view.name === "list" && pumpingField && (
           <button className="secondary" data-testid="open-disposal" onClick={() => setView({ name: "disposal" })}>
             Record disposal

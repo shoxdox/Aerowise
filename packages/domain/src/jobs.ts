@@ -94,6 +94,8 @@ export const stop = z.object({
     .object({ id, number: z.number().int(), label: z.string(), title: z.string(), category: z.enum(WORK_CATEGORIES), workTypeName: z.string(), visitNumber: z.number().int() })
     .nullable()
     .optional(),
+  /** Minutes on site for a work visit, from its kind of work; null means the company's average stop length. */
+  durationMinutes: z.number().int().nullable().optional(),
   /** What the site's reporting authority adds to the inspection. Only on the technician's route. */
   requirements: inspectionRequirements.nullable().optional(),
 });

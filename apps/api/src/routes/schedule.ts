@@ -49,6 +49,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "wo.title as workOrderTitle",
         "wo.category as workOrderCategory",
         "wt.name as workTypeName",
+        "wt.defaultDurationMinutes as durationMinutes",
         "j.status",
         "j.routePosition",
         "j.scheduledDate",
@@ -142,6 +143,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       r.workOrderId && r.workOrderNumber !== null && r.workOrderTitle && r.workOrderCategory && r.workTypeName
         ? { id: r.workOrderId, number: r.workOrderNumber, label: workOrderLabel(r.workOrderNumber), title: r.workOrderTitle, category: r.workOrderCategory, workTypeName: r.workTypeName, visitNumber: r.visitNumber ?? 1 }
         : null,
+    durationMinutes: r.durationMinutes ?? null,
   });
 
   async function assertAssignable(organizationId: string, userId: string) {
