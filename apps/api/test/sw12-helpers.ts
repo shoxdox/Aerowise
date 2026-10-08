@@ -1,6 +1,7 @@
 import { snapshotSha256 } from "@aerowise/domain";
 import { sql } from "kysely";
 import { expect } from "vitest";
+import type { App } from "../src/app.ts";
 import { createUser, type TestContext } from "./helpers.ts";
 import { completeValues, JPEG, payload, setup, uploadRequiredPhotos } from "./inspection-helpers.ts";
 
@@ -20,6 +21,8 @@ export const SCOPE = [
   /^\/invoices\/:id\/(deposit|refund-job)/,
   /^\/(issues|service-requests)\/:id\/(work-order|estimate)/,
   /^\/jobs\/:id\/work-record/,
+  // SW-6 (flag pumping).
+  /^\/(vehicles|disposal|pumping)/,
 ];
 
 /** Each route Fastify knows, as [method, full path], from its printed route tree. */
@@ -35,6 +38,21 @@ export function routeTable(tree: string): [string, string][] {
     for (const method of m[2]?.split(", ") ?? []) if (method !== "HEAD") out.push([method, stack.join("")]);
   }
   return out;
+}
+
+/**
+ * Each registered route as [method, path] with its own parameter names. The printed route tree
+ * merges parameter names that share a node (":groupId|:clientId"), so each tree route is matched
+ * to the OpenAPI path registered with it; a route with no OpenAPI entry keeps its tree path.
+ */
+export async function registeredRoutes(app: App): Promise<[string, string][]> {
+  const spec = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as { paths: Record<string, Record<string, unknown>> };
+  const specRoutes = Object.entries(spec.paths).flatMap(([p, ops]) => Object.keys(ops).map((m) => [m.toUpperCase(), p.replace(/\{([A-Za-z]+)\}/g, ":$1")] as [string, string]));
+  return routeTable(app.printRoutes({ commonPrefix: false })).map(([method, path]) => {
+    const pattern = new RegExp(`^${path.replace(/:[A-Za-z]+(\|:[A-Za-z]+)*/g, (names) => `:(${names.replaceAll(":", "")})`)}$`);
+    const found = specRoutes.filter(([m, p]) => m === method && pattern.test(p));
+    return found.length === 1 ? found[0]! : [method, path];
+  });
 }
 
 /** Company B with one of everything the swept routes take an id for. */
@@ -85,6 +103,35 @@ export async function richTenant(c: TestContext) {
   expect((await s.api.patch(`/jobs/${held.jobId}`, { technicianId: other.id })).statusCode).toBe(200);
   await sendAll(held);
 
+  // SW-6: a truck, a facility, a pump-out recorded with its visit, and a disposal load with its
+  // manifest photo, all on the technician's phone.
+  const truck = (await s.api.post("/vehicles", { name: "Truck 1", capacityGallons: 3000 })).json();
+  const facility = (await s.api.post("/disposal-facilities", { name: "Example Water Reclamation", kind: "wastewater_treatment_plant", city: "Austin" })).json();
+  const pumpingType = (await s.api.get("/work-types")).json().items.find((t: { key: string }) => t.key === "pumping");
+  const pumpingForm = (await s.techApi.get("/form-templates/work-pumping")).json();
+  const pwo = (await s.api.post("/work-orders", { siteId: s.site.id, workTypeId: pumpingType.id })).json();
+  const pjob = (await s.api.post(`/work-orders/${pwo.id}/schedule`, { technicianId: s.tech.id, scheduledDate: "2026-03-01" })).json().visits[0].jobId;
+  const pclient = crypto.randomUUID();
+  const pumpBody = (status: string, revision: number) => ({
+    clientId: pclient,
+    jobId: pjob,
+    templateId: pumpingForm.id,
+    status,
+    revision,
+    arrivedAt: "2026-03-01T15:00:00Z",
+    completedAt: status === "completed" ? "2026-03-01T16:00:00Z" : null,
+    values: { tank_count: 1, lid_condition: "good" },
+    pumpOut: { clientId: crypto.randomUUID(), volume: 1000, unit: "gallons", wasteType: "septage", tanks: [{ label: "Tank 1", volume: 1000 }], vehicleId: truck.id },
+  });
+  await s.techApi.put("/work/sync", pumpBody("draft", 1));
+  expect((await s.techApi.put("/work/sync", pumpBody("completed", 2))).json().status).toBe("completed");
+  const pumpingGroup = (await s.api.get(`/pumping-records?workOrderId=${pwo.id}`)).json().items[0].groupId as string;
+  const loadClient = crypto.randomUUID();
+  const loaded = await s.techApi.put("/disposal/loads/sync", { clientId: loadClient, vehicleId: truck.id, facilityId: facility.id, deliveredOn: "2026-03-01", manifestReference: "M-1001", total: 1000, unit: "gallons", pumpingGroupIds: [pumpingGroup] });
+  expect(loaded.statusCode, loaded.body).toBe(201);
+  const manifest = await s.techApi.putImage(`/disposal/loads/${loadClient}/photos/${crypto.randomUUID()}`, JPEG, { "x-photo-key": "manifest" });
+  expect(manifest.statusCode, manifest.body).toBe(201);
+
   const one = async (q: ReturnType<typeof sql<{ id: string }>>) => (await q.execute(c.db)).rows[0]?.id;
   const org = s.org.id;
   const ids: Record<string, string | undefined> = {
@@ -103,6 +150,12 @@ export async function richTenant(c: TestContext) {
     contracts: s.contract.id,
     sites: s.site.id,
     jobs: done.jobId,
+    vehicles: truck.id,
+    "disposal-facilities": facility.id,
+    "pumping-records": pumpingGroup,
+    "disposal/loads": loaded.json().groupId,
+    // Keyed by parameter name where one path prefix takes two kinds of id.
+    "disposal/loads:clientId": loadClient,
   };
   return { ...s, ids, formSaved: form.statusCode };
 }
@@ -126,9 +179,93 @@ export function urlFor(path: string, ids: Record<string, string | undefined>, ta
   const first = segs.findIndex((x) => x.startsWith(":"));
   if (first < 0) return path;
   const lit = segs.slice(1, first);
-  const id = target ?? ids[lit.slice(-2).join("/")] ?? ids[lit.at(-1)!];
+  const name = segs[first]!.slice(1);
+  const id = target ?? ids[`${lit.slice(-2).join("/")}:${name}`] ?? ids[lit.slice(-2).join("/")] ?? ids[lit.at(-1)!];
   if (!id) return null;
   // Required query strings, filled with the company's values or a well-formed nonsense signature.
   const query = path === "/sites/:id/contract-terms" ? `?planId=${ids.plans}&startOn=2026-03-01` : path === "/work-files/:id" ? `?exp=${Date.now() + 60_000}&sig=x` : "";
   return segs.map((x, i) => (i === first ? id : x.startsWith(":") ? crypto.randomUUID() : x)).join("/") + query;
 }
+
+/** Valid bodies for each swept write. `a` holds company A's own ids, so only company B's id in the
+ * URL (or named in the body) can be what is refused. */
+export type Own = { workTypeId: string; techId: string; siteId: string; truckId: string; facilityId: string; b: Record<string, string | undefined> };
+const req = () => ({ requestId: crypto.randomUUID(), amountCents: 100, reason: "Sweep" });
+const summary = { workDone: "Reset alarm", parts: [], notes: "" };
+export const BODIES: Record<string, (a: Own) => object> = {
+  "POST /invoices/:id/deposit/refund": req,
+  "POST /invoices/:id/deposit/retain": req,
+  "POST /invoices/:id/deposit/shortfall": () => ({ ...req(), kind: "write_off" }),
+  "POST /invoices/:id/refund-job": req,
+  "POST /issues/:id/work-order": (a) => ({ workTypeId: a.workTypeId, title: "Sweep" }),
+  "POST /issues/:id/estimate": () => ({ lines: [{ description: "Sweep", quantity: 1, unitPriceCents: 100 }] }),
+  "POST /service-requests/:id/work-order": (a) => ({ workTypeId: a.workTypeId, title: "Sweep" }),
+  "POST /service-requests/:id/estimate": () => ({ lines: [{ description: "Sweep", quantity: 1, unitPriceCents: 100 }] }),
+  "POST /contracts/:id/renew": () => ({ priceCents: 100 }),
+  "POST /contracts/:id/cancel": () => ({ reason: "Sweep" }),
+  "POST /contracts/:id/invoice": () => ({}),
+  "POST /contracts/:id/document": () => ({ filename: "sweep.pdf", contentBase64: Buffer.from("%PDF-1.4 sweep").toString("base64") }),
+  "POST /contracts/:id/discontinuation-notice": () => ({ sentOn: "2026-03-01", note: "Sweep notice" }),
+  "PUT /contracts/:id/filing-basis": () => ({ basis: "renewal", basisOn: "2026-03-01" }),
+  "PUT /contracts/:id/provider": () => ({ credentialId: null }),
+  "PATCH /service-items/:id": () => ({ name: "Sweep" }),
+  "PATCH /plans/:id": () => ({ name: "Sweep" }),
+  "POST /plans/:id/versions": () => ({ termsText: "Fictional sweep terms text.", options: [], coverage: [] }),
+  "PATCH /work-types/:id": () => ({ name: "Sweep" }),
+  "PATCH /work-orders/:id": () => ({ title: "Sweep" }),
+  "POST /work-orders/:id/schedule": (a) => ({ technicianId: a.techId, scheduledDate: "2026-03-02" }),
+  "POST /work-orders/:id/cancel": () => ({ reason: "Sweep" }),
+  "POST /work-orders/:id/complete": () => ({ reason: "Sweep" }),
+  "POST /work-orders/:id/coverage/apply": () => ({}),
+  "POST /work-orders/:id/coverage/decline": () => ({ reason: "Sweep" }),
+  "POST /work-orders/:id/coverage/restore": () => ({ reason: "Sweep" }),
+  "POST /work-orders/:id/invoice": () => ({}),
+  "POST /work-orders/:id/notes": () => ({ body: "Sweep" }),
+  "POST /work/conflicts/:id/attach": () => ({ note: "Sweep" }),
+  "POST /work/conflicts/:id/dismiss": () => ({ reason: "Sweep" }),
+  "PUT /work/:clientId/signatures/:signatureClientId": () => ({
+    requirementKey: "customer_signoff",
+    signerName: "Pat",
+    capture: { kind: "typed" },
+    summary,
+    summarySha256: "0".repeat(64),
+    consentText: "I confirm this work was done.",
+    signedAt: "2026-03-01T15:55:00Z",
+  }),
+  "PATCH /estimates/:id": () => ({ title: "Sweep" }),
+  "POST /estimates/:id/send": () => ({ email: false }),
+  "POST /estimates/:id/link": () => ({}),
+  "POST /estimates/:id/revise": () => ({}),
+  "POST /estimates/:id/record-acceptance": () => ({ evidence: "Sweep" }),
+  "POST /estimates/:id/void": () => ({ reason: "Sweep" }),
+  "POST /estimates/:id/cancel": () => ({ reason: "Sweep" }),
+  // SW-6.
+  "PATCH /vehicles/:id": () => ({ name: "Sweep" }),
+  "PATCH /disposal-facilities/:id": () => ({ name: "Sweep" }),
+  "POST /pumping-records/:groupId/correct": (a) => ({ volume: 900, unit: "gallons", wasteType: "septage", vehicleId: a.truckId, serviceDate: "2026-03-01", reason: "Sweep" }),
+  "POST /disposal/loads/:groupId/correct": (a) => ({ vehicleId: a.truckId, facilityId: a.facilityId, deliveredOn: "2026-03-02", manifestReference: "M-9", total: 900, unit: "gallons", reason: "Sweep" }),
+  "POST /disposal/loads/:groupId/items": () => ({ pumpingGroupId: crypto.randomUUID() }),
+  "POST /disposal/loads/:groupId/items/remove": () => ({ pumpingGroupId: crypto.randomUUID(), reason: "Sweep" }),
+  // Writes with no id in the URL that name company B's records in the body.
+  "POST /work-orders": (a) => ({ siteId: a.b.sites, workTypeId: a.workTypeId }),
+  "POST /estimates": (a) => ({ siteId: a.b.sites, lines: [{ description: "Sweep", quantity: 1, unitPriceCents: 100 }] }),
+  "PUT /disposal/loads/sync": (a) => ({ clientId: crypto.randomUUID(), vehicleId: a.truckId, facilityId: a.facilityId, deliveredOn: "2026-03-01", manifestReference: "M-9", total: 1000, unit: "gallons", pumpingGroupIds: [a.b["pumping-records"]] }),
+  "PUT /work/sync": (a) => ({ clientId: crypto.randomUUID(), jobId: a.b.jobs, templateId: crypto.randomUUID(), status: "draft", revision: 1, arrivedAt: "2026-03-01T15:00:00Z", completedAt: null, values: {}, summary }),
+};
+/** Writes whose body names no record at all: nothing of another company to reach. */
+export const NO_FOREIGN_IDS: Record<string, string> = {
+  "POST /service-items": "creates the caller's own item from plain fields",
+  "POST /plans": "creates the caller's own plan from plain fields",
+  "POST /work-types": "creates the caller's own work type from plain fields",
+  "POST /intake-forms": "creates the caller's own form from plain fields",
+  "POST /vehicles": "creates the caller's own truck from plain fields",
+  "POST /disposal-facilities": "creates the caller's own facility from plain fields",
+  "PATCH /pumping/settings": "changes the caller's own company setting",
+  "POST /form-templates/:key/versions": "forms are keyed per company: the key names the caller's own form (checked below)",
+};
+/** Query strings some lists require. */
+export const LIST_QUERY: Record<string, string> = {
+  "/work/route": "?date=2026-03-01",
+  "/disposal/log.csv": "?from=2026-02-01&to=2026-03-31",
+  "/disposal/log.pdf": "?from=2026-02-01&to=2026-03-31",
+};
