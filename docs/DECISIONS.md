@@ -754,3 +754,8 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Numbers.** `WO-1001` onward per company from `organizations.next_work_order_number`, incremented in the creating transaction, so a refused create gives no number away.
 - **Quantities in thousandths.** Work order lines keep `quantity_milli` (1.5 hours is 1500); the API takes a decimal with at most three places. Invoicing from these lines is SW-3; until then an office invoice line can name a work visit's job.
 - **Demo story.** With the flag on, yesterday's inspections note a repair and a pump-out; the pump-out becomes a work order completed yesterday ("Fictional: …" as the reason) and invoiced against its visit, the repair is scheduled for tomorrow, and a homeowner's portal request (odor) becomes a third, ready to schedule. All through the API conversions, so they are exercised. The nightly reset removes them with the public demo (tested); prospect demos keep theirs like every other table.
+
+## 2026-10-07 · SW-2a Phone compatibility release (merged #99)
+
+- **An outbox op of an unknown kind holds back later ops of the same record** (`inspectionClientId`), so a record's changes never send out of order after a rollback. Other records keep sending. Failed ops still don't block, as before.
+- **Contract for SW-2:** the work DB name (`aerowise-tech-work:<org>:<user>`) and its `outbox` store name are fixed by SW-2a, and SW-2 must never raise the inspection DB's version.

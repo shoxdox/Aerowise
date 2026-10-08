@@ -1,6 +1,6 @@
 "use client";
 
-import { activeTenant, sameTenant, storeFor, type LocalInspection, type QueuedOp, type Tenant, type TenantStore } from "./db";
+import { activeTenant, isKnownOp, sameTenant, storeFor, type LocalInspection, type QueuedOp, type StoredOp, type Tenant, type TenantStore } from "./db";
 
 // Sends the outbox to the server, oldest first. Every request is idempotent on the
 // server (keyed by ids the phone created), so sending something twice — after a timeout,
@@ -13,15 +13,44 @@ import { activeTenant, sameTenant, storeFor, type LocalInspection, type QueuedOp
 export const TENANT_HEADER = "x-aerowise-tenant";
 export const tenantHeader = (t: Tenant) => ({ [TENANT_HEADER]: `${t.organizationId}:${t.userId}` });
 
-export type SyncState =
-  | { kind: "idle"; pending: number; failed: number }
-  | { kind: "syncing"; pending: number; failed: number }
-  | { kind: "offline"; pending: number; failed: number }
-  | { kind: "signed_out"; pending: number; failed: number }
-  /** The phone is now signed in as someone else: this sign-in's changes wait on the phone. */
-  | { kind: "other_account"; pending: number; failed: number }
-  /** The company's Aerowise plan has lapsed: changes wait on the phone until it is reactivated. */
-  | { kind: "read_only"; pending: number; failed: number };
+/**
+ * `pending`: changes this version sends. `waiting`: changes a later app version saved that this
+ * one cannot send; they stay on the phone, untouched, until the app updates.
+ */
+type Counts = { pending: number; failed: number; waiting?: number };
+
+export type SyncState = Counts &
+  (
+    | { kind: "idle" }
+    | { kind: "syncing" }
+    | { kind: "offline" }
+    | { kind: "signed_out" }
+    /** The phone is now signed in as someone else: this sign-in's changes wait on the phone. */
+    | { kind: "other_account" }
+    /** The company's Aerowise plan has lapsed: changes wait on the phone until it is reactivated. */
+    | { kind: "read_only" }
+  );
+
+/**
+ * Splits the outbox, oldest first, into what this version can send now and what waits for a
+ * later one. An op of a kind this version does not know holds back the later ops of the same
+ * record, so one record's changes never reach the server out of order.
+ */
+export function runnableOps(ops: StoredOp[]): { runnable: QueuedOp[]; waiting: number; failed: number } {
+  const held = new Set<string>();
+  const runnable: QueuedOp[] = [];
+  let waiting = 0;
+  let failed = 0;
+  for (const op of ops) {
+    if (op.failed) failed++;
+    else if (!isKnownOp(op)) {
+      waiting++;
+      if (op.inspectionClientId) held.add(op.inspectionClientId);
+    } else if (held.has(op.inspectionClientId)) waiting++;
+    else runnable.push(op);
+  }
+  return { runnable, waiting, failed };
+}
 
 type Listener = (s: SyncState) => void;
 const listeners = new Set<Listener>();
@@ -123,25 +152,25 @@ async function drainOnce() {
     return;
   }
   const store = storeFor(tenant);
+  const work = await store.pendingWork();
   for (;;) {
     // Signed in as someone else since this pass began: the next pass sends theirs.
     if (!sameTenant(activeTenant(), tenant)) return;
-    const ops = await store.allOps();
-    const live = ops.filter((o) => !o.failed);
-    const failed = ops.length - live.length;
+    const { runnable: live, waiting, failed } = runnableOps(await store.allOps());
+    const counts = { pending: live.length, failed, waiting: waiting + work };
     const next = live[0];
     if (!next) {
-      emit({ kind: "idle", pending: 0, failed });
+      emit({ kind: "idle", ...counts });
       return;
     }
-    emit({ kind: "syncing", pending: live.length, failed });
+    emit({ kind: "syncing", ...counts });
     const inspections = new Map((await store.allInspections()).map((i) => [i.clientId, i]));
     try {
       await runOp(store, next, live, inspections);
     } catch (err) {
       if (err instanceof RetryLater) {
         const kind = err.reason === "server" ? "idle" : err.reason;
-        emit({ kind, pending: live.length, failed });
+        emit({ kind, ...counts });
         return;
       }
       throw err;

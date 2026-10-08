@@ -3,6 +3,7 @@ import type { SyncState } from "@/lib/offline/sync";
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export function SyncBanner({ state, failures, needsSignIn, onRetry }: { state: SyncState; failures: string[]; needsSignIn: boolean; onRetry: () => void }) {
+  const waiting = state.waiting ?? 0;
   return (
     <div className="sync-area">
       {needsSignIn && (
@@ -27,8 +28,16 @@ export function SyncBanner({ state, failures, needsSignIn, onRetry }: { state: S
           )}
         </p>
       ) : (
-        <p className="sync ok" role="status" data-testid="sync-status">
-          All changes sent
+        waiting === 0 && (
+          <p className="sync ok" role="status" data-testid="sync-status">
+            All changes sent
+          </p>
+        )
+      )}
+      {waiting > 0 && (
+        // Saved by a later version of the app, which this one cannot send: kept until it updates.
+        <p className="sync warn" role="status" data-testid="update-waiting">
+          {plural(waiting, "item")} will send after the app updates. {waiting === 1 ? "It is" : "They are"} saved on this phone.
         </p>
       )}
       {failures.length > 0 && (
