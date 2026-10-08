@@ -26,12 +26,11 @@ export default function InvoicePage() {
   const [refunding, setRefunding] = useState<Payment | null>(null);
   const [copied, setCopied] = useState(false);
   const [texted, setTexted] = useState<string | null>(null);
+  // One id per opened "Refund the job": a retry or a second click sends the same one, so the money moves once.
+  const [refundJobRequestId, setRefundJobRequestId] = useState("");
 
   if (error) return <p className="error">{error}</p>;
   if (!inv) return <p className="muted">Loading…</p>;
-
-  // One id per opened "Refund the job": a retry or a second click sends the same one, so the money moves once.
-  const [refundJobRequestId, setRefundJobRequestId] = useState("");
 
   async function run(path: string, body: object = {}, after?: () => void) {
     setBusy(true);

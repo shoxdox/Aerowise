@@ -523,6 +523,65 @@ describe("deposits", () => {
     expect(await expectEquality(t, a.estimateId)).toMatchObject({ retained: 2000, returned: 8000, free: 0 });
   });
 
+  it("stops collecting a partly paid deposit when the estimate is cancelled, and keeps a late provider payment for the office", async () => {
+    const t = await tenant(ctx);
+    const a = await accepted(t, 20000, 10000);
+    const anon = (method: "GET" | "POST", url: string, payload?: object) => ctx.app.inject({ method, url, ...(payload ? { payload } : {}) });
+    const { publicToken } = await ctx.db.selectFrom("invoices").select("publicToken").where("id", "=", a.depositId).executeTakeFirstOrThrow();
+    // The office recorded part of the deposit; the homeowner opened the card page for the rest.
+    expect((await t.api.post(`/invoices/${a.depositId}/payments`, { amountCents: 4000, method: "check", receivedOn: "2026-03-01" })).statusCode).toBe(200);
+    const opened = await anon("POST", `/pay/${publicToken}/checkout`, {});
+    expect(opened.statusCode, opened.body).toBe(200);
+    const sessionId = new URL(opened.json().url).searchParams.get("session")!;
+
+    const c = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed mind" });
+    expect(c.statusCode, c.body).toBe(200);
+    expect(c.json().deposit).toMatchObject({ invoice: { status: "open" }, balances: { received: 4000, free: 4000 } });
+    expect(await ctx.db.selectFrom("checkoutSessions").select("status").where("providerSessionId", "=", sessionId).executeTakeFirstOrThrow()).toEqual({ status: "expired" });
+    // No new page: the pay link says why, the checkout is refused, and the estimate page no longer offers it.
+    const page = (await anon("GET", `/pay/${publicToken}`)).json();
+    expect(page).toMatchObject({ canPayOnline: false, closedReason: expect.stringContaining("cancelled") });
+    const again = await anon("POST", `/pay/${publicToken}/checkout`, {});
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toBe("payment_closed");
+
+    // The provider completes the page the homeowner already had open (and says so twice): the money is kept, once, for the office.
+    for (let i = 0; i < 2; i++) expect((await anon("POST", `/pay/${publicToken}/test-checkout`, { sessionId, outcome: "card" })).statusCode).toBe(200);
+    expect(await ledger(a.depositId)).toEqual([
+      ["received", 4000],
+      ["received", 6000],
+    ]);
+    expect(await refundRows(a.depositId)).toEqual([]);
+    expect(await inbox(t)).toMatchObject([{ kind: "deposit_disposition", detail: expect.stringContaining("$100.00") }]);
+    expect(await expectEquality(t, a.estimateId)).toMatchObject({ received: 10000, free: 10000 });
+  });
+
+  it("cancels while a bank payment of the deposit is clearing: it is kept for the office if it clears, and nothing is owed if it fails", async () => {
+    for (const outcome of ["ach_clears", "ach_fails"] as const) {
+      const t = await tenant(ctx, `Org ${outcome}`);
+      const a = await accepted(t, 20000, 10000);
+      const { publicToken } = await ctx.db.selectFrom("invoices").select("publicToken").where("id", "=", a.depositId).executeTakeFirstOrThrow();
+      const opened = await ctx.app.inject({ method: "POST", url: `/pay/${publicToken}/checkout`, payload: {} });
+      const sessionId = new URL(opened.json().url).searchParams.get("session")!;
+      expect((await ctx.app.inject({ method: "POST", url: `/pay/${publicToken}/test-checkout`, payload: { sessionId, outcome: "ach_pending" } })).statusCode).toBe(200);
+      const c = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed mind" });
+      expect(c.statusCode, c.body).toBe(200);
+      expect(c.json().deposit.invoice.status).toBe("open");
+      expect(await inbox(t)).toEqual([]);
+      // The bank's answer arrives after the cancellation.
+      expect((await ctx.app.inject({ method: "POST", url: `/pay/${publicToken}/test-checkout`, payload: { sessionId, outcome } })).statusCode).toBe(200);
+      const b = await expectEquality(t, a.estimateId);
+      if (outcome === "ach_clears") {
+        expect(b).toMatchObject({ received: 10000, free: 10000 });
+        expect((await inbox(t)).map((i: { kind: string }) => i.kind)).toEqual(["deposit_disposition"]);
+      } else {
+        expect(b).toMatchObject({ received: 0, free: 0 });
+        expect(await inbox(t)).toEqual([]);
+      }
+      expect(await refundRows(a.depositId)).toEqual([]);
+    }
+  });
+
   it("returns the first result for a repeated deposit refund request, sequential or at once, and refuses the id with other details", async () => {
     const t = await tenant(ctx);
     const a = await accepted(t, 20000, 10000);

@@ -123,4 +123,28 @@ test("an estimate asks for a deposit: the homeowner sees it, accepts, pays it by
   await expect(page.getByTestId("deposit-panel")).toBeVisible();
   await expect(page.getByTestId("deposit-received")).toHaveText("$150.00");
   await expect(page.getByTestId("deposit-free")).toHaveText("$150.00");
+
+  // The deposit invoice's own page loads (it renders every hook before and after loading).
+  const estimateUrl = page.url();
+  await page.getByTestId("deposit-panel").getByRole("link").first().click();
+  await page.waitForURL(/\/invoices\/[0-9a-f-]{36}$/);
+  await expect(page.getByText(/Deposit for EST-/).first()).toBeVisible();
+
+  // The final invoice takes the deposit when issued; "Refund the job" gives part of it back.
+  const estimateId = estimateUrl.split("/").pop()!;
+  const est = await (await page.request.get(`/api/estimates/${estimateId}`)).json();
+  const made = await page.request.post(`/api/work-orders/${est.workOrder.id}/invoice`, { data: {} });
+  expect(made.status()).toBe(201);
+  const finalId = (await made.json()).invoiceId as string;
+  const issued = await page.request.post(`/api/invoices/${finalId}/issue`, { data: { send: false } });
+  expect(issued.status(), await issued.text()).toBe(200);
+  await page.goto(`/invoices/${finalId}`);
+  await expect(page.getByText("Deposit applied")).toBeVisible();
+  await page.getByRole("button", { name: "Refund the job" }).click();
+  const form = page.getByRole("form", { name: "Refund the job" });
+  await form.getByLabel("Amount ($)").fill("50");
+  await form.getByLabel("Reason").fill("Part of the job not needed");
+  await form.getByRole("button", { name: "Refund", exact: true }).click();
+  await expect(form).toBeHidden();
+  await expect(page.getByText(/Refund of the job, \$50\.00/)).toBeVisible();
 });
