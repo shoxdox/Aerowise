@@ -2,6 +2,7 @@ import { z } from "zod";
 import { id } from "./crm.ts";
 import { signatureCapture } from "./forms.ts";
 import { validationProblem } from "./inspections.ts";
+import { COVERAGE_EFFECTS } from "./plans.ts";
 import { WORK_CATEGORIES } from "./work.ts";
 
 // What the phone sends for a work visit (SW-2) and what the server answers. Mirrors the
@@ -155,5 +156,11 @@ export const workStop = z.object({
   templateId: id.nullable(),
   /** This technician's record for the visit, if the server has one. */
   record: z.object({ clientId: z.string(), status: z.enum(["draft", "completed"]) }).nullable(),
+  /**
+   * What the site's plan covers for this work, as the technician may see it: the plan and its
+   * rules, never prices or percentages. Null when no plan covers it; absent when the company
+   * does not use plan coverage, or on a route saved before this existed.
+   */
+  coverage: z.object({ planName: z.string(), rules: z.array(z.object({ label: z.string(), effect: z.enum(COVERAGE_EFFECTS) })) }).nullable().optional(),
 });
 export type WorkStop = z.infer<typeof workStop>;

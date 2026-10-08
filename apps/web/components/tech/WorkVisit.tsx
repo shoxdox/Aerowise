@@ -81,6 +81,7 @@ export function WorkVisit({
         <p className="muted small">
           {stop.workTypeName} · visit {stop.visitNumber}
         </p>
+        {stop.coverage !== undefined && <WorkCoverageNote coverage={stop.coverage} />}
         <p className={`badge ${status.tone}`} data-testid="work-visit-status">
           {status.label}
         </p>
@@ -114,6 +115,29 @@ export function WorkVisit({
         <p className="muted">This kind of work has no form on the phone. Tell the office how it went; they record it.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * What the customer's plan covers for this work, for the technician: covered or not, never a
+ * price (plan §4.3). Informational; the office's invoice decides what is billed.
+ */
+function WorkCoverageNote({ coverage }: { coverage: NonNullable<WorkStop["coverage"]> | null }) {
+  const rules = coverage?.rules.filter((r) => r.effect !== "excluded") ?? [];
+  if (!coverage || rules.length === 0)
+    return (
+      <p className="badge" data-testid="work-coverage">
+        Not covered, quote needed
+      </p>
+    );
+  return (
+    <ul className="plain small" data-testid="work-coverage">
+      {rules.map((r) => (
+        <li key={r.label}>
+          <span className="badge ok">{r.effect === "included" ? "Covered" : "Partly covered"}</span> by {coverage.planName}: {r.label}
+        </li>
+      ))}
+    </ul>
   );
 }
 

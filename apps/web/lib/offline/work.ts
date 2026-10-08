@@ -126,6 +126,27 @@ export function withSentState(form: LocalWork, stored: LocalWork | undefined): L
   };
 }
 
+/**
+ * Photos and signatures of a record the server has as completed that the phone still lists as
+ * not sent, with nothing queued for them. The phone completes a record only once its uploads
+ * have gone, so the server's completion is their delivery receipt; an upload still queued, or
+ * turned down, keeps its own op and stays not sent.
+ */
+function deliveredUnmarked(rec: LocalWork, ops: StoredWorkOp[]): { photos: Set<string>; signatures: Set<string> } {
+  const photos = new Set<string>();
+  const signatures = new Set<string>();
+  if (rec.server?.status !== "completed") return { photos, signatures };
+  const queued = new Set(
+    ops.flatMap((o) => {
+      const op = o as { photoClientId?: unknown; signatureClientId?: unknown };
+      return [op.photoClientId, op.signatureClientId].filter((x): x is string => typeof x === "string");
+    }),
+  );
+  for (const p of rec.photos) if (!p.uploaded && !queued.has(p.clientId)) photos.add(p.clientId);
+  for (const s of rec.signatures) if (!s.uploaded && !queued.has(s.clientId)) signatures.add(s.clientId);
+  return { photos, signatures };
+}
+
 const STORES: StoreSpecs = {
   kv: undefined,
   records: { keyPath: "clientId" },
@@ -240,6 +261,36 @@ export function workStoreFor(t: KnownTenant) {
         for (const signatureClientId of extra.signatureClientIds ?? []) outbox.add({ kind: "work-signature", recordClientId: rec.clientId, signatureClientId } satisfies WorkOp);
         await queueSync(outbox, rec.clientId);
       }),
+
+    /**
+     * Marks as sent what the server's completion shows was delivered but the phone still lists as
+     * not sent (an earlier version could save a form's older copy over the sent marks). Returns
+     * how many it marked; changes nothing else, and never touches the outbox.
+     */
+    reconcileSent: async () => {
+      const [records, ops] = await Promise.all([readAll<LocalWork>(t, "records"), readOps(t)]);
+      const unmarked = (r: LocalWork, queued: StoredWorkOp[]) => {
+        const d = deliveredUnmarked(r, queued);
+        return d.photos.size + d.signatures.size;
+      };
+      if (!records.some((r) => unmarked(r, ops) > 0)) return 0;
+      return run(["records", "outbox"], "readwrite", async (trx) => {
+        const store = trx.objectStore("records");
+        const queued = (await done(trx.objectStore("outbox").getAll())) as StoredWorkOp[];
+        let marked = 0;
+        for (const rec of (await done(store.getAll())) as LocalWork[]) {
+          if (unmarked(rec, queued) === 0) continue;
+          const d = deliveredUnmarked(rec, queued);
+          marked += d.photos.size + d.signatures.size;
+          store.put({
+            ...rec,
+            photos: rec.photos.map((p) => (d.photos.has(p.clientId) ? { ...p, uploaded: true } : p)),
+            signatures: rec.signatures.map((s) => (d.signatures.has(s.clientId) ? { ...s, uploaded: true } : s)),
+          });
+        }
+        return marked;
+      });
+    },
 
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedWorkOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),

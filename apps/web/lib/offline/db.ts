@@ -350,6 +350,18 @@ async function txOn<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransaction
 export type QueuedOp = OutboxOp & { seq: number };
 
 /**
+ * Photos of an inspection the server has as completed that the phone still lists as not sent,
+ * with nothing queued for them. The phone completes an inspection only once its photos have gone,
+ * so the server's completion is their delivery receipt; a photo still queued, or turned down,
+ * keeps its own op and stays not sent.
+ */
+function deliveredUnmarked(insp: LocalInspection, ops: StoredOp[]): Set<string> {
+  if (insp.server?.status !== "completed") return new Set();
+  const queued = new Set(ops.map((o) => (o as { photoClientId?: unknown }).photoClientId).filter((x): x is string => typeof x === "string"));
+  return new Set(insp.photos.filter((p) => !p.uploaded && !queued.has(p.clientId)).map((p) => p.clientId));
+}
+
+/**
  * The form's copy of an inspection with what sending has since recorded on the phone's copy: the
  * photos that reached the server and the server's answer. The form only edits the inspection, so
  * its older copy of these must never undo them.
@@ -408,6 +420,31 @@ export function storeFor(t: KnownTenant) {
         const last = mine[mine.length - 1];
         if (photo || !last || last.kind !== "sync") outbox.add({ kind: "sync", inspectionClientId: insp.clientId } satisfies OutboxOp);
       }),
+
+    /**
+     * Marks as sent the photos the server's completion shows were delivered but the phone still
+     * lists as not sent (an earlier version could save a form's older copy over the sent marks).
+     * Returns how many it marked; changes nothing else, and never touches the outbox.
+     */
+    reconcileSent: async () => {
+      const [inspections, ops] = await run(["inspections", "outbox"], "readonly", async (trx) => [
+        (await done(trx.objectStore("inspections").getAll())) as LocalInspection[],
+        (await done(trx.objectStore("outbox").getAll())) as StoredOp[],
+      ] as const);
+      if (!inspections.some((i) => deliveredUnmarked(i, ops).size > 0)) return 0;
+      return run(["inspections", "outbox"], "readwrite", async (trx) => {
+        const store = trx.objectStore("inspections");
+        const queued = (await done(trx.objectStore("outbox").getAll())) as StoredOp[];
+        let marked = 0;
+        for (const insp of (await done(store.getAll())) as LocalInspection[]) {
+          const sent = deliveredUnmarked(insp, queued);
+          if (sent.size === 0) continue;
+          marked += sent.size;
+          store.put({ ...insp, photos: insp.photos.map((p) => (sent.has(p.clientId) ? { ...p, uploaded: true } : p)) });
+        }
+        return marked;
+      });
+    },
 
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),

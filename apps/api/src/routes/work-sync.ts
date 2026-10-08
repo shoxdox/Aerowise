@@ -20,10 +20,12 @@ import {
   workSync,
   workSyncConflict,
   workPhoto,
+  type CoverageEffect,
   type Feature,
   type Role,
   type TemplateDefinition,
   type WorkRecord,
+  type WorkStop,
   type WorkSyncConflict,
 } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
@@ -84,6 +86,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
   features: ReadonlySet<Feature>;
 }> = async (app, { db, now, store, signer, features }) => {
   const enabled = features.has("field_work");
+  // Plan coverage on the technician's visits only where the company uses plan coverage (SW-8).
+  const planBuilder = features.has("plan_builder");
   // Raw photo bodies, for this plugin's routes only.
   app.addContentTypeParser(Object.keys(PHOTO_TYPES), { parseAs: "buffer", bodyLimit: MAX_PHOTO_BYTES }, (_req, body, done) => done(null, body));
 
@@ -98,6 +102,12 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
    */
   const jsonText = (column: string) => sql<string | null>`${sql.ref(column)}::text`;
   const parseJson = (text: string | null) => (text === null ? null : (JSON.parse(text) as unknown));
+  /** The work order's coverage snapshot as the technician sees it: the plan and its rules' names, no prices or percentages. */
+  const techCoverage = (snapshot: unknown): WorkStop["coverage"] => {
+    const s = snapshot as { planName?: string; covered?: boolean; rules?: { label: string; effect: CoverageEffect }[] } | null;
+    if (!s?.covered || !s.planName || !s.rules?.length) return null;
+    return { planName: s.planName, rules: s.rules.map((r) => ({ label: r.label, effect: r.effect })) };
+  };
 
   const findRecord = (ex: Executor, organizationId: string, clientId: string) =>
     ex.selectFrom("workRecords").selectAll().where("organizationId", "=", organizationId).where("offlineClientId", "=", clientId).executeTakeFirst();
@@ -658,6 +668,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           "r.offlineClientId as recordClientId",
           "r.status as recordStatus",
           "r.technicianUserId as recordTechnicianId",
+          jsonText("w.coverageSnapshot").as("coverageText"),
         ])
         .where("j.organizationId", "=", organizationId)
         .where("j.type", "=", "work")
@@ -690,6 +701,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           notes: r.notes,
           templateId: (r.defaultFormTemplateKey && forms.get(r.defaultFormTemplateKey)) || null,
           record: r.recordClientId && r.recordTechnicianId === userId ? { clientId: r.recordClientId, status: r.recordStatus! } : null,
+          ...(planBuilder ? { coverage: techCoverage(parseJson(r.coverageText)) } : {}),
         })),
       };
     },

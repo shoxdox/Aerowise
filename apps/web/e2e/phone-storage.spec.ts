@@ -228,3 +228,90 @@ test("photos sent while the form is open stay sent on the phone after finishing 
     await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
   }
 });
+
+/** Rewrites the work record on the phone, as an earlier version could have left it. */
+async function rewriteOnPhone(page: Page, title: string, change: { unmark: boolean; failedPhotoKey?: string }) {
+  await page.evaluate(
+    async ({ title, change }) => {
+      const name = (await indexedDB.databases()).map((d) => d.name!).find((n) => n.startsWith("aerowise-tech-work:"))!;
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open(name);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const trx = db.transaction(["records", "outbox"], "readwrite");
+      const records = trx.objectStore("records");
+      const all = await new Promise<{ clientId: string; label?: { title: string }; photos: { clientId: string; photoKey: string; uploaded: boolean }[]; signatures: { uploaded: boolean }[] }[]>((resolve) => {
+        const req = records.getAll();
+        req.onsuccess = () => resolve(req.result);
+      });
+      const rec = all.find((r) => r.label?.title.endsWith(title))!;
+      if (change.unmark) records.put({ ...rec, photos: rec.photos.map((p) => ({ ...p, uploaded: false })), signatures: rec.signatures.map((x) => ({ ...x, uploaded: false })) });
+      const failed = rec.photos.find((p) => p.photoKey === change.failedPhotoKey);
+      if (failed) trx.objectStore("outbox").add({ kind: "work-photo", recordClientId: rec.clientId, photoClientId: failed.clientId, failed: "Photo refused earlier" });
+      await new Promise((resolve) => (trx.oncomplete = resolve));
+      db.close();
+    },
+    { title, change },
+  );
+}
+
+// Staging, 2026-10-08 (WO1005): the phone already holds the old state, photos marked not sent
+// with nothing queued, while the server has the visit completed with both photos. Fixing the
+// save alone would not change that; the server's completion is the receipt that settles it.
+test("photos an earlier version left marked not sent read as sent once the server has the visit completed, and a turned-down photo stays not sent", async ({ page, browser }) => {
+  const api = await office(browser);
+  const title = "Float switch (old marks)";
+  const id = await repairForTess(api, title);
+  try {
+    await techPhone(page);
+    const card = page.locator(".work-card", { hasText: title });
+    await card.click();
+    await page.getByRole("button", { name: "Arrive and start work" }).click();
+    await page.getByLabel("Problem found").fill("Alarm stays on after the pump runs");
+    await page.getByLabel("Work performed").fill("Replaced the float switch and tested the alarm");
+    await page.getByRole("group", { name: "Follow-up visit needed" }).getByRole("button", { name: "No", exact: true }).click();
+    await page.getByLabel("Add photo: Before the repair").setInputFiles({ name: "before.png", mimeType: "image/png", buffer: PNG });
+    await page.getByLabel("Add photo: After the repair").setInputFiles({ name: "after.png", mimeType: "image/png", buffer: PNG });
+    await page.getByRole("button", { name: "Review and sign" }).click();
+    await page.getByLabel("Name of the person signing").fill("Pat Customer");
+    await sign(page);
+    await page.getByRole("button", { name: "Sign and finish visit" }).click();
+    await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
+    await expect(card).toContainText("Done");
+
+    await expect.poll(async () => (await workOnPhone(page, title)).ops).toEqual([]);
+
+    // The old state: everything marked not sent, nothing queued, the server has it all.
+    await rewriteOnPhone(page, title, { unmark: true });
+    expect((await workOnPhone(page, title)).ops).toEqual([]);
+    await page.reload();
+    await card.click();
+    await expect(page.getByTestId("work-visit-status")).toHaveText("Done");
+    await expect(page.locator('[data-photo="before"]')).not.toContainText("not sent yet");
+    await expect(page.locator('[data-photo="after"]')).not.toContainText("not sent yet");
+    await expect(page.getByText(/^Signed by Pat Customer/)).not.toContainText("not sent yet");
+    const repaired = await workOnPhone(page, title);
+    expect(repaired.photos.map((p) => [p.photoKey, p.uploaded])).toEqual([
+      ["before", true],
+      ["after", true],
+    ]);
+    expect(repaired.ops).toEqual([]);
+
+    // A photo with its upload turned down keeps its op and stays not sent; nothing is cleared.
+    await rewriteOnPhone(page, title, { unmark: true, failedPhotoKey: "after" });
+    await page.reload();
+    await card.click();
+    await expect(page.locator('[data-photo="before"]')).not.toContainText("not sent yet");
+    await expect(page.locator('[data-photo="after"]')).toContainText("some not sent yet");
+    await expect(page.locator(".sync.error")).toContainText("Photo refused earlier");
+    const kept = await workOnPhone(page, title);
+    expect(kept.photos.map((p) => [p.photoKey, p.uploaded])).toEqual([
+      ["before", true],
+      ["after", false],
+    ]);
+    expect(kept.ops).toEqual([expect.objectContaining({ kind: "work-photo", failed: "Photo refused earlier" })]);
+  } finally {
+    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+  }
+});

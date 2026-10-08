@@ -12,7 +12,7 @@ import { WorkStopList, workStatus } from "@/components/tech/WorkStops";
 import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
-import { activeStore, activeTenant, allInspections, allOps, saveInspection, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
+import { activeStore, activeTenant, allInspections, allOps, saveInspection, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
 import { currentPosition, loadActiveTemplate, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
@@ -60,6 +60,8 @@ export default function TechApp() {
     const tenant = activeTenant();
     if (!tenant) return;
     const work = workStoreFor(tenant);
+    // Uploads the server's completion shows were delivered read as sent, even where an earlier version lost the mark.
+    await Promise.all([storeFor(tenant).reconcileSent(), work.reconcileSent()]).catch(() => {});
     const [insp, ops, recs, workOps] = await Promise.all([allInspections(), allOps(), work.allRecords(), work.allOps()]);
     setInspections(new Map(insp.map((i) => [i.jobId, i])));
     setWorks(new Map(recs.map((r) => [r.jobId, r])));
