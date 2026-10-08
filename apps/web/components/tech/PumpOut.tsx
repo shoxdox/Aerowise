@@ -3,6 +3,7 @@
 import { formatEntered, formatGallons, VOLUME_UNITS, WASTE_TYPE_LABELS, WASTE_TYPES, type PumpingFieldData, type PumpOutInput, type VolumeUnit, type WasteType } from "@aerowise/domain";
 import { useEffect, useState, type ChangeEvent } from "react";
 import { preparePhoto } from "@/lib/offline/data";
+import { saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 import type { LocalLoad, WorkBlob, WorkStore } from "@/lib/offline/work";
 
 // SW-6 on the phone: the pump-out recorded with a pumping visit, and the disposal record for a
@@ -106,6 +107,11 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
   const [photo, setPhoto] = useState<{ blob: Blob; contentType: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // No room for a manifest photo until waiting items are sent; a load already saved is kept.
+  const storageFull = useStorageFull();
+  useEffect(() => {
+    if (!storageFull) setProblem((p) => (p === STORAGE_FULL_MESSAGE ? null : p));
+  }, [storageFull]);
 
   useEffect(() => {
     void store.allLoads().then(setLoads);
@@ -159,7 +165,8 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
       groupId: null,
     };
     try {
-      await store.saveLoad(load, photo ? { photo: { clientId: photoClientId, recordClientId: load.clientId, blob: photo.blob, contentType: photo.contentType } satisfies WorkBlob } : {});
+      // A load that does not fit is not saved at all; what was typed stays on screen to save again.
+      await saveOrReport(() => store.saveLoad(load, photo ? { photo: { clientId: photoClientId, recordClientId: load.clientId, blob: photo.blob, contentType: photo.contentType } satisfies WorkBlob } : {}));
       onDone();
     } catch (err) {
       setProblem((err as Error).message);
@@ -260,12 +267,29 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
             Notes
             <input value={notes} maxLength={2000} onChange={(e) => setNotes(e.target.value)} />
           </label>
-          <label className="button secondary photo-button">
+          <label className={`button secondary photo-button${storageFull ? " disabled" : ""}`} aria-disabled={storageFull}>
             {photo ? "Retake manifest photo" : "Add manifest photo"}
-            <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void addPhoto(e)} aria-label="Add manifest photo" />
+            <input type="file" accept="image/*" capture="environment" hidden disabled={storageFull} onChange={(e) => void addPhoto(e)} aria-label="Add manifest photo" />
           </label>
-          {photo && <p className="muted small">Manifest photo added.</p>}
-          {problem && <p className="error">{problem}</p>}
+          {photo && (
+            <p className="muted small">
+              Manifest photo added.
+              {storageFull && (
+                <>
+                  {" "}
+                  <button type="button" className="link" onClick={() => setPhoto(null)}>
+                    Save without it
+                  </button>
+                </>
+              )}
+            </p>
+          )}
+          {storageFull && (
+            <p className="error" role="alert" data-testid="storage-full">
+              {STORAGE_FULL_MESSAGE}
+            </p>
+          )}
+          {problem && problem !== STORAGE_FULL_MESSAGE && <p className="error">{problem}</p>}
           <button className="big" disabled={busy} onClick={() => void save()}>
             {busy ? "Saving…" : "Save disposal record"}
           </button>

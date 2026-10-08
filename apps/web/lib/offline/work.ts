@@ -1,7 +1,7 @@
 "use client";
 
 import type { InspectionValues, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
-import { done, openDb, openExisting, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
+import { done, openDb, openExisting, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
 // photos and the customer's signature, and an outbox of changes waiting for the server. All of it
@@ -134,6 +134,47 @@ export function runnableWorkOps(ops: StoredWorkOp[]): { runnable: QueuedWorkOp[]
   return { runnable, waiting, failed };
 }
 
+/**
+ * The form's copy of a record with what sending has since recorded on the phone's copy: the
+ * photos and signatures that reached the server, the server's answer, and the office's hold or
+ * decision. The form only edits the record, so its older copy of these must never undo them.
+ */
+export function withSentState(form: LocalWork, stored: LocalWork | undefined): LocalWork {
+  if (!stored) return form;
+  const photos = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
+  const signatures = new Set(stored.signatures.filter((s) => s.uploaded).map((s) => s.clientId));
+  return {
+    ...form,
+    server: stored.server,
+    draftAckedAt: stored.draftAckedAt,
+    held: stored.held,
+    resolved: stored.resolved,
+    photos: form.photos.map((p) => (photos.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)),
+    signatures: form.signatures.map((s) => (signatures.has(s.clientId) && !s.uploaded ? { ...s, uploaded: true } : s)),
+  };
+}
+
+/**
+ * Photos and signatures of a record the server has as completed that the phone still lists as
+ * not sent, with nothing queued for them. The phone completes a record only once its uploads
+ * have gone, so the server's completion is their delivery receipt; an upload still queued, or
+ * turned down, keeps its own op and stays not sent.
+ */
+function deliveredUnmarked(rec: LocalWork, ops: StoredWorkOp[]): { photos: Set<string>; signatures: Set<string> } {
+  const photos = new Set<string>();
+  const signatures = new Set<string>();
+  if (rec.server?.status !== "completed") return { photos, signatures };
+  const queued = new Set(
+    ops.flatMap((o) => {
+      const op = o as { photoClientId?: unknown; signatureClientId?: unknown };
+      return [op.photoClientId, op.signatureClientId].filter((x): x is string => typeof x === "string");
+    }),
+  );
+  for (const p of rec.photos) if (!p.uploaded && !queued.has(p.clientId)) photos.add(p.clientId);
+  for (const s of rec.signatures) if (!s.uploaded && !queued.has(s.clientId)) signatures.add(s.clientId);
+  return { photos, signatures };
+}
+
 const STORES: StoreSpecs = {
   kv: undefined,
   records: { keyPath: "clientId" },
@@ -172,10 +213,23 @@ async function tx<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMo
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();
-    trx.onerror = () => reject(trx.error);
+    // The failed request's error (a full phone's QuotaExceededError): the transaction's own is set only once it aborts.
+    trx.onerror = (e) => reject((e.target as IDBRequest | null)?.error ?? trx.error);
     trx.onabort = () => reject(trx.error ?? new Error("transaction aborted"));
   });
-  const result = await fn(trx);
+  let result: T;
+  try {
+    result = await fn(trx);
+  } catch (err) {
+    // Nothing of a save that failed partway is kept: the whole transaction is undone.
+    committed.catch(() => {});
+    try {
+      trx.abort();
+    } catch {
+      // Already finished or aborted.
+    }
+    throw err;
+  }
   await committed;
   return result;
 }
@@ -226,7 +280,7 @@ export function workStoreFor(t: KnownTenant) {
       run(["records", "blobs", "outbox"], "readwrite", async (trx) => {
         const records = trx.objectStore("records");
         const existing = (await done(records.get(rec.clientId))) as LocalWork | undefined;
-        records.put({ ...rec, revision: (existing?.revision ?? 0) + 1 });
+        records.put({ ...withSentState(rec, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         if (extra.photo) {
           trx.objectStore("blobs").put(extra.photo);
@@ -235,6 +289,36 @@ export function workStoreFor(t: KnownTenant) {
         for (const signatureClientId of extra.signatureClientIds ?? []) outbox.add({ kind: "work-signature", recordClientId: rec.clientId, signatureClientId } satisfies WorkOp);
         await queueSync(outbox, rec.clientId);
       }),
+
+    /**
+     * Marks as sent what the server's completion shows was delivered but the phone still lists as
+     * not sent (an earlier version could save a form's older copy over the sent marks). Returns
+     * how many it marked; changes nothing else, and never touches the outbox.
+     */
+    reconcileSent: async () => {
+      const [records, ops] = await Promise.all([readAll<LocalWork>(t, "records"), readOps(t)]);
+      const unmarked = (r: LocalWork, queued: StoredWorkOp[]) => {
+        const d = deliveredUnmarked(r, queued);
+        return d.photos.size + d.signatures.size;
+      };
+      if (!records.some((r) => unmarked(r, ops) > 0)) return 0;
+      return run(["records", "outbox"], "readwrite", async (trx) => {
+        const store = trx.objectStore("records");
+        const queued = (await done(trx.objectStore("outbox").getAll())) as StoredWorkOp[];
+        let marked = 0;
+        for (const rec of (await done(store.getAll())) as LocalWork[]) {
+          if (unmarked(rec, queued) === 0) continue;
+          const d = deliveredUnmarked(rec, queued);
+          marked += d.photos.size + d.signatures.size;
+          store.put({
+            ...rec,
+            photos: rec.photos.map((p) => (d.photos.has(p.clientId) ? { ...p, uploaded: true } : p)),
+            signatures: rec.signatures.map((s) => (d.signatures.has(s.clientId) ? { ...s, uploaded: true } : s)),
+          });
+        }
+        return marked;
+      });
+    },
 
     /** SW-6: loads recorded on this phone, newest first. */
     allLoads: async (): Promise<LocalLoad[]> => {
@@ -281,6 +365,8 @@ export function workStoreFor(t: KnownTenant) {
 
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedWorkOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),
+    /** Puts changes the server turned down back in line to send, in their places; nothing is deleted. */
+    retryFailed: async () => ((await readOps(t)).some((o) => o.failed) ? run(["outbox"], "readwrite", (trx) => unfail(trx.objectStore("outbox"))) : 0),
 
     /** Records what the server answered to a sync, and queues another if the record changed meanwhile. */
     acknowledgeSync: (op: QueuedWorkOp, sent: LocalWork, answer: SyncAnswer) =>
