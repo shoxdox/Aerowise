@@ -58,6 +58,7 @@ import { workOrderRoutes } from "./routes/work-orders.ts";
 import { estimateRoutes } from "./routes/estimates.ts";
 import { formRoutes } from "./routes/forms.ts";
 import { workSyncRoutes } from "./routes/work-sync.ts";
+import { pumpingRoutes } from "./routes/pumping.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -299,6 +300,7 @@ export async function buildApp({
   await app.register(coverageRoutes, { db, now, features });
   await app.register(formRoutes, { db, features });
   await app.register(workSyncRoutes, { db, now, store, signer, features });
+  await app.register(pumpingRoutes, { db, now, store, signer, features });
   await app.register(estimateRoutes, { db, now, features, appUrl, payments: { provider: payments, appUrl } });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });

@@ -48,6 +48,11 @@ export const EXPORT_TABLES: { file: string; table: string; omit?: string[] }[] =
   { file: "estimate_invoices.csv", table: "estimate_invoices" },
   { file: "deposit_ledger.csv", table: "deposit_ledger" },
   { file: "deposit_shortfall_resolutions.csv", table: "deposit_shortfall_resolutions" },
+  { file: "vehicles.csv", table: "vehicles" },
+  { file: "disposal_facilities.csv", table: "disposal_facilities" },
+  { file: "pumping_records.csv", table: "pumping_records" },
+  { file: "disposal_loads.csv", table: "disposal_loads" },
+  { file: "disposal_load_items.csv", table: "disposal_load_items" },
 ];
 
 /** The stored documents of a full export: where each table keeps its file, and the folder it goes in. */
