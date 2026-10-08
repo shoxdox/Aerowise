@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import globals from "globals";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -12,6 +13,12 @@ export default tseslint.config(
     files: ["docs/engineering/staging-walkthrough-2026-10/inspect-outbox.js"],
     languageOptions: { sourceType: "commonjs", globals: globals.node },
     rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  // Hooks run unconditionally and in the same order on every render. exhaustive-deps is deliberately not enabled.
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: { "react-hooks/rules-of-hooks": "error" },
   },
   {
     rules: {
