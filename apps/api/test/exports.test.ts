@@ -52,6 +52,10 @@ describe("full data export", () => {
         "work_order_lines.csv",
         "work_order_notes.csv",
         "work_orders.csv",
+        "work_records.csv",
+        "work_photos.csv",
+        "work_held_records.csv",
+        "work_assignments.csv",
         "work_types.csv",
       ].sort(),
     );
