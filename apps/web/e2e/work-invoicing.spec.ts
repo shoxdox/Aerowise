@@ -59,3 +59,42 @@ test("the office adds a service item, bills a work order by the hour from it, an
   expect(again.status()).toBe(200);
   expect((await again.json()).invoiceId).toBe(invoiceId);
 });
+
+test("with service items switched off, the office still saves a draft that has a fraction, and a new line takes whole units only", async ({ page }) => {
+  await signIn(page);
+  const customers = await (await page.request.get("/api/customers?limit=1")).json();
+  const draft = await (
+    await page.request.post("/api/invoices", { data: { customerId: customers.items[0].id, lines: [{ description: "Labor (TEST)", quantity: 1.5, unitPriceCents: 9500 }] } })
+  ).json();
+  // The browser sees a deployment with service items off.
+  await page.route("**/api/app-info", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    await route.fulfill({ response: res, json: { ...body, features: (body.features as string[]).filter((f) => f !== "service_items") } });
+  });
+  const sent: { lines: { id?: string; quantity: number; unitPriceCents: number }[] }[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "PATCH" && r.url().endsWith(`/api/invoices/${draft.id}`)) sent.push(r.postDataJSON());
+  });
+
+  await page.goto(`/invoices/${draft.id}`);
+  await expect(page.getByLabel("Quantity").first()).toHaveValue("1.5");
+  await page.getByLabel("Price").first().fill("100.00");
+  await page.getByRole("button", { name: "Add line" }).click();
+  await page.getByLabel("Description").nth(1).fill("Filter (TEST)");
+  await page.getByLabel("Price").nth(1).fill("12.50");
+  // A new line takes whole units only: the form will not send a fraction for it.
+  await page.getByLabel("Quantity").nth(1).fill("2.5");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  expect(await page.getByLabel("Quantity").nth(1).evaluate((el: HTMLInputElement) => el.validity.stepMismatch)).toBe(true);
+  expect(sent).toHaveLength(0);
+  await page.getByLabel("Quantity").nth(1).fill("2");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  // The fraction goes back unchanged with its line's id, which the API accepts with the flag off.
+  expect(sent[0]!.lines).toEqual([
+    expect.objectContaining({ id: draft.lines[0].id, quantity: 1.5, unitPriceCents: 10000 }),
+    expect.objectContaining({ quantity: 2, unitPriceCents: 1250 }),
+  ]);
+  await expect(page.getByText("$175.00").first()).toBeVisible();
+});

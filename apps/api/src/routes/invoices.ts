@@ -94,9 +94,18 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
   app,
   { db, now, store, payments, features },
 ) => {
-  /** Fractional quantities come with service items (SW-3); with them off, lines stay whole. */
-  const checkQuantities = (lines: InvoiceLineInput[] | undefined) => {
-    if (!features.has("service_items") && lines?.some((l) => isFractional(l.quantity))) {
+  /**
+   * Fractional quantities come with service items (SW-3). With them off, no new fraction is
+   * taken, but a draft's line keeps the fraction it already has (sent back with its id and the
+   * same quantity), so a draft made while they were on can still be edited and saved.
+   * `existing` is the locked draft's lines.
+   */
+  const checkQuantities = (lines: InvoiceLineInput[] | undefined, existing: { id: string; quantityMilli: number | null }[] = []) => {
+    if (features.has("service_items") || !lines) return;
+    const kept = new Map(existing.filter((l) => l.quantityMilli !== null).map((l) => [l.id, l.quantityMilli]));
+    for (const l of lines) {
+      if (!isFractional(l.quantity)) continue;
+      if (l.id && kept.get(l.id) === Math.round(l.quantity! * 1000)) continue;
       throw new HttpError(409, "feature_off", "Fractional quantities are not switched on for this deployment; use whole numbers");
     }
   };
@@ -316,11 +325,14 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
-      checkQuantities(req.body.lines);
       await db.transaction().execute(async (trx) => {
         const at = now();
         const inv = await lockDraft(trx, organizationId, req.params.id);
         const b = req.body;
+        checkQuantities(
+          b.lines,
+          await trx.selectFrom("invoiceLines").select(["id", "quantityMilli"]).where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).execute(),
+        );
         const siteId = b.siteId === undefined ? inv.siteId : b.siteId;
         if (b.siteId !== undefined || b.lines) await checkDraftRefs(trx, organizationId, inv.customerId, siteId, b.lines ?? []);
         await trx

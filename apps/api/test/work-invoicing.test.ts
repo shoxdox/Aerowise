@@ -147,6 +147,52 @@ describe("fractional quantities", () => {
       await off.close();
     }
   });
+
+  it("saves a fractional draft from the office editor after the flag is turned off, but takes no new fraction", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const made = (
+      await t.api.post("/invoices", {
+        customerId: t.customer.id,
+        lines: [
+          { description: "Labor", quantity: 1.5, unitPriceCents: 9500 },
+          { description: "Filter", quantity: 2, unitPriceCents: 1250 },
+        ],
+      })
+    ).json();
+    const off = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, loginRateLimit: 1000, features: new Set(["work_orders"]) });
+    try {
+      const api = client(off, await login(off, t.owner.email));
+      // Every line, as the office editor sends them on Save draft (InvoiceEditor), with a changed price.
+      const editorLines = (draft: { lines: { id: string; description: string; quantity: number; unitPriceCents: number; taxable: boolean; serviceItemId: string | null }[] }) =>
+        draft.lines.map((l) => ({ id: l.id, description: l.description, quantity: l.quantity, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId }));
+      const lines = editorLines((await api.get(`/invoices/${made.id}`)).json());
+      lines[0]!.unitPriceCents = 10000;
+      const saved = await api.patch(`/invoices/${made.id}`, { taxRateBps: 0, discountCents: 0, termsDays: 30, memo: "Edited after the flag went off", lines });
+      expect(saved.statusCode, saved.body).toBe(200);
+      expect(saved.json().lines).toMatchObject([
+        { quantity: 1.5, quantityMilli: 1500, amountCents: 15000 },
+        { quantity: 2, quantityMilli: null, amountCents: 2500 },
+      ]);
+
+      // A different fraction, or a fraction on a new or whole-number line, is new and refused.
+      const again = editorLines(saved.json());
+      for (const bad of [
+        again.map((l, i) => (i === 0 ? { ...l, quantity: 1.75 } : l)),
+        again.map((l, i) => (i === 1 ? { ...l, quantity: 2.5 } : l)),
+        [...again, { description: "More labor", quantity: 0.5, unitPriceCents: 9500, taxable: false, serviceItemId: null }],
+        again.map((l, i) => (i === 0 ? { ...l, id: undefined } : l)),
+      ]) {
+        const res = await api.patch(`/invoices/${made.id}`, { lines: bad });
+        expect(res.statusCode, res.body).toBe(409);
+        expect(res.json().error).toBe("feature_off");
+      }
+      // A fraction can always become a whole number.
+      const whole = await api.patch(`/invoices/${made.id}`, { lines: again.map((l, i) => (i === 0 ? { ...l, quantity: 2 } : l)) });
+      expect(whole.json().lines[0]).toMatchObject({ quantity: 2, quantityMilli: null, amountCents: 20000 });
+    } finally {
+      await off.close();
+    }
+  });
 });
 
 describe("invoicing a work order", () => {
