@@ -57,7 +57,7 @@ export function EstimateLineEditor({ lines, onChange }: { lines: DraftLine[]; on
   return (
     <div className="stack">
       <div className="table-scroll">
-        <table className="compact">
+        <table className="compact" style={{ minWidth: "max-content" }}>
           <thead>
             <tr>
               <th>Description</th>
@@ -74,7 +74,7 @@ export function EstimateLineEditor({ lines, onChange }: { lines: DraftLine[]; on
             {lines.map((l, i) => (
               <tr key={l.key}>
                 <td>
-                  <input value={l.description} onChange={(e) => set(l.key, { description: e.target.value })} aria-label={`Line ${i + 1} description`} maxLength={500} />
+                  <input value={l.description} onChange={(e) => set(l.key, { description: e.target.value })} aria-label={`Line ${i + 1} description`} maxLength={500} style={{ width: "18em" }} />
                 </td>
                 <td>
                   <input type="number" min="0.001" step="0.001" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Line ${i + 1} quantity`} style={{ width: "6em" }} />
