@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { BILLING_FREQUENCIES, plan, SERVICE_TYPES } from "./contracts.ts";
 import { CUSTOMER_TYPES, id } from "./crm.ts";
+import { formKey } from "./forms.ts";
+import { templateDefinition, validateInspection, visibleFields, type InspectionValues, type TemplateDefinition, type ValidationProblem } from "./inspections.ts";
 import { MAX_CENTS } from "./invoices.ts";
 import { WORK_CATEGORIES, WORK_CATEGORY_LABELS, type WorkCategory } from "./work.ts";
 
@@ -74,6 +76,11 @@ const uniqueKeys =
 /** Stored options and rules, checked again when read so a value that no longer fits is an error, never a silent benefit. */
 export const parsePlanOptions = (v: unknown): PlanOption[] => z.array(planOption).parse(v);
 export const parseCoverageRules = (v: unknown): CoverageRule[] => z.array(coverageRule).parse(v);
+/** The options an office-made contract took, from its agreement snapshot (SW-8); none without one. */
+export function parseSnapshotOptions(snapshot: unknown): PlanOption[] {
+  const o = snapshot && typeof snapshot === "object" ? (snapshot as { options?: unknown }).options : undefined;
+  return o === undefined ? [] : parsePlanOptions(o);
+}
 
 /** What the office saves from the plan builder: a new version of the plan. */
 export const planVersionInput = z.object({
@@ -81,8 +88,14 @@ export const planVersionInput = z.object({
   termsText: z.string().trim().min(20).max(20_000).nullable(),
   options: z.array(planOption).max(20).superRefine(uniqueKeys((o) => o.optionKey, "options")),
   coverage: z.array(coverageRule).max(30).superRefine(uniqueKeys((r) => r.ruleKey, "coverage rules")),
+  /** One version of an intake form the customer answers when signing online; null asks nothing. */
+  intakeTemplateId: id.nullable().default(null),
 });
 export type PlanVersionInput = z.input<typeof planVersionInput>;
+
+/** The version of an intake form a plan version asks. */
+export const intakeFormRef = z.object({ id, key: z.string(), version: z.number().int(), name: z.string() });
+export type IntakeFormRef = z.infer<typeof intakeFormRef>;
 
 export const planVersion = z.object({
   id,
@@ -98,6 +111,7 @@ export const planVersion = z.object({
   termsText: z.string().nullable(),
   options: z.array(planOption),
   coverage: z.array(coverageRule),
+  intake: intakeFormRef.nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   /** Contracts and renewals made from this version. */
   contracts: z.number().int(),
@@ -111,6 +125,8 @@ export const agreementPreview = z.object({
   terms: z.string(),
   options: z.array(planOption),
   coverage: z.array(z.object({ ruleKey: z.string(), label: z.string(), summary: z.string() })),
+  /** The intake questions asked at signing, as labels; null when the version asks none. */
+  intake: z.object({ name: z.string(), questions: z.array(z.string()) }).nullable(),
 });
 export type AgreementPreview = z.infer<typeof agreementPreview>;
 
@@ -205,3 +221,48 @@ export const workOrderCoverage = z.object({
 export type WorkOrderCoverage = z.infer<typeof workOrderCoverage>;
 
 export const coverageReasonInput = z.object({ reason: z.string().trim().min(1).max(2000) });
+
+// ---- Intake at signing (SW-8 follow-up) ----
+
+/**
+ * A new version of an intake form (SW-F purpose `intake`), saved from the plan builder. Answers
+ * only: the customer's signature on the agreement covers it, and there is nothing to photograph.
+ */
+export const intakeFormInput = z
+  .object({ key: formKey, name: z.string().trim().min(1).max(200), definition: templateDefinition })
+  .superRefine((f, ctx) => {
+    if (f.definition.photos.length) ctx.addIssue({ code: "custom", path: ["definition", "photos"], message: "An intake form asks questions only, without photos" });
+    if (f.definition.signatures?.length) ctx.addIssue({ code: "custom", path: ["definition", "signatures"], message: "An intake form has no signatures of its own: the agreement is signed" });
+  });
+export type IntakeFormInput = z.input<typeof intakeFormInput>;
+
+export const intakeValues = z.record(z.string().max(64), z.union([z.string().max(5000), z.number(), z.boolean(), z.null()]));
+
+/** One answer as the signed agreement keeps it: the value and how it reads. */
+export const intakeAnswer = z.object({ key: z.string(), label: z.string(), value: z.union([z.string(), z.number(), z.boolean()]), answer: z.string() });
+export type IntakeAnswer = z.infer<typeof intakeAnswer>;
+
+/** The intake form and answers inside a signed agreement. */
+export const signedIntake = intakeFormRef.omit({ id: true }).extend({ templateId: id, answers: z.array(intakeAnswer) });
+export type SignedIntake = z.infer<typeof signedIntake>;
+
+/**
+ * Checks a customer's intake answers against the form, the same way an inspection is checked,
+ * and keeps only answers to questions the form shows. Problems mean the agreement is not signed.
+ */
+export function intakeAnswers(def: TemplateDefinition, values: InspectionValues): { problems: ValidationProblem[]; answers: IntakeAnswer[] } {
+  const problems = validateInspection(def, values, {});
+  const answers: IntakeAnswer[] = [];
+  for (const f of visibleFields(def, values)) {
+    const v = values[f.key];
+    if (v === undefined || v === null || v === "") continue;
+    const answer =
+      f.type === "boolean" ? (v ? "Yes" : "No")
+      : f.type === "pass_fail" ? (v === "pass" ? "Pass" : "Fail")
+      : f.type === "select" ? (f.options.find((o) => o.value === v)?.label ?? String(v))
+      : f.type === "number" && f.unit ? `${v} ${f.unit}`
+      : String(v);
+    answers.push({ key: f.key, label: f.label, value: v, answer });
+  }
+  return { problems, answers };
+}
