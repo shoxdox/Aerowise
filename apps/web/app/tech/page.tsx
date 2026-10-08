@@ -109,7 +109,8 @@ export default function TechApp() {
     setMe(m);
     const store = activeStore();
     const work = workStoreFor(store.tenant);
-    const [r, t, w, p] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(work), loadPumpingField(work)]);
+    const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(work)]);
+    const p = await loadPumpingField(work, !!w?.items.some((s) => s.requiresDisposalRecord));
     setPumpingField(p);
     setRoute(r.route ?? null);
     setWorkStops(w?.items ?? []);

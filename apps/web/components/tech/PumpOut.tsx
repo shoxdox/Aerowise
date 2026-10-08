@@ -96,7 +96,8 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
   const [loads, setLoads] = useState<LocalLoad[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [facilityId, setFacilityId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
+  // The truck the load is on; a load carries only pump-outs recorded on that truck.
+  const [chosenTruck, setChosenTruck] = useState<string | null>(null);
   const [deliveredOn, setDeliveredOn] = useState(new Date().toLocaleDateString("en-CA"));
   const [manifest, setManifest] = useState("");
   const [total, setTotal] = useState("");
@@ -113,7 +114,11 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
   if (!field) return <p className="muted">Trucks and facilities are not on this phone yet. Open the app once with signal.</p>;
   // Pump-outs already in a load saved on this phone are not offered again.
   const onPhone = new Set(loads.flatMap((l) => l.pumpingGroupIds));
-  const unloaded = field.unloaded.filter((p) => !onPhone.has(p.groupId));
+  const waiting = field.unloaded.filter((p) => !onPhone.has(p.groupId));
+  const vehicleId = chosenTruck ?? waiting[0]?.vehicleId ?? "";
+  const unloaded = waiting.filter((p) => (p.vehicleId ?? "") === vehicleId);
+  const trucks = [...new Set(waiting.map((p) => p.vehicleId ?? ""))];
+  const truckName = (id: string) => (id ? (field.vehicles.find((v) => v.id === id)?.name ?? "Truck") : "No truck named");
   const picks = unloaded.filter((p) => picked.has(p.groupId));
   const pickedVolume = picks.reduce((sum, p) => sum + p.volumeMilligallons, 0);
 
@@ -166,6 +171,26 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
     <div className="stack" data-testid="record-disposal">
       <h1>Record disposal</h1>
       <p className="muted small">Your pump-outs show here once their visit has reached the office.</p>
+      {trucks.length > 1 && (
+        <label>
+          Truck
+          <select
+            value={vehicleId}
+            onChange={(e) => {
+              setChosenTruck(e.target.value);
+              setPicked(new Set());
+            }}
+            aria-label="Truck"
+          >
+            {trucks.map((t) => (
+              <option key={t} value={t}>
+                {truckName(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {trucks.length === 1 && <p className="muted small">On {truckName(vehicleId)}.</p>}
       {unloaded.length === 0 ? (
         <p className="muted">No pump-outs waiting for a disposal record.</p>
       ) : (
@@ -207,21 +232,6 @@ export function DisposalScreen({ store, field, onDone }: { store: WorkStore; fie
                 ))}
             </select>
           </label>
-          {field.vehicles.length > 0 && (
-            <label>
-              Truck
-              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                <option value="">Not named</option>
-                {field.vehicles
-                  .filter((v) => v.active)
-                  .map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          )}
           <label>
             Delivered on
             <input type="date" value={deliveredOn} onChange={(e) => setDeliveredOn(e.target.value)} />

@@ -9,7 +9,6 @@ import {
   type DisposalFacility,
   type DisposalLoad,
   type PumpingRecord,
-  type Vehicle,
 } from "@aerowise/domain";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
@@ -32,7 +31,6 @@ export default function DisposalPage() {
   const [offset, setOffset] = useState(0);
   const loads = useLoad<{ items: DisposalLoad[]; nextOffset: number | null }>(`/disposal/loads?limit=${PAGE}&offset=${offset}`);
   const unloaded = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>("/pumping-records?unloaded=true&limit=200");
-  const vehicles = useLoad<{ items: Vehicle[] }>(office ? "/vehicles" : null);
   const facilities = useLoad<{ items: DisposalFacility[] }>(office ? "/disposal-facilities" : null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [problem, setProblem] = useState<string | null>(null);
@@ -58,7 +56,7 @@ export default function DisposalPage() {
         method: "PUT",
         body: {
           clientId: crypto.randomUUID(),
-          vehicleId: v.vehicleId ?? null,
+          vehicleId: pickedTrucks[0] ?? null,
           facilityId: v.facilityId,
           deliveredOn: v.deliveredOn,
           manifestReference: v.manifestReference ?? null,
@@ -76,7 +74,10 @@ export default function DisposalPage() {
     }
   }
 
-  const pickedVolume = (unloaded.data?.items ?? []).filter((p) => picked.has(p.groupId)).reduce((sum, p) => sum + p.volumeMilligallons, 0);
+  const pickedRows = (unloaded.data?.items ?? []).filter((p) => picked.has(p.groupId));
+  const pickedVolume = pickedRows.reduce((sum, p) => sum + p.volumeMilligallons, 0);
+  // A load is on one truck: the truck its pump-outs were recorded on.
+  const pickedTrucks = [...new Set(pickedRows.map((p) => p.vehicleId))];
   const error = loads.error ?? unloaded.error;
   if (error) return <p className="error">{error}</p>;
   return (
@@ -141,8 +142,11 @@ export default function DisposalPage() {
         <form className="card stack" onSubmit={record} data-testid="record-disposal">
           <h2>Record a disposal</h2>
           <p className="muted small">
-            {picked.size === 0 ? "Tick the pump-outs the truck delivered." : `${picked.size} pump-out${picked.size === 1 ? "" : "s"} ticked, ${formatGallons(pickedVolume)} recorded.`}
+            {picked.size === 0
+              ? "Tick the pump-outs the truck delivered."
+              : `${picked.size} pump-out${picked.size === 1 ? "" : "s"} ticked, ${formatGallons(pickedVolume)} recorded, on ${pickedTrucks.length > 1 ? "more than one truck" : (pickedRows[0]?.vehicleName ?? "no named truck")}.`}
           </p>
+          {pickedTrucks.length > 1 && <p className="error small">A disposal record is for one truck load. Tick pump-outs from the same truck.</p>}
           <div className="grid">
             <label>
               Facility
@@ -155,19 +159,6 @@ export default function DisposalPage() {
                   .map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Truck
-              <select name="vehicleId" defaultValue="">
-                <option value="">Not named</option>
-                {vehicles.data?.items
-                  .filter((t) => t.active)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
                     </option>
                   ))}
               </select>
@@ -205,7 +196,7 @@ export default function DisposalPage() {
             </p>
           )}
           <div className="row">
-            <button type="submit" disabled={picked.size === 0}>
+            <button type="submit" disabled={picked.size === 0 || pickedTrucks.length > 1}>
               Record disposal
             </button>
           </div>

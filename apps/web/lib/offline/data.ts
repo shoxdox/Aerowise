@@ -95,10 +95,12 @@ export async function loadWorkRoute(store: WorkStore): Promise<{ date: string; i
 }
 
 /** SW-6: trucks, facilities and the technician's pump-outs in no load yet; the last copy when offline. */
-export async function loadPumpingField(store: WorkStore): Promise<PumpingFieldData | undefined> {
+export async function loadPumpingField(store: WorkStore, pumpingVisits: boolean): Promise<PumpingFieldData | undefined> {
   const res = await fetchJson<PumpingFieldData>("/pumping/field", store.tenant);
   if (!res.ok) return store.kvGet("pumping-field");
-  await store.kvSet("pumping-field", res.data);
+  // Saved only for a route with pumping visits, pump-outs to load, or a copy to replace: like the route, writing
+  // would otherwise create, or upgrade, the work database on a phone that has no work in it.
+  if (pumpingVisits || res.data.unloaded.length > 0 || (await store.kvGet("pumping-field"))) await store.kvSet("pumping-field", res.data);
   return res.data;
 }
 
