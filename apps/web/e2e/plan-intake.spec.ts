@@ -42,7 +42,7 @@ test("the office adds an intake form and an option to a plan, and the homeowner 
   // A fictional customer; the office starts a contract eleven months ago and ticks the option.
   const customer = await (await page.request.post("/api/customers", { data: { displayName: `Intake TEST ${stamp}` } })).json();
   const site = await (await page.request.post(`/api/customers/${customer.id}/sites`, { data: { addressLine1: "7 Fictional Ct", city: "Austin" } })).json();
-  await page.request.post(`/api/customers/${customer.id}/contacts`, { data: { name: "Pat Fictional", email: `pat-${stamp}@example.test`, type: "billing" } });
+  const contact = await (await page.request.post(`/api/customers/${customer.id}/contacts`, { data: { name: "Pat Fictional", email: `pat-${stamp}@example.test`, type: "billing" } })).json();
   const start = new Date(Date.now() - 335 * 86_400_000).toISOString().slice(0, 10);
   await page.goto(`/sites/${site.id}`);
   await page.getByRole("button", { name: "New contract" }).click();
@@ -77,4 +77,7 @@ test("the office adds an intake form and an option to a plan, and the homeowner 
   await page.goto(`/renewals/${renewal.id}`);
   await expect(page.getByTestId("renewal-intake-answers")).toContainText("Anything changed at the property?");
   await expect(page.getByTestId("renewal-intake-answers")).toContainText("No");
+
+  // This customer is overdue; without its email it no longer comes first for portal.spec.ts, which expects a seeded plan.
+  expect((await page.request.patch(`/api/contacts/${contact.id}`, { data: { email: null } })).status()).toBe(200);
 });
