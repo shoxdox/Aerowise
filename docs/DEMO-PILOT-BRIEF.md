@@ -1,5 +1,9 @@
 # Aerowise — current demo and pilot handoff
 
+## Continuation checkpoint — October 8, 2026
+
+Staging remains c004148; no application redeploy during this checkpoint. Both #107 estimate fixes are now pushed and await independent Codex rereview. Claude reports the full combined #110 run passed (763 API / 151 domain / 67 browser tests); Codex verified its later delta changes only four test files. #111 adds office options, signing intake and fictional demo tiers, with targeted checks reported; it is not in that combined run. Three Claude threads wait for Codex review, and deposits are still being tested. None of #106–111 is merged or deployed. A new Codex chat is taking over using the [complete handoff](engineering/CODEX-CLAUDE-HANDOFF-2026-10-08.md); the earlier morning release record below remains valid for staging.
+
 ## Catalog release live — October 8, 2026, morning
 
 **Staging https://staging.deshain.com is on `c004148e9b23f3c2d01cbc9f79f7a57c7827c303`**, with merged #101/#102/#104/#105 and staging flags `work_orders,service_items`. Enter through **Try the demo → Start my demo**, then Owner / Office / Technician; no password. DEMO_MODE=true, live overrides empty, Twilio/Resend absent. Production identity/start time is unchanged.
