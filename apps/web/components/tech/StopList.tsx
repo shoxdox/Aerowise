@@ -1,4 +1,4 @@
-import type { Stop } from "@aerowise/domain";
+import type { Stop, WorkStop } from "@aerowise/domain";
 import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { TechRouteMap } from "@/components/tech/TechRouteMap";
@@ -22,6 +22,8 @@ export function StopList({
   onRefresh,
   view = "list",
   onView,
+  work,
+  numbers,
 }: {
   route: { date: string; items: Stop[] } | null;
   fetchedAt: string | undefined;
@@ -30,6 +32,10 @@ export function StopList({
   onRefresh: () => void;
   view?: RouteView;
   onView?: (view: RouteView) => void;
+  /** The day's work visits, shown with the inspections on the map (the list of them is below). */
+  work?: { stops: WorkStop[]; done: (jobId: string) => boolean };
+  /** Each stop's number in the whole day, inspections and work together. */
+  numbers?: Map<string, number>;
 }) {
   // The map could not be shown (no signal, no map installed): the list shows under the note.
   const [mapFailed, setMapFailed] = useState(false);
@@ -42,6 +48,7 @@ export function StopList({
     );
   }
   const done = route.items.filter((s) => stopStatus(s, inspections.get(s.jobId)).label.startsWith("Done")).length;
+  const mappable = route.items.length + (work?.stops.filter((s) => numbers?.has(s.jobId)).length ?? 0);
   return (
     <div className="stack">
       <div className="row">
@@ -57,8 +64,8 @@ export function StopList({
           Refresh
         </button>
       </div>
-      {route.items.length === 0 && <p className="muted">No stops on your route today.</p>}
-      {route.items.length > 0 && onView && (
+      {route.items.length === 0 && <p className="muted">{mappable > 0 ? "No inspections on your route today." : "No stops on your route today."}</p>}
+      {mappable > 0 && onView && (
         <div className="view-toggle" role="group" aria-label="Show the route as">
           <button type="button" aria-pressed={view === "list"} onClick={() => onView("list")}>
             List
@@ -68,7 +75,9 @@ export function StopList({
           </button>
         </div>
       )}
-      {view === "map" && route.items.length > 0 && <TechRouteMap route={route} inspections={inspections} onOpen={onOpen} onUnavailable={() => setMapFailed(true)} />}
+      {view === "map" && mappable > 0 && (
+        <TechRouteMap route={route} inspections={inspections} work={work} numbers={numbers} onOpen={onOpen} onUnavailable={() => setMapFailed(true)} />
+      )}
       {(view === "list" || mapFailed) && (
         <ol className="stops">
           {route.items.map((s, i) => {
@@ -76,7 +85,7 @@ export function StopList({
             return (
               <li key={s.jobId}>
                 <button className="stop-card" onClick={() => onOpen(s.jobId)}>
-                  <span className="stop-num">{i + 1}</span>
+                  <span className="stop-num">{numbers?.get(s.jobId) ?? i + 1}</span>
                   <span className="stop-body">
                     <strong>{s.customer.displayName}</strong>
                     <span className="muted">

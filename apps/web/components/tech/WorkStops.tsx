@@ -25,7 +25,20 @@ function offRouteStatus(rec: LocalWork, failed: boolean): { label: string; tone:
   return { label: "Not finished", tone: "warn" };
 }
 
-export function WorkStopList({ stops, records, failedRecords, onOpen }: { stops: WorkStop[]; records: Map<string, LocalWork>; failedRecords: Set<string>; onOpen: (jobId: string) => void }) {
+export function WorkStopList({
+  stops,
+  records,
+  failedRecords,
+  onOpen,
+  numbers,
+}: {
+  stops: WorkStop[];
+  records: Map<string, LocalWork>;
+  failedRecords: Set<string>;
+  onOpen: (jobId: string) => void;
+  /** Each visit's number in the whole day, as on the map; "W" when it is not on today's route. */
+  numbers?: Map<string, number>;
+}) {
   const listed = new Set(stops.map((s) => s.jobId));
   const offRoute = [...records.values()].filter((r) => !listed.has(r.jobId));
   if (stops.length === 0 && offRoute.length === 0) return null;
@@ -39,7 +52,7 @@ export function WorkStopList({ stops, records, failedRecords, onOpen }: { stops:
           return (
             <li key={s.jobId}>
               <button className="work-card" onClick={() => onOpen(s.jobId)}>
-                <span className="stop-num">W</span>
+                <span className="stop-num">{numbers?.get(s.jobId) ?? "W"}</span>
                 <span className="stop-body">
                   <strong>
                     {s.workOrderLabel} · {s.title}

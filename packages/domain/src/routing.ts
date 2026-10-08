@@ -62,7 +62,7 @@ export const technicianRoute = travelSummary.extend({
   technicianName: z.string(),
   stops: z.array(z.object({ jobId: id, status: z.string(), lat: z.number().nullable(), lng: z.number().nullable() })),
   legs: z.array(routeLeg),
-  /** Time on site: stops × the average stop length. */
+  /** Time on site: each work visit's minutes from its kind of work, the average stop length for the rest. */
   serviceMinutes: z.number().int(),
   /** Driving plus time on site. */
   totalMinutes: z.number().int(),

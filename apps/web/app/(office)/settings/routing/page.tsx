@@ -126,12 +126,12 @@ export default function RoutingSettingsPage() {
       <section className="card stack">
         <h2>Travel estimates</h2>
         <p className="muted small">
-          Driving is estimated from straight-line distance, stretched 30% for roads, at your average speed. A day is flagged when driving plus time on site runs past a working day.
+          Driving is estimated from straight-line distance, stretched 30% for roads, at your average speed. A day is flagged when driving plus time on site runs past a working day. A work visit takes the minutes set on its kind of work; inspections, and work with no minutes set, take the average below. No traffic is considered.
         </p>
         <form className="stack" onSubmit={saveDay}>
           <div className="row">
             <label>
-              Minutes on site per stop
+              Average minutes on site per stop
               <input name="stopMinutes" type="number" min={0} max={480} defaultValue={data.stopMinutes} disabled={!owner} />
             </label>
             <label>
