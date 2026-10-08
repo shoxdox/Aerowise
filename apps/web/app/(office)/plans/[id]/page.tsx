@@ -1,6 +1,19 @@
 "use client";
 
-import { COVERAGE_EFFECTS, WORK_CATEGORIES, WORK_CATEGORY_LABELS, type CoverageEffect, type FormTemplate, type PlanDetail, type ServiceItem, type WorkCategory } from "@aerowise/domain";
+import {
+  COVERAGE_EFFECTS,
+  CYCLE_SERVICE_TYPES,
+  SERVICE_TYPE_LABELS,
+  WORK_CATEGORIES,
+  WORK_CATEGORY_LABELS,
+  type CoverageEffect,
+  type CycleServiceType,
+  type FormTemplate,
+  type PlanDetail,
+  type ServiceItem,
+  type WorkCategory,
+  type WorkType,
+} from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,9 +27,10 @@ import { canEdit, useSession } from "@/lib/session";
 // signing, and its coverage rules. Saving makes the next version; earlier versions, and the
 // contracts made from them, never change.
 
-type Tab = "terms" | "options" | "coverage" | "intake" | "versions" | "preview";
+type Tab = "terms" | "service" | "options" | "coverage" | "intake" | "versions" | "preview";
 const TABS: [Tab, string][] = [
   ["terms", "Terms"],
+  ["service", "Service"],
   ["options", "Options"],
   ["coverage", "Coverage"],
   ["intake", "Intake questions"],
@@ -32,6 +46,16 @@ interface OptionRow {
   taxable: boolean;
   required: boolean;
   default: boolean;
+}
+/** A pumping or maintenance cycle (SW-9), with its numbers as typed. */
+interface CycleRow {
+  cycleKey: string;
+  label: string;
+  serviceType: CycleServiceType;
+  workTypeId: string;
+  everyMonths: string;
+  windowDays: string;
+  allowNoVisit: boolean;
 }
 interface QuestionRow {
   label: string;
@@ -58,6 +82,12 @@ export default function PlanPage() {
   const { data: plan, error, reload } = useLoad<PlanDetail>(`/plans/${id}`);
   const items = useLoad<{ items: ServiceItem[] }>(builder ? "/service-items?active=all" : null);
   const intakeForms = useLoad<{ items: FormTemplate[] }>(builder ? "/form-templates?purpose=intake" : null);
+  // Pumping and maintenance cycles (SW-9): only sent when service cycles are on, so a save
+  // with them off keeps the current version's cycles as they are.
+  const cyclesOn = useFeature("service_cycles");
+  const workTypes = useLoad<{ items: WorkType[] }>(builder && cyclesOn ? "/work-types" : null);
+  const [aerobic, setAerobic] = useState(true);
+  const [cycles, setCycles] = useState<CycleRow[]>([]);
   const [intakeId, setIntakeId] = useState("");
   const [newForm, setNewForm] = useState<{ name: string; questions: QuestionRow[] } | null>(null);
   const [tab, setTab] = useState<Tab>("terms");
@@ -75,6 +105,18 @@ export default function PlanPage() {
     setOwnTerms(current.termsText !== null);
     setTerms(current.termsText ?? plan!.preview.terms);
     setIntakeId(current.intake?.id ?? "");
+    setAerobic(current.aerobic);
+    setCycles(
+      current.serviceCycles.map((y) => ({
+        cycleKey: y.cycleKey,
+        label: y.label,
+        serviceType: y.serviceType,
+        workTypeId: y.workTypeId,
+        everyMonths: String(y.schedule.everyMonths),
+        windowDays: String(y.schedule.windowDays),
+        allowNoVisit: y.allowNoVisit,
+      })),
+    );
     setOptions(current.options.map((o) => ({ optionKey: o.optionKey, name: o.name, price: (o.priceCents / 100).toFixed(2), taxable: o.taxable, required: o.required, default: o.default })));
     setRules(
       current.coverage.map((r) => ({
@@ -99,6 +141,19 @@ export default function PlanPage() {
         body: {
           termsText: ownTerms ? terms : null,
           intakeTemplateId: intakeId || null,
+          ...(cyclesOn
+            ? {
+                aerobic,
+                serviceCycles: cycles.map((y) => ({
+                  cycleKey: y.cycleKey,
+                  label: y.label,
+                  serviceType: y.serviceType,
+                  workTypeId: y.workTypeId,
+                  schedule: { kind: "every_months", everyMonths: Number(y.everyMonths), windowDays: Number(y.windowDays) },
+                  allowNoVisit: y.allowNoVisit,
+                })),
+              }
+            : {}),
           options: options.map((o) => ({ optionKey: o.optionKey, name: o.name, priceCents: Math.round(Number(o.price) * 100), taxable: o.taxable, required: o.required, default: o.required || o.default })),
           coverage: rules.map((r) => ({
             ruleKey: r.ruleKey,
@@ -152,6 +207,7 @@ export default function PlanPage() {
   if (error) return <p className="error">{error}</p>;
   if (!plan || !current) return <p className="muted">Loading…</p>;
   const setOption = (i: number, patch: Partial<OptionRow>) => setOptions((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setCycle = (i: number, patch: Partial<CycleRow>) => setCycles((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const setRule = (i: number, patch: Partial<RuleRow>) => setRules((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   return (
@@ -170,7 +226,7 @@ export default function PlanPage() {
         with.
       </p>
       <div className="row" role="tablist">
-        {TABS.map(([key, label]) => (
+        {TABS.filter(([key]) => key !== "service" || cyclesOn || !aerobic || cycles.length > 0).map(([key, label]) => (
           <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? "" : "secondary"} onClick={() => setTab(key)}>
             {label}
           </button>
@@ -190,6 +246,85 @@ export default function PlanPage() {
               Customers sign your company&apos;s agreement terms (Settings → Renewals). <span className="small">Have real terms reviewed before customers sign them.</span>
             </p>
           )}
+        </section>
+      )}
+
+      {tab === "service" && (
+        <section className="stack">
+          <p className="muted">
+            What a contract on this plan includes. Pumping and maintenance visits are booked as work orders from the contract; they are never inspections and are never filed or reported to an
+            authority.
+          </p>
+          <label className="row">
+            <input type="checkbox" checked={aerobic} disabled={!builder || !cyclesOn} onChange={(e) => setAerobic(e.target.checked)} />
+            Aerobic inspections ({plan.visitsPerTerm} visits per term, or more where the authority requires them)
+          </label>
+          {cycles.length === 0 && <p className="muted">No pumping or maintenance visits.</p>}
+          {cycles.map((y, i) => (
+            <div key={i} className="card grid" data-testid="plan-cycle">
+              <label>
+                Name
+                <input value={y.label} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { label: e.target.value })} />
+              </label>
+              <label>
+                Type
+                <select value={y.serviceType} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { serviceType: e.target.value as CycleServiceType, workTypeId: "" })}>
+                  {CYCLE_SERVICE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {SERVICE_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Booked as
+                <select value={y.workTypeId} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { workTypeId: e.target.value })}>
+                  <option value="">Choose a kind of work</option>
+                  {workTypes.data?.items
+                    .filter((t) => (t.active && t.category === y.serviceType) || t.id === y.workTypeId)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Every (months)
+                <input type="number" min={1} max={120} value={y.everyMonths} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { everyMonths: e.target.value })} />
+              </label>
+              <label>
+                Window (days either side of due)
+                <input type="number" min={0} max={180} value={y.windowDays} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { windowDays: e.target.value })} />
+              </label>
+              {Number(y.everyMonths) > plan.termMonths && (
+                <label className="row">
+                  <input type="checkbox" checked={y.allowNoVisit} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { allowNoVisit: e.target.checked })} /> A term may pass with no visit
+                </label>
+              )}
+              {builder && cyclesOn && (
+                <button className="link" onClick={() => setCycles((rows) => rows.filter((_, j) => j !== i))}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+          {builder && cyclesOn && (
+            <p>
+              <button
+                className="secondary"
+                onClick={() =>
+                  setCycles((rows) => [
+                    ...rows,
+                    { cycleKey: `cycle-${Date.now().toString(36)}`, label: "Tank pumping", serviceType: "pumping", workTypeId: "", everyMonths: "12", windowDays: "30", allowNoVisit: false },
+                  ])
+                }
+              >
+                Add pumping or maintenance visits
+              </button>
+            </p>
+          )}
+          {!cyclesOn && (cycles.length > 0 || !aerobic) && <p className="muted small">Service cycles are switched off: saving keeps these as they are.</p>}
         </section>
       )}
 
@@ -443,6 +578,18 @@ export default function PlanPage() {
       {tab === "preview" && (
         <section className="stack card" data-testid="agreement-preview">
           <p className="muted small">What a customer signs under version {plan.version} (saved changes only).</p>
+          {plan.preview.cycles.length > 0 && (
+            <>
+              <h3>Service included</h3>
+              <ul className="plain" data-testid="agreement-cycles">
+                {plan.preview.cycles.map((c) => (
+                  <li key={c.cycleKey}>
+                    {c.label}: {c.summary}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {plan.preview.options.length > 0 && (
             <>
               <h3>Options</h3>
