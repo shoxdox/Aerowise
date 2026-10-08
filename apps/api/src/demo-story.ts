@@ -27,6 +27,9 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     priced by the gallon and the hour and invoiced straight from its work order.
 //   - With estimates on: one sent and waiting, one signed by a fictional homeowner; with
 //     deposits on too, the signed one asked for a deposit, paid by card on the test checkout.
+//   - With field work and pumping on too: the technician recorded that pump-out on the phone (1,000
+//     gallons on a fictional truck) and delivered it to a fictional facility, recorded as a
+//     disposal record with a demo manifest/reference number. Nothing says it is compliant.
 //   - With the plan builder switched on: three fictional plan tiers (Basic, Gold, Platinum) whose
 //     own terms say they are fictional, with different coverage and options, and an intake form
 //     the Gold and Platinum tiers ask at online signing. No real terms or coverage are promised.
@@ -57,6 +60,47 @@ function as(app: App, cookie: string) {
   };
 }
 
+/**
+ * SW-6: the technician pumps on the phone (a fictional truck), then delivers the load to a
+ * fictional facility the owner entered, recorded as a disposal record with a demo reference.
+ */
+async function pumpedOnThePhone(owner: ReturnType<typeof as>, tech: ReturnType<typeof as>, jobId: string, day: string) {
+  const truck = await owner.post("/vehicles", { name: "Truck 1 (demo)", plate: "DEMO-001", capacityGallons: 3000 });
+  const facility = await owner.post("/disposal-facilities", {
+    name: "Example Water Reclamation (fictional)",
+    kind: "wastewater_treatment_plant",
+    city: "Example City",
+    state: "TX",
+    notes: "Fictional facility for the demo; not a real place.",
+  });
+  const form = await tech.get("/form-templates/work-pumping");
+  const clientId = randomUUID();
+  const base = {
+    clientId,
+    jobId,
+    templateId: form.id,
+    arrivedAt: afternoon(day, "15:00"),
+    values: { tank_count: 2, lid_condition: "good", sludge_scum: "Sludge near the top of the pretreatment tank." },
+    pumpOut: { clientId: randomUUID(), volume: 1000, unit: "gallons", wasteType: "septage", tanks: [{ label: "Pretreatment", volume: 600 }, { label: "Aerobic", volume: 400 }], vehicleId: truck.id },
+  };
+  await tech.put("/work/sync", { ...base, status: "draft", revision: 1 });
+  const done = await tech.put("/work/sync", { ...base, status: "completed", revision: 2, completedAt: afternoon(day, "16:00"), finalVisit: true });
+  if (done.status !== "completed") throw new Error(`demo story: pumping visit did not complete: ${JSON.stringify(done.validationProblems ?? done)}`);
+  const pumped = await tech.get(`/pumping/field`);
+  const groupIds = (pumped.unloaded as { groupId: string; workRecordId: string }[]).filter((p) => p.workRecordId === done.id).map((p) => p.groupId);
+  await tech.put("/disposal/loads/sync", {
+    clientId: randomUUID(),
+    vehicleId: truck.id,
+    facilityId: facility.id,
+    deliveredOn: day,
+    manifestReference: "DEMO-MANIFEST-0001",
+    total: 1000,
+    unit: "gallons",
+    notes: "Fictional demo record.",
+    pumpingGroupIds: groupIds,
+  });
+}
+
 /** A session made for the person directly: demo people may have no password (W10.2). */
 async function signIn(app: App, db: Database, organizationId: string, userId: string) {
   const { token } = await createSession(db, organizationId, userId);
@@ -76,6 +120,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   const work = features.has("work_orders");
   const catalog = work && features.has("service_items");
   const tiers = features.has("plan_builder");
+  // SW-6: the pump-out is recorded on the technician's phone, with a fictional truck and facility.
+  const pumping = work && features.has("field_work") && features.has("pumping");
   const found = db.selectFrom("organizations").select(["id", "demo"]);
   const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
@@ -234,7 +280,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         }
         const visit = await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: yesterday, notes: "Pump the pretreatment and aerobic tanks." });
         const jobId = visit.visits[0].jobId as string;
-        await office.post(`/work-orders/${wo.id}/complete`, { reason: "Fictional: pumped yesterday; the technician's phone records arrive with the next phone update." });
+        if (pumping) await pumpedOnThePhone(owner, tech, jobId, yesterday);
+        else await office.post(`/work-orders/${wo.id}/complete`, { reason: "Fictional: pumped yesterday; the technician's phone records arrive with the next phone update." });
         let invoiceId: string;
         if (catalog) {
           invoiceId = (await office.post(`/work-orders/${wo.id}/invoice`)).invoiceId;

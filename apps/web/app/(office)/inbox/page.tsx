@@ -16,6 +16,7 @@ const SEVERITY_CLASS: Record<InboxException["severity"], string> = { high: "dang
 
 /** Where to deal with an exception, when it is not handled right here. */
 function href(e: InboxException): string | null {
+  if (e.kind === "disposal_overdue") return "/disposal";
   switch (e.target.type) {
     case "filing":
       return `/filings/${e.target.id}`;
@@ -64,6 +65,7 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   report_unsigned: "Sign report",
   discontinuation_notice_due: "Record notice",
   visit_after_service_end: "Reschedule",
+  disposal_overdue: "Record disposal",
 };
 
 /** A customer's text needs no written resolution: someone read it and acted. */

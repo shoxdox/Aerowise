@@ -7,6 +7,7 @@ import {
   heldForReview,
   JOB_STATE_MACHINE,
   roleHasPermission,
+  pumpOutProblems,
   signatureProblems,
   snapshotSha256,
   unknownKeys,
@@ -21,6 +22,7 @@ import {
   workSyncConflict,
   workPhoto,
   type Feature,
+  type PumpOutInput,
   type Role,
   type TemplateDefinition,
   type WorkRecord,
@@ -37,6 +39,7 @@ import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { currentForms } from "../lib/forms.ts";
 import { organizationToday } from "../lib/today.ts";
 import { lockWorkOrder, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
+import { insertPumpOut, pumpOutRequired, pumpOutVehicleProblems } from "../lib/pumping.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 
 // SW-2, server side: field records for work visits sent from the phone, their photos and
@@ -167,7 +170,15 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
    * answers kept on completion (only fields the form shows); `mismatch` means a signature was
    * given on a different summary.
    */
-  async function completionCheck(trx: Trx, organizationId: string, clientId: string, definition: TemplateDefinition, sent: Record<string, unknown>, summary: unknown) {
+  async function completionCheck(
+    trx: Trx,
+    organizationId: string,
+    clientId: string,
+    definition: TemplateDefinition,
+    sent: Record<string, unknown>,
+    summary: unknown,
+    work: { workOrderId: string; pumpOut: PumpOutInput | null | undefined },
+  ) {
     const answers = Object.fromEntries(Object.entries(sent).filter(([, v]) => v !== null && v !== "")) as Parameters<typeof visibleFields>[1];
     const shown = new Set(visibleFields(definition, answers).map((f) => f.key));
     const values = Object.fromEntries(Object.entries(answers).filter(([k]) => shown.has(k)));
@@ -182,6 +193,9 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
     const problems = [
       ...validateInspection(definition, values, await photoCounts(trx, organizationId, clientId)),
       ...signatureProblems(definition, new Set(signed.map((sig) => sig.requirementKey!))),
+      // SW-6: work that needs a disposal record completes only with its pump-out.
+      ...pumpOutProblems(await pumpOutRequired(trx, features, organizationId, work.workOrderId), work.pumpOut),
+      ...(await pumpOutVehicleProblems(trx, organizationId, work.pumpOut)),
     ];
     return { values, summarySha256, mismatch, problems };
   }
@@ -356,7 +370,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const definition = template.definition as TemplateDefinition;
         const unknown = unknownKeys(definition, body.values);
         if (unknown.length) throw unprocessable(`Unknown fields: ${unknown.join(", ")}`);
-        const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary) : null;
+        const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary, { workOrderId: job.workOrderId, pumpOut: body.pumpOut }) : null;
         const values = check?.values ?? Object.fromEntries(Object.entries(body.values).filter(([, v]) => v !== null && v !== ""));
         const summarySha256 = body.summary ? await snapshotSha256(body.summary) : null;
         const columns = {
@@ -404,7 +418,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
               .where("id", "=", recordId)
               .execute();
           } else {
-            await completeRecord(trx, req, { organizationId, recordId, wo, jobId: job.id, finalVisit: body.finalVisit, completedAt: body.completedAt ? new Date(body.completedAt) : at, at });
+            await completeRecord(trx, req, { organizationId, recordId, wo, jobId: job.id, finalVisit: body.finalVisit, completedAt: body.completedAt ? new Date(body.completedAt) : at, at, pumpOut: body.pumpOut });
           }
         }
         return { kind: "record" as const, id: recordId };
@@ -420,7 +434,17 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
   async function completeRecord(
     trx: Trx,
     req: FastifyRequest,
-    a: { organizationId: string; recordId: string; wo: { id: string; status: string }; jobId: string; finalVisit: boolean; completedAt: Date; at: Date; attachedBy?: string },
+    a: {
+      organizationId: string;
+      recordId: string;
+      wo: { id: string; status: string };
+      jobId: string;
+      finalVisit: boolean;
+      completedAt: Date;
+      at: Date;
+      attachedBy?: string;
+      pumpOut?: PumpOutInput | null;
+    },
   ) {
     await trx
       .updateTable("workRecords")
@@ -450,6 +474,13 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       at: a.at,
     });
     await audit(trx, req, { action: "work_record.completed", entityType: "work_record", entityId: a.recordId, changes: { jobId: a.jobId, finalVisit: a.finalVisit } });
+    // SW-6: the pump-out becomes a record when its field record completes, exactly once, whether
+    // the technician completes it or the office accepts it from a held record. Credited to the
+    // technician; whoever completed it is the one who recorded it.
+    if (a.pumpOut) {
+      const groupId = await insertPumpOut(trx, { organizationId: a.organizationId, recordId: a.recordId, pumpOut: a.pumpOut, completedAt: a.completedAt, recordedBy: req.requireAuth().userId });
+      await audit(trx, req, { action: "pumping_record.recorded", entityType: "pumping_record", entityId: groupId, changes: { recordId: a.recordId, volume: a.pumpOut.volume, unit: a.pumpOut.unit } });
+    }
   }
 
   // ---- Photos and signatures ----
@@ -650,6 +681,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           "w.category",
           "t.defaultDurationMinutes",
           "t.defaultFormTemplateKey",
+          "t.requiresDisposalRecord",
           "c.displayName as customerName",
           "s.addressLine1",
           "s.city",
@@ -689,6 +721,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           lng: r.lng,
           notes: r.notes,
           templateId: (r.defaultFormTemplateKey && forms.get(r.defaultFormTemplateKey)) || null,
+          requiresDisposalRecord: features.has("pumping") && r.requiresDisposalRecord,
           record: r.recordClientId && r.recordTechnicianId === userId ? { clientId: r.recordClientId, status: r.recordStatus! } : null,
         })),
       };
@@ -846,7 +879,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const definition = template.definition as TemplateDefinition;
         const unknown = unknownKeys(definition, p.values);
         if (unknown.length) throw conflict("record_incomplete", `The record has answers its form does not ask: ${unknown.join(", ")}`);
-        const check = await completionCheck(trx, organizationId, c.offlineClientId, definition, p.values, p.summary);
+        const check = await completionCheck(trx, organizationId, c.offlineClientId, definition, p.values, p.summary, { workOrderId: wo.id, pumpOut: p.pumpOut });
         if (check.mismatch) throw signatureMismatch();
         if (check.problems.length) throw conflict("record_incomplete", `The record is not complete: ${check.problems.map((x) => x.message).join("; ")}`);
 
@@ -903,7 +936,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           })
           .returning("id")
           .executeTakeFirstOrThrow();
-        await completeRecord(trx, req, { organizationId, recordId: rec.id, wo, jobId: targetJobId, finalVisit: p.finalVisit, completedAt: p.completedAt ? new Date(p.completedAt) : at, at, attachedBy: userId });
+        await completeRecord(trx, req, { organizationId, recordId: rec.id, wo, jobId: targetJobId, finalVisit: p.finalVisit, completedAt: p.completedAt ? new Date(p.completedAt) : at, at, attachedBy: userId, pumpOut: p.pumpOut });
         // The office had completed it without a field record: this is that record now.
         if (wo.status === "completed") {
           await trx.updateTable("workOrders").set({ completedWithoutRecordReason: null, updatedAt: at }).where("organizationId", "=", organizationId).where("id", "=", wo.id).execute();

@@ -53,6 +53,8 @@ export interface OrganizationsTable {
   logoUrl: string | null;
   invoiceTermsDays: Generated<number>;
   defaultTaxRateBps: Generated<number>;
+  /** Pump-outs older than this and in no load raise "Disposal not recorded" (SW-6). */
+  disposalOverdueDays: Generated<number>;
   nextInvoiceNumber: Generated<number>;
   /** Next work order number (WO-1001 onward), gapless per company. */
   nextWorkOrderNumber: Generated<number>;
@@ -1617,6 +1619,8 @@ export interface WorkOrderLinesTable {
   coverageNote: ColumnType<string | null, string | null | undefined, string | null>;
   serviceItemId: ColumnType<string | null, string | null | undefined, string | null>;
   source: Generated<"planned" | "added_in_field">;
+  /** Bills the work order's pumped volume at invoicing (SW-6). */
+  billPumpedVolume: Generated<boolean>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -1739,6 +1743,15 @@ export interface DB {
   workRecords: WorkRecordsTable;
   workSyncConflicts: WorkSyncConflictsTable;
   workAttachments: WorkAttachmentsTable;
+  vehicles: VehiclesTable;
+  disposalFacilities: DisposalFacilitiesTable;
+  pumpingRecords: PumpingRecordsTable;
+  disposalLoads: DisposalLoadsTable;
+  disposalLoadItems: DisposalLoadItemsTable;
+  /** The current revision of each pump-out group (0058 view). */
+  currentPumpingRecords: PumpingRecordsTable;
+  /** The current revision of each load group (0058 view). */
+  currentDisposalLoads: DisposalLoadsTable;
 }
 
 // ---- SW-2: field records for work visits (0055) ----
@@ -1811,7 +1824,9 @@ export interface WorkAttachmentsTable {
   id: Generated<string>;
   organizationId: string;
   offlineClientId: string;
-  recordClientId: string;
+  /** Exactly one owner: a field record's client id, or a load group (SW-6). */
+  recordClientId: ColumnType<string | null, string | null | undefined, string | null>;
+  disposalLoadGroupId: ColumnType<string | null, string | null | undefined, string | null>;
   photoKey: string;
   storageKey: string;
   contentType: string;
@@ -1821,5 +1836,101 @@ export interface WorkAttachmentsTable {
   lat: number | null;
   lng: number | null;
   uploadedBy: string;
+  createdAt: CreatedAt;
+}
+
+// ---- SW-6: pumping and disposal records (0058) ----
+
+export type VolumeUnit = "gallons" | "liters";
+export type WasteType = "septage" | "grease_trap" | "holding_tank" | "portable_toilet" | "other";
+export type FacilityKind = "wastewater_treatment_plant" | "land_application_site" | "transfer_station" | "other";
+/** numeric and bigint columns come back as strings. */
+type Decimal = ColumnType<string, number | string, never>;
+
+export interface VehiclesTable {
+  id: Generated<string>;
+  organizationId: string;
+  name: string;
+  plate: string | null;
+  capacityGallons: number | null;
+  registrationReference: string | null;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface DisposalFacilitiesTable {
+  id: Generated<string>;
+  organizationId: string;
+  name: string;
+  kind: FacilityKind;
+  addressLine1: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  lat: number | null;
+  lng: number | null;
+  permitOrRegistrationNumber: string | null;
+  source: Generated<"entered_by_provider" | "public_source">;
+  sourceUrl: string | null;
+  sourceRetrievedOn: string | null;
+  notes: string | null;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+/** Immutable revisions; only is_current is ever cleared, by a correction. */
+export interface PumpingRecordsTable {
+  id: string;
+  organizationId: string;
+  groupId: string;
+  revision: number;
+  isCurrent: Generated<boolean>;
+  correctionReason: string | null;
+  offlineClientId: string | null;
+  workOrderId: string;
+  jobId: string;
+  workRecordId: string;
+  siteId: string;
+  technicianUserId: string;
+  vehicleId: string | null;
+  serviceDate: string;
+  wasteType: WasteType;
+  wasteTypeNote: string | null;
+  tanks: ColumnType<unknown, string, never>;
+  enteredVolume: Decimal;
+  enteredUnit: VolumeUnit;
+  volumeMilligallons: Decimal;
+  recordedBy: string;
+  createdAt: CreatedAt;
+}
+
+export interface DisposalLoadsTable {
+  id: string;
+  organizationId: string;
+  groupId: string;
+  revision: number;
+  isCurrent: Generated<boolean>;
+  correctionReason: string | null;
+  offlineClientId: string | null;
+  vehicleId: string | null;
+  disposalFacilityId: string;
+  deliveredOn: string;
+  manifestReference: string | null;
+  enteredTotal: Decimal;
+  enteredUnit: VolumeUnit;
+  totalMilligallons: Decimal;
+  notes: string | null;
+  recordedBy: string;
+  createdAt: CreatedAt;
+}
+
+export interface DisposalLoadItemsTable {
+  id: Generated<string>;
+  organizationId: string;
+  loadGroupId: string;
+  pumpingGroupId: string;
+  addedBy: string;
   createdAt: CreatedAt;
 }

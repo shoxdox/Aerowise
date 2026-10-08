@@ -48,7 +48,7 @@ Choose one provider and actual permit authority; obtain a small redacted permit/
 
 - **SW-2:** offline work server #106 (`85beac3`) and phone #109 (`010ce93`), migration 0055, flag `field_work` — merged and deployed in staging application `81048d3`. Assignment history, revision-safe draft sync, pinned templates, photos/signatures, held conflicts and office attachment validation. Combined local browser evidence covers Pixel 7 emulation/offline/floor cases; staging desktop synthetic repair verification is recorded in RUNBOOK. Physical device remains G-DEVICE.
 - **Hooks lint follow-up:** #113 merged (`f523d07`), rules-of-hooks only for web TS/TSX; fixes the conditional plan session hook. Independently passed lint plus worker-reported affected browser/build/typecheck. Not yet deployed.
-- **Remaining expansion:** SW-6 pumping/disposal and SW-10 mixed map are being implemented by the existing workers. SW-7 conventional/install and SW-9 non-aerobic cycles wait for their reviewed/merged prerequisites; SW-12 final matrix/floor/restore/walkthrough remains pending. No new worker, production or real-provider release.
+- **Remaining expansion:** SW-10 mixed map merged as main `4e8a897` on October 8 and passed the staging office/technician walkthrough. SW-6 pumping/disposal remains in progress with the existing worker; its reproduced backend review findings passed independent re-review. SW-7 conventional/install and SW-9 non-aerobic cycles wait for their reviewed/merged prerequisites. SW-12 final matrix/floor/restore/walkthrough remains pending, including storage-full handling and technician coverage product fixes. No new worker, production or real-provider release.
 
 ## W9. Deferred
 

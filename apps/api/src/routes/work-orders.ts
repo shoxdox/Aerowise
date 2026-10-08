@@ -38,6 +38,7 @@ import { coveredInvoiceLines } from "../lib/coverage.ts";
 import { isWorkForm } from "../lib/forms.ts";
 import { acceptedPricing } from "../lib/estimates.ts";
 import { checkDraftRefs, writeDraftLines } from "../lib/invoices.ts";
+import { pumpedVolume } from "../lib/pumping.ts";
 import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
 
 // General work orders (SW-1 of the service workflows plan): the office creates them, turns
@@ -219,6 +220,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       source: l.source,
       amountCents: Math.round((l.quantityMilli * l.unitPriceCents) / 1000),
       serviceItemId: l.serviceItemId,
+      billPumpedVolume: l.billPumpedVolume,
     }));
     return {
       ...toSummary(row),
@@ -257,7 +259,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     }
     await trx
       .insertInto("workOrderLines")
-      .values(lines.map((l, i) => ({ organizationId, workOrderId, position: i + 1, description: l.description, quantityMilli: toMilli(l.quantity), unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId ?? null, source: "planned" as const, updatedAt: at })))
+      .values(lines.map((l, i) => ({ organizationId, workOrderId, position: i + 1, description: l.description, quantityMilli: toMilli(l.quantity), unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId ?? null, billPumpedVolume: l.billPumpedVolume, source: "planned" as const, updatedAt: at })))
       .execute();
   }
 
@@ -673,12 +675,18 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           if (wo.billingStatus === "no_charge") throw new HttpError(409, "no_charge", "This work order is marked no charge");
           const lines = await trx.selectFrom("workOrderLines").selectAll().where("organizationId", "=", organizationId).where("workOrderId", "=", wo.id).orderBy("position").orderBy("createdAt").execute();
           if (!lines.length) throw unprocessable("Add the work order's labor, parts or fees before invoicing it");
+          // A line billed by the pumped volume takes the work order's current pump-out total, and cites it (SW-6).
+          const pumped = lines.some((l) => l.billPumpedVolume) ? await pumpedVolume(trx, organizationId, wo.id) : null;
+          if (pumped && pumped.milligallons === 0) throw unprocessable("A line bills the pumped volume, but no pump-out is recorded on this work order yet");
+          const billed = lines.map((l) =>
+            l.billPumpedVolume && pumped ? { ...l, quantityMilli: pumped.milligallons, description: `${l.description.slice(0, 495 - pumped.text.length)} (${pumped.text})` } : l,
+          );
           // Lines the work order's applied coverage fits are priced under it, and say so (SW-8).
           const invoiceLines = await coveredInvoiceLines(
             trx,
             organizationId,
             wo,
-            lines.map((l) => ({ description: l.description, quantity: l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId })),
+            billed.map((l) => ({ description: l.description, quantity: l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId })),
           );
           await checkDraftRefs(trx, organizationId, wo.customerId, wo.siteId, invoiceLines);
           const org = await trx.selectFrom("organizations").select(["invoiceTermsDays", "defaultTaxRateBps"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
