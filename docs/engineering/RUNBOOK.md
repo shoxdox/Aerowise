@@ -337,7 +337,7 @@ Not deployed by this PR. Migration 0051 adds a purpose to every form version (ex
 
 ## Field records from the phone (SW-2, server part) on staging
 
-Not deployed by this PR. Migration 0053 adds field records for work visits, held records, work photos, and the assignment history of each work visit (kept by a trigger on `jobs`, so every code path that moves, cancels or completes a work visit records it). The flag `field_work` switches the phone routes on; with it off, `/work/sync` and the uploads refuse anything new with 409 `feature_off` and `/work/route` is empty, while anything already started can still be finished and the office can still settle held records.
+Not deployed by this PR. Migration 0055 adds field records for work visits, held records, work photos, and the assignment history of each work visit (kept by a trigger on `jobs`, so every code path that moves, cancels or completes a work visit records it). The flag `field_work` switches the phone routes on; with it off, `/work/sync` and the uploads refuse anything new with 409 `feature_off` and `/work/route` is empty, while anything already started can still be finished and the office can still settle held records.
 
 1. Deploy the merged SHA to staging with `AEROWISE_FEATURES=work_orders` (as now). Check `select count(*) from job_assignments` equals the number of live work visits (`select count(*) from jobs where type = 'work' and status in ('scheduled', 'in_progress')`).
 2. Add `field_work` (`AEROWISE_FEATURES=work_orders,field_work`) and redeploy the same SHA. `/api/app-info` lists both.
