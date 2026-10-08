@@ -23,6 +23,7 @@ export const EXPORT_TABLES: { file: string; table: string; omit?: string[] }[] =
   { file: "plan_versions.csv", table: "plan_versions" },
   { file: "contracts.csv", table: "contracts" },
   { file: "contract_coverage_rules.csv", table: "contract_coverage_rules" },
+  { file: "contract_service_cycles.csv", table: "contract_service_cycles" },
   { file: "visits.csv", table: "service_obligations" },
   { file: "jobs.csv", table: "jobs" },
   { file: "inspections.csv", table: "inspections" },

@@ -24,6 +24,7 @@ import {
   type ColumnMapping,
   type ExistingRecords,
   type SavedColumn,
+  parseServiceCycles,
 } from "@aerowise/domain";
 import { loadCatalog, resolveSite } from "@aerowise/compliance";
 import { DEMO_CSV_COLUMN, queueSiteLocating } from "@aerowise/tasks";
@@ -32,6 +33,9 @@ import { sql, type Insertable, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { insertContract, type Terms } from "../lib/contracts.ts";
+
+/** An active plan as an import uses it; `notImported` says why its contracts are left to the office. */
+type ImportPlan = Terms & { notImported?: string };
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { parseSpreadsheet } from "../lib/import-parse.ts";
 import { deleteImportRecords, importRecords, undoBlockers } from "../lib/import-undo.ts";
@@ -91,18 +95,25 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 
   async function activePlans(organizationId: string) {
     const rows = await db
-      .selectFrom("plans")
-      .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType"])
-      .where("organizationId", "=", organizationId)
-      .where("active", "=", true)
+      .selectFrom("plans as p")
+      .innerJoin("planVersions as v", "v.id", "p.currentVersionId")
+      .select(["p.id", "p.name", "p.customerType", "p.termMonths", "p.visitsPerTerm", "p.priceCents", "p.billingFrequency", "p.serviceType", "v.serviceCycles"])
+      .where("p.organizationId", "=", organizationId)
+      .where("p.active", "=", true)
       .execute();
-    return new Map<string, Terms>(
-      rows.map(({ id: planId, name, ...p }) => [name, { ...p, planId, planName: name }]),
+    return new Map<string, ImportPlan>(
+      rows.map(({ id: planId, name, serviceCycles, ...p }) => {
+        // An import only sets up inspection contracts (SW-9): a plan with pumping or maintenance
+        // is named as such and left to the office, never imported as inspections alone.
+        const { aerobic, cycles } = parseServiceCycles(serviceCycles);
+        const notImported = !aerobic || cycles.length ? `Plan "${name}" includes pumping or maintenance visits, which an import does not set up; no contract will be created. Add this contract in the office.` : undefined;
+        return [name, { ...p, planId, planName: name, ...(notImported ? { notImported } : {}) }];
+      }),
     );
   }
 
   /** Customers, sites and plans already on file, leaving out what this import itself created. */
-  async function existingRecords(organizationId: string, importId: string, plans: Map<string, Terms>): Promise<ExistingRecords> {
+  async function existingRecords(organizationId: string, importId: string, plans: Map<string, ImportPlan>): Promise<ExistingRecords> {
     const [customers, contacts, sites] = await Promise.all([
       db
         .selectFrom("customers")
@@ -128,7 +139,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     return {
       customers: customers.map((c) => ({ ...c, ...(byCustomer.get(c.id) ?? { phones: [], emails: [] }) })),
       sites,
-      plans: [...plans.values()].map((p) => ({ name: p.planName, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm })),
+      plans: [...plans.values()].map((p) => ({ name: p.planName, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm, ...(p.notImported ? { notImported: p.notImported } : {}) })),
       today: await organizationToday(db, organizationId, now()),
     };
   }
@@ -213,6 +224,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               .selectFrom("serviceObligations")
               .select("dueOn")
               .where("organizationId", "=", organizationId)
+              .where("serviceType", "=", "aerobic_inspection")
               .where("status", "=", "open")
               .$if(importId !== null, (q) => q.where("siteId", "in", siteIds))
               .execute(),
@@ -585,7 +597,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 };
 
 /** Inserts everything the included rows describe, in the caller's transaction. */
-async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, Terms>, today: string) {
+async function saveRows(trx: Transaction<DB>, organizationId: string, importId: string, sheetIndex: number, rows: AnalyzedRow[], plans: Map<string, ImportPlan>, today: string) {
   const customerIds = new Map<string, string>();
   const customers: Insertable<DB["customers"]>[] = [];
   const contacts: Insertable<DB["contacts"]>[] = [];
@@ -649,12 +661,12 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
   const catalog = await loadCatalog(trx);
   for (const [i, row] of rows.entries()) {
     const r = row.record;
-    const terms = r.planName ? plans.get(r.planName) : undefined;
-    if (!terms || !r.contractStart) continue;
-    const contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: r.contractStart, terms, autoRenew: false }, { catalog });
+    const plan = r.planName ? plans.get(r.planName) : undefined;
+    if (!plan || plan.notImported || !r.contractStart) continue;
+    const contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: r.contractStart, terms: plan, autoRenew: false }, { catalog });
     results[i]!.contractId = contractId;
     contracts++;
-    const visits = trx.updateTable("serviceObligations").where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("status", "=", "open");
+    const visits = trx.updateTable("serviceObligations").where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("serviceType", "=", "aerobic_inspection").where("status", "=", "open");
     if (r.lastInspection) {
       // The window holding the last inspection, and every window before it, was covered.
       await visits

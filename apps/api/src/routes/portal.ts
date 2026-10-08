@@ -149,6 +149,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
                   .selectFrom("serviceObligations as o")
                   .select(sql<number>`count(*)::int`.as("n"))
                   .whereRef("o.contractId", "=", "k.id")
+                  .where("o.serviceType", "=", "aerobic_inspection")
                   .where("o.status", "=", "completed")
                   .as("visitsDone"),
               )
@@ -173,6 +174,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "j.scheduledDate"])
               .where("o.organizationId", "=", organizationId)
               .where("o.siteId", "in", siteIds)
+              .where("o.serviceType", "=", "aerobic_inspection")
               .where("o.status", "=", "open")
               .orderBy("o.dueOn")
               .execute(),
@@ -210,6 +212,66 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           .limit(50)
           .execute(),
       ]);
+      // SW-9: a contract with pumping or maintenance visits shows each kind of visit's own
+      // progress; an inspection-only contract keeps its one inspection count.
+      const contractIds = contracts.map((k) => k.id);
+      const cycleProgress = contractIds.length
+        ? await db
+            .selectFrom("contractServiceCycles as y")
+            // A cycle with no visit this term (allowed every 36 months on a 12-month plan) still shows, as 0 of 0.
+            .leftJoin("serviceObligations as o", (j) => j.onRef("o.cycleId", "=", "y.id").onRef("o.organizationId", "=", "y.organizationId"))
+            .select(["y.contractId", "y.cycleKey", "y.serviceType", sql<string | null>`y.snapshot->>'label'`.as("label")])
+            .select(sql<number>`count(o.id) filter (where o.status <> 'cancelled')::int`.as("total"))
+            .select(sql<number>`count(o.id) filter (where o.status = 'completed')::int`.as("done"))
+            .where("y.organizationId", "=", organizationId)
+            .where("y.contractId", "in", contractIds)
+            .where((eb) =>
+              eb.exists(
+                eb
+                  .selectFrom("contractServiceCycles as x")
+                  .select("x.id")
+                  .whereRef("x.contractId", "=", "y.contractId")
+                  .where("x.serviceType", "<>", "aerobic_inspection"),
+              ),
+            )
+            .groupBy(["y.contractId", "y.cycleKey", "y.serviceType", "y.snapshot"])
+            .orderBy(sql`y.service_type <> 'aerobic_inspection'`)
+            .orderBy("y.cycleKey")
+            .execute()
+        : [];
+      // SW-9: a site's next pumping or maintenance visit, shown when it has no inspection due,
+      // and which sites have inspections at all (a pumping-only site has no "last inspection").
+      const [cycleVisits, inspectedSites] = none
+        ? [[], []]
+        : await Promise.all([
+            db
+              .selectFrom("serviceObligations as o")
+              .innerJoin("contractServiceCycles as y", (j) => j.onRef("y.id", "=", "o.cycleId").onRef("y.organizationId", "=", "o.organizationId"))
+              // A visit booked as work and put on the schedule shows its date.
+              .leftJoin("workOrders as w", (j) => j.onRef("w.obligationId", "=", "o.id").onRef("w.organizationId", "=", "o.organizationId").on("w.status", "<>", "cancelled"))
+              .leftJoin("jobs as j", (j) => j.onRef("j.workOrderId", "=", "w.id").onRef("j.organizationId", "=", "w.organizationId").on("j.status", "in", ["scheduled", "in_progress"]))
+              .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "y.cycleKey", "j.scheduledDate", sql<string | null>`y.snapshot->>'label'`.as("label")])
+              .where("o.organizationId", "=", organizationId)
+              .where("o.siteId", "in", siteIds)
+              .where("o.serviceType", "<>", "aerobic_inspection")
+              .where("o.status", "=", "open")
+              .orderBy("o.dueOn")
+              .orderBy("j.scheduledDate")
+              .execute(),
+            db
+              .selectFrom("serviceObligations")
+              .select("siteId")
+              .distinct()
+              .where("organizationId", "=", organizationId)
+              .where("siteId", "in", siteIds)
+              .where("serviceType", "=", "aerobic_inspection")
+              .execute(),
+          ]);
+      const hasInspections = new Set(inspectedSites.map((x) => x.siteId));
+      const progressOf = (contractId: string) =>
+        cycleProgress
+          .filter((p) => p.contractId === contractId)
+          .map((p) => ({ label: p.serviceType === "aerobic_inspection" ? "Aerobic inspections" : (p.label ?? p.cycleKey), done: p.done, total: p.total }));
       // SW-7: finished work with its completion summary.
       const work = await completedWorkOrders(db, organizationId, siteIds);
       // A report waiting for the maintenance provider's signature is not shown yet (30 TAC 285.7(b)(3)).
@@ -226,6 +288,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           mine[0];
         const r = renewals.find((x) => x.siteId === s.id && (!k || x.contractId === k.id));
         const next = obligations.find((o) => o.siteId === s.id);
+        const nextCycle = next ? undefined : cycleVisits.find((o) => o.siteId === s.id);
         return {
           id: s.id,
           address: [s.addressLine1, s.addressLine2, cityLine(s.city, s.state, s.postalCode)].filter(Boolean).join(", "),
@@ -241,9 +304,14 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
                 chlorinationMethod: sys.chlorinationMethod,
               }
             : null,
-          contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0) } : null,
+          contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0), visitProgress: progressOf(k.id) } : null,
           renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.publicToken) } : null,
-          nextVisit: next ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate } : null,
+          nextVisit: next
+            ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate, label: null }
+            : nextCycle
+              ? { dueOn: nextCycle.dueOn, windowStart: nextCycle.windowStart, windowEnd: nextCycle.windowEnd, scheduledDate: nextCycle.scheduledDate ?? null, label: nextCycle.label ?? nextCycle.cycleKey }
+              : null,
+          inspections: hasInspections.has(s.id) || reports.some((x) => x.siteId === s.id),
           reports: reports
             .filter((x) => x.siteId === s.id && ready.has(x.id))
             .map((x) => ({ id: x.id, inspectedOn: dateInZone(x.completedAt ?? x.arrivedAt, org.timezone), url: `/portal/${req.params.token}/reports/${x.id}` }))

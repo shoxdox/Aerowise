@@ -66,6 +66,8 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   discontinuation_notice_due: "Record notice",
   visit_after_service_end: "Reschedule",
   disposal_overdue: "Record disposal",
+  service_visit_overdue: "Book work",
+  cycle_work_contract_ended: "Open contract",
 };
 
 /** A customer's text needs no written resolution: someone read it and acted. */

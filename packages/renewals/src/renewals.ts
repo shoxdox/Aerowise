@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, contractInstallments, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
+import { addDays, buildIntervalSchedule, contractInstallments, parseServiceCycles, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
-import { insertContract, termsForSite } from "./contracts.ts";
+import { insertContract, termsForSite, type ContractCycles } from "./contracts.ts";
 import { loadPlanVersion } from "./plans.ts";
 
 type Executor = Database | Transaction<DB>;
@@ -99,9 +99,33 @@ export async function offerTerms(
           planVersionId: contract.planVersionId,
         };
   const priceCents = override.priceCents ?? base.priceCents;
+  // A version without inspections (SW-9) is offered as its own service: no authority visit
+  // rules, the site's own customer type, its first cycle's kind, and its visits in the term.
+  const cycles = base.planVersionId ? await versionCycles(db, organizationId, base.planVersionId) : null;
+  if (cycles && !cycles.aerobic && cycles.cycles.length) {
+    const site = await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", contract.siteId).executeTakeFirstOrThrow();
+    const visits = cycles.cycles.reduce((n, c) => n + buildIntervalSchedule(startOn, base.termMonths, c.schedule).length, 0);
+    return {
+      ...base,
+      customerType: site.customerType,
+      serviceType: cycles.cycles[0]!.serviceType,
+      visitsPerTerm: visits ? Math.min(visits, 24) : base.visitsPerTerm,
+      planVersionId: base.planVersionId ?? null,
+      priceCents,
+      autoRenew: contract.autoRenew,
+      startOn,
+      endOn: termEndOn(startOn, base.termMonths),
+    };
+  }
   // The offer shows the visits the new contract will have under the site's authority.
   const terms = await termsForSite(db, organizationId, contract.siteId, startOn, base);
   return { ...terms, planVersionId: terms.planVersionId ?? null, priceCents, autoRenew: contract.autoRenew, startOn, endOn: termEndOn(startOn, terms.termMonths) };
+}
+
+/** A plan version's cycles (SW-9); null when it is not one of this organization's. */
+async function versionCycles(db: Executor, organizationId: string, versionId: string) {
+  const v = await db.selectFrom("planVersions").select("serviceCycles").where("organizationId", "=", organizationId).where("id", "=", versionId).executeTakeFirst();
+  return v ? parseServiceCycles(v.serviceCycles) : null;
 }
 
 export interface ContractRow {
@@ -248,6 +272,8 @@ export async function activateRenewal(
     note?: string;
     /** The plan builder is on (SW-8): a renewal activated without a signature takes its version's coverage. */
     planBuilder?: boolean;
+    /** Service cycles are on (SW-9): a renewal activated without a signature takes its version's cycles. */
+    serviceCycles?: boolean;
   },
 ): Promise<ActivationResult> {
   const r = await trx.selectFrom("renewals").selectAll().where("organizationId", "=", organizationId).where("id", "=", renewalId).forUpdate().executeTakeFirstOrThrow();
@@ -264,16 +290,24 @@ export async function activateRenewal(
   // The new term's coverage is what the customer signed for: the agreement lists it when the
   // plan builder was on at signing. Without a signature the deployment's switch decides.
   let coverage: CoverageRule[] = [];
+  let cycles: ContractCycles | undefined;
   if (r.planVersionId) {
     const signed = r.signedDocumentId
       ? ((await trx.selectFrom("signedDocuments").select("content").where("organizationId", "=", organizationId).where("id", "=", r.signedDocumentId).executeTakeFirstOrThrow()).content as AgreementContent)
       : null;
-    if (signed ? !!signed.coverage?.length : !!opts.planBuilder) coverage = (await loadPlanVersion(trx, organizationId, r.planVersionId))?.coverage ?? [];
+    const v = await loadPlanVersion(trx, organizationId, r.planVersionId);
+    if (signed ? !!signed.coverage?.length : !!opts.planBuilder) coverage = v?.coverage ?? [];
+    // Cycles likewise (SW-9). A version without inspections always brings its cycles, so its
+    // renewal is never made into an inspection contract.
+    if (v && (!v.aerobic || (v.serviceCycles.length && (signed ? !!signed.cycles : !!opts.serviceCycles)))) {
+      cycles = { aerobic: v.aerobic, serviceCycles: v.serviceCycles };
+    }
   }
   const contractId = await insertContract(trx, organizationId, {
     siteId: r.siteId,
     startOn: r.startOn,
     coverage,
+    ...(cycles ? { cycles } : {}),
     terms: {
       planId: r.planId,
       planName: r.planName,

@@ -1,8 +1,9 @@
 "use client";
 
-import type { DueObligation } from "@aerowise/domain";
+import { SERVICE_TYPE_LABELS, type DueObligation, type ServiceType } from "@aerowise/domain";
 import Link from "next/link";
 import { useState } from "react";
+import { useFeature } from "@/lib/features";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { useLoad } from "@/components/useLoad";
 import { day } from "@/lib/format";
@@ -23,11 +24,14 @@ function addDays(date: string, n: number) {
 export default function DuePage() {
   const [range, setRange] = useState(30);
   const [overdueOnly, setOverdueOnly] = useState(false);
+  // Pumping and maintenance visits (SW-9) are listed by type; inspections stay the default.
+  const cyclesOn = useFeature("service_cycles");
+  const [serviceType, setServiceType] = useState("aerobic_inspection");
   // The first load tells us the organization's "today"; ranges are relative to it.
   const first = useLoad<{ today: string }>("/obligations/due?limit=1");
   const today = first.data?.today;
   const query = today
-    ? new URLSearchParams({ through: addDays(today, range), limit: "500", ...(overdueOnly ? { overdueOnly: "true" } : {}) })
+    ? new URLSearchParams({ through: addDays(today, range), limit: "500", ...(overdueOnly ? { overdueOnly: "true" } : {}), ...(cyclesOn ? { serviceType } : {}) })
     : null;
   const { data } = useLoad<{ items: DueObligation[]; total: number; today: string }>(query ? `/obligations/due?${query}` : null);
 
@@ -36,13 +40,22 @@ export default function DuePage() {
   return (
     <div className="stack">
       <div className="row">
-        <h1>Due inspections</h1>
+        <h1>{!cyclesOn || serviceType === "aerobic_inspection" ? "Due inspections" : `Due ${SERVICE_TYPE_LABELS[serviceType as ServiceType].toLowerCase()} visits`}</h1>
         <span className="spacer" />
         {RANGES.map((r) => (
           <button key={r.days} className={range === r.days ? undefined : "secondary"} onClick={() => setRange(r.days)}>
             {r.label}
           </button>
         ))}
+        {cyclesOn && (
+          <select aria-label="Type of visit" value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
+            {(Object.keys(SERVICE_TYPE_LABELS) as ServiceType[]).map((t) => (
+              <option key={t} value={t}>
+                {SERVICE_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
+        )}
         <label className="check">
           <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} />
           Overdue only

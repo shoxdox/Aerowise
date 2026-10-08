@@ -1,6 +1,19 @@
 import { loadCatalog, resolveSite, siteMonitoredOn, type CatalogEntry } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, serviceIntervalMonths, siteScheduleProblem, visitsWithin, type ContractVisitRule, type CoverageRule } from "@aerowise/domain";
+import {
+  anchoredVisitsWithin,
+  buildAnchoredSchedule,
+  buildIntervalSchedule,
+  buildTermSchedule,
+  serviceIntervalMonths,
+  siteScheduleProblem,
+  termEndOn,
+  visitsWithin,
+  type ContractVisitRule,
+  type CoverageRule,
+  type ServiceCycle,
+  type VisitWindow,
+} from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -80,6 +93,16 @@ export async function siteVisitTerms<T extends VisitTerms>(
   };
 }
 
+/**
+ * What a contract takes from its plan version's cycles (SW-9): whether it has aerobic
+ * inspections, and its pumping or maintenance cycles. Without it a contract is an
+ * inspection contract, exactly as before.
+ */
+export interface ContractCycles {
+  aerobic: boolean;
+  serviceCycles: readonly ServiceCycle[];
+}
+
 /** The office has not yet agreed to the extra visits the site's authority needs. */
 export class MoreVisitsRequired extends Error {
   constructor(readonly added: AddedVisits) {
@@ -113,15 +136,34 @@ export async function insertContract(
     coverage?: readonly CoverageRule[];
     /** What was agreed, for a contract made without a signature (SW-8). */
     agreementSnapshot?: unknown;
+    /** The cycles to freeze on the contract (SW-9), from `terms.planVersionId`. */
+    cycles?: ContractCycles;
   },
   opts: { catalog?: CatalogEntry[]; acceptVisits?: number; confirmExtraVisits?: boolean } = {},
 ) {
-  const { terms, added, contractVisits } = await siteVisitTerms(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
-  // The office is warned before visits are added (Justin, 2026-10-05): it must accept the count.
-  if (opts.confirmExtraVisits && added && opts.acceptVisits !== added.visitsPerTerm) throw new MoreVisitsRequired(added);
-  const schedule = contractVisits
-    ? buildAnchoredSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm, contractVisits)
-    : buildTermSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm);
+  const aerobic = input.cycles?.aerobic ?? true;
+  const others = input.cycles?.serviceCycles ?? [];
+  if (!aerobic && !others.length) throw new Error("A contract needs at least one cycle");
+  // A pumping or maintenance contract is never made into an inspection one for want of its cycles.
+  if (!input.cycles && input.terms.serviceType !== "aerobic_inspection") throw new Error(`A ${input.terms.serviceType} contract is made from its plan version's cycles`);
+  let terms: Terms = input.terms;
+  let endOn = termEndOn(input.startOn, terms.termMonths);
+  let inspections: VisitWindow[] = [];
+  if (aerobic) {
+    const site = await siteVisitTerms(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
+    // The office is warned before visits are added (Justin, 2026-10-05): it must accept the count.
+    if (opts.confirmExtraVisits && site.added && opts.acceptVisits !== site.added.visitsPerTerm) throw new MoreVisitsRequired(site.added);
+    terms = site.terms;
+    const schedule = site.contractVisits
+      ? buildAnchoredSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm, site.contractVisits)
+      : buildTermSchedule(input.startOn, terms.termMonths, terms.visitsPerTerm);
+    endOn = schedule.endOn;
+    inspections = schedule.visits;
+  } else {
+    // No inspections, so the authority's visit rules do not apply; the site's own type still does.
+    const site = await trx.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", input.siteId).executeTakeFirstOrThrow();
+    terms = { ...terms, customerType: site.customerType, serviceType: others[0]!.serviceType };
+  }
   const created = await trx
     .insertInto("contracts")
     .values({
@@ -129,7 +171,7 @@ export async function insertContract(
       siteId: input.siteId,
       ...terms,
       startOn: input.startOn,
-      endOn: schedule.endOn,
+      endOn,
       autoRenew: input.autoRenew,
       notes: input.notes ?? null,
       previousContractId: input.previousContractId ?? null,
@@ -140,22 +182,41 @@ export async function insertContract(
     })
     .returning("id")
     .executeTakeFirstOrThrow();
-  await trx
-    .insertInto("serviceObligations")
-    .values(
-      schedule.visits.map((v) => ({
-        organizationId,
-        contractId: created.id,
-        siteId: input.siteId,
-        serviceType: terms.serviceType,
-        sequence: v.sequence,
-        windowStart: v.windowStart,
-        windowEnd: v.windowEnd,
-        dueOn: v.dueOn,
-        completedAt: null,
-      })),
-    )
-    .execute();
+  const planVersionId = terms.planVersionId ?? null;
+  const addCycle = async (c: { cycleKey: string; serviceType: Terms["serviceType"]; workTypeId: string | null; schedule: unknown; snapshot: unknown }, visits: VisitWindow[]) => {
+    const cycle = await trx
+      .insertInto("contractServiceCycles")
+      .values({ organizationId, contractId: created.id, cycleKey: c.cycleKey, serviceType: c.serviceType, workTypeId: c.workTypeId, schedule: JSON.stringify(c.schedule), snapshot: JSON.stringify(c.snapshot), planVersionId })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    if (!visits.length) return;
+    await trx
+      .insertInto("serviceObligations")
+      .values(
+        visits.map((v) => ({
+          organizationId,
+          contractId: created.id,
+          siteId: input.siteId,
+          serviceType: c.serviceType,
+          cycleId: cycle.id,
+          sequence: v.sequence,
+          windowStart: v.windowStart,
+          windowEnd: v.windowEnd,
+          dueOn: v.dueOn,
+          completedAt: null,
+        })),
+      )
+      .execute();
+  };
+  if (aerobic) {
+    // The inspections' cycle records the visits the contract actually has, authority ones included.
+    const schedule = { kind: "visits_per_term", visitsPerTerm: terms.visitsPerTerm };
+    await addCycle({ cycleKey: "aerobic", serviceType: "aerobic_inspection", workTypeId: null, schedule, snapshot: { cycleKey: "aerobic", serviceType: "aerobic_inspection", schedule } }, inspections);
+  }
+  // Pumping and maintenance visits fall from the contract's start and never pass through authority rules.
+  for (const c of others) {
+    await addCycle({ cycleKey: c.cycleKey, serviceType: c.serviceType, workTypeId: c.workTypeId, schedule: c.schedule, snapshot: c }, buildIntervalSchedule(input.startOn, terms.termMonths, c.schedule));
+  }
   if (input.coverage?.length) {
     if (!terms.planVersionId) throw new Error("Coverage is frozen from a plan version");
     // Frozen for the contract's own term: the contract is judged by these alone from now on.
@@ -171,7 +232,7 @@ export async function insertContract(
           planVersionId: terms.planVersionId!,
           limitCount: r.limit?.count ?? null,
           periodStart: input.startOn,
-          periodEnd: schedule.endOn,
+          periodEnd: endOn,
         })),
       )
       .execute();

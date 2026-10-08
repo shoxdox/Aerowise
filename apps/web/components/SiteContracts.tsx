@@ -31,6 +31,8 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const router = useRouter();
   // The chosen plan's options (SW-8, plan builder on): the office ticks what the customer takes.
   const builder = useFeature("plan_builder");
+  // Pumping and maintenance visits on a contract are booked as work orders (SW-9).
+  const cyclesOn = useFeature("service_cycles");
   const [planId, setPlanId] = useState("");
   const [optionKeys, setOptionKeys] = useState<string[] | null>(null);
 
@@ -77,6 +79,11 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
         body: { ...body, acceptVisits: preview.visitsPerTerm, ...(preview.systemWarning ? { confirmSystemCategory: true } : {}) },
       }),
     );
+  }
+
+  /** Books a pumping or maintenance visit as its work order (an existing one is returned) and opens it. */
+  function bookWork(obligationId: string) {
+    void run(async () => router.push(`/work/${(await api<{ id: string }>(`/obligations/${obligationId}/work-order`, { method: "POST", body: {} })).id}`));
   }
 
   function cancel(c: ContractDetail, event: FormEvent<HTMLFormElement>) {
@@ -290,6 +297,19 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               </ul>
             </div>
           )}
+          {c.cycles.some((y) => y.serviceType !== "aerobic_inspection") && (
+            <div className="small" data-testid="contract-cycles">
+              <span className="muted">Service included:</span>
+              <ul className="plain">
+                {c.cycles.map((y) => (
+                  <li key={y.id}>
+                    {y.label}: {y.summary}
+                    {y.workType ? <span className="muted"> · {y.workType.name}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <ContractFilingStatus key={`${c.id}-${c.status}-${c.serviceEndsOn ?? ""}`} contractId={c.id} editable={editable} />
           <table className="compact">
             <thead>
@@ -302,14 +322,37 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             </thead>
             <tbody>
               {c.obligations.map((o) => (
-                <tr key={o.id}>
-                  <td>#{o.sequence}</td>
+                <tr key={o.id} data-testid={o.serviceType === "aerobic_inspection" ? undefined : "cycle-visit"}>
+                  <td>
+                    {o.serviceType === "aerobic_inspection" ? "" : `${c.cycles.find((y) => y.cycleKey === o.cycleKey)?.label ?? o.cycleKey} `}#{o.sequence}
+                  </td>
                   <td>
                     {day(o.windowStart, { month: "short", day: "numeric" })} to {day(o.windowEnd)}
                   </td>
                   <td>{day(o.dueOn)}</td>
                   <td>
                     <span className={`badge ${o.status}`}>{o.status}</span>
+                    {o.workOrder ? (
+                      <>
+                        {" "}
+                        <Link href={`/work/${o.workOrder.id}`} className="small">
+                          {o.workOrder.label}: {o.workOrder.status.replace("_", " ")}
+                        </Link>
+                      </>
+                    ) : (
+                      editable &&
+                      cyclesOn &&
+                      o.serviceType !== "aerobic_inspection" &&
+                      o.status === "open" &&
+                      c.status === "active" && (
+                        <>
+                          {" "}
+                          <button className="link small" onClick={() => bookWork(o.id)}>
+                            Book work
+                          </button>
+                        </>
+                      )
+                    )}
                   </td>
                 </tr>
               ))}

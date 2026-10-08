@@ -40,6 +40,7 @@ describe("full data export", () => {
         "contacts.csv",
         "contracts.csv",
         "contract_coverage_rules.csv",
+        "contract_service_cycles.csv",
         "coverage_uses.csv",
         "customers.csv",
         "deposit_ledger.csv",

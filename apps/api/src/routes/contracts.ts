@@ -1,6 +1,6 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { agreementPreview, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms } from "@aerowise/renewals";
+import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms, type ContractCycles } from "@aerowise/renewals";
 import { FORM_COLUMNS, toForm } from "../lib/forms.ts";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
@@ -11,7 +11,12 @@ import {
   contractTermsPreview,
   contractState,
   coverageSummary,
-  DEFAULT_RENEWAL_TERMS,
+  buildIntervalSchedule,
+  cycleSummary,
+  cycleWithoutVisit,
+  defaultAgreementTerms,
+  parseServiceCycles,
+  workOrderLabel,
   formTemplate,
   intakeFormInput,
   keyAllowedForPurpose,
@@ -88,19 +93,36 @@ const OBLIGATION_COLUMNS = [
   "o.contractId",
   "o.siteId",
   "o.serviceType",
+  "y.cycleKey",
   "o.sequence",
   "o.windowStart",
   "o.windowEnd",
   "o.dueOn",
   "o.status",
   "o.completedAt",
+  "wo.id as workOrderId",
+  "wo.number as workOrderNumber",
+  "wo.status as workOrderStatus",
 ] as const;
+
+/** Visits with their cycle and, for pumping or maintenance, the work order they are done as (SW-9). */
+const obligationsFrom = (ex: Database) =>
+  ex
+    .selectFrom("serviceObligations as o")
+    .innerJoin("contractServiceCycles as y", (j) => j.onRef("y.id", "=", "o.cycleId").onRef("y.organizationId", "=", "o.organizationId"))
+    .leftJoin("workOrders as wo", (j) => j.onRef("wo.obligationId", "=", "o.id").onRef("wo.organizationId", "=", "o.organizationId").on("wo.status", "<>", "cancelled"));
+
+const toObligation = <T extends { workOrderId: string | null; workOrderNumber: number | null; workOrderStatus: string | null }>({ workOrderId, workOrderNumber, workOrderStatus, ...o }: T) => ({
+  ...jsonRow(o),
+  workOrder: workOrderId && workOrderNumber !== null ? { id: workOrderId, label: workOrderLabel(workOrderNumber), status: workOrderStatus! } : null,
+});
 
 const params = z.object({ id });
 
 export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; features?: ReadonlySet<Feature> }> = async (app, { db, now, features = new Set() }) => {
   const today = (organizationId: string) => organizationToday(db, organizationId, now());
   const planBuilder = features.has("plan_builder");
+  const serviceCyclesOn = features.has("service_cycles");
 
   /** Plans with the number of their current version. */
   const planQuery = (ex: Database | Transaction<DB>, organizationId: string) =>
@@ -114,15 +136,17 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
    * With the plan builder on (SW-8), a contract the office makes takes its version's coverage
    * rules, frozen, and a record of the terms that apply. Off, it is made exactly as before.
    */
-  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined, optionKeys?: string[]) {
+  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined, optionKeys?: string[], term?: AgreementTerm) {
+    const cycles = await planCycles(ex, organizationId, planVersionId);
+    const withCycles = cycles ? { cycles } : {};
     if (!planBuilder) {
       if (optionKeys?.length) throw new HttpError(409, "feature_off", "Plan options need the plan builder, which is not switched on for this deployment");
-      return {};
+      return withCycles;
     }
     const v = planVersionId ? await loadPlanVersion(ex, organizationId, planVersionId) : null;
     if (!v) {
       if (optionKeys?.length) throw unprocessable("This plan offers no options");
-      return {};
+      return withCycles;
     }
     const unknown = (optionKeys ?? []).filter((k) => !v.options.some((o) => o.optionKey === k));
     if (unknown.length) throw unprocessable(`The plan has no option ${unknown.map((k) => `"${k}"`).join(", ")}`);
@@ -135,12 +159,56 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         format: 1,
         signed: false,
         plan: { versionId: v.id, version: v.version, termsSource: v.termsText ? "plan" : "organization" },
-        terms: v.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
+        terms: v.termsText ?? org.renewalTerms ?? defaultAgreementTerms(cycles ? v : null),
         coverage: await coverageLines(ex, organizationId, v.coverage),
         // Only when some were taken, so a snapshot without options reads as it did before.
         ...(options.length ? { options } : {}),
+        // Only with pumping or maintenance (SW-9), likewise.
+        ...(cycles ? { cycles: agreementCycles(v, term) } : {}),
       },
+      ...withCycles,
     };
+  }
+
+  /**
+   * The cycles a contract made from this version takes (SW-9), or undefined for an
+   * inspection-only one (made exactly as before). With service cycles off, a version's
+   * pumping or maintenance cycles are left out, and a version with no inspections is refused.
+   */
+  async function planCycles(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined): Promise<ContractCycles | undefined> {
+    if (!planVersionId) return undefined;
+    const row = await ex.selectFrom("planVersions").select("serviceCycles").where("organizationId", "=", organizationId).where("id", "=", planVersionId).executeTakeFirst();
+    if (!row) return undefined;
+    const { aerobic, cycles } = parseServiceCycles(row.serviceCycles);
+    if (aerobic && !cycles.length) return undefined;
+    if (!serviceCyclesOn) {
+      if (!aerobic) throw new HttpError(409, "feature_off", "This plan is pumping or maintenance only, and service cycles are not switched on for this deployment");
+      return undefined;
+    }
+    return { aerobic: !!aerobic, serviceCycles: cycles };
+  }
+
+  /** A contract's frozen cycles, as the office sees them. */
+  async function contractCycles(organizationId: string, contractIds: string[]) {
+    if (!contractIds.length) return [];
+    const rows = await db
+      .selectFrom("contractServiceCycles as y")
+      .leftJoin("workTypes as t", (j) => j.onRef("t.id", "=", "y.workTypeId").onRef("t.organizationId", "=", "y.organizationId"))
+      .select(["y.id", "y.contractId", "y.cycleKey", "y.serviceType", "y.schedule", "y.snapshot", "t.id as workTypeId", "t.name as workTypeName"])
+      .where("y.organizationId", "=", organizationId)
+      .where("y.contractId", "in", contractIds)
+      .orderBy(sql`y.service_type <> 'aerobic_inspection'`)
+      .orderBy("y.cycleKey")
+      .execute();
+    return rows.map((r) => ({
+      contractId: r.contractId,
+      id: r.id,
+      cycleKey: r.cycleKey,
+      serviceType: r.serviceType,
+      label: (r.snapshot as { label?: string }).label ?? "Aerobic inspections",
+      workType: r.workTypeId ? { id: r.workTypeId, name: r.workTypeName ?? "" } : null,
+      summary: cycleSummary(r),
+    }));
   }
 
   /** Each contract's frozen coverage rules with their use this term, and the version it was made from. */
@@ -198,21 +266,28 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     asOf: string,
   ) => ({ ...jsonRow(row), state: contractState(row, asOf) });
 
+  // Inspections first, then each other cycle; each in its own order.
   const loadObligations = (organizationId: string, contractId: string) =>
-    db
-      .selectFrom("serviceObligations as o")
+    obligationsFrom(db)
       .select(OBLIGATION_COLUMNS)
       .where("o.organizationId", "=", organizationId)
       .where("o.contractId", "=", contractId)
+      .orderBy(sql`o.service_type <> 'aerobic_inspection'`)
+      .orderBy("y.cycleKey")
       .orderBy("o.sequence")
       .execute()
-      .then((rows) => rows.map(jsonRow));
+      .then((rows) => rows.map(toObligation));
 
   async function loadContractDetail(organizationId: string, contractId: string) {
     const row = await contractQuery(organizationId).where("c.id", "=", contractId).executeTakeFirst();
     if (!row) throw notFound("Contract");
-    const [obligations, asOf, facts] = await Promise.all([loadObligations(organizationId, row.id), today(organizationId), contractPlanFacts(organizationId, [row])]);
-    return { ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf), obligations, ...facts(row) };
+    const [obligations, asOf, facts, cycles] = await Promise.all([loadObligations(organizationId, row.id), today(organizationId), contractPlanFacts(organizationId, [row]), contractCycles(organizationId, [row.id])]);
+    return {
+      ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf),
+      obligations,
+      cycles: cycles.map(({ contractId: _, ...c }) => c),
+      ...facts(row),
+    };
   }
 
   async function activePlanTerms(organizationId: string, planId: string, priceCents?: number): Promise<Terms> {
@@ -262,6 +337,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           "v.options",
           "v.coverage",
           "v.intakeTemplateId",
+          "v.serviceCycles",
           "v.createdAt",
           (eb) => eb.selectFrom("contracts as c").select(sql<number>`count(*)::int`.as("n")).whereRef("c.planVersionId", "=", "v.id").as("contracts"),
           (eb) => eb.selectFrom("renewals as r").select(sql<number>`count(*)::int`.as("n")).whereRef("r.planVersionId", "=", "v.id").as("renewals"),
@@ -277,8 +353,10 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     const intakeForms = intakeIds.length ? await db.selectFrom("inspectionTemplates").select(["id", "key", "version", "name"]).where("id", "in", intakeIds).execute() : [];
     return {
       ...jsonRow(p),
-      versions: versions.map(({ intakeTemplateId, ...v }) => ({
+      versions: versions.map(({ intakeTemplateId, serviceCycles, ...v }) => ({
         ...jsonRow(v),
+        aerobic: parseServiceCycles(serviceCycles).aerobic !== null,
+        serviceCycles: parseServiceCycles(serviceCycles).cycles,
         intake: intakeForms.find((f) => f.id === intakeTemplateId) ?? null,
         options: parsePlanOptions(v.options),
         coverage: parseCoverageRules(v.coverage),
@@ -406,6 +484,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           if (!form) throw unprocessable("intakeTemplateId is not one of this company's intake forms");
         }
         const cur = await trx.selectFrom("planVersions").selectAll().where("id", "=", p.currentVersionId).executeTakeFirstOrThrow();
+        const serviceCycles = await versionCycles(trx, organizationId, cur, b);
         const created = await trx
           .insertInto("planVersions")
           .values({
@@ -422,7 +501,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             termsText: b.termsText,
             options: JSON.stringify(b.options),
             coverage: JSON.stringify(b.coverage),
-            serviceCycles: JSON.stringify(cur.serviceCycles),
+            serviceCycles: JSON.stringify(serviceCycles),
             intakeTemplateId: b.intakeTemplateId,
             createdBy: userId,
           })
@@ -434,6 +513,32 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       return reply.status(201).send(await loadPlanDetail(organizationId, req.params.id));
     },
   );
+
+  /**
+   * The cycles a new version has (SW-9). Without `serviceCycles` or `aerobic` in the save, the
+   * current version's are kept as they are, so a builder that does not know about cycles
+   * never drops them. Otherwise the inspection cycle follows the plan's own visits.
+   */
+  async function versionCycles(trx: Transaction<DB>, organizationId: string, cur: { serviceCycles: unknown; serviceType: string; visitsPerTerm: number; termMonths: number }, b: z.infer<typeof planVersionInput>) {
+    if (b.serviceCycles === undefined && b.aerobic === undefined) return cur.serviceCycles;
+    const current = parseServiceCycles(cur.serviceCycles);
+    const aerobic = b.aerobic ?? current.aerobic !== null;
+    const cycles = b.serviceCycles ?? current.cycles;
+    if ((cycles.length || !aerobic) && !serviceCyclesOn) throw new HttpError(409, "feature_off", "Pumping and maintenance cycles are not switched on for this deployment");
+    if (!aerobic && !cycles.length) throw unprocessable("A plan without inspections needs at least one pumping or maintenance cycle");
+    const problems = cycles.map((c) => cycleWithoutVisit(c, cur.termMonths)).filter((m): m is string => m !== null);
+    if (problems.length) throw unprocessable(problems.join(" "));
+    const typeIds = [...new Set(cycles.map((c) => c.workTypeId))];
+    const types = typeIds.length ? await trx.selectFrom("workTypes").select(["id", "category", "active"]).where("organizationId", "=", organizationId).where("id", "in", typeIds).execute() : [];
+    for (const c of cycles) {
+      const t = types.find((x) => x.id === c.workTypeId);
+      if (!t) throw unprocessable(`"${c.label}" names a kind of work that is not this company's`);
+      if (!t.active) throw unprocessable(`"${c.label}" names a kind of work that is no longer offered`);
+      // A pumping cycle is booked as pumping work, a maintenance cycle as maintenance work.
+      if (t.category !== c.serviceType) throw unprocessable(`"${c.label}" is a ${c.serviceType} cycle, so its kind of work must be ${c.serviceType} work`);
+    }
+    return [...(aerobic ? [{ cycleKey: "aerobic", serviceType: cur.serviceType, schedule: { kind: "visits_per_term", visitsPerTerm: cur.visitsPerTerm } }] : []), ...cycles];
+  }
 
   app.post(
     "/intake-forms",
@@ -496,20 +601,22 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (!site) throw notFound("Site");
       const [rows, obligations, asOf] = await Promise.all([
         contractQuery(organizationId).where("c.siteId", "=", site.id).orderBy("c.startOn", "desc").execute(),
-        db
-          .selectFrom("serviceObligations as o")
+        obligationsFrom(db)
           .select(OBLIGATION_COLUMNS)
           .where("o.organizationId", "=", organizationId)
           .where("o.siteId", "=", site.id)
+          .orderBy(sql`o.service_type <> 'aerobic_inspection'`)
+          .orderBy("y.cycleKey")
           .orderBy("o.sequence")
           .execute(),
         today(organizationId),
       ]);
-      const facts = await contractPlanFacts(organizationId, rows);
+      const [facts, cycles] = await Promise.all([contractPlanFacts(organizationId, rows), contractCycles(organizationId, rows.map((r) => r.id))]);
       return {
         items: rows.map((row) => ({
           ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf),
-          obligations: obligations.filter((o) => o.contractId === row.id).map(jsonRow),
+          obligations: obligations.filter((o) => o.contractId === row.id).map(toObligation),
+          cycles: cycles.filter((c) => c.contractId === row.id).map(({ contractId: _, ...c }) => c),
           ...facts(row),
         })),
       };
@@ -533,6 +640,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const site = await db.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
       if (!site) throw notFound("Site");
       const terms = await activePlanTerms(organizationId, req.query.planId);
+      // A pumping or maintenance only version (SW-9) gets its own cycles' visits: no authority
+      // inspections are added and no aerobic system confirmation is asked.
+      const cycles = await planCycles(db, organizationId, terms.planVersionId);
+      if (cycles && !cycles.aerobic) {
+        const visits = cycles.serviceCycles.reduce((n, c) => n + buildIntervalSchedule(req.query.startOn, terms.termMonths, c.schedule).length, 0);
+        return { planVisits: visits, visitsPerTerm: visits, warning: null, scheduleNotice: null, systemWarning: null };
+      }
       const { terms: t, added, scheduleNotice } = await siteVisitTerms(db, organizationId, site.id, req.query.startOn, terms);
       const systemWarning = await siteSystemWarning(db, organizationId, site.id, terms.serviceType);
       return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null, scheduleNotice, systemWarning };
@@ -563,15 +677,20 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (!site.active) throw unprocessable("This site is inactive");
       const terms = await activePlanTerms(organizationId, req.body.planId, req.body.priceCents);
       const contractId = await db.transaction().execute(async (trx) => {
-        // SW-7: a warning the office confirms, never a hard refusal.
-        await requireSystemConfirmation(trx, organizationId, site.id, terms.serviceType, req.body.confirmSystemCategory);
+        // The snapshot lists the term's own visits: the authority's inspections, and each cycle's count.
+        const visits = req.body.acceptVisits ?? (await siteVisitTerms(trx, organizationId, site.id, req.body.startOn, terms)).terms.visitsPerTerm;
+        const content = await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys, { startOn: req.body.startOn, termMonths: terms.termMonths, visitsPerTerm: visits });
+        // SW-7: a warning the office confirms, never a hard refusal. Asked only for a contract
+        // with aerobic inspections: a pumping or maintenance only version (SW-9) is not one.
+        const effectiveType = content.cycles && !content.cycles.aerobic ? content.cycles.serviceCycles[0]!.serviceType : terms.serviceType;
+        await requireSystemConfirmation(trx, organizationId, site.id, effectiveType, req.body.confirmSystemCategory);
         const created = await insertContract(trx, organizationId, {
           siteId: site.id,
           startOn: req.body.startOn,
           terms,
           autoRenew: req.body.autoRenew,
           notes: req.body.notes,
-          ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
+          ...content,
         }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, { action: "contract.created", entityType: "contract", entityId: created, changes: req.body });
         // Opens a filing with the site's authority when it requires contracts on file.
@@ -728,7 +847,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       config: { permission: "contracts:read" },
       schema: {
         tags: ["obligations"],
-        summary: "Open inspection visits due by a date, overdue first",
+        summary: "Open visits due by a date, overdue first: aerobic inspections unless another kind is asked for",
         querystring: dueQuery,
         response: { 200: z.object({ items: z.array(dueObligation), total: z.number().int(), today: z.iso.date() }) },
       },
@@ -736,9 +855,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     async (req) => {
       const { organizationId } = req.requireAuth();
       const asOf = await today(organizationId);
-      const { through = addDays(asOf, 30), siteId, overdueOnly, unscheduledOnly, limit, offset } = req.query;
-      let base = db
-        .selectFrom("serviceObligations as o")
+      const { through = addDays(asOf, 30), siteId, overdueOnly, unscheduledOnly, serviceType, limit, offset } = req.query;
+      let base = obligationsFrom(db)
         .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
         .innerJoin("customers as cu", (j) => j.onRef("cu.id", "=", "s.customerId").onRef("cu.organizationId", "=", "s.organizationId"))
         .leftJoin("jobs as j", (join) =>
@@ -750,11 +868,14 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         )
         .leftJoin("users as tu", "tu.id", "j.technicianUserId")
         .where("o.organizationId", "=", organizationId)
+        // One kind at a time (SW-9): the inspection list never shows pumping or maintenance.
+        .where("o.serviceType", "=", serviceType)
         .where("o.status", "=", "open")
         .where("o.dueOn", "<=", through);
       if (siteId) base = base.where("o.siteId", "=", siteId);
       if (overdueOnly) base = base.where("o.dueOn", "<", asOf);
-      if (unscheduledOnly) base = base.where("j.id", "is", null);
+      // Not yet booked: no live inspection job, or for pumping and maintenance no work order.
+      if (unscheduledOnly) base = base.where("j.id", "is", null).where("wo.id", "is", null);
       const [rows, count] = await Promise.all([
         base
           .select(OBLIGATION_COLUMNS)
@@ -781,7 +902,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         today: asOf,
         total: count.total,
         items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, ...o }) => ({
-          ...obligation.parse(jsonRow(o)),
+          ...obligation.parse(toObligation(o)),
           overdue: o.dueOn < asOf,
           job:
             jobId && jobDate && jobTechnicianId
