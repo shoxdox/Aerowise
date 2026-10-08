@@ -39,7 +39,7 @@ export const coverageRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       schema: {
         tags: ["work"],
         summary: "Apply the contract's coverage: reserve one use of each rule that fits and has room left",
-        description: "A rule already at its limit is not reserved; the work it would cover is billed as usual. Needs the plan builder (409 `feature_off` otherwise).",
+        description: "A rule already at its limit is not reserved; the work it would cover is billed as usual. Needs the plan builder (409 `feature_off` otherwise). Refused while the work order has a draft or issued invoice (409 `invoice_exists`): discard or void it first.",
         params,
         body: z.object({}).optional(),
         response: { 200: workOrderCoverage },
@@ -61,7 +61,7 @@ export const coverageRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     "/work-orders/:id/coverage/decline",
     {
       config: { permission: "work:write" },
-      schema: { tags: ["work"], summary: "Don't apply coverage to this work after all (before it is billed)", params, body: coverageReasonInput, response: { 200: workOrderCoverage } },
+      schema: { tags: ["work"], summary: "Don't apply coverage to this work after all (before it is invoiced)", description: "Refused while the work order has a draft or issued invoice (409 `invoice_exists`, or `coverage_billed` once issued): discard or void it first.", params, body: coverageReasonInput, response: { 200: workOrderCoverage } },
     },
     async (req) => {
       const { organizationId } = req.requireAuth();

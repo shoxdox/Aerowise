@@ -82,11 +82,27 @@ async function contractRules(ex: Executor, organizationId: string, contractId: s
   return rows.map((r, i) => ({ ...parsed[i]!, id: r.id, limitCount: r.limitCount }));
 }
 
+/** The work order's draft or issued invoice. Its lines were priced under the coverage it held when it was made. */
+async function liveInvoice(ex: Executor, organizationId: string, workOrderId: string) {
+  return ex.selectFrom("invoices").select("id").where("organizationId", "=", organizationId).where("workOrderId", "=", workOrderId).where("status", "<>", "void").executeTakeFirst();
+}
+
+/**
+ * Coverage can't change under a live invoice: its prices would no longer match the uses held
+ * for it. Called with the work order locked, as creating, issuing and voiding its invoice are.
+ */
+async function refuseUnderInvoice(trx: Trx, organizationId: string, workOrderId: string) {
+  if (await liveInvoice(trx, organizationId, workOrderId))
+    throw new HttpError(409, "invoice_exists", "This work order already has an invoice. Discard the draft or void the invoice, change the coverage, then create the invoice again.");
+}
+
 /** This work order's coverage, as the office sees it. */
 export async function workOrderCoverage(ex: Executor, organizationId: string, workOrderId: string, opts: { canApply: boolean }): Promise<WorkOrderCoverage> {
   const wo = await workOrderFacts(ex, organizationId, workOrderId);
   const contract = await coveringContract(ex, organizationId, wo.siteId, wo.day);
-  if (!contract) return { contract: null, notice: `No contract at this site covers ${wo.day}, the day this work was requested.`, rules: [], canApply: false };
+  const invoice = await liveInvoice(ex, organizationId, workOrderId);
+  const liveInvoiceId = invoice?.id ?? null;
+  if (!contract) return { contract: null, notice: `No contract at this site covers ${wo.day}, the day this work was requested.`, rules: [], canApply: false, liveInvoiceId };
   const rules = await contractRules(ex, organizationId, contract.id);
   const [used, uses, names] = await Promise.all([
     usedCounts(ex, organizationId, rules.map((r) => r.id)),
@@ -114,7 +130,8 @@ export async function workOrderCoverage(ex: Executor, organizationId: string, wo
     contract: { id: contract.id, planName: contract.planName, planVersion: contract.version ?? null, startOn: contract.startOn, endOn: contract.endOn },
     notice: rules.length ? (view.some((r) => r.matches) ? null : "None of its plan's coverage rules fit this work.") : "Its plan has no coverage rules, so it covers nothing.",
     rules: view,
-    canApply: opts.canApply && open && applicable,
+    canApply: opts.canApply && open && applicable && !liveInvoiceId,
+    liveInvoiceId,
   };
 }
 
@@ -158,6 +175,7 @@ async function refreshSnapshot(trx: Trx, organizationId: string, workOrderId: st
 export async function reserveCoverage(trx: Trx, req: FastifyRequest, organizationId: string, workOrderId: string, at: Date) {
   const wo = await workOrderFacts(trx, organizationId, workOrderId);
   if (wo.status === "cancelled" || wo.status === "completed") throw new HttpError(409, "work_order_closed", `This work order is ${wo.status}`);
+  await refuseUnderInvoice(trx, organizationId, workOrderId);
   const contract = await coveringContract(trx, organizationId, wo.siteId, wo.day);
   if (!contract) throw new HttpError(409, "no_contract", `No contract at this site covers ${wo.day}, the day this work was requested`);
   const rules = matchingRules(await contractRules(trx, organizationId, contract.id), wo);
@@ -209,10 +227,11 @@ async function release(trx: Trx, req: FastifyRequest | null, organizationId: str
   return n;
 }
 
-/** The office decided not to apply coverage before billing. A billed use needs its invoice voided, or a restore. */
+/** The office decided not to apply coverage before invoicing. A billed use needs its invoice voided, or a restore; a draft must be discarded first. */
 export async function declineCoverage(trx: Trx, req: FastifyRequest, organizationId: string, workOrderId: string, reason: string, at: Date) {
   const consumed = await trx.selectFrom("coverageUses").select("id").where("organizationId", "=", organizationId).where("workOrderId", "=", workOrderId).where("state", "=", "consumed").executeTakeFirst();
   if (consumed) throw new HttpError(409, "coverage_billed", "This work was billed with its coverage. Void the invoice first, or restore the benefit.");
+  await refuseUnderInvoice(trx, organizationId, workOrderId);
   if (!(await release(trx, req, organizationId, workOrderId, ["reserved"], reason, at))) throw new HttpError(409, "nothing_reserved", "No coverage is applied to this work order");
 }
 
