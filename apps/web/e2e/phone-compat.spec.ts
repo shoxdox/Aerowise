@@ -229,13 +229,14 @@ test("a database a later release moved on opens without VersionError, and its wo
 
     await wipePhone(page);
     // A later release raised the inspection database to version 3 with a store of its own, and
-    // keeps two unsent work changes in the separate work database.
+    // keeps two unsent changes of kinds this release does not know in the separate work database
+    // (SW-2 sends work-sync, work-photo and work-signature; these stand for a release after it).
     await makeDb(page, scoped(me), 3, [
       ...inspectionStores({ kv: { me, route }, inspections: [draft(aId, open[0].jobId, template.id)], outbox: [{ kind: "sync", inspectionClientId: aId }] }),
       { name: "later-release-store", keyPath: "id", rows: [{ id: "kept" }] },
     ]);
     await makeDb(page, workDb(me), 2, [
-      { name: "outbox", keyPath: "seq", autoIncrement: true, rows: [{ kind: "work-sync", recordClientId: "w1" }, { kind: "work-photo", recordClientId: "w1" }] },
+      { name: "outbox", keyPath: "seq", autoIncrement: true, rows: [{ kind: "estimate-sync", recordClientId: "w1" }, { kind: "estimate-photo", recordClientId: "w1" }] },
       { name: "records", keyPath: "clientId", rows: [{ clientId: "w1" }] },
     ]);
     // This is what an app that opens at a fixed version runs into.
@@ -252,7 +253,7 @@ test("a database a later release moved on opens without VersionError, and its wo
     expect(inspections?.rows.outbox).toEqual([]);
     const work = await readDb(page, workDb(me));
     expect(work?.version).toBe(2);
-    expect((work?.rows.outbox as { kind: string }[]).map((o) => o.kind)).toEqual(["work-sync", "work-photo"]);
+    expect((work?.rows.outbox as { kind: string }[]).map((o) => o.kind)).toEqual(["estimate-sync", "estimate-photo"]);
     expect(work?.rows.records).toEqual([{ clientId: "w1" }]);
 
     // Signing out from the Map view warns about the work only the later release can send, and

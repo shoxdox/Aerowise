@@ -1,9 +1,10 @@
 "use client";
 
-import type { InspectionTemplate, Stop } from "@aerowise/domain";
+import type { FormTemplate, InspectionTemplate, Stop, WorkStop } from "@aerowise/domain";
 import type { Me } from "../session";
 import { activeStore, type CachedRoute, type Gps, type Tenant, type TenantStore } from "./db";
 import { tenantHeader } from "./sync";
+import type { WorkStore } from "./work";
 
 export type Fetched<T> = { ok: true; data: T } | { ok: false; reason: "offline" | "signed_out" | "other_account" | "error" };
 
@@ -76,6 +77,25 @@ export async function templateById(id: string): Promise<InspectionTemplate | und
   await store.kvSet(`template:${id}`, res.data);
   return res.data;
 }
+
+/**
+ * The technician's work visits for today (SW-2), fresh when there is signal, otherwise as saved.
+ * Saved only once there is work to save, so a phone with no work visits never gets a work database.
+ */
+export async function loadWorkRoute(store: WorkStore): Promise<{ date: string; items: WorkStop[] } | undefined> {
+  const res = await fetchJson<{ date: string; items: WorkStop[] }>("/work/route", store.tenant);
+  if (!res.ok) return store.kvGet("route");
+  if (res.data.items.length > 0 || (await store.kvGet("route"))) {
+    await store.kvSet("route", res.data);
+    // The forms these visits use, kept by version id so a visit started on one keeps it.
+    const forms = await fetchJson<{ items: FormTemplate[] }>("/form-templates?purpose=work", store.tenant);
+    if (forms.ok) for (const f of forms.data.items) await store.kvSet(`form:${f.id}`, f);
+  }
+  return res.data;
+}
+
+/** The exact work form version a visit uses, from the phone. */
+export const workFormById = (store: WorkStore, id: string) => store.kvGet<FormTemplate>(`form:${id}`);
 
 export function currentPosition(timeoutMs = 8000): Promise<Gps | null> {
   if (!("geolocation" in navigator)) return Promise.resolve(null);

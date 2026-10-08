@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /** What a link opens. Part of the signature, so a photo link cannot open a report. */
-export type SignedKind = "files" | "report-files" | "package-files" | "contract-files";
+export type SignedKind = "files" | "report-files" | "package-files" | "contract-files" | "work-files";
 
 /**
  * Short-lived links to stored files. The signature covers the kind of file, the
