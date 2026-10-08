@@ -235,7 +235,34 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       }
       await worker();
     }
-    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders`);
+
+    // ---- Estimates, when switched on: one waiting on the homeowner, one they signed ----
+    let estimates = 0;
+    if (work && features.has("estimates")) {
+      const quoted = await db.selectFrom("sites").select(["id"]).where("organizationId", "=", org.id).orderBy("addressLine1", "desc").limit(2).execute();
+      const [waiting, signed] = quoted;
+      const lines = [
+        { description: "Replace the aerator", quantity: 1, unitPriceCents: 48500 },
+        { description: "Upgrade to a remote alarm", quantity: 1, unitPriceCents: 16500, optional: true, selectedByDefault: false },
+      ];
+      if (waiting) {
+        const e = await office.post("/estimates", { siteId: waiting.id, title: "Aerator replacement", lines, expiresOn: addDays(today, 30) });
+        await office.post(`/estimates/${e.id}/send`, { email: false });
+        estimates++;
+      }
+      if (signed) {
+        const e = await office.post("/estimates", { siteId: signed.id, title: "Spray head replacement", lines: [{ description: "Replace four spray heads", quantity: 4, unitPriceCents: 3500 }, ...lines.slice(1)], expiresOn: addDays(today, 30) });
+        const sent = await office.post(`/estimates/${e.id}/send`, { email: false });
+        const link = await office.post(`/estimates/${e.id}/link`);
+        const token = String(link.url).split("/").pop()!;
+        const optional = (sent.versions.at(-1).lines as { id: string; optional: boolean }[]).filter((l) => l.optional).map((l) => l.id);
+        // A fictional homeowner signs with a typed name and adds the alarm.
+        await as(app, "").post(`/estimate/${token}/accept`, { version: 1, selectedOptionalLineIds: optional, signerName: "Fictional Homeowner", signature: { kind: "typed" }, agree: true });
+        estimates++;
+      }
+      await worker();
+    }
+    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates`);
     return true;
   } finally {
     // The story's own sign-ins end with it.

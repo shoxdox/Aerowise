@@ -293,6 +293,28 @@ describe("demo reseed", () => {
     }
   });
 
+  it("adds the estimate story when estimates are switched on: one waiting, one signed and made a work order", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "estimates"]) })).toBe(true);
+    const estimates = await ctx.db.selectFrom("estimates").select(["organizationId", "status", "acceptanceKind", "workOrderId"]).orderBy("number").execute();
+    expect(estimates.map((e) => [e.status, e.acceptanceKind])).toEqual([
+      ["sent", null],
+      ["accepted", "signature"],
+    ]);
+    const wo = await ctx.db.selectFrom("workOrders").select(["sourceKind"]).where("id", "=", estimates[1]!.workOrderId!).executeTakeFirstOrThrow();
+    expect(wo.sourceKind).toBe("estimate");
+    const doc = await ctx.db.selectFrom("signedDocuments").select(["kind", "signerName"]).where("estimateId", "is not", null).executeTakeFirstOrThrow();
+    expect(doc).toEqual({ kind: "estimate_acceptance", signerName: "Fictional Homeowner" });
+
+    const organizationId = estimates[0]!.organizationId;
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["estimates", "estimateVersions", "estimateEvents", "estimateLinks", "estimateLines"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", organizationId).execute()).toEqual([]);
+    }
+  });
+
   it("refuses to seed or reseed a production database outside demo mode", async () => {
     const tsx = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
     const cli = fileURLToPath(new URL("../../../packages/db/src/cli.ts", import.meta.url));
