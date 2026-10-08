@@ -58,5 +58,6 @@ describe("needsAttention", () => {
     expect(needsAttention({ status: "failed", nextAttemptAt: new Date() })).toBe(false);
     expect(needsAttention({ status: "failed", nextAttemptAt: null })).toBe(true);
     expect(needsAttention({ status: "synced", nextAttemptAt: null })).toBe(false);
+    expect(needsAttention({ status: "quarantined", nextAttemptAt: null })).toBe(true);
   });
 });

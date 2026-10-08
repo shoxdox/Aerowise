@@ -35,7 +35,7 @@ export async function listQuickBooksRecords(
     .select(["c.id as customerId", "c.displayName as customerName", "iv.number as invoiceNumber", "piv.number as paymentInvoiceNumber", "pm.amountCents as paymentCents", "rf.amountCents as refundCents", "riv.number as refundInvoiceNumber", "pl.name as planName"])
     .where("l.organizationId", "=", organizationId)
     .where("l.status", "<>", "new");
-  if (filter.attention) q = q.where((eb) => eb.or([eb("l.status", "=", "conflict"), eb.and([eb("l.status", "=", "failed"), eb("l.nextAttemptAt", "is", null)])]));
+  if (filter.attention) q = q.where((eb) => eb.or([eb("l.status", "=", "conflict"), eb("l.status", "=", "quarantined"), eb.and([eb("l.status", "=", "failed"), eb("l.nextAttemptAt", "is", null)])]));
   if (filter.status) q = q.where("l.status", "=", filter.status);
   if (filter.entityType) q = q.where("l.entityType", "=", filter.entityType);
   if (filter.entityId) q = q.where("l.entityId", "=", filter.entityId);
@@ -51,7 +51,7 @@ export async function listQuickBooksRecords(
             : r.entityType === "refund"
               ? `Refund of ${dollars(r.refundCents ?? 0)} on ${invoiceNumberLabel(r.refundInvoiceNumber)}`
               : (r.planName ?? "Plan");
-    const guide = r.status === "conflict" && r.conflictKind ? QUICKBOOKS_CONFLICT_GUIDE[r.conflictKind] : r.status === "failed" ? QUICKBOOKS_CONFLICT_GUIDE.failed : null;
+    const guide = (r.status === "conflict" || r.status === "quarantined") && r.conflictKind ? QUICKBOOKS_CONFLICT_GUIDE[r.conflictKind] : r.status === "failed" ? QUICKBOOKS_CONFLICT_GUIDE.failed : null;
     const details = (r.conflict ?? null) as Record<string, unknown> | null;
     const candidates = ((details?.candidates ?? []) as StoredCandidate[]).map((c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, score: c.score, reasons: c.reasons as never }));
     const shown = details ? Object.fromEntries(Object.entries(details).filter(([k]) => !["candidates", "remoteSyncToken", "remoteUpdatedAt"].includes(k))) : null;

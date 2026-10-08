@@ -11,6 +11,7 @@ import {
   type QboCustomer,
   type QboInvoice,
   type QboItem,
+  type QboTaxCode,
   type QuickBooksCompany,
   type QuickBooksProvider,
   type Tokens,
@@ -65,6 +66,7 @@ function invoice(i: Json): QboInvoice {
     customerId: String(i.CustomerRef?.value ?? ""),
     customerName: i.CustomerRef?.name ?? null,
     totalCents: toCents(i.TotalAmt),
+    taxCents: toCents(i.TxnTaxDetail?.TotalTax),
     balanceCents: toCents(i.Balance),
     voided: /^voided/i.test(String(i.PrivateNote ?? "")) && toCents(i.TotalAmt) === 0,
     updatedAt: i.MetaData?.LastUpdatedTime ?? null,
@@ -262,6 +264,10 @@ class IntuitCompany implements QuickBooksCompany {
     return i ? { id: String(i.Id), name: i.FullyQualifiedName ?? i.Name, type: i.Type ?? "Service", active: i.Active !== false } : null;
   }
 
+  async listTaxCodes(): Promise<QboTaxCode[]> {
+    return (await this.queryAll("TaxCode", "")).map((c) => ({ id: String(c.Id), name: c.Name ?? String(c.Id), taxable: c.Taxable !== false, active: c.Active !== false }));
+  }
+
   async findInvoiceByNumber(docNumber: string) {
     const rows = ((await this.query(`select * from Invoice where DocNumber = ${quote(docNumber)}`)).Invoice ?? []) as Json[];
     return rows[0] ? invoice(rows[0]) : null;
@@ -283,10 +289,13 @@ class IntuitCompany implements QuickBooksCompany {
           DetailType: "SalesItemLineDetail",
           Amount: toAmount(l.amountCents),
           Description: l.description,
-          SalesItemLineDetail: { ItemRef: { value: l.itemId }, Qty: l.quantity, UnitPrice: toAmount(l.unitPriceCents) },
+          SalesItemLineDetail: { ItemRef: { value: l.itemId }, Qty: l.quantity, UnitPrice: toAmount(l.unitPriceCents), TaxCodeRef: l.taxCodeRef ? { value: l.taxCodeRef } : undefined },
         })),
         ...(p.discountCents > 0 ? [{ DetailType: "DiscountLineDetail", Amount: toAmount(p.discountCents), DiscountLineDetail: { PercentBased: false } }] : []),
       ],
+      // Tax mode on: the invoice's sales tax code, and the tax Aerowise charged. QuickBooks may still
+      // recalculate it (automated sales tax), so the created invoice's totals are compared after.
+      TxnTaxDetail: p.txnTax ? { TxnTaxCodeRef: { value: p.txnTax.taxCodeRef }, TotalTax: toAmount(p.txnTax.totalTaxCents) } : undefined,
       CustomerMemo: p.memo ? { value: p.memo.slice(0, 1000) } : undefined,
       PrivateNote: p.privateNote,
       BillEmail: p.billEmail ? { Address: p.billEmail } : undefined,
