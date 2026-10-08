@@ -1,14 +1,14 @@
 "use client";
 
-import { WORK_ORDER_STATUS_LABELS, type Technician, type WorkOrderDetail } from "@aerowise/domain";
+import { roleHasPermission, WORK_ORDER_STATUS_LABELS, type Technician, type WorkOrderDetail } from "@aerowise/domain";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { HeldFieldRecords, useWorkForms, VisitFieldRecord } from "@/components/WorkFieldRecords";
 import { api, ApiError, formValues } from "@/lib/api";
-import { day, money } from "@/lib/format";
 import { useFeature } from "@/lib/features";
+import { day, money } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -31,6 +31,18 @@ export default function WorkOrderPage() {
   // SW-2: technicians record visits on their phones.
   const fieldWork = useFeature("field_work");
   const forms = useWorkForms(fieldWork);
+  const router = useRouter();
+  const invoicing = useFeature("service_items") && editable && roleHasPermission(me.role, "invoices:write");
+
+  async function createInvoice(workOrderId: string) {
+    setProblem(null);
+    try {
+      const made = await api<{ invoiceId: string }>(`/work-orders/${workOrderId}/invoice`, { method: "POST", body: {} });
+      router.push(`/invoices/${made.invoiceId}`);
+    } catch (err) {
+      setProblem(err instanceof ApiError ? err.message : "Could not make the invoice");
+    }
+  }
 
   async function act(path: string, body: unknown, method = "POST") {
     setProblem(null);
@@ -186,6 +198,13 @@ export default function WorkOrderPage() {
             </table>
           </div>
         )}
+        {invoicing && w.billingStatus === "unbilled" && w.lines.length > 0 && w.status !== "draft" && w.status !== "cancelled" && (
+          <div className="row">
+            <button onClick={() => void createInvoice(w.id)}>Create invoice</button>
+            <span className="muted small">A draft from these charges; you can change it before issuing.</span>
+          </div>
+        )}
+        {w.billingStatus === "no_charge" && <p className="muted small">Marked no charge.</p>}
         {w.invoices.length > 0 && (
           <p>
             Invoiced:{" "}

@@ -1,9 +1,10 @@
 "use client";
 
-import { invoiceTotals, type CustomerDetail, type CustomerListItem, type InvoiceDetail } from "@aerowise/domain";
+import { invoiceTotals, milliAmount, SERVICE_ITEM_UNIT_LABELS, type CustomerDetail, type CustomerListItem, type InvoiceDetail, type ServiceItem } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
+import { useFeature } from "@/lib/features";
 import { money } from "@/lib/format";
 
 interface LineDraft {
@@ -14,11 +15,30 @@ interface LineDraft {
   taxable: boolean;
   /** Billed from a contract; shown so the office knows not to retype it. */
   installment?: number | null;
+  /** The catalog item the line started from. */
+  serviceItemId?: string | null;
+  /** The line already had a fraction when the draft was opened; it may keep it even with service items off. */
+  hadFraction?: boolean;
 }
 
 const toCents = (dollars: string) => Math.round(Number(dollars || "0") * 100);
 const toDollars = (cents: number) => (cents / 100).toFixed(2);
 const blank = (): LineDraft => ({ description: "", quantity: "1", price: "", taxable: false });
+
+/**
+ * A line's quantity as saved: whole units, or up to three decimals where service items are on
+ * (or the line already had a fraction, which is never cut short by an edit).
+ */
+function parseLine(l: LineDraft, fractions: boolean) {
+  const n = Number(l.quantity) || 1;
+  const unitPriceCents = toCents(l.price);
+  if (!fractions || Number.isInteger(n)) {
+    const quantity = fractions ? n : Math.max(1, Math.trunc(n));
+    return { quantity, unitPriceCents, taxable: l.taxable, amountCents: quantity * unitPriceCents };
+  }
+  const milli = Math.max(1, Math.round(n * 1000));
+  return { quantity: milli / 1000, unitPriceCents, taxable: l.taxable, amountCents: milliAmount(milli, unitPriceCents) };
+}
 
 /**
  * Creates a draft invoice, or edits one. The totals shown are computed with the same
@@ -41,8 +61,22 @@ export function InvoiceEditor({
   const customer = useLoad<CustomerDetail>(customerId ? `/customers/${customerId}` : null);
   const [siteId, setSiteId] = useState(invoice?.site?.id ?? "");
   const [lines, setLines] = useState<LineDraft[]>(
-    invoice?.lines.map((l) => ({ id: l.id, description: l.description, quantity: String(l.quantity), price: toDollars(l.unitPriceCents), taxable: l.taxable, installment: l.installment })) ?? [blank()],
+    invoice?.lines.map((l) => ({
+      id: l.id,
+      description: l.description,
+      quantity: String(l.quantity),
+      price: toDollars(l.unitPriceCents),
+      taxable: l.taxable,
+      installment: l.installment,
+      serviceItemId: l.serviceItemId,
+      hadFraction: l.quantityMilli !== null,
+    })) ?? [blank()],
   );
+  const catalogOn = useFeature("service_items");
+  const catalog = useLoad<{ items: ServiceItem[] }>(catalogOn ? "/service-items" : null);
+  // With service items off, only a line that already had a fraction keeps one; the API takes
+  // it back unchanged, so a draft made while they were on can still be saved.
+  const fractionsFor = (l: LineDraft) => catalogOn || !!l.hadFraction;
   const [discount, setDiscount] = useState(invoice ? toDollars(invoice.discountCents) : "");
   const [taxRate, setTaxRate] = useState(String(((invoice?.taxRateBps ?? defaults?.taxRateBps ?? 0) / 100).toFixed(2)));
   const [termsDays, setTermsDays] = useState(String(invoice?.termsDays ?? defaults?.termsDays ?? 30));
@@ -51,7 +85,7 @@ export function InvoiceEditor({
   const [busy, setBusy] = useState(false);
 
   const taxRateBps = Math.round(Number(taxRate || "0") * 100);
-  const parsed = lines.map((l) => ({ quantity: Math.max(1, Math.trunc(Number(l.quantity) || 1)), unitPriceCents: toCents(l.price), taxable: l.taxable }));
+  const parsed = lines.map((l) => parseLine(l, fractionsFor(l)));
   const totals = invoiceTotals(parsed, toCents(discount), taxRateBps);
   const update = (i: number, patch: Partial<LineDraft>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
@@ -65,7 +99,10 @@ export function InvoiceEditor({
       termsDays: Number(termsDays),
       taxRateBps,
       discountCents: toCents(discount),
-      lines: lines.map((l, i) => ({ ...(l.id ? { id: l.id } : {}), description: l.description.trim(), ...parsed[i] })),
+      lines: lines.map((l, i) => {
+        const { quantity, unitPriceCents, taxable } = parsed[i]!;
+        return { ...(l.id ? { id: l.id } : {}), description: l.description.trim(), quantity, unitPriceCents, taxable, serviceItemId: l.serviceItemId ?? null };
+      }),
     };
     try {
       const saved = invoice
@@ -135,11 +172,29 @@ export function InvoiceEditor({
           {lines.map((l, i) => (
             <tr key={i}>
               <td>
+                {catalog.data && catalog.data.items.length > 0 && (
+                  <select
+                    aria-label="Service item"
+                    value={l.serviceItemId ?? ""}
+                    onChange={(e) => {
+                      const item = catalog.data!.items.find((x) => x.id === e.target.value);
+                      update(i, item ? { serviceItemId: item.id, description: item.description || item.name, price: toDollars(item.unitPriceCents), taxable: item.taxable } : { serviceItemId: null });
+                    }}
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Not from the catalog</option>
+                    {catalog.data.items.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name} ({money(x.unitPriceCents)} {SERVICE_ITEM_UNIT_LABELS[x.unit]})
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <input aria-label="Description" value={l.description} onChange={(e) => update(i, { description: e.target.value })} required style={{ width: "100%" }} />
                 {l.installment && <div className="muted small">Contract installment {l.installment}</div>}
               </td>
               <td>
-                <input aria-label="Quantity" type="number" min={1} step={1} value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} required style={{ width: "100%" }} />
+                <input aria-label="Quantity" type="number" min={fractionsFor(l) ? 0.001 : 1} step={fractionsFor(l) ? "any" : 1} value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} required style={{ width: "100%" }} />
               </td>
               <td>
                 <input aria-label="Price" type="number" min={0} step="0.01" value={l.price} onChange={(e) => update(i, { price: e.target.value })} required style={{ width: "100%" }} />
@@ -147,7 +202,7 @@ export function InvoiceEditor({
               <td>
                 <input aria-label="Taxable" type="checkbox" checked={l.taxable} onChange={(e) => update(i, { taxable: e.target.checked })} />
               </td>
-              <td>{money(parsed[i]!.quantity * parsed[i]!.unitPriceCents)}</td>
+              <td>{money(parsed[i]!.amountCents)}</td>
               <td>
                 {lines.length > 1 && (
                   <button type="button" className="link" aria-label="Remove line" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>

@@ -33,6 +33,7 @@ export * from "./intros.ts";
 export * from "./authority-requirements.ts";
 export * from "./features.ts";
 export * from "./work.ts";
+export * from "./service-items.ts";
 export * from "./route-map.ts";
 export * from "./forms.ts";
 export * from "./work-sync.ts";

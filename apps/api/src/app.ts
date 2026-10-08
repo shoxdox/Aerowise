@@ -51,6 +51,7 @@ import { publicRoutes } from "./routes/public.ts";
 import { demoRequestRoutes } from "./routes/demo-requests.ts";
 import { demoVisitRoutes } from "./routes/demo-visits.ts";
 import { legalRoutes } from "./routes/legal.ts";
+import { serviceItemRoutes } from "./routes/service-items.ts";
 import { workOrderRoutes } from "./routes/work-orders.ts";
 import { formRoutes } from "./routes/forms.ts";
 import { workSyncRoutes } from "./routes/work-sync.ts";
@@ -291,6 +292,7 @@ export async function buildApp({
   await app.register(contractRoutes, { db, now });
   await app.register(scheduleRoutes, { db, now });
   await app.register(workOrderRoutes, { db, now, features });
+  await app.register(serviceItemRoutes, { db, now, features });
   await app.register(formRoutes, { db, features });
   await app.register(workSyncRoutes, { db, now, store, signer, features });
   await app.register(inspectionRoutes, { db, now, store, signer });
@@ -298,7 +300,7 @@ export async function buildApp({
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db, now });
   await app.register(exportRoutes, { db, store, now });
-  await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl } });
+  await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl }, features });
   await app.register(billingRoutes, { db, now, provider: billing, config: subscription });
   await app.register(subscriptionRoutes, { db, now, provider: billing, config: subscription, appUrl });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, testCheckout: !production || demo });

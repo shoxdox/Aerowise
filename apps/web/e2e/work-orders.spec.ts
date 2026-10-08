@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// SW-1: the e2e API runs with AEROWISE_FEATURES=work_orders (playwright.config.ts).
+// SW-1: the e2e API runs with work orders switched on (AEROWISE_FEATURES in playwright.config.ts).
 
 async function signIn(page: Page) {
   await page.goto("/login");
