@@ -1,6 +1,6 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { agreementCycles, agreementPreview, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms, type ContractCycles } from "@aerowise/renewals";
+import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms, type ContractCycles } from "@aerowise/renewals";
 import { FORM_COLUMNS, toForm } from "../lib/forms.ts";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
@@ -14,7 +14,7 @@ import {
   buildIntervalSchedule,
   cycleSummary,
   cycleWithoutVisit,
-  DEFAULT_RENEWAL_TERMS,
+  defaultAgreementTerms,
   parseServiceCycles,
   workOrderLabel,
   formTemplate,
@@ -136,7 +136,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
    * With the plan builder on (SW-8), a contract the office makes takes its version's coverage
    * rules, frozen, and a record of the terms that apply. Off, it is made exactly as before.
    */
-  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined, optionKeys?: string[]) {
+  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined, optionKeys?: string[], term?: AgreementTerm) {
     const cycles = await planCycles(ex, organizationId, planVersionId);
     const withCycles = cycles ? { cycles } : {};
     if (!planBuilder) {
@@ -159,12 +159,12 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         format: 1,
         signed: false,
         plan: { versionId: v.id, version: v.version, termsSource: v.termsText ? "plan" : "organization" },
-        terms: v.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
+        terms: v.termsText ?? org.renewalTerms ?? defaultAgreementTerms(cycles ? v : null),
         coverage: await coverageLines(ex, organizationId, v.coverage),
         // Only when some were taken, so a snapshot without options reads as it did before.
         ...(options.length ? { options } : {}),
         // Only with pumping or maintenance (SW-9), likewise.
-        ...(cycles ? { cycles: agreementCycles(v) } : {}),
+        ...(cycles ? { cycles: agreementCycles(v, term) } : {}),
       },
       ...withCycles,
     };
@@ -677,7 +677,9 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (!site.active) throw unprocessable("This site is inactive");
       const terms = await activePlanTerms(organizationId, req.body.planId, req.body.priceCents);
       const contractId = await db.transaction().execute(async (trx) => {
-        const content = await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys);
+        // The snapshot lists the term's own visits: the authority's inspections, and each cycle's count.
+        const visits = req.body.acceptVisits ?? (await siteVisitTerms(trx, organizationId, site.id, req.body.startOn, terms)).terms.visitsPerTerm;
+        const content = await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys, { startOn: req.body.startOn, termMonths: terms.termMonths, visitsPerTerm: visits });
         // SW-7: a warning the office confirms, never a hard refusal. Asked only for a contract
         // with aerobic inspections: a pumping or maintenance only version (SW-9) is not one.
         const effectiveType = content.cycles && !content.cycles.aerobic ? content.cycles.serviceCycles[0]!.serviceType : terms.serviceType;

@@ -231,7 +231,11 @@ function RenewPage() {
         {header}
         <h1>Renew your maintenance plan</h1>
         <p>
-          Your {r.currentTerm.planName} plan ends on {day(r.currentTerm.endOn)}. Renewing keeps your aerobic system inspected on schedule and your reports filed with the county.
+          Your {r.currentTerm.planName} plan ends on {day(r.currentTerm.endOn)}.{" "}
+          {r.terms.serviceType === "aerobic_inspection"
+            ? "Renewing keeps your aerobic system inspected on schedule and your reports filed with the county."
+            : // A pumping or maintenance only plan (SW-9): no inspection or county report is promised.
+              `Renewing keeps your ${r.terms.serviceType === "pumping" ? "pumping" : "maintenance"} visits on schedule.`}
         </p>
         <dl className="details">
           <dt>New term</dt>
@@ -239,9 +243,18 @@ function RenewPage() {
             {day(r.terms.startOn)} to {day(r.terms.endOn)}
           </dd>
           <dt>Visits</dt>
-          <dd>
-            {r.terms.visitsPerTerm} maintenance visit{r.terms.visitsPerTerm === 1 ? "" : "s"}
-          </dd>
+          {r.cycles.length > 0 ? (
+            // Each kind of visit with its own count this term (SW-9), never one total.
+            <dd data-testid="renewal-visits">
+              {r.cycles.map((c) => (
+                <div key={c}>{c}</div>
+              ))}
+            </dd>
+          ) : (
+            <dd>
+              {r.terms.visitsPerTerm} maintenance visit{r.terms.visitsPerTerm === 1 ? "" : "s"}
+            </dd>
+          )}
           <dt>Price</dt>
           <dd>
             {money(r.terms.priceCents)} for the term

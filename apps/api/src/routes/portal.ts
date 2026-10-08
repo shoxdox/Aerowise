@@ -212,6 +212,36 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           .limit(50)
           .execute(),
       ]);
+      // SW-9: a contract with pumping or maintenance visits shows each kind of visit's own
+      // progress; an inspection-only contract keeps its one inspection count.
+      const contractIds = contracts.map((k) => k.id);
+      const cycleProgress = contractIds.length
+        ? await db
+            .selectFrom("contractServiceCycles as y")
+            .innerJoin("serviceObligations as o", (j) => j.onRef("o.cycleId", "=", "y.id").onRef("o.organizationId", "=", "y.organizationId"))
+            .select(["y.contractId", "y.cycleKey", "y.serviceType", sql<string | null>`y.snapshot->>'label'`.as("label")])
+            .select(sql<number>`count(*) filter (where o.status <> 'cancelled')::int`.as("total"))
+            .select(sql<number>`count(*) filter (where o.status = 'completed')::int`.as("done"))
+            .where("y.organizationId", "=", organizationId)
+            .where("y.contractId", "in", contractIds)
+            .where((eb) =>
+              eb.exists(
+                eb
+                  .selectFrom("contractServiceCycles as x")
+                  .select("x.id")
+                  .whereRef("x.contractId", "=", "y.contractId")
+                  .where("x.serviceType", "<>", "aerobic_inspection"),
+              ),
+            )
+            .groupBy(["y.contractId", "y.cycleKey", "y.serviceType", "y.snapshot"])
+            .orderBy(sql`y.service_type <> 'aerobic_inspection'`)
+            .orderBy("y.cycleKey")
+            .execute()
+        : [];
+      const progressOf = (contractId: string) =>
+        cycleProgress
+          .filter((p) => p.contractId === contractId)
+          .map((p) => ({ label: p.serviceType === "aerobic_inspection" ? "Aerobic inspections" : (p.label ?? p.cycleKey), done: p.done, total: p.total }));
       // SW-7: finished work with its completion summary.
       const work = await completedWorkOrders(db, organizationId, siteIds);
       // A report waiting for the maintenance provider's signature is not shown yet (30 TAC 285.7(b)(3)).
@@ -243,7 +273,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
                 chlorinationMethod: sys.chlorinationMethod,
               }
             : null,
-          contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0) } : null,
+          contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0), visitProgress: progressOf(k.id) } : null,
           renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.publicToken) } : null,
           nextVisit: next ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate } : null,
           reports: reports

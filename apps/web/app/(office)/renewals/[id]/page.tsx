@@ -142,7 +142,8 @@ export default function RenewalPage() {
                 {day(r.terms.startOn)} to {day(r.terms.endOn)}
               </dd>
               <dt>Visits</dt>
-              <dd>{r.terms.visitsPerTerm}</dd>
+              {/* A pumping or maintenance only offer (SW-9) has no single count: its cycles are on the plan version. */}
+              <dd>{r.terms.serviceType === "aerobic_inspection" ? r.terms.visitsPerTerm : `${r.terms.serviceType === "pumping" ? "Pumping" : "Maintenance"} visits, as the plan version lists them`}</dd>
               <dt>Price</dt>
               <dd>
                 {money(r.terms.priceCents)}, billed {FREQUENCY[r.terms.billingFrequency]}

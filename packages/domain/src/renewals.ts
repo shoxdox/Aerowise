@@ -48,6 +48,22 @@ export const DEFAULT_RENEWAL_TERMS = [
   "6. Electronic signature. The customer agrees that signing electronically has the same effect as signing on paper.",
 ].join("\n\n");
 
+/**
+ * The built-in terms for what a plan version includes (SW-9). An inspection-only version gets
+ * DEFAULT_RENEWAL_TERMS exactly as before. With pumping or maintenance cycles the service clause
+ * says what they are, and a version without inspections promises no inspection or authority
+ * report. A company's or a plan's own terms always replace these.
+ */
+export function defaultAgreementTerms(v?: { aerobic: boolean; serviceCycles: readonly unknown[] } | null): string {
+  if (!v || (v.aerobic && !v.serviceCycles.length)) return DEFAULT_RENEWAL_TERMS;
+  const service = v.aerobic
+    ? "1. Service. The provider will perform the maintenance visits listed above on the aerobic treatment system at the service address, inspect and service it as required by the permitting authority, and file each inspection report with that authority where required. The provider will also perform the pumping or maintenance visits listed above; those visits are not inspections, and no report is filed with an authority for them."
+    : "1. Service. The provider will perform the pumping or maintenance visits listed above on the system at the service address. These visits are not inspections for a permitting authority, and the provider files no report with an authority for them.";
+  const repairs = "3. Repairs. Repairs, parts and any pumping or maintenance beyond the visits listed above are not included unless listed as an add-on, and are quoted before any work is done.";
+  const clauses = DEFAULT_RENEWAL_TERMS.split("\n\n");
+  return [service, clauses[1], repairs, ...clauses.slice(3)].join("\n\n");
+}
+
 export const CONSENT_TEXT = "I have read this agreement and agree to its terms. I agree to sign electronically, and that my electronic signature is as binding as one on paper.";
 
 const date = z.iso.date();

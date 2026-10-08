@@ -76,8 +76,18 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
             <span className={`badge ${site.contract.state === "active" ? "ok" : site.contract.state}`}>{CONTRACT_LABEL[site.contract.state]}</span>
           </div>
           <div className="muted small">
-            {day(site.contract.startOn)} to {day(site.contract.endOn)} · {site.contract.visitsDone} of {site.contract.visitsPerTerm} visits done
+            {day(site.contract.startOn)} to {day(site.contract.endOn)}
+            {site.contract.visitProgress.length === 0 && ` · ${site.contract.visitsDone} of ${site.contract.visitsPerTerm} visits done`}
           </div>
+          {site.contract.visitProgress.length > 0 && (
+            <ul className="plain muted small" data-testid="portal-visit-progress">
+              {site.contract.visitProgress.map((p) => (
+                <li key={p.label}>
+                  {p.label}: {p.done} of {p.total} done
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : (
         <p className="muted">No maintenance plan on file for this property.</p>

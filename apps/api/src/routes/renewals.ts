@@ -7,6 +7,7 @@ import {
   CONSENT_TEXT,
   contractInstallments,
   DEFAULT_RENEWAL_TERMS,
+  defaultAgreementTerms,
   id,
   isSignable,
   publicRenewal,
@@ -666,11 +667,11 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         options,
         selectedOptionKeys: (signedContent ? options : offer ? offer.options.filter((o) => o.default) : parsePlanOptions(r.selectedOptions)).map((o) => o.optionKey),
         coverage: coverage.map((c) => c.summary),
-        cycles: (signedContent ? (signedContent.cycles ?? []) : offer && (serviceCycles || !offer.aerobic) ? (agreementCycles(offer) ?? []) : []).map((c) => `${c.label}: ${c.summary}`),
+        cycles: (signedContent ? (signedContent.cycles ?? []) : offer && (serviceCycles || !offer.aerobic) ? (agreementCycles(offer, terms) ?? []) : []).map((c) => `${c.label}: ${c.summary}`),
         // Asked only while it can be signed; the signed answers are in the agreement itself.
         intake: offer?.intake ? { name: offer.intake.name, definition: offer.intake.definition } : null,
         contact: { name: contact?.name ?? null, email: contact?.email ?? null, phone: contact?.phone ?? null },
-        agreementText: signedContent ? signedContent.terms : (offer?.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS),
+        agreementText: signedContent ? signedContent.terms : (offer?.termsText ?? org.renewalTerms ?? defaultAgreementTerms(offer && (serviceCycles || !offer.aerobic) ? offer : null)),
         consentText: CONSENT_TEXT,
         payment: org.renewalPayment,
         signed: doc ? { signerName: doc.signerName, signedAt: doc.signedAt.toISOString(), pdfReady: !!doc.pdfStorageKey } : null,
@@ -805,7 +806,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
             installments: charges.installments,
             payment: org.renewalPayment,
           },
-          terms: offer?.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
+          terms: offer?.termsText ?? org.renewalTerms ?? defaultAgreementTerms(offer && (serviceCycles || !offer.aerobic) ? offer : null),
           // Only with the plan builder on, so every other agreement keeps exactly its old content.
           ...(offer
             ? {
@@ -814,7 +815,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
                 coverage: await coverageLines(trx, organizationId, offer.coverage),
                 ...(intake ? { intake: { templateId: intake.form.id, key: intake.form.key, version: intake.form.version, name: intake.form.name, answers: intake.answers } } : {}),
                 // SW-9: pumping or maintenance the term includes. A version without inspections lists its cycles even with the switch off.
-                ...(offer && (serviceCycles || !offer.aerobic) && agreementCycles(offer) ? { cycles: agreementCycles(offer)! } : {}),
+                ...(offer && (serviceCycles || !offer.aerobic) && agreementCycles(offer, terms) ? { cycles: agreementCycles(offer, terms)! } : {}),
               }
             : {}),
         };

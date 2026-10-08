@@ -1,5 +1,5 @@
 import type { Database, DB } from "@aerowise/db";
-import { coverageSummary, cycleSummary, DEFAULT_RENEWAL_TERMS, parseCoverageRules, parsePlanOptions, parseServiceCycles, type AgreementPreview, type CoverageRule, type IntakeFormRef, type PlanOption, type ServiceCycle, type TemplateDefinition } from "@aerowise/domain";
+import { buildIntervalSchedule, coverageSummary, cycleSummary, defaultAgreementTerms, parseCoverageRules, parsePlanOptions, parseServiceCycles, type AgreementPreview, type CoverageRule, type IntakeFormRef, type PlanOption, type ServiceCycle, type TemplateDefinition } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -68,7 +68,7 @@ export async function coverageLines(db: Executor, organizationId: string, rules:
 export async function agreementPreview(db: Executor, organizationId: string, v: LoadedPlanVersion, organizationTerms: string | null): Promise<AgreementPreview> {
   return {
     termsSource: v.termsText ? "plan" : "organization",
-    terms: v.termsText ?? organizationTerms ?? DEFAULT_RENEWAL_TERMS,
+    terms: v.termsText ?? organizationTerms ?? defaultAgreementTerms(v),
     options: v.options,
     coverage: await coverageLines(db, organizationId, v.coverage),
     intake: v.intake ? { name: v.intake.name, questions: v.intake.definition.fields.map((f) => f.label) } : null,
@@ -80,10 +80,22 @@ export async function agreementPreview(db: Executor, organizationId: string, v: 
  * The service an agreement lists when the version has more than inspections (SW-9): every
  * cycle, inspections first. Null for an inspection-only version, so its agreement reads as before.
  */
-export function agreementCycles(v: LoadedPlanVersion) {
+export function agreementCycles(v: LoadedPlanVersion, term?: AgreementTerm) {
   if (v.aerobic && !v.serviceCycles.length) return null;
   return [
-    ...(v.aerobic ? [{ cycleKey: "aerobic", label: "Aerobic inspections", summary: cycleSummary({ serviceType: "aerobic_inspection", schedule: { kind: "visits_per_term", visitsPerTerm: v.visitsPerTerm } }) }] : []),
-    ...v.serviceCycles.map((c) => ({ cycleKey: c.cycleKey, label: c.label, summary: cycleSummary(c) })),
+    // With the term, the inspections it actually has (an authority may add some to the plan's).
+    ...(v.aerobic ? [{ cycleKey: "aerobic", label: "Aerobic inspections", summary: cycleSummary({ serviceType: "aerobic_inspection", schedule: { kind: "visits_per_term", visitsPerTerm: term?.visitsPerTerm ?? v.visitsPerTerm } }) }] : []),
+    // With the term, each cycle's own visit count in it, however many (never the capped scalar).
+    ...v.serviceCycles.map((c) => {
+      const n = term ? buildIntervalSchedule(term.startOn, term.termMonths, c.schedule).length : null;
+      return { cycleKey: c.cycleKey, label: c.label, summary: cycleSummary(c) + (n === null ? "" : ` (${n} visit${n === 1 ? "" : "s"} this term)`) };
+    }),
   ];
+}
+
+/** The term an agreement lists its cycles for: its start, length and inspection visits. */
+export interface AgreementTerm {
+  startOn: string;
+  termMonths: number;
+  visitsPerTerm: number;
 }
