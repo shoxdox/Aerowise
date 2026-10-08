@@ -265,6 +265,24 @@ export async function acceptAndConvert(
   return { workOrderId: wo.id, totals, chosen };
 }
 
+/**
+ * The tax rate and discount of the estimate version accepted for this work order, or null when
+ * the order did not come from an accepted estimate. Its invoice starts from these, not from the
+ * company's current defaults, so unchanged work bills what the customer accepted; the office can
+ * still edit the draft. The discount stays the accepted amount (capped at the invoice's subtotal).
+ */
+export async function acceptedPricing(ex: Kysely<DB>, organizationId: string, workOrderId: string): Promise<{ taxRateBps: number; discountCents: number } | null> {
+  const v = await ex
+    .selectFrom("estimates as e")
+    .innerJoin("estimateVersions as v", (j) => j.onRef("v.estimateId", "=", "e.id").onRef("v.organizationId", "=", "e.organizationId").onRef("v.version", "=", "e.acceptedVersion"))
+    .select(["v.taxRateBps", "v.discountCents"])
+    .where("e.organizationId", "=", organizationId)
+    .where("e.workOrderId", "=", workOrderId)
+    .where("e.status", "=", "accepted")
+    .executeTakeFirst();
+  return v ?? null;
+}
+
 /** Whether the accepted estimate's work order can still be cancelled with it. */
 export async function cancellationBlocker(trx: Trx, organizationId: string, workOrderId: string): Promise<string | null> {
   const done = await trx
