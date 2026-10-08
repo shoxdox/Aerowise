@@ -1,14 +1,14 @@
 # Aerowise
 
-Software for Texas aerobic septic maintenance providers: customers, sites and contracts, recurring inspections, an offline technician app, reporting and filing evidence, renewals, invoices, payments and the customer portal.
+Software for Texas septic maintenance and service providers: customers, sites and contracts, recurring inspections, an offline technician app, reporting and filing evidence, renewals, invoices, payments and the customer portal.
 
-**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The October 6 build is merged through PR #90 (application baseline `d646512`, migrations through `0046`). Demo and county-correction coding is complete. Deployment, real integrations and authority acceptance are separate steps; this handoff does not claim they passed.
+**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The authorized service expansion is deployed on staging at application `be44166` through migration `0060`, with all eight workflow flags enabled. The final combined suite is running on frozen `97aca5b`; phone and application floor/recovery checks passed with the limits recorded in the runbook. Production, real providers and authority acceptance remain separate gates.
 
 ## Start here
 
 - [Current status and next steps](docs/DEMO-PILOT-BRIEF.md): what shipped, what remains, what Justin needs to decide.
 - [Pilot worksheet](docs/PILOT-CALL-SHEET.md): provider documents first, then targeted acceptance questions.
-- [Delivery record](docs/engineering/ROADMAP.md): completed work and deferred features; no active coding kickoff.
+- [Delivery record](docs/engineering/ROADMAP.md): shipped workflows, current validation and deferred features.
 - [Agent working guidance](CODEX.md): document precedence and engineering boundaries.
 - [Deployment runbook](docs/engineering/DEPLOY.md) and [configuration](.env.example).
 - [Street map](docs/engineering/MAP.md): coverage, licences and installing the map file.
@@ -23,6 +23,7 @@ Software for Texas aerobic septic maintenance providers: customers, sites and co
 - Customers, sites, systems, plans, contracts, recurring due dates, scheduling and estimated route optimization.
 - Offline technician inspections with sync, signatures and photos; report PDFs, review and filing preparation with recorded proof.
 - Renewals, homeowner signatures, invoicing, Stripe Connect and Aerowise subscription billing, customer portal, imports and exports.
+- General work orders, offline work records, service items and fractional quantities, estimates/deposits/refunds, frozen plan versions/options/coverage, pumping/disposal, conventional service and installation summaries, non-aerobic service cycles, mixed-service maps and authority CSV exports.
 - One-way QuickBooks sync, SMS workflows and configurable file/email providers. Real-service validation still depends on configured accounts and controlled integration checks.
 - Demo organization isolation enforced by API and worker, synthetic contacts, watermarked exports, guided data and first-run help.
 - Passwordless visitor demos lasting 24 hours, per-address/global creation limits, role switching and platform-created expiring prospect demos. A trial starts as a new company without synthetic customers.

@@ -1,6 +1,16 @@
 # Aerowise — current demo and pilot handoff
 
-## Current checkpoint — October 8, 2026, 2:57 PM
+## Current checkpoint — October 8, 2026, 5:57 PM
+
+Staging is on application `be44166aa7d38ff5a2db7eead975c9e951c7753c`, migration `0060`, with all eight workflow flags enabled: work orders, service items, field work, estimates, plans, deposits, pumping and service cycles. SW-6/7/9/10 and phone fixes are merged, independently reviewed and deployed. #110 remains evidence only and was never merged. DEMO_MODE=true, live overrides empty, Twilio/Resend absent; production container identity/start times unchanged.
+
+Actual staging synthetic checks passed for pumping/disposal and fractional invoice drafts, two-visit installation/final sign-off with office and homeowner PDF, conventional service, mixed office/technician maps, historical photo status and a pumping-only cycle contract. The latest private visitor demo completed one of two pumping visits, recorded a fictional 1,000-gallon manifest/photo and presents the next pumping visit without inspection history. Its renewal preview accurately lists two pumping visits and explicit fictional terms. No real service, filing, recipient contact or money moved; older manual installation/conventional demo records are retained.
+
+Final validation is still running on frozen #116 `97aca5b`. Root phone-floor drill passed all 2/8/6 checks; app-floor/forward/scratch restore passed 17/17 steps with 97 table hashes and 30 stored files preserved. The first app drill result was invalidated for incomplete table enumeration in the root Docker client wrapper; corrected-client recovery checks passed on the same SHA. The final staging backup `db-20261008T225638Z.dump` restored successfully in a scratch container: 101 tables, 4,896 rows, 28 organizations, migration 0060 and a readable 99-file archive. Backups remain server-local; offsite storage is not configured. Do not call the full expansion finished until the combined suite and final evidence matrix are complete. Physical-phone, real-provider/Intuit/deposit accounting, legal/coverage and authority-acceptance gates remain open. Hosted Actions still do not execute because of account billing.
+
+Earlier dated checkpoints below are historical.
+
+## Earlier checkpoint — October 8, 2026, 2:57 PM
 
 Staging is on application `4e8a897dc3e72ee4276f2ae447b0319678fbc5cb`, migrations through 0057, with `work_orders,service_items,field_work,estimates,plan_builder,deposits`. #106/#107/#108/#109/#111/#112 were independently reviewed, fixed, serialized and merged. Hooks lint follow-up #113 and mixed-map #115 are also merged and deployed. #110 remains evidence-only and was never merged.
 
