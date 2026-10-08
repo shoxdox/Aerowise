@@ -2,7 +2,7 @@
 
 Software for Texas septic maintenance and service providers: customers, sites and contracts, recurring inspections, an offline technician app, reporting and filing evidence, renewals, invoices, payments and the customer portal.
 
-**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The authorized service expansion is deployed on staging at application `be44166` through migration `0060`, with all eight workflow flags enabled. The final combined suite is running on frozen `97aca5b`; phone and application floor/recovery checks passed with the limits recorded in the runbook. Production, real providers and authority acceptance remain separate gates.
+**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The authorized service expansion is deployed on staging at application `be44166` through migration `0060`, with all eight workflow flags enabled. Final validation is on frozen `9daf3d7`, including a reviewed phone sync-status correction. API/package results passed on unchanged code; the corrected browser suite is running. Phone and application floor/recovery checks passed with the limits recorded in the runbook. Production, real providers and authority acceptance remain separate gates.
 
 ## Start here
 
