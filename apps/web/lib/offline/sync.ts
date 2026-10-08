@@ -1,7 +1,7 @@
 "use client";
 
 import { activeTenant, isKnownOp, sameTenant, storeFor, type LocalInspection, type QueuedOp, type StoredOp, type Tenant, type TenantStore } from "./db";
-import { requestPersistentStorage, storageMayHaveRoom } from "./storage";
+import { isQuotaError, markStorageFull, requestPersistentStorage, storageMayHaveRoom } from "./storage";
 import { workStoreFor, type LocalWork, type QueuedWorkOp, type WorkStore } from "./work";
 
 // Sends the outbox to the server, oldest first. Every request is idempotent on the
@@ -250,6 +250,8 @@ async function drainOnce() {
     const next = inspections.runnable[0];
     const nextWork = visits.runnable[0];
     if (!next && !nextWork) {
+      // Nothing left that sending could clear: a full phone may try again (the next save that does not fit says so again).
+      if (counts.pending === 0) storageMayHaveRoom();
       emit({ kind: "idle", ...counts });
       return;
     }
@@ -263,6 +265,13 @@ async function drainOnce() {
       if (err instanceof RetryLater) {
         const kind = err.reason === "server" ? "idle" : err.reason;
         emit({ kind, ...counts });
+        return;
+      }
+      // Recording the server's answer did not fit on the phone: the op stays queued (its
+      // transaction was undone) and is sent again once there is room, which the server takes as a replay.
+      if (isQuotaError(err)) {
+        markStorageFull();
+        emit({ kind: "idle", ...counts });
         return;
       }
       throw err;

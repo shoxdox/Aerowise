@@ -70,10 +70,10 @@ async function workOnPhone(page: Page, title: string) {
       });
     const ops = await all<{ seq: number; kind: string; failed?: string }>("outbox");
     const blobs = await all<{ clientId: string }>("blobs");
-    const records = await all<{ clientId: string; label?: { title: string }; photos: { clientId: string; photoKey: string; uploaded: boolean }[] }>("records");
+    const records = await all<{ clientId: string; label?: { title: string }; photos: { clientId: string; photoKey: string; uploaded: boolean }[]; values: Record<string, unknown> }>("records");
     db.close();
     const record = records.find((r) => r.label?.title.endsWith(title));
-    return { ops: ops.map((o) => ({ seq: o.seq, kind: o.kind, failed: o.failed ?? null })), blobs: blobs.map((b) => b.clientId).sort(), photos: record?.photos ?? [] };
+    return { ops: ops.map((o) => ({ seq: o.seq, kind: o.kind, failed: o.failed ?? null })), blobs: blobs.map((b) => b.clientId).sort(), photos: record?.photos ?? [], values: record?.values ?? {} };
   }, title);
 }
 
@@ -311,6 +311,53 @@ test("photos an earlier version left marked not sent read as sent once the serve
       ["after", false],
     ]);
     expect(kept.ops).toEqual([expect.objectContaining({ kind: "work-photo", failed: "Photo refused earlier" })]);
+  } finally {
+    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+  }
+});
+
+// Leaving a form within the 400 ms before its typing is saved saves it on the way out. On a full
+// phone that save is refused like any other: the phone says so, keeps what was already saved and
+// queued, and nothing is written later by a timer of the closed form.
+test("leaving a visit straight after typing on a full phone says so, keeps what was saved, and writes nothing afterwards", async ({ page, browser }) => {
+  const api = await office(browser);
+  const title = "Float switch (quick back)";
+  const id = await repairForTess(api, title);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  try {
+    await techPhone(page);
+    await page.locator(".work-card", { hasText: title }).click();
+    await page.getByRole("button", { name: "Arrive and start work" }).click();
+    await page.getByLabel("Problem found").fill("Alarm stays on");
+    await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
+    await expect.poll(async () => (await workOnPhone(page, title)).values).toEqual(expect.objectContaining({ problem: "Alarm stays on" }));
+    await expect.poll(async () => (await workOnPhone(page, title)).ops).toEqual([]);
+    const saved = await workOnPhone(page, title);
+
+    // The phone is full: writing the record itself does not fit.
+    await page.evaluate(() => {
+      const w = window as unknown as { recordsFull: boolean };
+      w.recordsFull = true;
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+        if (w.recordsFull && this.name === "records") throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        return put.call(this, value, key);
+      };
+    });
+    await page.getByLabel("Work performed").fill("Replaced the float switch");
+    await page.getByRole("button", { name: "‹ Back" }).click();
+    await expect(page.getByTestId("storage-full-banner")).toContainText("Phone storage full: send waiting items first.");
+    // What was saved before is kept as it was, with nothing queued lost or added.
+    const after = await workOnPhone(page, title);
+    expect(after.values).toEqual(saved.values);
+    expect(after.ops).toEqual(saved.ops);
+
+    // Room again: nothing of the closed form is written later.
+    await page.evaluate(() => ((window as unknown as { recordsFull: boolean }).recordsFull = false));
+    await page.waitForTimeout(1000);
+    expect((await workOnPhone(page, title)).values).toEqual(saved.values);
+    expect(errors).toEqual([]);
   } finally {
     await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
   }

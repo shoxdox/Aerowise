@@ -62,7 +62,11 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   useEffect(
     () => () => {
       // Leaving the form flushes anything not yet saved.
-      if (timer.current) void saveInspection(latest.current);
+      if (!timer.current) return;
+      // The pending save runs now and its timer never fires against the closed form; a full phone is reported on screen.
+      clearTimeout(timer.current);
+      timer.current = null;
+      void saveOrReport(() => saveInspection(latest.current)).catch(() => {});
     },
     [],
   );

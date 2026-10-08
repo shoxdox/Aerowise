@@ -182,7 +182,11 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   useEffect(
     () => () => {
       // Leaving the form flushes anything not yet saved.
-      if (timer.current) void store.saveWork(latest.current);
+      if (!timer.current) return;
+      // The pending save runs now and its timer never fires against the closed form; a full phone is reported on screen.
+      clearTimeout(timer.current);
+      timer.current = null;
+      void saveOrReport(() => store.saveWork(latest.current)).catch(() => {});
     },
     [store],
   );
