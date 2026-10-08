@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
+import { formKey } from "./forms.ts";
 import type { ISSUE_TYPES } from "./inspections.ts";
 import type { ServiceRequestKind } from "./portal.ts";
 
@@ -87,6 +88,8 @@ export const workType = z.object({
   key: z.string(),
   name: z.string(),
   category: z.enum(WORK_CATEGORIES),
+  /** The work form a visit of this kind uses (SW-F); null until the kind has one. */
+  defaultFormTemplateKey: z.string().nullable(),
   defaultDurationMinutes: z.number().int().nullable(),
   requiresDisposalRecord: z.boolean(),
   active: z.boolean(),
@@ -99,11 +102,13 @@ export const workTypeInput = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "Use lower-case letters, digits and underscores"),
   name: workTypeName,
   category: z.enum(WORK_CATEGORIES),
+  defaultFormTemplateKey: formKey.nullish(),
   defaultDurationMinutes: z.number().int().min(5).max(1440).nullish(),
   requiresDisposalRecord: z.boolean().default(false),
 });
 export const workTypeFields = z.object({
   name: workTypeName.optional(),
+  defaultFormTemplateKey: formKey.nullish(),
   defaultDurationMinutes: z.number().int().min(5).max(1440).nullish(),
   requiresDisposalRecord: z.boolean().optional(),
   active: z.boolean().optional(),

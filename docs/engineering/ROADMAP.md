@@ -43,6 +43,8 @@ Choose one provider and actual permit authority; obtain a small redacted permit/
 
 - **SW-4:** QuickBooks mixed sales tax and quarantine (§3.7): per-connection tax mode, off by default and refused for live QuickBooks companies until G-QBO-TAX; compare after create, quarantined invoices with held payments and refunds, recheck/keep review — draft PR, branch `claude/sw-4-qbo-tax-quarantine-2o2rzy`, migration `0050` (number reserved through SW-1, renumbered at merge if needed). Test provider only; no Intuit sandbox run.
 
+- **SW-4:** QuickBooks mixed sales tax and quarantine (§3.7): per-connection tax mode, off by default and refused for live QuickBooks companies until G-QBO-TAX; compare after create, quarantined invoices with held payments and refunds, recheck/keep review — draft PR, branch `claude/sw-4-qbo-tax-quarantine-2o2rzy`, migration `0050` (number reserved through SW-1, renumbered at merge if needed). Test provider only; no Intuit sandbox run.
+
 ## W9. Deferred
 
 Homeowner autopay/saved payment methods, organization switcher, technician-app MP signing, two-way QuickBooks, IoT and other states remain deferred until a real pilot/customer need justifies them. No 300-contract demo seed or statewide confirmation campaign is queued.

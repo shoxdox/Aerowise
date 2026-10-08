@@ -1,5 +1,15 @@
 # Aerowise — current demo and pilot handoff
 
+## Four-worker review — October 7, 2026, late evening
+
+**Staging remains https://staging.deshain.com on application `79b3c12`**, with password-free **Try the demo → Start my demo** and Owner / Office / Technician switching. Read-only runtime verification confirms healthy API, DEMO_MODE=true, only work_orders enabled, no live-service overrides and no Twilio/Resend credentials. No new application was deployed during this review.
+
+Codex reviewed all four Claude handoffs and merged CSV exports #102, QuickBooks tax/quarantine #101 and work forms #104 into main `c89d0db`. Independent merged-main typecheck passed all 16 tasks. These three pieces have their recorded individual local validation; the final combined application/build/browser/upgrade run is still required before the combined release is deployed. Hosted Actions never ran because of the existing account restriction.
+
+**Open P2 in unmerged #105:** an existing fractional invoice draft cannot save through the office editor after the service_items flag is switched off. Its promised QuickBooks service-item mapping/default fallback is also unfinished. Codex sent both back with regression requirements. Claude's four workers have resumed catalog corrections/integration, offline work on the technician phone (SW-2), estimates/deposits (SW-5) and plans/coverage (SW-8). The whole Fieldbase expansion and its final walkthrough remain incomplete. Justin has no pending approval, account, key or DNS action for this work; physical-device, real-provider and authority-acceptance gates stay open. [Review and merge record](engineering/RUNBOOK.md#four-worker-review-and-serialized-merges--october-7-2026-late-evening).
+
+The dated sections below record earlier deployments; use the current status above for what is actually live.
+
 ## Work-order foundation live — October 7, 2026
 
 **Staging https://staging.deshain.com is on `79b3c122ec686fbafb677914c219d4b1dceb37b6`**, merged #100, with work_orders enabled only in staging. Enter through **Try the demo → Start my demo**, then Owner / Office / Technician. The demo now includes open, scheduled and completed work orders. Live owner scheduling, office completion/cancellation and the existing technician inspection route passed a bounded browser check; API/worker health and a scratch backup restore (78 tables, migration 0048, stored files) passed. Personalized demos/trials survived reseeding. [Deployment record and screenshots](engineering/RUNBOOK.md#work-foundation-review-and-staging-deployment--october-7-2026).

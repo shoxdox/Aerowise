@@ -53,6 +53,7 @@ import { demoVisitRoutes } from "./routes/demo-visits.ts";
 import { legalRoutes } from "./routes/legal.ts";
 import { serviceItemRoutes } from "./routes/service-items.ts";
 import { workOrderRoutes } from "./routes/work-orders.ts";
+import { formRoutes } from "./routes/forms.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
 import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
@@ -291,6 +292,7 @@ export async function buildApp({
   await app.register(scheduleRoutes, { db, now });
   await app.register(workOrderRoutes, { db, now, features });
   await app.register(serviceItemRoutes, { db, now, features });
+  await app.register(formRoutes, { db, features });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });

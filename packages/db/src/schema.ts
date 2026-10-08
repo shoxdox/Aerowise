@@ -318,6 +318,8 @@ export interface InspectionTemplatesTable {
   key: string;
   version: number;
   name: string;
+  // SW-F (0051): which kind of form this is. Older binaries leave it out and get 'inspection'.
+  purpose: ColumnType<TemplatePurpose, TemplatePurpose | undefined, never>;
   definition: ColumnType<unknown, string, never>;
   createdBy: string | null;
   createdAt: CreatedAt;
@@ -1016,6 +1018,8 @@ export interface QuickbooksTestCompaniesTable {
   updatedAt: Timestamp;
 }
 
+export type TemplatePurpose = "inspection" | "work" | "intake";
+export type SignedDocumentKind = "renewal_agreement" | "work_completion" | "estimate_acceptance";
 export type RenewalStatus = "upcoming" | "sent" | "viewed" | "signed" | "payment_pending" | "paid" | "activated" | "declined" | "expired" | "needs_review";
 
 export interface RenewalAddonsTable {
@@ -1074,7 +1078,7 @@ export interface RenewalsTable {
 export interface SignedDocumentsTable {
   id: Generated<string>;
   organizationId: string;
-  kind: "renewal_agreement";
+  kind: SignedDocumentKind;
   renewalId: string | null;
   siteId: string;
   customerId: string;

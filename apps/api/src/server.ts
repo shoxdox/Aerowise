@@ -1,4 +1,4 @@
-import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db";
+import { checkConfig, createDb, ensureBuiltInForms, migrate, requireDatabaseUrl } from "@aerowise/db";
 import { buildApp } from "./app.ts";
 import { subscriptionConfigFromEnv } from "@aerowise/domain";
 import { reporterFromEnv } from "@aerowise/observability";
@@ -11,6 +11,8 @@ const url = requireDatabaseUrl();
 await migrate(url, (msg) => console.log(msg));
 
 const db = createDb(url);
+// The built-in forms (inspection and starter work forms) exist from the first request on.
+await ensureBuiltInForms(db);
 const production = process.env.NODE_ENV === "production";
 // Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
 const store = storeFromEnv(process.env);

@@ -1,5 +1,6 @@
 import { addDays, addMonths, buildTermSchedule, CURRENT_LEGAL_VERSIONS, LEGAL_DOCUMENTS } from "@aerowise/domain";
 import type { Database } from "./client.ts";
+import { ensureBuiltInForms } from "./forms.ts";
 import { hashPassword } from "./password.ts";
 import { createPlatformAdmin } from "./platform-admin.ts";
 
@@ -57,6 +58,8 @@ function todayInChicago(): string {
 
 export async function seed(db: Database, log: (msg: string) => void = () => {}) {
   await seedPlatformAdmin(db, log);
+  const forms = await ensureBuiltInForms(db);
+  if (forms) log(`added ${forms} built-in form version(s)`);
   // The live shared company: the nightly reset leaves earlier ones as ended tombstones.
   const existing = await db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null).executeTakeFirst();
   if (existing) {
