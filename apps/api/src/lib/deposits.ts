@@ -264,31 +264,33 @@ export async function refundableOn(ex: Database | Trx, organizationId: string, i
 
 /**
  * The deposit when its estimate is cancelled (service workflows plan §3.4). Never blocks the
- * cancellation and never moves money: a deposit invoice with nothing paid or clearing is
- * voided (its pay link stops working); anything received stays on the ledger, and its free part
- * shows in the inbox as "Deposit disposition needed" until the office refunds or keeps it. A
- * payment still clearing lands there too once it clears. Returns the checkout sessions to close.
+ * cancellation and never moves money. Every open checkout page is closed and no new one opens
+ * (`depositClosedReason`). A deposit invoice with nothing paid or clearing is voided; anything
+ * received stays on the ledger, and its free part shows in the inbox as "Deposit disposition
+ * needed" until the office refunds or keeps it. A payment still clearing, or one the provider
+ * completes late, lands there too. Returns the checkout sessions the provider should close.
  */
 export async function settleDepositAtCancel(trx: Trx, organizationId: string, dep: LockedDeposit, a: { actorUserId: string; reason: string; at: Date }) {
   const d = await trx.selectFrom("invoices").select(["status", "paidCents", "pendingCents"]).where("organizationId", "=", organizationId).where("id", "=", dep.depositInvoiceId).executeTakeFirstOrThrow();
-  const b = await depositBalances(trx, organizationId, dep.depositInvoiceId);
   if (d.status === "void") return { voided: false, held: 0, openSessions: [] as { providerSessionId: string }[] };
+  const openSessions = await trx
+    .updateTable("checkoutSessions")
+    .set({ status: "expired" })
+    .where("organizationId", "=", organizationId)
+    .where("invoiceId", "=", dep.depositInvoiceId)
+    .where("status", "=", "open")
+    .returning("providerSessionId")
+    .execute();
+  const b = await depositBalances(trx, organizationId, dep.depositInvoiceId);
   if (d.status === "open" && d.paidCents === 0 && d.pendingCents === 0 && b.received === 0) {
     await trx.updateTable("estimateInvoices").set({ voidedAt: a.at }).where("organizationId", "=", organizationId).where("invoiceId", "=", dep.depositInvoiceId).where("voidedAt", "is", null).execute();
     await trx.updateTable("invoices").set({ status: "void", voidedAt: a.at, voidReason: a.reason, updatedAt: a.at }).where("organizationId", "=", organizationId).where("id", "=", dep.depositInvoiceId).execute();
     await recalcInvoice(trx, organizationId, dep.depositInvoiceId, a.at);
     await invoiceEvent(trx, { organizationId, invoiceId: dep.depositInvoiceId, eventType: "voided", summary: `Voided: ${a.reason}`, actorUserId: a.actorUserId, at: a.at });
-    const openSessions = await trx
-      .updateTable("checkoutSessions")
-      .set({ status: "expired" })
-      .where("organizationId", "=", organizationId)
-      .where("invoiceId", "=", dep.depositInvoiceId)
-      .where("status", "=", "open")
-      .returning("providerSessionId")
-      .execute();
     return { voided: true, held: 0, openSessions };
   }
-  return { voided: false, held: Math.max(0, b.free), openSessions: [] as { providerSessionId: string }[] };
+  await invoiceEvent(trx, { organizationId, invoiceId: dep.depositInvoiceId, eventType: "deposit_closed", summary: `No longer collected: ${a.reason}`, actorUserId: a.actorUserId, at: a.at });
+  return { voided: false, held: Math.max(0, b.free), openSessions };
 }
 
 /** The estimate's deposit, for the office. */

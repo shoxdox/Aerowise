@@ -78,11 +78,20 @@ function PayPage() {
             </>
           ) : (
             <>
-              <div className="muted">Amount due</div>
-              <div className="amount">{money(inv.amountDueCents)}</div>
-              <div className="muted">Due {day(inv.dueOn)}</div>
+              {!inv.closedReason && (
+                <>
+                  <div className="muted">Amount due</div>
+                  <div className="amount">{money(inv.amountDueCents)}</div>
+                  <div className="muted">Due {day(inv.dueOn)}</div>
+                </>
+              )}
               {justPaid && <p>Thanks! Your payment is being confirmed; this page updates once it is.</p>}
-              {inv.canPayOnline ? (
+              {inv.closedReason ? (
+                <p className="muted" data-testid="pay-closed">
+                  {inv.closedReason}
+                  {contact && ` Contact ${inv.provider.name} at ${contact}.`}
+                </p>
+              ) : inv.canPayOnline ? (
                 <button onClick={() => void pay()} disabled={busy}>
                   Pay {money(inv.amountDueCents)} by card or bank
                 </button>

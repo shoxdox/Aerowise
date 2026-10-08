@@ -340,6 +340,8 @@ export const publicInvoice = z.object({
   pdfReady: z.boolean(),
   /** The built-in test provider is running: checkout is simulated and no money moves. */
   testMode: z.boolean(),
+  /** Why this invoice no longer takes payment though money is due (a cancelled estimate's deposit). */
+  closedReason: z.string().nullable().default(null),
 });
 export type PublicInvoice = z.infer<typeof publicInvoice>;
 

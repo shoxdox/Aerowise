@@ -8,7 +8,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
-import { canPayOnline, invoiceByToken, notFoundLink, openCheckout } from "../lib/checkout.ts";
+import { canPayOnline, depositClosedReason, invoiceByToken, notFoundLink, openCheckout } from "../lib/checkout.ts";
 import type { PaymentsConfig } from "../lib/invoices.ts";
 import { readForDownload } from "../lib/demo.ts";
 
@@ -123,6 +123,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     async (req): Promise<PublicInvoice> => {
       const inv = await byToken(req.params.token);
       const s = invoiceSnapshot.parse(inv.snapshot);
+      const closedReason = await depositClosedReason(db, inv.organizationId, inv.id);
       const verify = await db
         .selectFrom("payments")
         .select("bankVerificationUrl")
@@ -151,10 +152,11 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         pendingCents: inv.pendingCents,
         creditedCents: inv.creditedCents,
         amountDueCents: amountDue(inv),
-        canPayOnline: canPayOnline(provider, inv),
+        canPayOnline: !closedReason && canPayOnline(provider, inv),
         bankVerificationUrl: verify?.bankVerificationUrl ?? null,
         pdfReady: !!inv.pdfStorageKey,
         testMode: !!provider && (await providerFor(provider, inv.organizationId)).kind === "test",
+        closedReason,
       };
     },
   );
