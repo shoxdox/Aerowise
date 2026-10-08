@@ -37,7 +37,13 @@ export const planInput = planFields
 // plan never rewrites existing contracts.
 export const planPatch = planFields.partial().refine(evenVisits, evenVisitsError);
 
-export const plan = planFields.extend({ id, createdAt: z.iso.datetime({ offset: true }) });
+export const plan = planFields.extend({
+  id,
+  /** The version contracts and renewals take now (SW-8); a change to any term above makes a new one. */
+  currentVersionId: id,
+  version: z.number().int(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
 
 export const contractInput = z.object({
   planId: id,
@@ -128,7 +134,13 @@ export const contract = z.object({
   createdAt: z.iso.datetime({ offset: true }),
 });
 
-export const contractDetail = contract.extend({ obligations: z.array(obligation) });
+export const contractDetail = contract.extend({
+  obligations: z.array(obligation),
+  /** The plan version the contract was made from (SW-8); null for one made before versions, or without a plan. */
+  planVersion: z.object({ id, version: z.number().int() }).nullable(),
+  /** The coverage rules frozen on the contract when it was made, with their use this term. */
+  coverage: z.array(z.object({ id, ruleKey: z.string(), label: z.string(), summary: z.string(), limit: z.number().int().nullable(), used: z.number().int() })),
+});
 
 export const dueObligation = obligation.extend({
   overdue: z.boolean(),

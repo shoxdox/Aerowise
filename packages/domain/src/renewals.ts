@@ -3,6 +3,7 @@ import { BILLING_FREQUENCIES, SERVICE_TYPES } from "./contracts.ts";
 import { CUSTOMER_TYPES } from "./crm.ts";
 import { id } from "./crm.ts";
 import { contractInstallments, invoiceTotals, MAX_CENTS, type InvoiceTotals } from "./invoices.ts";
+import { planOption, type PlanOption } from "./plans.ts";
 
 // Renewals: the next term of a contract, offered to the homeowner through one link where
 // they confirm their details, pick add-ons, sign and pay.
@@ -115,7 +116,13 @@ const longDay = (iso: string) => {
  * What the customer pays when they renew: the new term's first installment (all of it,
  * for annual billing) plus each add-on once. Later installments are billed as usual.
  */
-export function renewalCharges(t: RenewalTerms, addons: readonly ChosenAddon[], taxRateBps: number): { lines: RenewalChargeLine[]; totals: InvoiceTotals; installments: number } {
+export function renewalCharges(
+  t: RenewalTerms,
+  addons: readonly ChosenAddon[],
+  taxRateBps: number,
+  /** The plan's options the customer chose (SW-8), billed once like add-ons. */
+  options: readonly PlanOption[] = [],
+): { lines: RenewalChargeLine[]; totals: InvoiceTotals; installments: number } {
   const parts = contractInstallments(t);
   const first = parts[0]!;
   const which = first.count > 1 ? ` (payment 1 of ${first.count})` : "";
@@ -127,6 +134,7 @@ export function renewalCharges(t: RenewalTerms, addons: readonly ChosenAddon[], 
       taxable: false,
       installment: { number: 1, count: first.count, periodStart: first.periodStart, periodEnd: first.periodEnd },
     },
+    ...options.map((o) => ({ description: o.name, quantity: 1, unitPriceCents: o.priceCents, taxable: o.taxable })),
     ...addons.map((a) => ({ description: a.name, quantity: 1, unitPriceCents: a.priceCents, taxable: a.taxable })),
   ];
   return { lines, totals: invoiceTotals(lines, 0, taxRateBps), installments: first.count };
@@ -152,6 +160,13 @@ export const agreementContent = z.object({
     payment: z.enum(RENEWAL_PAYMENT_POLICIES),
   }),
   terms: z.string(),
+  /**
+   * SW-8, only when the plan builder is on: the plan version offered, the options chosen and
+   * the coverage the new term carries. Absent from every agreement signed without it.
+   */
+  plan: z.object({ versionId: id, version: z.number().int(), termsSource: z.enum(["plan", "organization"]) }).optional(),
+  options: z.array(planOption).optional(),
+  coverage: z.array(z.object({ ruleKey: z.string(), label: z.string(), summary: z.string() })).optional(),
 });
 export type AgreementContent = z.infer<typeof agreementContent>;
 
@@ -171,6 +186,8 @@ export const renewalSignInput = z.object({
     phone: z.string().trim().max(40).nullish(),
   }),
   addonIds: z.array(id).max(20).default([]),
+  /** The plan's options chosen (SW-8); required ones are included whatever is sent. */
+  optionKeys: z.array(z.string().max(64)).max(20).default([]),
   signerName: z.string().trim().min(2).max(200),
   signature: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("typed") }),
@@ -233,6 +250,9 @@ export const renewalDetail = renewalListItem.extend({
   sendCount: z.number().int(),
   autoRenewContract: z.boolean(),
   selectedAddons: z.array(chosenAddon),
+  selectedOptions: z.array(planOption),
+  /** The plan version on offer (SW-8). */
+  planVersion: z.object({ id, version: z.number().int() }).nullable(),
   customerUpdates: z.record(z.string(), z.unknown()),
   paidAt: datetime.nullable(),
   declinedAt: datetime.nullable(),
@@ -259,6 +279,11 @@ export const publicRenewal = z.object({
   taxRateBps: z.number().int(),
   addons: z.array(chosenAddon),
   selectedAddonIds: z.array(id),
+  /** The plan's own options (SW-8); empty unless the plan builder is on. */
+  options: z.array(planOption),
+  selectedOptionKeys: z.array(z.string()),
+  /** What the new term covers (SW-8); empty unless the plan builder is on. */
+  coverage: z.array(z.string()),
   contact: z.object({ name: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable() }),
   agreementText: z.string(),
   consentText: z.string(),

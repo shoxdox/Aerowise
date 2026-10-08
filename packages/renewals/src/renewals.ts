@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, contractInstallments, termEndOn, type RenewalTerms } from "@aerowise/domain";
+import { addDays, contractInstallments, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
 import { insertContract, termsForSite } from "./contracts.ts";
+import { loadPlanVersion } from "./plans.ts";
 
 type Executor = Database | Transaction<DB>;
 
@@ -56,12 +57,17 @@ export async function renewalOnTimeline(
  * The next term on offer for a contract: its plan's current terms and price when the plan
  * is still offered, otherwise the contract's own. It starts the day after the contract ends.
  */
-export async function offerTerms(db: Executor, organizationId: string, contract: ContractRow, override: { planId?: string; priceCents?: number } = {}): Promise<RenewalTerms> {
+export async function offerTerms(
+  db: Executor,
+  organizationId: string,
+  contract: ContractRow,
+  override: { planId?: string; priceCents?: number } = {},
+): Promise<RenewalTerms & { planVersionId: string | null }> {
   const planId = override.planId ?? contract.planId;
   const p = planId
     ? await db
         .selectFrom("plans")
-        .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active"])
+        .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active", "currentVersionId"])
         .where("organizationId", "=", organizationId)
         .where("id", "=", planId)
         .executeTakeFirst()
@@ -70,7 +76,17 @@ export async function offerTerms(db: Executor, organizationId: string, contract:
   const startOn = addDays(contract.endOn, 1);
   const base =
     p && p.active
-      ? { planId: p.id, planName: p.name, customerType: p.customerType, termMonths: p.termMonths, visitsPerTerm: p.visitsPerTerm, priceCents: p.priceCents, billingFrequency: p.billingFrequency, serviceType: p.serviceType }
+      ? {
+          planId: p.id,
+          planName: p.name,
+          customerType: p.customerType,
+          termMonths: p.termMonths,
+          visitsPerTerm: p.visitsPerTerm,
+          priceCents: p.priceCents,
+          billingFrequency: p.billingFrequency,
+          serviceType: p.serviceType,
+          planVersionId: p.currentVersionId,
+        }
       : {
           planId: contract.planId,
           planName: contract.planName,
@@ -80,11 +96,12 @@ export async function offerTerms(db: Executor, organizationId: string, contract:
           priceCents: contract.priceCents,
           billingFrequency: contract.billingFrequency,
           serviceType: contract.serviceType,
+          planVersionId: contract.planVersionId,
         };
   const priceCents = override.priceCents ?? base.priceCents;
   // The offer shows the visits the new contract will have under the site's authority.
   const terms = await termsForSite(db, organizationId, contract.siteId, startOn, base);
-  return { ...terms, priceCents, autoRenew: contract.autoRenew, startOn, endOn: termEndOn(startOn, terms.termMonths) };
+  return { ...terms, planVersionId: terms.planVersionId ?? null, priceCents, autoRenew: contract.autoRenew, startOn, endOn: termEndOn(startOn, terms.termMonths) };
 }
 
 export interface ContractRow {
@@ -102,6 +119,7 @@ export interface ContractRow {
   serviceType: DB["contracts"]["serviceType"];
   autoRenew: boolean;
   status: "active" | "cancelled";
+  planVersionId: string | null;
 }
 
 export class RenewalError extends Error {
@@ -133,6 +151,7 @@ export async function createRenewal(trx: Transaction<DB>, organizationId: string
       "c.serviceType",
       "c.autoRenew",
       "c.status",
+      "c.planVersionId",
       "s.customerId",
     ])
     .where("c.organizationId", "=", organizationId)
@@ -222,7 +241,14 @@ export async function activateRenewal(
   trx: Transaction<DB>,
   organizationId: string,
   renewalId: string,
-  opts: { now: Date; actorUserId?: string | null; requestId?: string | null; note?: string },
+  opts: {
+    now: Date;
+    actorUserId?: string | null;
+    requestId?: string | null;
+    note?: string;
+    /** The plan builder is on (SW-8): a renewal activated without a signature takes its version's coverage. */
+    planBuilder?: boolean;
+  },
 ): Promise<ActivationResult> {
   const r = await trx.selectFrom("renewals").selectAll().where("organizationId", "=", organizationId).where("id", "=", renewalId).forUpdate().executeTakeFirstOrThrow();
   if (r.status === "activated") return { status: "activated", contractId: r.newContractId! };
@@ -235,9 +261,19 @@ export async function activateRenewal(
     await audit("renewal.needs_review", { reason: problem });
     return { status: "needs_review", reason: problem };
   }
+  // The new term's coverage is what the customer signed for: the agreement lists it when the
+  // plan builder was on at signing. Without a signature the deployment's switch decides.
+  let coverage: CoverageRule[] = [];
+  if (r.planVersionId) {
+    const signed = r.signedDocumentId
+      ? ((await trx.selectFrom("signedDocuments").select("content").where("organizationId", "=", organizationId).where("id", "=", r.signedDocumentId).executeTakeFirstOrThrow()).content as AgreementContent)
+      : null;
+    if (signed ? !!signed.coverage?.length : !!opts.planBuilder) coverage = (await loadPlanVersion(trx, organizationId, r.planVersionId))?.coverage ?? [];
+  }
   const contractId = await insertContract(trx, organizationId, {
     siteId: r.siteId,
     startOn: r.startOn,
+    coverage,
     terms: {
       planId: r.planId,
       planName: r.planName,
@@ -247,6 +283,7 @@ export async function activateRenewal(
       priceCents: r.priceCents,
       billingFrequency: r.billingFrequency,
       serviceType: r.serviceType,
+      planVersionId: r.planVersionId,
     },
     autoRenew: r.autoRenew,
     previousContractId: r.contractId,

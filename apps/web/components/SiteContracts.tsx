@@ -226,6 +226,19 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             </p>
           )}
           {c.status === "cancelled" && c.cancelReason && <p className="muted">Cancelled: {c.cancelReason}</p>}
+          {c.coverage.length > 0 && (
+            <div className="small" data-testid="contract-coverage">
+              <span className="muted">Coverage{c.planVersion ? ` (plan version ${c.planVersion.version})` : ""}:</span>
+              <ul className="plain">
+                {c.coverage.map((r) => (
+                  <li key={r.id}>
+                    {r.summary}
+                    {r.limit !== null && <span className="muted"> · {r.used} of {r.limit} used</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <ContractFilingStatus key={`${c.id}-${c.status}-${c.serviceEndsOn ?? ""}`} contractId={c.id} editable={editable} />
           <table className="compact">
             <thead>
