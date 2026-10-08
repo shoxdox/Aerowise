@@ -25,6 +25,8 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     scheduled for tomorrow, and a homeowner's portal request became a third, ready to schedule.
 //     With service items switched on too, the company has a small catalog and the pump-out is
 //     priced by the gallon and the hour and invoiced straight from its work order.
+//   - With estimates on: one sent and waiting, one signed by a fictional homeowner; with
+//     deposits on too, the signed one asked for a deposit, paid by card on the test checkout.
 //
 // Today's and tomorrow's route is left alone for the visitor to work through.
 
@@ -272,7 +274,14 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         estimates++;
       }
       if (signed) {
-        const e = await office.post("/estimates", { siteId: signed.id, title: "Spray head replacement", lines: [{ description: "Replace four spray heads", quantity: 4, unitPriceCents: 3500 }, ...lines.slice(1)], expiresOn: addDays(today, 30) });
+        const e = await office.post("/estimates", {
+          siteId: signed.id,
+          title: "Spray head replacement",
+          lines: [{ description: "Replace four spray heads", quantity: 4, unitPriceCents: 3500 }, ...lines.slice(1)],
+          expiresOn: addDays(today, 30),
+          // With deposits on, it asks for one on acceptance.
+          ...(features.has("deposits") ? { depositCents: 10000 } : {}),
+        });
         const sent = await office.post(`/estimates/${e.id}/send`, { email: false });
         const link = await office.post(`/estimates/${e.id}/link`);
         const token = String(link.url).split("/").pop()!;
@@ -280,6 +289,15 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         // A fictional homeowner signs with a typed name and adds the alarm.
         await as(app, "").post(`/estimate/${token}/accept`, { version: 1, selectedOptionalLineIds: optional, signerName: "Fictional Homeowner", signature: { kind: "typed" }, agree: true });
         estimates++;
+        // The homeowner pays the deposit by card on the test checkout.
+        const pub = await as(app, "").get(`/estimate/${token}`);
+        const payToken = pub.deposit?.payUrl ? String(pub.deposit.payUrl).split("/pay/")[1] : null;
+        if (payToken) {
+          const visitor = as(app, "");
+          const checkout = await visitor.post(`/pay/${payToken}/checkout`);
+          const sessionId = new URL(checkout.url).searchParams.get("session");
+          if (sessionId) await visitor.post(`/pay/${payToken}/test-checkout`, { sessionId, outcome: "card" });
+        }
       }
       await worker();
     }

@@ -24,6 +24,7 @@ import { importRoutes } from "./routes/imports.ts";
 import { exportRoutes } from "./routes/exports.ts";
 import { inboxRoutes } from "./routes/inbox.ts";
 import { invoiceRoutes } from "./routes/invoices.ts";
+import { depositRoutes } from "./routes/deposits.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { subscriptionRoutes } from "./routes/subscription.ts";
@@ -301,6 +302,7 @@ export async function buildApp({
   await app.register(importRoutes, { db, now });
   await app.register(exportRoutes, { db, store, now });
   await app.register(invoiceRoutes, { db, now, store, payments: { provider: payments, appUrl }, features });
+  await app.register(depositRoutes, { db, now, payments: { provider: payments, appUrl }, features });
   await app.register(billingRoutes, { db, now, provider: billing, config: subscription });
   await app.register(subscriptionRoutes, { db, now, provider: billing, config: subscription, appUrl });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, testCheckout: !production || demo });

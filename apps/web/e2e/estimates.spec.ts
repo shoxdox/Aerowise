@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// SW-5a: the e2e API runs with AEROWISE_FEATURES=work_orders,estimates (playwright.config.ts).
+// SW-5: the e2e API runs with AEROWISE_FEATURES=work_orders,service_items,estimates,deposits (playwright.config.ts).
 
 async function signIn(page: Page) {
   await page.goto("/login");
@@ -82,4 +82,45 @@ test("an inspection issue or request in the inbox drafts one estimate however of
   const again = await page.request.post(`/api/service-requests/${request.id}/estimate`, { data: {} });
   expect(again.status()).toBe(200);
   expect((await again.json()).id).toBe(first);
+});
+
+test("an estimate asks for a deposit: the homeowner sees it, accepts, pays it by card, and the office sees it held", async ({ page, browser }) => {
+  await signIn(page);
+  const sites = await (await page.request.get("/api/sites?limit=1")).json();
+  const site = sites.items[0] as { id: string };
+  await page.goto(`/estimates/new?siteId=${site.id}`);
+  await page.getByRole("textbox", { name: /^Title/ }).fill("Replace the pump");
+  await page.getByLabel("Line 1 description").fill("Pump, installed");
+  await page.getByLabel("Line 1 unit price").fill("600");
+  await page.getByRole("spinbutton", { name: /^Deposit/ }).fill("150");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.waitForURL(/\/estimates\/[0-9a-f-]{36}$/);
+  await page.getByRole("button", { name: /Mark sent/ }).click();
+  await expect(page.getByTestId("estimate-status")).toHaveText("Sent");
+  await expect(page.getByText("Deposit on acceptance")).toBeVisible();
+  await page.getByRole("button", { name: "Copy a link" }).click();
+  const path = new URL(await page.getByTestId("estimate-link").innerText()).pathname;
+
+  const home = await browser.newContext();
+  const homeowner = await home.newPage();
+  await homeowner.goto(path);
+  await expect(homeowner.getByTestId("estimate-deposit")).toHaveText("$150.00");
+  await homeowner.getByLabel("Your full name").fill("Pat Homeowner");
+  await homeowner.getByRole("checkbox", { name: /I have read this estimate/ }).check();
+  await homeowner.getByRole("button", { name: /Accept for \$600\.00/ }).click();
+  await expect(homeowner.getByRole("heading", { name: "Estimate accepted" })).toBeVisible();
+  await expect(homeowner.getByTestId("estimate-deposit-status")).toContainText("A deposit of $150.00 is due now");
+  await homeowner.getByRole("link", { name: "Pay the deposit" }).click();
+  await homeowner.waitForURL(/\/pay\//);
+  await homeowner.getByRole("button", { name: "Pay $150.00 by card or bank" }).click();
+  await homeowner.waitForURL(/test-checkout/);
+  await homeowner.getByRole("button", { name: "Pay by card" }).click();
+  await expect(homeowner.getByText("This invoice is paid in full")).toBeVisible();
+  await home.close();
+
+  // The office sees the deposit received and free until the final invoice applies it.
+  await page.reload();
+  await expect(page.getByTestId("deposit-panel")).toBeVisible();
+  await expect(page.getByTestId("deposit-received")).toHaveText("$150.00");
+  await expect(page.getByTestId("deposit-free")).toHaveText("$150.00");
 });

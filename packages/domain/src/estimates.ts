@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
 import { signatureCapture } from "./forms.ts";
+import { depositView } from "./deposits.ts";
 import { invoiceTotals, MAX_CENTS, MAX_TAX_RATE_BPS, type InvoiceTotals } from "./invoices.ts";
 import { quantity } from "./work.ts";
 
 // Estimates (SW-5 part 1; service workflows plan §3.3–§3.5). The office drafts an estimate,
 // sends it as a frozen version, and the homeowner accepts it with a signature from their
 // link (or the office records a paper or phone approval, with evidence). Acceptance creates
-// the work order exactly once. Deposits come in part 2.
+// the work order exactly once. Deposits (part 2) are in deposits.ts.
 
 export const ESTIMATE_STATUSES = ["draft", "sent", "viewed", "accepted", "declined", "expired", "void", "cancelled"] as const;
 export type EstimateStatus = (typeof ESTIMATE_STATUSES)[number];
@@ -134,6 +135,8 @@ export const estimateInput = z.object({
   /** The company's default terms when left out. */
   termsText: terms.optional(),
   expiresOn: date.nullish(),
+  /** A deposit to pay on acceptance (needs the deposits feature). Never more than the accepted total. */
+  depositCents: z.number().int().min(1).max(MAX_CENTS).nullish(),
 });
 export type EstimateInput = z.input<typeof estimateInput>;
 
@@ -146,6 +149,8 @@ export const estimateFields = z.object({
   discountCents: cents.optional(),
   termsText: terms.optional(),
   expiresOn: date.nullish(),
+  /** A deposit to pay on acceptance (needs the deposits feature). Never more than the accepted total. */
+  depositCents: z.number().int().min(1).max(MAX_CENTS).nullish(),
 });
 
 export const estimateFromSourceInput = z.object({
@@ -202,6 +207,7 @@ export const estimateVersionView = z.object({
   totals,
   termsText: z.string(),
   expiresOn: date.nullable(),
+  depositCents: z.number().int().nullable(),
   contentSha256: z.string(),
   sentAt: datetime,
 });
@@ -211,7 +217,7 @@ export const estimateDetail = estimateSummary.extend({
   workType: z.object({ id, name: z.string() }).nullable(),
   source: z.object({ kind: z.enum(ESTIMATE_SOURCE_KINDS), id: id.nullable(), label: z.string() }),
   /** The draft (editable only while status is draft). */
-  draft: z.object({ lines: z.array(estimateLine), taxRateBps: z.number().int(), discountCents: z.number().int(), totals, termsText: z.string(), expiresOn: date.nullable() }),
+  draft: z.object({ lines: z.array(estimateLine), taxRateBps: z.number().int(), discountCents: z.number().int(), totals, termsText: z.string(), expiresOn: date.nullable(), depositCents: z.number().int().nullable() }),
   versions: z.array(estimateVersionView),
   acceptance: z
     .object({
@@ -234,6 +240,8 @@ export const estimateDetail = estimateSummary.extend({
   events: z.array(z.object({ id, eventType: z.string(), summary: z.string(), occurredAt: datetime, actorName: z.string().nullable() })),
   /** Whether the company has an email on file for the customer, so the estimate can be emailed. */
   canEmail: z.boolean(),
+  /** The deposit invoice and its ledger, once a deposit has been asked for. */
+  deposit: depositView.nullable(),
 });
 export type EstimateDetail = z.infer<typeof estimateDetail>;
 
@@ -254,6 +262,8 @@ export const publicEstimate = z.object({
   accepted: z
     .object({ version: z.number().int(), at: datetime, kind: z.enum(ESTIMATE_ACCEPTANCE_KINDS), signerName: z.string().nullable(), selectedOptionalLineIds: z.array(z.string()), totals })
     .nullable(),
+  /** The deposit to pay after accepting, with its pay page while it is owed. */
+  deposit: z.object({ amountCents: z.number().int(), paymentStatus: z.string(), payUrl: z.string().nullable() }).nullable(),
 });
 export type PublicEstimate = z.infer<typeof publicEstimate>;
 

@@ -14,6 +14,7 @@ import {
 } from "@aerowise/domain";
 import { sha256Hex, systemAudit } from "@aerowise/renewals";
 import { sql, type Kysely, type Transaction, type Updateable } from "kysely";
+import { createDepositInvoice } from "./deposits.ts";
 import { HttpError, notFound, unprocessable } from "./errors.ts";
 import { nextWorkOrderNumber, workOrderEvent } from "./work-orders.ts";
 
@@ -38,6 +39,7 @@ export const ESTIMATE_COLUMNS = [
   "discountCents",
   "termsText",
   "expiresOn",
+  "depositCents",
   "sourceKind",
   "sourceId",
   "sentAt",
@@ -46,7 +48,9 @@ export const ESTIMATE_COLUMNS = [
 ] as const;
 
 export async function lockEstimate(trx: Trx, organizationId: string, estimateId: string) {
-  const e = await trx.selectFrom("estimates").select(ESTIMATE_COLUMNS).where("organizationId", "=", organizationId).where("id", "=", estimateId).forUpdate().executeTakeFirst();
+  // No key update: rows that reference the estimate (its deposit ledger, invoice links) can be
+  // written by paths that hold other locks without waiting on this one.
+  const e = await trx.selectFrom("estimates").select(ESTIMATE_COLUMNS).where("organizationId", "=", organizationId).where("id", "=", estimateId).forNoKeyUpdate().executeTakeFirst();
   if (!e) throw notFound("Estimate");
   return e;
 }
@@ -104,7 +108,19 @@ export async function freezeVersion(trx: Trx, e: LockedEstimate, at: Date, sentB
   const lines = await draftLines(trx, e.organizationId, e.id);
   if (!lines.length) throw unprocessable("Add at least one line before sending the estimate");
   const totals = estimateTotals(lines, e.discountCents, e.taxRateBps);
-  const snapshot = { estimate: estimateLabel(e.number), version: e.currentVersion, title: e.title, lines, taxRateBps: e.taxRateBps, discountCents: e.discountCents, totals, termsText: e.termsText, expiresOn: e.expiresOn };
+  // A version without a deposit hashes exactly as before deposits existed.
+  const snapshot = {
+    estimate: estimateLabel(e.number),
+    version: e.currentVersion,
+    title: e.title,
+    lines,
+    taxRateBps: e.taxRateBps,
+    discountCents: e.discountCents,
+    totals,
+    termsText: e.termsText,
+    expiresOn: e.expiresOn,
+    ...(e.depositCents ? { depositCents: e.depositCents } : {}),
+  };
   await trx
     .insertInto("estimateVersions")
     .values({
@@ -117,6 +133,7 @@ export async function freezeVersion(trx: Trx, e: LockedEstimate, at: Date, sentB
       totals: JSON.stringify(totals),
       termsText: e.termsText,
       expiresOn: e.expiresOn,
+      depositCents: e.depositCents,
       contentSha256: sha256Hex(canonicalJson(snapshot)),
       sentAt: at,
       sentBy,
@@ -170,6 +187,7 @@ export async function acceptAndConvert(
   const chosen = checkSelection(v.lines, a.selectedOptionalLineIds);
   const totals = estimateTotals(v.lines, v.discountCents, v.taxRateBps, chosen);
   const lines = selectedLines(v.lines, chosen);
+  const deposit = v.depositCents ? Math.min(v.depositCents, totals.totalCents) || null : null;
   const type = await workTypeFor(trx, e.organizationId, e.workTypeId);
 
   const number = await nextWorkOrderNumber(trx, e.organizationId);
@@ -232,9 +250,11 @@ export async function acceptAndConvert(
     acceptedDocumentId: a.documentId,
     officeEvidence: a.evidence,
     acceptedBy: a.kind === "office_recorded" ? a.actorUserId : null,
-    acceptedSelection: JSON.stringify({ selectedOptionalLineIds: chosen, totals }),
+    acceptedSelection: JSON.stringify({ selectedOptionalLineIds: chosen, totals, ...(deposit ? { depositCents: deposit } : {}) }),
     workOrderId: wo.id,
   });
+  // The deposit the version asked for, never more than what was accepted.
+  const depositInvoice = deposit ? await createDepositInvoice(trx, e, { amountCents: deposit, actorUserId: a.actorUserId, at: a.at }) : null;
   await estimateEvent(trx, {
     organizationId: e.organizationId,
     estimateId: e.id,
@@ -253,6 +273,17 @@ export async function acceptAndConvert(
     details: { workOrderId: wo.id },
     at: a.at,
   });
+  if (depositInvoice) {
+    await estimateEvent(trx, {
+      organizationId: e.organizationId,
+      estimateId: e.id,
+      eventType: "deposit_requested",
+      summary: `Deposit invoice ${depositInvoice.label} issued`,
+      actorUserId: a.actorUserId,
+      details: { invoiceId: depositInvoice.invoiceId, amountCents: deposit },
+      at: a.at,
+    });
+  }
   await systemAudit(trx, {
     organizationId: e.organizationId,
     actorUserId: a.actorUserId,
@@ -260,7 +291,7 @@ export async function acceptAndConvert(
     action: "estimate.accepted",
     entityType: "estimate",
     entityId: e.id,
-    changes: { version: a.version, kind: a.kind, selectedOptionalLineIds: chosen, workOrderId: wo.id, documentId: a.documentId },
+    changes: { version: a.version, kind: a.kind, selectedOptionalLineIds: chosen, workOrderId: wo.id, documentId: a.documentId, depositInvoiceId: depositInvoice?.invoiceId ?? null },
   });
   return { workOrderId: wo.id, totals, chosen };
 }
