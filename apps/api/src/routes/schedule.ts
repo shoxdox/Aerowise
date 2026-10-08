@@ -1,5 +1,5 @@
 import { loadCatalog, requirementsOf, resolveSite } from "@aerowise/compliance";
-import type { Database } from "@aerowise/db";
+import type { Database, DB } from "@aerowise/db";
 import {
   canTransition,
   id,
@@ -16,7 +16,7 @@ import {
 } from "@aerowise/domain";
 import { serviceEndForVisit } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
@@ -170,6 +170,19 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       .where("status", "<>", "cancelled")
       .executeTakeFirstOrThrow();
     return Number(r.next);
+  };
+
+  /** The job row, locked for this change. */
+  const lockJob = async (trx: Transaction<DB>, organizationId: string, jobId: string) => {
+    const row = await trx
+      .selectFrom("jobs")
+      .select(["status", "technicianUserId", "scheduledDate"])
+      .where("organizationId", "=", organizationId)
+      .where("id", "=", jobId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!row) throw notFound("Job");
+    return row;
   };
 
   const loadStop = async (organizationId: string, jobId: string) => {
@@ -341,10 +354,17 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const technicianId = req.body.technicianId ?? job.technicianUserId;
       const scheduledDate = req.body.scheduledDate ?? job.scheduledDate;
       if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, scheduledDate);
-      const moved = technicianId !== job.technicianUserId || scheduledDate !== job.scheduledDate;
       if (req.body.technicianId) await assertAssignable(organizationId, technicianId);
-      const routePosition = moved ? await nextPosition(organizationId, technicianId, scheduledDate) : undefined;
       await db.transaction().execute(async (trx) => {
+        // A work visit's order is locked before the visit, the same order the work order
+        // routes use, so a move racing the office completing or cancelling the order waits
+        // instead of deadlocking. The job is then re-read under its lock: the status checked
+        // above may be stale.
+        const wo = job.type === "work" && job.workOrderId ? await lockWorkOrder(trx, organizationId, job.workOrderId) : null;
+        const current = await lockJob(trx, organizationId, job.id);
+        if (current.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${current.status.replace("_", " ")} job cannot be moved`);
+        const moved = technicianId !== current.technicianUserId || scheduledDate !== current.scheduledDate;
+        const routePosition = moved ? await nextPosition(organizationId, technicianId, scheduledDate) : undefined;
         await trx
           .updateTable("jobs")
           .set({
@@ -358,8 +378,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .where("id", "=", job.id)
           .execute();
         await audit(trx, req, { action: "job.rescheduled", entityType: "job", entityId: job.id, changes: req.body });
-        if (job.type === "work" && job.workOrderId && moved) {
-          const wo = await lockWorkOrder(trx, organizationId, job.workOrderId);
+        if (wo && moved) {
           await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "visit_moved", summary: `Visit moved to ${scheduledDate}`, details: { technicianId, scheduledDate }, homeownerVisible: true, at: new Date() });
         }
       });
@@ -392,6 +411,12 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         throw new HttpError(409, "invalid_transition", `A ${job.status.replace("_", " ")} job cannot be cancelled`);
       }
       await db.transaction().execute(async (trx) => {
+        // Work order before job, then the job's status re-checked under its lock (see PATCH).
+        if (job.type === "work" && job.workOrderId) await lockWorkOrder(trx, organizationId, job.workOrderId);
+        const current = await lockJob(trx, organizationId, job.id);
+        if (!canTransition(current.status as JobStatus, "cancelled")) {
+          throw new HttpError(409, "invalid_transition", `A ${current.status.replace("_", " ")} job cannot be cancelled`);
+        }
         await trx
           .updateTable("jobs")
           .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: req.body.reason, updatedAt: new Date() })
