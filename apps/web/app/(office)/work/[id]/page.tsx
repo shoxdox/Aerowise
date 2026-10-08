@@ -29,9 +29,6 @@ export default function WorkOrderPage() {
   const techs = useLoad<{ items: Technician[] }>(editable ? "/technicians" : null);
   const [problem, setProblem] = useState<string | null>(null);
   const [closing, setClosing] = useState<"complete" | "cancel" | null>(null);
-  // SW-2: technicians record visits on their phones.
-  const fieldWork = useFeature("field_work");
-  const forms = useWorkForms(fieldWork);
   const router = useRouter();
   const invoicing = useFeature("service_items") && editable && roleHasPermission(me.role, "invoices:write");
 
@@ -44,6 +41,9 @@ export default function WorkOrderPage() {
       setProblem(err instanceof ApiError ? err.message : "Could not make the invoice");
     }
   }
+  // SW-2: technicians record visits on their phones.
+  const fieldWork = useFeature("field_work");
+  const forms = useWorkForms(fieldWork);
 
   async function act(path: string, body: unknown, method = "POST") {
     setProblem(null);
