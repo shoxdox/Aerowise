@@ -211,8 +211,10 @@ async function runLoadOp(store: WorkStore, op: QueuedWorkOp & { kind: "disposal-
     });
   }
   if (!res.ok) return store.failOp(op, await message(res));
-  const out = (await res.json()) as { groupId: string };
-  return store.loadDelivered(op, out.groupId);
+  // A load (or its acknowledgment) names its group; a delivered photo answers with the photo,
+  // which does not, so the group the load already has is kept.
+  const out = (await res.json()) as { groupId?: string };
+  return store.loadDelivered(op, typeof out.groupId === "string" ? out.groupId : null);
 }
 
 async function runWorkOp(store: WorkStore, op: QueuedWorkOp, ops: QueuedWorkOp[], records: Map<string, LocalWork>) {

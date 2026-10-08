@@ -100,6 +100,11 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
       )
     ).rows;
     expect(load).toEqual([{ manifest_reference: "E2E-M-1", items: 1, photos: 1 }]);
+    // The phone keeps the load's group once its photo is delivered, and says it is with the office.
+    await page.reload();
+    await page.getByTestId("open-disposal").click();
+    await expect(page.getByTestId("record-disposal").locator(".card", { hasText: wo.facility.name })).toContainText("with the office");
+    await page.getByRole("button", { name: /Back/ }).click();
 
     // The office sees it under Disposal, and the log downloads.
     const officePage = await (await browser.newContext()).newPage();
@@ -117,6 +122,9 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
     await officePage.goto(`/work/${wo.id}`);
     await expect(officePage.getByTestId("pumping-history")).toContainText("Recorded");
   } finally {
+    // Leaves no visit on Tess's route today, so the route and map tests that follow count only
+    // their own stops (since SW-10 her work visits share the route with her inspections).
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [wo.jobId]);
     await db.end();
   }
 });

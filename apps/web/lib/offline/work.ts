@@ -264,14 +264,14 @@ export function workStoreFor(t: KnownTenant) {
       }),
 
     /** Records that the server has a load (or one of its photos) and drops the op; a photo's image leaves the phone. */
-    loadDelivered: (op: QueuedWorkOp, groupId: string) =>
+    loadDelivered: (op: QueuedWorkOp, groupId: string | null) =>
       run(["kv", "blobs", "outbox"], "readwrite", async (trx) => {
         const kv = trx.objectStore("kv");
         const loads = ((await done(kv.get(LOADS_KEY))) as LocalLoad[] | undefined) ?? [];
         const photoClientId = op.kind === "disposal-photo" ? op.photoClientId : null;
         kv.put(
           loads.map((l) =>
-            l.clientId !== op.recordClientId ? l : { ...l, groupId, photos: photoClientId ? l.photos.map((p) => (p.clientId === photoClientId ? { ...p, uploaded: true } : p)) : l.photos },
+            l.clientId !== op.recordClientId ? l : { ...l, groupId: groupId ?? l.groupId, photos: photoClientId ? l.photos.map((p) => (p.clientId === photoClientId ? { ...p, uploaded: true } : p)) : l.photos },
           ),
           LOADS_KEY,
         );
