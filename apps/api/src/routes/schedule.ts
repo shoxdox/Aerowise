@@ -351,18 +351,20 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         .executeTakeFirst();
       if (!job) throw notFound("Job");
       if (job.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${job.status.replace("_", " ")} job cannot be moved`);
-      const technicianId = req.body.technicianId ?? job.technicianUserId;
-      const scheduledDate = req.body.scheduledDate ?? job.scheduledDate;
-      if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, scheduledDate);
-      if (req.body.technicianId) await assertAssignable(organizationId, technicianId);
+      // Only the fields sent are checked here; they don't depend on the job's current values.
+      if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, req.body.scheduledDate);
+      if (req.body.technicianId) await assertAssignable(organizationId, req.body.technicianId);
       await db.transaction().execute(async (trx) => {
         // A work visit's order is locked before the visit, the same order the work order
         // routes use, so a move racing the office completing or cancelling the order waits
-        // instead of deadlocking. The job is then re-read under its lock: the status checked
-        // above may be stale.
+        // instead of deadlocking. The job is then re-read under its lock: the status read
+        // above may be stale, and a field this request leaves out keeps its current value,
+        // not the one read before another dispatcher's change.
         const wo = job.type === "work" && job.workOrderId ? await lockWorkOrder(trx, organizationId, job.workOrderId) : null;
         const current = await lockJob(trx, organizationId, job.id);
         if (current.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${current.status.replace("_", " ")} job cannot be moved`);
+        const technicianId = req.body.technicianId ?? current.technicianUserId;
+        const scheduledDate = req.body.scheduledDate ?? current.scheduledDate;
         const moved = technicianId !== current.technicianUserId || scheduledDate !== current.scheduledDate;
         const routePosition = moved ? await nextPosition(organizationId, technicianId, scheduledDate) : undefined;
         await trx

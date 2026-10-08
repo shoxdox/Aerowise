@@ -1,7 +1,7 @@
 import { sql, type Transaction } from "kysely";
 import type { DB } from "@aerowise/db";
 import { describe, expect, it } from "vitest";
-import { setupTestApp } from "./helpers.ts";
+import { createUser, setupTestApp } from "./helpers.ts";
 import { setup, type Setup } from "./inspection-helpers.ts";
 
 // A work visit can be changed from two places: the schedule (move, unschedule) and the work
@@ -105,6 +105,43 @@ describe("work visit locking", () => {
     const res = await pending;
     expect(res.statusCode, res.body).toBe(409);
     expect(await ctx.db.selectFrom("jobs").select(["status", "cancelReason"]).where("id", "=", s.job.jobId).executeTakeFirstOrThrow()).toEqual({ status: "cancelled", cancelReason: "Other dispatcher" });
+  });
+
+  /**
+   * Another dispatcher changes one field of the visit and holds the change uncommitted while
+   * a PATCH that leaves that field out starts and waits; the PATCH must keep the newer value.
+   */
+  async function partialPatchAfter(jobId: string, other: ReturnType<typeof sql>, request: () => Promise<{ statusCode: number; body: string }>) {
+    let pending!: Promise<{ statusCode: number; body: string }>;
+    await ctx.db.transaction().execute(async (trx) => {
+      await other.execute(trx);
+      pending = request();
+      await lockWaiters(1);
+    });
+    const res = await pending;
+    return { res, job: await ctx.db.selectFrom("jobs").select(["technicianUserId", "scheduledDate"]).where("id", "=", jobId).executeTakeFirstOrThrow() };
+  }
+
+  it("a date-only move keeps a technician another dispatcher assigned while it waited", async () => {
+    const s = await setup(ctx);
+    const other = await createUser(ctx.db, s.org.id, "technician");
+    const ids = await scheduledWorkVisit(s);
+    for (const jobId of [ids.jobId, s.job.jobId]) {
+      const { res, job } = await partialPatchAfter(jobId, sql`update jobs set technician_user_id = ${other.id} where id = ${jobId}`, () => s.api.patch(`/jobs/${jobId}`, { scheduledDate: "2026-03-04" }));
+      expect(res.statusCode, res.body).toBe(200);
+      expect(job).toEqual({ technicianUserId: other.id, scheduledDate: "2026-03-04" });
+    }
+  });
+
+  it("a technician-only move keeps a date another dispatcher set while it waited", async () => {
+    const s = await setup(ctx);
+    const other = await createUser(ctx.db, s.org.id, "technician");
+    const ids = await scheduledWorkVisit(s);
+    for (const jobId of [ids.jobId, s.job.jobId]) {
+      const { res, job } = await partialPatchAfter(jobId, sql`update jobs set scheduled_date = '2026-03-06' where id = ${jobId}`, () => s.api.patch(`/jobs/${jobId}`, { technicianId: other.id }));
+      expect(res.statusCode, res.body).toBe(200);
+      expect(job).toEqual({ technicianUserId: other.id, scheduledDate: "2026-03-06" });
+    }
   });
 
   it("real requests racing a move, an unschedule and the office completing never fail with a server error", async () => {
