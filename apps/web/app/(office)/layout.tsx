@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { LegalGate } from "@/components/legal/LegalGate";
 import { api } from "@/lib/api";
+import { useFeature } from "@/lib/features";
 import { clock } from "@/lib/format";
 import { canEdit, isReadOnlyAccount, isSupportView, SessionProvider, useSession } from "@/lib/session";
 
@@ -14,9 +15,11 @@ function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
   // A link shows only to roles that can open its page (the API enforces this regardless).
   const can = (permission: Permission) => roleHasPermission(me.role, permission);
+  const workOrders = useFeature("work_orders");
   const nav = [
     { href: "/inbox", label: "Inbox" },
     { href: "/schedule", label: "Schedule" },
+    ...(workOrders && can("work:read") ? [{ href: "/work", label: "Work" }] : []),
     { href: "/due", label: "Due" },
     ...(can("filings:read") ? [{ href: "/filings", label: "Filings" }] : []),
     { href: "/renewals", label: "Renewals" },

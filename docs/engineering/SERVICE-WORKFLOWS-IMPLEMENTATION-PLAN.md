@@ -1,6 +1,6 @@
 # Service workflows: implementation plan
 
-**Status: plan only.** Nothing in this document is built, validated, deployed or accepted by an authority. It proposes how to add general work orders, pumping/disposal records, estimates, plan-specific agreements, conventional/installation work, map participation and authority export interoperability to Aerowise. Justin authorized the planning on October 7, 2026 and wants these capabilities built. This plan does not start implementation. Implementation workers start only when Justin says so, in the order below. **Revised** after Codex's review of `54e2672` (see [§15](#15-review-response-codex-on-54e2672)).
+**Status: plan only.** Nothing in this document is built, validated, deployed or accepted by an authority. It proposes how to add general work orders, pumping/disposal records, estimates, plan-specific agreements, conventional/installation work, map participation and authority export interoperability to Aerowise. Justin authorized the planning on October 7, 2026 and wants these capabilities built. On October 7, 2026 (22:42Z) Justin gave a standing authorization to build all of SW-1 to SW-12 in the dependency order below: each wave starts when its prerequisites are reviewed and merged, without asking him again. Costs, purchases, accounts, DNS, pricing changes, production changes and real outreach, filings, charges or provider calls still each need his separate approval. **Revised** after Codex's review of `54e2672` (see [§15](#15-review-response-codex-on-54e2672)).
 
 - **Baseline:** `09068280c2fcc036706734807167ff32524f7f8f` (`0906828`, "docs: record merged staging fixes and live prospect walkthrough"), fetched from `origin/main` at 2026-10-07 21:30Z. That commit includes the staging fixes #93–#96 and `5e491a0` (newer technician edits survive an in-flight sync). Migrations run through `0047_demo_request_delivery.sql`. No open PRs existed at that time.
 - **Map dependency:** "Street map for routes" is draft [PR #97](https://github.com/shoxdox/Aerowise/pull/97), branch `claude/route-street-map-ae4nrx`, head `a96f8b2b2469ac030b053c61c52293efddf8ead2` as read at 2026-10-07 21:40Z. It is not merged, and its local checks were still running when it was read. The interfaces this plan builds on are summarized in [§6](#6-shared-street-map-and-schedule). Nothing here edits or duplicates that work.
@@ -908,7 +908,7 @@ Other PRs change these files only in one clearly labeled commit (`shared: …`).
 | **E: Pumping and systems** | SW-6, SW-7 | Pumping/disposal/vehicle/facility domain and routes, pumping, conventional and installation templates, `crm.ts` system category, completion summary PDF, phone disposal and installation sections **delivered as components that B's form renderer mounts** | Offline store schema (asks B) |
 | **F: Filing interop** | SW-11 | `packages/compliance/**` export framework, ruleset schema, Example County fixture | Real-authority rulesets (drafts stay as they are) |
 
-**Waves** (each starts only after Justin's go-ahead):
+**Waves** (covered by Justin's standing authorization of October 7, 2026; each starts once its prerequisites are reviewed and merged):
 
 1. A (SW-1), B (SW-2a), and optionally C (SW-4) and F (SW-11). These touch separate code; migrations queue through A.
 2. B (SW-F, then SW-2) and A (SW-3).
@@ -1019,14 +1019,14 @@ Each item has a stand-in so the build can go ahead without it.
 4. **Whether Codex has live Intuit sandbox access** (P-QBO-SANDBOX). Stand-in: the built-in test QuickBooks provider. *Recommendation: Codex checks what already exists. Create no new account.*
 5. **Deposit policy and estimate expiry default.** Stand-in: no deposit and 30-day expiry by default, configurable per estimate. *Recommendation: accept these defaults.*
 6. **Whether the pilot uses QuickBooks and automated sales tax.** Stand-in: tax mode off, with today's conflict. *Recommendation: run G-QBO-TAX once P-QBO-SANDBOX confirms access; tax mode stays off for real companies until then.*
-7. **Approval to start workers** in the waves of §10. *Recommendation: start Wave 1 with Worker A (SW-1) and Worker B (SW-2a), which is the step in §14.*
+7. **Approval to start workers** in the waves of §10. *Decided October 7, 2026: a standing authorization for every wave in dependency order; Wave 1 (SW-1, SW-2a) started first. Gated actions (costs, accounts, DNS, pricing, production, real outreach, filings or charges) still need separate approval.*
 
 ---
 
 
 ## 14. First implementation step
 
-When Justin authorizes it, start two workers. The other waves follow §10.
+Authorized October 7, 2026: start two workers. The other waves follow §10 under the same standing authorization, as their prerequisites land.
 
 - **Worker A on SW-1 (work foundation), flag `work_orders` off by default.**
   - The first commit adds the explicit `type = 'inspection'` filter to every existing `jobs` query, with a test per query. That makes the code safe to read work rows before any exist.

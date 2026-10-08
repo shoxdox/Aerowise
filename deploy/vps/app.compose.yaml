@@ -22,6 +22,7 @@ x-app: &app
     PUBLIC_APP_URL: https://${AW_DOMAIN:?}
     DEMO_MODE: ${DEMO_MODE:-false}
     DEMO_LIVE_SERVICES: ${DEMO_LIVE_SERVICES:-}
+    AEROWISE_FEATURES: ${AEROWISE_FEATURES:-}
     # Requests reach the API through Caddy and the web app, both on this server's private Docker
     # networks; Caddy replaces any X-Forwarded-For a client sends, so the address it adds is the client's.
     TRUST_PROXY: uniquelocal

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EmailTransport } from "@aerowise/compliance";
 import { createDb, createPlatformAdmin, hashPassword, type Database } from "@aerowise/db";
-import type { Role } from "@aerowise/domain";
+import type { Feature, Role } from "@aerowise/domain";
 import { sql } from "kysely";
 import { afterAll, beforeEach } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
@@ -26,17 +26,17 @@ export interface TestContext {
 }
 
 /** One app + db per test file; every table is emptied before each test. */
-export function setupTestApp(opts: { mail?: EmailTransport } = {}): TestContext {
+export function setupTestApp(opts: { mail?: EmailTransport; features?: Feature[] } = {}): TestContext {
   const ctx = {} as TestContext;
   ctx.db = createDb(testDatabaseUrl());
   ctx.now = new Date("2026-03-01T18:00:00Z");
   ctx.store = new LocalDiskStore(mkdtempSync(join(tmpdir(), "aerowise-files-")));
   ctx.sms = { provider: new TestSmsProvider(), webhookBaseUrl: "http://localhost:3000/api" };
   beforeEach(async () => {
-    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store, sms: ctx.sms, mail: opts.mail });
+    ctx.app ??= await buildApp({ db: ctx.db, loginRateLimit: 1000, now: () => ctx.now, store: ctx.store, sms: ctx.sms, mail: opts.mail, features: new Set(opts.features ?? []) });
     ctx.now = new Date("2026-03-01T18:00:00Z");
     // audit_events rejects DELETE via trigger, but TRUNCATE is not a row-level change.
-    await sql`truncate demo_access_links, demo_visits, authority_evidence_answers, authority_evidence, legal_acceptances, support_sessions, password_reset_tokens, demo_requests, plan_reminders, billing_events, billing_periods, system_monitoring, email_events, email_sends, lab_tests, invitations, platform_audit_events, platform_admin_sessions, platform_admins, report_signatures, customer_deliveries, submission_packages, contract_documents, site_authority_identifiers, site_authority_assignments, provider_credentials, sms_messages, sms_opt_outs, service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
+    await sql`truncate work_order_notes, work_order_events, work_order_lines, work_orders, work_types, demo_access_links, demo_visits, authority_evidence_answers, authority_evidence, legal_acceptances, support_sessions, password_reset_tokens, demo_requests, plan_reminders, billing_events, billing_periods, system_monitoring, email_events, email_sends, lab_tests, invitations, platform_audit_events, platform_admin_sessions, platform_admins, report_signatures, customer_deliveries, submission_packages, contract_documents, site_authority_identifiers, site_authority_assignments, provider_credentials, sms_messages, sms_opt_outs, service_requests, portal_links, signed_documents, renewals, renewal_addons, quickbooks_links, quickbooks_connections, quickbooks_test_companies, stripe_events, invoice_events, checkout_sessions, refunds, payments, invoice_lines, invoices, import_rows, imports, audit_events, background_tasks, compliance_events, filing_attempts, filings, reports, issues, attachments, inspection_values, inspections, inspection_templates, jobs, service_obligations, contracts, plans, sessions, wastewater_systems, contacts, sites, customers, memberships, users, organizations restart identity cascade`.execute(
 
       ctx.db,
     );

@@ -75,6 +75,8 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       .innerJoin("users as u", "u.id", "j.technicianUserId")
       .select(["j.id as jobId", "j.status", "j.technicianUserId as technicianId", "u.name as technicianName", "s.lat", "s.lng"])
       .where("j.organizationId", "=", organizationId)
+      // Every stop on the day, inspection or work: both take the technician's time.
+      .where("j.type", "in", ["inspection", "work"])
       .where("j.scheduledDate", "=", day)
       .where("j.status", "<>", "cancelled");
     if (technicianId) q = q.where("j.technicianUserId", "=", technicianId);
@@ -273,6 +275,7 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .where("organizationId", "=", organizationId)
           .where("technicianUserId", "=", technicianId)
           .where("scheduledDate", "=", scheduledDate)
+          .where("type", "in", ["inspection", "work"])
           .where("status", "<>", "cancelled")
           .forUpdate()
           .execute();
@@ -326,6 +329,7 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
                   .select("j.id")
                   .whereRef("j.obligationId", "=", "o.id")
                   .whereRef("j.organizationId", "=", "o.organizationId")
+                  .where("j.type", "=", "inspection")
                   .where("j.status", "<>", "cancelled"),
               ),
             ),

@@ -17,6 +17,10 @@ import type {
   SmsSkipReason,
   SmsStatus,
   SubmissionMethod,
+  JobType,
+  WorkCategory,
+  WorkOrderStatus,
+  WorkSourceKind,
 } from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
@@ -47,6 +51,8 @@ export interface OrganizationsTable {
   invoiceTermsDays: Generated<number>;
   defaultTaxRateBps: Generated<number>;
   nextInvoiceNumber: Generated<number>;
+  /** Next work order number (WO-1001 onward), gapless per company. */
+  nextWorkOrderNumber: Generated<number>;
   stripeAccountId: string | null;
   stripeChargesEnabled: Generated<boolean>;
   stripeDetailsSubmitted: Generated<boolean>;
@@ -285,7 +291,14 @@ export interface JobsTable {
   organizationId: string;
   siteId: string;
   obligationId: string | null;
-  type: Generated<"inspection">;
+  /** An aerobic inspection visit or a visit for a work order (migration 0048). */
+  type: Generated<JobType>;
+  /** The visit's kind, derived from the obligation by the database (jobs_derive_obligation_kind). */
+  obligationServiceType: ColumnType<string | null, string | null | undefined, string | null>;
+  workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
+  visitNumber: ColumnType<number | null, number | null | undefined, number | null>;
+  /** The inspection a retest visit follows up. Null on retests scheduled before 0048. */
+  retestOfInspectionId: ColumnType<string | null, string | null | undefined, string | null>;
   status: Generated<"scheduled" | "in_progress" | "completed" | "cancelled">;
   stateMachineVersion: Generated<number>;
   scheduledDate: string;
@@ -333,6 +346,8 @@ export interface InspectionsTable {
   completionAccuracyM: number | null;
   accessIssue: string | null;
   lockedAt: Timestamp | null;
+  /** Always 'inspection': with job_id it keys to an inspection job, so no inspection belongs to a work job. */
+  jobType: Generated<"inspection">;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -375,6 +390,7 @@ export interface IssuesTable {
   resolvedAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
   resolvedBy: ColumnType<string | null, string | null | undefined, string | null>;
   resolution: ColumnType<string | null, string | null | undefined, string | null>;
+  workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -1098,6 +1114,7 @@ export interface ServiceRequestsTable {
   responseJobId: ColumnType<string | null, string | null | undefined, string | null>;
   responseRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
   responseOutcome: ColumnType<"resolved" | "outstanding" | null, "resolved" | "outstanding" | null | undefined, "resolved" | "outstanding" | null>;
+  workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -1286,6 +1303,87 @@ export interface DemoAccessLinksTable {
   revokedAt: Date | null;
 }
 
+export interface WorkTypesTable {
+  id: Generated<string>;
+  organizationId: string;
+  key: string;
+  name: string;
+  category: WorkCategory;
+  defaultFormTemplateKey: ColumnType<string | null, string | null | undefined, string | null>;
+  defaultDurationMinutes: ColumnType<number | null, number | null | undefined, number | null>;
+  requiresDisposalRecord: Generated<boolean>;
+  active: Generated<boolean>;
+  position: Generated<number>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkOrdersTable {
+  id: Generated<string>;
+  organizationId: string;
+  number: number;
+  customerId: string;
+  siteId: string;
+  workTypeId: string;
+  category: WorkCategory;
+  title: string;
+  description: Generated<string>;
+  priority: Generated<"normal" | "urgent">;
+  status: Generated<WorkOrderStatus>;
+  stateMachineVersion: Generated<number>;
+  billingStatus: Generated<"unbilled" | "invoiced" | "no_charge">;
+  requestedOn: ColumnType<string | null, string | null | undefined, string | null>;
+  completedAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  completedWithoutRecordReason: ColumnType<string | null, string | null | undefined, string | null>;
+  cancelledAt: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  cancelReason: ColumnType<string | null, string | null | undefined, string | null>;
+  createdBy: string | null;
+  sourceKind: Generated<WorkSourceKind>;
+  sourceId: ColumnType<string | null, string | null | undefined, string | null>;
+  coverageSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkOrderLinesTable {
+  id: Generated<string>;
+  organizationId: string;
+  workOrderId: string;
+  position: Generated<number>;
+  description: string;
+  quantityMilli: number;
+  unitPriceCents: number;
+  taxable: Generated<boolean>;
+  coveredByContractId: ColumnType<string | null, string | null | undefined, string | null>;
+  coverageNote: ColumnType<string | null, string | null | undefined, string | null>;
+  source: Generated<"planned" | "added_in_field">;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkOrderEventsTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  workOrderId: string;
+  eventType: string;
+  summary: string;
+  actorUserId: string | null;
+  details: ColumnType<unknown, string | undefined, never>;
+  homeownerVisible: Generated<boolean>;
+  occurredAt: Timestamp;
+}
+
+export interface WorkOrderNotesTable {
+  id: Generated<string>;
+  organizationId: string;
+  workOrderId: string;
+  body: string;
+  visibility: Generated<"internal" | "customer">;
+  authorUserId: string | null;
+  createdAt: CreatedAt;
+}
+
 export interface DB {
   demoVisits: DemoVisitsTable;
   demoAccessLinks: DemoAccessLinksTable;
@@ -1359,4 +1457,9 @@ export interface DB {
   planReminders: PlanRemindersTable;
   invitations: InvitationsTable;
   passwordResetTokens: PasswordResetTokensTable;
+  workTypes: WorkTypesTable;
+  workOrders: WorkOrdersTable;
+  workOrderLines: WorkOrderLinesTable;
+  workOrderEvents: WorkOrderEventsTable;
+  workOrderNotes: WorkOrderNotesTable;
 }

@@ -1,3 +1,4 @@
+import type { Feature } from "@aerowise/domain";
 import { createHmac, randomBytes } from "node:crypto";
 import { seedDemoCompany, type Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
@@ -38,7 +39,9 @@ export const demoVisitRoutes: FastifyPluginAsyncZod<{
   /** Keys the visitor's IP hash, so the stored value cannot be reversed by trying addresses. */
   hashKey: string;
   limits?: { perHour?: number; maxLive?: number };
-}> = async (app, { db, store, now, enabled, production, hashKey, limits = {} }) => {
+  /** The deployment's switched-on features, which the demo story follows. */
+  features: ReadonlySet<Feature>;
+}> = async (app, { db, store, now, enabled, production, hashKey, limits = {}, features }) => {
   const perHour = limits.perHour ?? DEMO_STARTS_PER_HOUR;
   const maxLive = limits.maxLive ?? DEMO_MAX_LIVE;
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
@@ -80,7 +83,7 @@ export const demoVisitRoutes: FastifyPluginAsyncZod<{
         password: null,
         expiresAt,
       });
-      await playDemoStory({ db, store, organizationId, now });
+      await playDemoStory({ db, store, organizationId, now, features });
 
       const owner = await memberOf(organizationId, "owner");
       const session = await createSession(db, organizationId, owner, expiresAt);

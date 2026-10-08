@@ -467,7 +467,14 @@ export const readinessRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         if (!r) throw notFound("Service request");
         if (respondedAt < r.receivedAt) throw unprocessable("The response cannot be before the request was received");
         if (req.body.jobId) {
-          const job = await trx.selectFrom("jobs as j").innerJoin("serviceObligations as o", "o.id", "j.obligationId").select("o.siteId").where("j.organizationId", "=", organizationId).where("j.id", "=", req.body.jobId).executeTakeFirst();
+          // Any visit at the site: a contract visit, a retest or a work order's visit.
+          const job = await trx
+            .selectFrom("jobs as j")
+            .select("j.siteId")
+            .where("j.organizationId", "=", organizationId)
+            .where("j.type", "in", ["inspection", "work"])
+            .where("j.id", "=", req.body.jobId)
+            .executeTakeFirst();
           if (!job) throw unprocessable("jobId does not match a job");
           if (job.siteId !== r.siteId) throw unprocessable("That job is at a different site");
         }

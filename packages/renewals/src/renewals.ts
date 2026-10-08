@@ -6,17 +6,8 @@ import { insertContract, termsForSite } from "./contracts.ts";
 
 type Executor = Database | Transaction<DB>;
 
-/** JSON with object keys sorted, so the same content always hashes the same. */
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
+/** JSON with object keys sorted, so the same content always hashes the same (shared with signed work summaries). */
+export { canonicalJson } from "@aerowise/domain";
 
 export const sha256Hex = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 

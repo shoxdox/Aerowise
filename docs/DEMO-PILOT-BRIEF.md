@@ -1,12 +1,24 @@
 # Aerowise — current demo and pilot handoff
 
+## Shared forms staging update — October 7, 2026
+
+**Staging https://staging.deshain.com is on `4d3fdadd4f202d29118c82e3a1322518e06350e3`**, merged #103 (shared form/signature foundation). Demo entry remains **Try the demo → Start my demo**, then Owner / Office / Technician. This release preserves the deployed street map and phone rollback floor. Configuration, migration/seed and API/web/database/worker health passed; live inspection fields retained the earlier fictional draft. Independent lint, full typecheck and 143 domain tests passed. [Deployment record and screenshot](engineering/RUNBOOK.md#shared-forms-review-and-staging-deploy--october-7-2026).
+
+**Fieldbase expansion is still incomplete.** #100 is fixing P2 scheduling concurrency/partial-update issues; #102 is fixing P2 CSV corruption of date-looking identifiers. #101's earlier payment/refund hold and concurrent-review fixes passed rereview but still need combined integration checks. Those three PRs and shared forms part 2 are not deployed. Hosted Actions still cannot start because of account billing/spending restrictions; manual deploy works. Existing provider/authority acceptance and physical-device gates remain open. Test stand-ins remain enabled, Twilio/Resend absent, production untouched. Justin needs no new account, keys or DNS change for this release.
+
+## Phone compatibility staging update — October 7, 2026
+
+**Staging is now on `a39e875023abe72b1e8ae237f3fdd2ee53dff2bd`**, the merged phone compatibility release (#99). This is the phone rollback floor: do not deploy an earlier application commit once offline work is introduced. API/web/database/worker health passed. A 390×844 browser retained an inspection draft and its answers through offline reload, sent one sync request on reconnect, and kept exactly one server inspection after another online reload. This was a draft regression check, not a physical-phone camera or full completed-photo inspection test. [Deployment record and screenshots](engineering/RUNBOOK.md#phone-compatibility-review-and-staging-deploy--october-7-2026).
+
+The Fieldbase expansion remains incomplete. Work-order foundation #100 is retesting with the merged phone code; QuickBooks #101 is addressing payment/refund hold and concurrent-review findings; export framework #102 is running checks; forms/signatures preparation has started. These unmerged features are not on staging. Test providers remain enabled, Twilio off, production untouched. No new account, keys or DNS change is required for this release.
+
 ## Street map staging update — October 7, 2026
 
 **Real street maps are live at https://staging.deshain.com** in the office Schedule and technician List/Map views. PR #97 is merged; staging application commit `220b4e747d34b23d7a6dc9451f0a16df35dacafc` passed API/worker health and browser checks with an actual 154 MB Central Texas OpenStreetMap extract. Numbering, selection, phone stop opening, offline list fallback and reconnect map recovery passed. All 13 requests in the observed map retry stayed on staging. [Screenshots and deployment record](engineering/RUNBOOK.md#street-map-review-and-staging-deployment--october-7-2026).
 
 Demo entry remains password-free: **Try the demo → Start my demo**, then Owner / Office / Technician. Maps cover the configured Central Texas box; demo locations remain fictional and visit lines remain straight. No guaranteed offline basemap or physical-phone validation. A P3 demo quirk: role-switch buttons disappear while offline and require an online reload to return. Test providers remain enabled, Twilio off, production untouched. No new DNS, account or keys are needed for this map.
 
-The Fieldbase gap expansion is still being built: phone compatibility PR #99 is draft and rerunning checks after the map merge; the work-order foundation worker is preparing its PR. These capabilities are not yet merged or deployed. Existing provider/authority acceptance and hosted Actions limits below remain open.
+The street map release is preserved in the newer phone build above. Existing provider/authority acceptance and hosted Actions limits below remain open.
 
 ## Live staging result — October 6 local / October 7 UTC, 2026
 

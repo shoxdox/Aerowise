@@ -21,6 +21,8 @@ import {
   RENEWAL_STATUS_LABELS,
   SERVICE_REQUEST_LABELS,
   formatPhone,
+  workOrderLabel,
+  type WorkOrderStatus,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
@@ -51,10 +53,14 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"))
       .where("s.organizationId", "=", organizationId);
 
+  /** The live work order an issue or request was turned into, if any. */
+  const woLink = (r: { woId: string | null; woNumber: number | null; woStatus: WorkOrderStatus | null }) =>
+    r.woId && r.woNumber !== null && r.woStatus ? { id: r.woId, label: workOrderLabel(r.woNumber), status: r.woStatus } : null;
+
   async function overdueVisits(organizationId: string, today: string): Promise<InboxException[]> {
     const rows = await sites(organizationId)
       .innerJoin("serviceObligations as o", (j) => j.onRef("o.siteId", "=", "s.id").onRef("o.organizationId", "=", "s.organizationId"))
-      .leftJoin("jobs as j", (k) => k.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.status", "<>", "cancelled"))
+      .leftJoin("jobs as j", (k) => k.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.type", "=", "inspection").on("j.status", "<>", "cancelled"))
       .leftJoin("users as u", "u.id", "j.technicianUserId")
       .select(["o.id", "o.dueOn", "o.sequence", "j.scheduledDate", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
       .where("o.status", "=", "open")
@@ -226,7 +232,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       left join lateral (
         select o.id, o.window_start, j.scheduled_date
         from service_obligations o
-        left join jobs j on j.obligation_id = o.id and j.organization_id = o.organization_id and j.status <> 'cancelled'
+        left join jobs j on j.obligation_id = o.id and j.organization_id = o.organization_id and j.type = 'inspection' and j.status <> 'cancelled'
         where o.organization_id = ${organizationId} and o.site_id = s.id and o.status = 'open'
         order by o.due_on limit 1
       ) nv on true
@@ -334,7 +340,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       left join reports rep on rep.id = f.report_id and rep.organization_id = f.organization_id
       left join lateral (
         select j.scheduled_date from jobs j
-        where j.organization_id = f.organization_id and j.site_id = s.id and j.obligation_id is null
+        where j.organization_id = f.organization_id and j.site_id = s.id and j.type = 'inspection' and j.obligation_id is null
           and j.status in ('scheduled', 'in_progress') and j.scheduled_date >= (i.completed_at at time zone org.timezone)::date
         order by j.scheduled_date limit 1
       ) rt on true
@@ -380,7 +386,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     const rows = await sites(organizationId)
       .innerJoin("issues as x", (j) => j.onRef("x.siteId", "=", "s.id").onRef("x.organizationId", "=", "s.organizationId"))
       .innerJoin("inspections as i", (j) => j.onRef("i.id", "=", "x.inspectionId").onRef("i.organizationId", "=", "x.organizationId"))
-      .select(["x.id", "x.type", "x.severity", "x.description", "i.completedAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .leftJoin("workOrders as wo", (j) => j.onRef("wo.id", "=", "x.workOrderId").onRef("wo.organizationId", "=", "x.organizationId").on("wo.status", "<>", "cancelled"))
+      .select(["x.id", "x.type", "x.severity", "x.description", "i.completedAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName", "wo.id as woId", "wo.number as woNumber", "wo.status as woStatus"])
       .where("x.status", "=", "open")
       // Issues on an inspection still in progress can change; they count once it is done.
       .where("i.status", "=", "completed")
@@ -397,6 +404,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       site: site(r),
       customer: customer(r),
       target: { type: "issue", id: r.id },
+      workOrder: woLink(r),
     }));
   }
 
@@ -476,7 +484,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .selectFrom("serviceRequests as r")
       .innerJoin("sites as s", "s.id", "r.siteId")
       .innerJoin("customers as c", "c.id", "r.customerId")
-      .select(["r.id", "r.kind", "r.description", "r.contactPhone", "r.createdAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .leftJoin("workOrders as wo", (j) => j.onRef("wo.id", "=", "r.workOrderId").onRef("wo.organizationId", "=", "r.organizationId").on("wo.status", "<>", "cancelled"))
+      .select(["r.id", "r.kind", "r.description", "r.contactPhone", "r.createdAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName", "wo.id as woId", "wo.number as woNumber", "wo.status as woStatus"])
       .where("r.organizationId", "=", organizationId)
       .where("r.status", "=", "open")
       .orderBy("r.createdAt")
@@ -493,6 +502,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       site: site(r),
       customer: customer(r),
       target: { type: "service_request", id: r.id },
+      workOrder: woLink(r),
     }));
   }
 
@@ -576,6 +586,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .innerJoin("customers as c", "c.id", "s.customerId")
       .select(["o.id", "j.scheduledDate", "k.serviceEndsOn", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
       .where("j.organizationId", "=", organizationId)
+      .where("j.type", "=", "inspection")
       .where("j.status", "=", "scheduled")
       .where("o.status", "=", "open")
       .where("k.status", "=", "active")
@@ -749,6 +760,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           .innerJoin("users as u", "u.id", "j.technicianUserId")
           .select(["j.technicianUserId as technicianId", "u.name", sql<number>`count(*)::int`.as("stops"), sql<number>`count(*) filter (where j.status = 'completed')::int`.as("done")])
           .where("j.organizationId", "=", organizationId)
+          // Today's stops: inspection and work visits alike.
+          .where("j.type", "in", ["inspection", "work"])
           .where("j.scheduledDate", "=", today)
           .where("j.status", "<>", "cancelled")
           .groupBy(["j.technicianUserId", "u.name"])

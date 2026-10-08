@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
 import { currentPosition, loadActiveTemplate, loadRoute } from "@/lib/offline/data";
-import { startBackgroundSync, subscribe, syncNow, type SyncState } from "@/lib/offline/sync";
+import { runnableOps, startBackgroundSync, subscribe, syncNow, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import type { Me } from "@/lib/session";
 
@@ -143,8 +143,10 @@ export default function TechApp() {
   }
 
   async function signOut() {
-    const ops = await allOps();
-    if (ops.some((o) => !o.failed) && !window.confirm("Some changes have not reached the office yet. Sign out anyway? They stay on this phone.")) return;
+    const { runnable, waiting } = runnableOps(await allOps());
+    const later = waiting + (await activeStore().pendingWork());
+    const unsent = `Some changes have not reached the office yet.${later > 0 ? ` ${later} of them will send only after the app updates.` : ""}`;
+    if (runnable.length + later > 0 && !window.confirm(`${unsent} Sign out anyway? They stay on this phone.`)) return;
     await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
     window.location.href = "/login?next=/tech";
   }
