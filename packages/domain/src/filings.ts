@@ -52,7 +52,13 @@ export const FILING_OPEN_STATUSES: readonly FilingStatus[] = ["pending", "ready"
 /** Statuses that need a person. */
 export const FILING_ATTENTION_STATUSES: readonly FilingStatus[] = ["failed", "rejected", "needs_review"];
 
-export const SUBMISSION_METHODS = ["email", "manual_export"] as const;
+/**
+ * - email: Aerowise emails the package
+ * - manual_export: the office files the package by hand (portal, mail or counter)
+ * - csv_export: the package carries a CSV in the authority's own column layout (its ruleset's
+ *   `export` block) for the office to upload; making the file never makes the filing sent
+ */
+export const SUBMISSION_METHODS = ["email", "manual_export", "csv_export"] as const;
 export type SubmissionMethod = (typeof SUBMISSION_METHODS)[number];
 
 const fieldKey = z.string().regex(/^[a-z][a-z0-9_]{0,62}$/);
@@ -127,6 +133,81 @@ export const reportLayoutRule = z.object({
     .min(1),
 });
 export type ReportLayoutRule = z.infer<typeof reportLayoutRule>;
+
+/** Where an authority CSV column's value comes from. */
+export const AUTHORITY_EXPORT_SOURCES = [
+  "filing_id",
+  "submission_number",
+  "submission_date",
+  "inspection_date",
+  "technician_name",
+  "technician_license",
+  /** One inspection answer, by template field key (`field`), as on the authority report version in the package. */
+  "field",
+  "owner_name",
+  "site_address_line1",
+  "site_city",
+  "site_state",
+  "site_postal_code",
+  "site_county",
+  "site_permit_number",
+  /** An authority identifier recorded on the site (`identifier`). */
+  "identifier",
+  "provider_name",
+  "responsible_provider_name",
+  "responsible_provider_mp_number",
+  /** The same text on every row (`value`), such as a record type code. */
+  "constant",
+] as const;
+export type AuthorityExportSource = (typeof AUTHORITY_EXPORT_SOURCES)[number];
+
+/**
+ * The authority's own CSV layout for filings, one row per filing. Only a ruleset whose
+ * layout comes from the authority's accepted specification and an accepted sample (gate
+ * G-AUTH-CSV) may carry one; until then only the fictional example does (enforced when
+ * bundled). Making the file is not filing it: the office uploads it and records that.
+ */
+export const authorityExportRule = z
+  .object({
+    format: z.literal("csv"),
+    /** The specification this layout follows, and how closely. */
+    formReference: z.string().min(1).max(500),
+    appliesTo: z.array(z.enum(FILING_KINDS)).min(1),
+    /** `utf-8-bom` starts the file with a byte order mark, which some spreadsheet imports expect. */
+    encoding: z.enum(["utf-8", "utf-8-bom"]),
+    dateFormat: z.enum(["YYYY-MM-DD", "MM/DD/YYYY"]),
+    /** May use {permitNumber}, {inspectionDate}, {submissionDate} and {filingId}; ends in .csv. */
+    filename: z
+      .string()
+      .min(5)
+      .max(120)
+      .regex(/^[A-Za-z0-9_{}-]+\.csv$/),
+    columns: z
+      .array(
+        z.object({
+          header: z.string().min(1).max(100),
+          source: z.enum(AUTHORITY_EXPORT_SOURCES),
+          field: fieldKey.optional(),
+          identifier: fieldKey.optional(),
+          value: z.string().max(200).optional(),
+          /** A filing whose required column has no value waits for review instead of exporting a gap. */
+          required: z.boolean(),
+        }),
+      )
+      .min(1)
+      .max(200),
+  })
+  .superRefine((e, ctx) => {
+    const headers = new Set<string>();
+    e.columns.forEach((c, i) => {
+      if (headers.has(c.header)) ctx.addIssue({ code: "custom", path: ["columns", i, "header"], message: `Column "${c.header}" appears twice` });
+      headers.add(c.header);
+      if ((c.source === "field") !== (c.field !== undefined)) ctx.addIssue({ code: "custom", path: ["columns", i, "field"], message: "`field` goes with, and only with, the field source" });
+      if ((c.source === "identifier") !== (c.identifier !== undefined)) ctx.addIssue({ code: "custom", path: ["columns", i, "identifier"], message: "`identifier` goes with, and only with, the identifier source" });
+      if ((c.source === "constant") !== (c.value !== undefined)) ctx.addIssue({ code: "custom", path: ["columns", i, "value"], message: "`value` goes with, and only with, the constant source" });
+    });
+  });
+export type AuthorityExportRule = z.infer<typeof authorityExportRule>;
 
 /** One kind of filing's fees, in cents. */
 const feeRule = z.object({
@@ -402,6 +483,8 @@ export const rulesetRules = z.object({
     fallback: z.literal("manual_export").nullable().default("manual_export"),
     portalUrl: z.url().nullable().default(null),
   }),
+  /** The authority's CSV layout, for filings by CSV export. Absent: no CSV export. */
+  export: authorityExportRule.optional(),
   customerCopy: z.object({ required: z.boolean() }),
   confirmation: z.object({
     /**
@@ -412,8 +495,17 @@ export const rulesetRules = z.object({
     mode: z.enum(["manual_reference", "none_published"]),
     note: z.string().max(1000).optional(),
   }),
+}).superRefine((r, ctx) => {
+  if (r.submission.method !== "csv_export") return;
+  // Filing by CSV needs the layout, for every kind of filing the authority takes.
+  const kinds: FilingKind[] = ["inspection_report", ...(r.contracts?.filingRequired ? (["contract"] as const) : [])];
+  const missing = kinds.filter((k) => !r.export?.appliesTo.includes(k));
+  if (missing.length) ctx.addIssue({ code: "custom", path: ["export"], message: `Filing by CSV export needs an export layout for ${missing.join(" and ")} filings` });
 });
 export type RulesetRules = z.infer<typeof rulesetRules>;
+
+/** The authority's CSV layout for this kind of filing, or null when it takes none. */
+export const exportLayoutFor = (rules: RulesetRules, kind: FilingKind) => (rules.export?.appliesTo.includes(kind) ? rules.export : null);
 
 /** A ruleset without a profile predates profiles and is the fictional example. */
 export const profileStatus = (rules: RulesetRules): ProfileStatus => rules.profile?.status ?? "fictional";
@@ -714,7 +806,7 @@ export const confirmationEvidence = z.object({
 });
 
 export const packageDocument = z.object({
-  role: z.enum(["cover_sheet", "inspection_report", "contract"]),
+  role: z.enum(["cover_sheet", "inspection_report", "contract", "authority_csv"]),
   filename: z.string(),
   storageKey: z.string(),
   contentType: z.string(),
@@ -756,6 +848,10 @@ export const filingDetail = filingListItem.extend({
       subject: z.string().nullable(),
       reportUrl: z.string().nullable(),
       fallback: z.enum(SUBMISSION_METHODS).nullable(),
+      /** The authority's CSV layout, when its rules have one for this kind of filing; the office may file by CSV export. */
+      csvExport: z.object({ formReference: z.string() }).nullable(),
+      /** A short-lived link to the CSV in the current package, once made. */
+      csvUrl: z.string().nullable(),
     })
     .nullable(),
   attempts: z.array(filingAttempt),

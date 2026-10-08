@@ -42,10 +42,15 @@ export function authorityRequirements(rules: RulesetRules): RequirementLine[] {
   let channel: string;
   if (rules.inspectionReports?.submission === "unknown") {
     channel = "Not published. Report filings wait for review; nothing is sent to a guessed address.";
+  } else if (sub.method === "csv_export" && rules.export) {
+    channel = `By CSV upload${sub.portalUrl ? " on the authority's portal" : ""}, in its own column layout (${rules.export.formReference}). Aerowise makes the file; the office uploads it and records the submission.`;
   } else if (sub.method === "email" && sub.email) {
     channel = `By email to ${sub.email.to}. ${auto ? "Sent automatically once the report is ready." : "The office releases each one."}`;
   } else {
     channel = `By hand${sub.portalUrl ? " on the authority's portal" : " (portal, mail or counter)"}. Aerowise prepares the package and the office records the submission.`;
+  }
+  if (rules.export && sub.method !== "csv_export" && rules.inspectionReports?.submission !== "unknown") {
+    channel += ` The office may file by CSV upload instead (${rules.export.formReference}).`;
   }
   lines.push({ key: "reportChannel", label: "How reports are sent", value: channel });
 

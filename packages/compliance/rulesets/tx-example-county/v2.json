@@ -1,0 +1,67 @@
+{
+  "jurisdiction": {
+    "key": "tx-example-county",
+    "state": "TX",
+    "authorityName": "Example County Environmental Health (fictional)",
+    "type": "county"
+  },
+  "version": 2,
+  "effectiveFrom": "2020-01-01",
+  "effectiveTo": null,
+  "sourceReference": "FICTIONAL placeholder for development and tests. These are not any real county's requirements; replace with a ruleset written from the authority's published rules before filing for real. v2 adds a made-up CSV export layout to exercise the authority export framework; it is not any real authority's CSV specification.",
+  "applicability": {
+    "counties": ["Example County"]
+  },
+  "service": {
+    "intervalMonths": 4
+  },
+  "inspection": {
+    "requiredFields": ["air_pressure"],
+    "requiredPhotos": [{ "key": "overview", "minCount": 1 }],
+    "technicianLicenseRequired": true
+  },
+  "filing": {
+    "deadlineDays": 14,
+    "warningDays": 5,
+    "autoSubmit": true
+  },
+  "submission": {
+    "method": "email",
+    "email": {
+      "to": "filings@tx-example-county.example",
+      "subject": "Aerobic maintenance report, permit {permitNumber}"
+    },
+    "fallback": "manual_export",
+    "portalUrl": null
+  },
+  "export": {
+    "format": "csv",
+    "formReference": "FICTIONAL: Example County CSV layout EC-CSV-1, made up for development and tests",
+    "appliesTo": ["inspection_report"],
+    "encoding": "utf-8",
+    "dateFormat": "MM/DD/YYYY",
+    "filename": "example-county-{permitNumber}-{inspectionDate}.csv",
+    "columns": [
+      { "header": "Record Type", "source": "constant", "value": "AEROBIC-MAINT", "required": true },
+      { "header": "Permit Number", "source": "site_permit_number", "required": true },
+      { "header": "Inspection Date", "source": "inspection_date", "required": true },
+      { "header": "Owner Name", "source": "owner_name", "required": false },
+      { "header": "Site Address", "source": "site_address_line1", "required": true },
+      { "header": "City", "source": "site_city", "required": false },
+      { "header": "ZIP", "source": "site_postal_code", "required": false },
+      { "header": "Maintenance Provider", "source": "provider_name", "required": true },
+      { "header": "Technician", "source": "technician_name", "required": false },
+      { "header": "Technician License", "source": "technician_license", "required": true },
+      { "header": "Air Pressure", "source": "field", "field": "air_pressure", "required": true },
+      { "header": "Chlorine Level", "source": "field", "field": "chlorine_level", "required": false },
+      { "header": "Submitted", "source": "submission_date", "required": false },
+      { "header": "Aerowise Filing", "source": "filing_id", "required": false }
+    ]
+  },
+  "customerCopy": {
+    "required": true
+  },
+  "confirmation": {
+    "mode": "manual_reference"
+  }
+}
