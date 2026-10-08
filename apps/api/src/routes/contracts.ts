@@ -1,6 +1,7 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import { agreementPreview, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms } from "@aerowise/renewals";
+import { FORM_COLUMNS, toForm } from "../lib/forms.ts";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
   addDays,
@@ -11,6 +12,11 @@ import {
   contractState,
   coverageSummary,
   DEFAULT_RENEWAL_TERMS,
+  formTemplate,
+  intakeFormInput,
+  keyAllowedForPurpose,
+  parseSnapshotOptions,
+  type PlanOption,
   parseCoverageRules,
   parsePlanOptions,
   planDetail,
@@ -107,10 +113,20 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
    * With the plan builder on (SW-8), a contract the office makes takes its version's coverage
    * rules, frozen, and a record of the terms that apply. Off, it is made exactly as before.
    */
-  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined) {
-    if (!planBuilder || !planVersionId) return {};
-    const v = await loadPlanVersion(ex, organizationId, planVersionId);
-    if (!v) return {};
+  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined, optionKeys?: string[]) {
+    if (!planBuilder) {
+      if (optionKeys?.length) throw new HttpError(409, "feature_off", "Plan options need the plan builder, which is not switched on for this deployment");
+      return {};
+    }
+    const v = planVersionId ? await loadPlanVersion(ex, organizationId, planVersionId) : null;
+    if (!v) {
+      if (optionKeys?.length) throw unprocessable("This plan offers no options");
+      return {};
+    }
+    const unknown = (optionKeys ?? []).filter((k) => !v.options.some((o) => o.optionKey === k));
+    if (unknown.length) throw unprocessable(`The plan has no option ${unknown.map((k) => `"${k}"`).join(", ")}`);
+    // Required options always, and what the office ticked; nothing else is charged unasked.
+    const options: PlanOption[] = v.options.filter((o) => o.required || !!optionKeys?.includes(o.optionKey));
     const org = await ex.selectFrom("organizations").select("renewalTerms").where("id", "=", organizationId).executeTakeFirstOrThrow();
     return {
       coverage: v.coverage,
@@ -120,6 +136,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         plan: { versionId: v.id, version: v.version, termsSource: v.termsText ? "plan" : "organization" },
         terms: v.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
         coverage: await coverageLines(ex, organizationId, v.coverage),
+        // Only when some were taken, so a snapshot without options reads as it did before.
+        ...(options.length ? { options } : {}),
       },
     };
   }
@@ -128,10 +146,12 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   async function contractPlanFacts(organizationId: string, contracts: { id: string; planVersionId: string | null }[]) {
     const ids = contracts.map((c) => c.id);
     const versionIds = [...new Set(contracts.flatMap((c) => (c.planVersionId ? [c.planVersionId] : [])))];
-    const [rules, versions] = await Promise.all([
+    const [rules, versions, snapshots] = await Promise.all([
       ids.length ? db.selectFrom("contractCoverageRules").select(["id", "contractId", "ruleKey", "rule", "limitCount"]).where("organizationId", "=", organizationId).where("contractId", "in", ids).orderBy("position").execute() : [],
       versionIds.length ? db.selectFrom("planVersions").select(["id", "version"]).where("organizationId", "=", organizationId).where("id", "in", versionIds).execute() : [],
+      ids.length ? db.selectFrom("contracts").select(["id", "agreementSnapshot"]).where("organizationId", "=", organizationId).where("id", "in", ids).execute() : [],
     ]);
+    const optionsOf = new Map(snapshots.map((c) => [c.id, parseSnapshotOptions(c.agreementSnapshot)]));
     const parsed = rules.map((r) => ({ ...r, rule: parseCoverageRules([r.rule])[0]! }));
     const [used, names] = await Promise.all([usedCounts(db, organizationId, rules.map((r) => r.id)), coverageItemNames(db, organizationId, parsed.map((r) => r.rule))]);
     return (c: { id: string; planVersionId: string | null }) => ({
@@ -146,6 +166,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           limit: r.limitCount,
           used: used.get(r.id) ?? 0,
         })),
+      options: (optionsOf.get(c.id) ?? []).map((o) => ({ optionKey: o.optionKey, name: o.name, priceCents: o.priceCents, taxable: o.taxable })),
     });
   }
 
@@ -239,6 +260,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           "v.serviceType",
           "v.options",
           "v.coverage",
+          "v.intakeTemplateId",
           "v.createdAt",
           (eb) => eb.selectFrom("contracts as c").select(sql<number>`count(*)::int`.as("n")).whereRef("c.planVersionId", "=", "v.id").as("contracts"),
           (eb) => eb.selectFrom("renewals as r").select(sql<number>`count(*)::int`.as("n")).whereRef("r.planVersionId", "=", "v.id").as("renewals"),
@@ -250,10 +272,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       loadPlanVersion(db, organizationId, p.currentVersionId),
       db.selectFrom("organizations").select("renewalTerms").where("id", "=", organizationId).executeTakeFirstOrThrow(),
     ]);
+    const intakeIds = [...new Set(versions.flatMap((v) => (v.intakeTemplateId ? [v.intakeTemplateId] : [])))];
+    const intakeForms = intakeIds.length ? await db.selectFrom("inspectionTemplates").select(["id", "key", "version", "name"]).where("id", "in", intakeIds).execute() : [];
     return {
       ...jsonRow(p),
-      versions: versions.map((v) => ({
+      versions: versions.map(({ intakeTemplateId, ...v }) => ({
         ...jsonRow(v),
+        intake: intakeForms.find((f) => f.id === intakeTemplateId) ?? null,
         options: parsePlanOptions(v.options),
         coverage: parseCoverageRules(v.coverage),
         contracts: Number(v.contracts ?? 0),
@@ -369,6 +394,16 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           const found = await trx.selectFrom("serviceItems").select("id").where("organizationId", "=", organizationId).where("id", "in", itemIds).execute();
           if (found.length !== itemIds.length) throw unprocessable("A coverage rule names a catalog item that is not in this company's catalog");
         }
+        if (b.intakeTemplateId) {
+          const form = await trx
+            .selectFrom("inspectionTemplates")
+            .select("id")
+            .where("id", "=", b.intakeTemplateId)
+            .where("purpose", "=", "intake")
+            .where((eb) => eb.or([eb("organizationId", "is", null), eb("organizationId", "=", organizationId)]))
+            .executeTakeFirst();
+          if (!form) throw unprocessable("intakeTemplateId is not one of this company's intake forms");
+        }
         const cur = await trx.selectFrom("planVersions").selectAll().where("id", "=", p.currentVersionId).executeTakeFirstOrThrow();
         const created = await trx
           .insertInto("planVersions")
@@ -387,6 +422,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             options: JSON.stringify(b.options),
             coverage: JSON.stringify(b.coverage),
             serviceCycles: JSON.stringify(cur.serviceCycles),
+            intakeTemplateId: b.intakeTemplateId,
             createdBy: userId,
           })
           .returning(["id", "version"])
@@ -395,6 +431,48 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         await audit(trx, req, { action: "plan.version_created", entityType: "plan", entityId: p.id, changes: { version: created.version, ...b } });
       });
       return reply.status(201).send(await loadPlanDetail(organizationId, req.params.id));
+    },
+  );
+
+  app.post(
+    "/intake-forms",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["plans"],
+        summary: "Save a new version of an intake form a plan can ask at online signing",
+        description:
+          "An SW-F form with purpose `intake`: questions only, no photos or signatures. Versions never change; a plan version names the exact version it asks. List them with `GET /form-templates?purpose=intake`. Needs the plan builder (409 `feature_off` otherwise).",
+        body: intakeFormInput,
+        response: { 201: formTemplate },
+      },
+    },
+    async (req, reply) => {
+      if (!planBuilder) throw new HttpError(409, "feature_off", "The plan builder is not switched on for this deployment");
+      const { organizationId, userId } = req.requireAuth();
+      const b = req.body;
+      if (!keyAllowedForPurpose(b.key, "intake")) throw new HttpError(409, "wrong_purpose", "That key belongs to the inspection form");
+      const row = await db.transaction().execute(async (trx) => {
+        // The lock every form version takes: one numbering per company (SW-F).
+        await sql`select pg_advisory_xact_lock(hashtext(${`inspection_templates:${organizationId}`}))`.execute(trx);
+        const same = await trx
+          .selectFrom("inspectionTemplates")
+          .select(["purpose", sql<number>`max(version)`.as("v")])
+          .where((eb) => eb.or([eb("organizationId", "is", null), eb("organizationId", "=", organizationId)]))
+          .where("key", "=", b.key)
+          .groupBy("purpose")
+          .execute();
+        if (same.some((r) => r.purpose !== "intake")) throw new HttpError(409, "wrong_purpose", "That key is already used by a form that is not an intake form");
+        const version = Math.max(0, ...same.map((r) => Number(r.v))) + 1;
+        const created = await trx
+          .insertInto("inspectionTemplates")
+          .values({ organizationId, key: b.key, version, name: b.name, purpose: "intake", definition: JSON.stringify(b.definition), createdBy: userId })
+          .returning(FORM_COLUMNS)
+          .executeTakeFirstOrThrow();
+        await audit(trx, req, { action: "form_template.versioned", entityType: "inspection_template", entityId: created.id, changes: { key: b.key, version, purpose: "intake" } });
+        return created;
+      });
+      return reply.status(201).send(toForm(row));
     },
   );
 
@@ -489,7 +567,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           terms,
           autoRenew: req.body.autoRenew,
           notes: req.body.notes,
-          ...(await planContent(trx, organizationId, terms.planVersionId)),
+          ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
         }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, { action: "contract.created", entityType: "contract", entityId: created, changes: req.body });
         // Opens a filing with the site's authority when it requires contracts on file.
@@ -549,7 +627,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           terms,
           autoRenew: prev.autoRenew,
           previousContractId: prev.id,
-          ...(await planContent(trx, organizationId, terms.planVersionId)),
+          ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
         }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, {
           action: "contract.renewed",

@@ -20,6 +20,7 @@ import {
   renewalSettings,
   renewalSettingsInput,
   renewalSignInput,
+  intakeAnswers,
   parsePlanOptions,
   type AgreementContent,
   type ChosenAddon,
@@ -396,6 +397,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       selectedAddons: r.selectedAddons as ChosenAddon[],
       selectedOptions: parsePlanOptions(r.selectedOptions),
       planVersion: version ? { id: version.id, version: version.version } : null,
+      intake: doc ? ((doc.content as AgreementContent).intake ?? null) : null,
       customerUpdates: r.customerUpdates as Record<string, unknown>,
       paidAt: iso(r.paidAt),
       declinedAt: iso(r.declinedAt),
@@ -663,6 +665,8 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         options,
         selectedOptionKeys: (signedContent ? options : offer ? offer.options.filter((o) => o.default) : parsePlanOptions(r.selectedOptions)).map((o) => o.optionKey),
         coverage: coverage.map((c) => c.summary),
+        // Asked only while it can be signed; the signed answers are in the agreement itself.
+        intake: offer?.intake ? { name: offer.intake.name, definition: offer.intake.definition } : null,
         contact: { name: contact?.name ?? null, email: contact?.email ?? null, phone: contact?.phone ?? null },
         agreementText: signedContent ? signedContent.terms : (offer?.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS),
         consentText: CONSENT_TEXT,
@@ -755,6 +759,10 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const options: PlanOption[] = (offer?.options ?? []).filter((o) => o.required || keys.has(o.optionKey));
         if ([...keys].some((k) => !offer?.options.some((o) => o.optionKey === k))) throw unprocessable("An option you chose is no longer offered. Reload the page.");
 
+        // The plan's intake questions (SW-8), answered as the form asks; kept only in the agreement.
+        const intake = offer?.intake ? { form: offer.intake, ...intakeAnswers(offer.intake.definition, b.intakeAnswers) } : null;
+        if (intake?.problems.length) throw unprocessable(intake.problems.map((p) => p.message).join("; "));
+
         // The customer's confirmed contact details.
         const contact = await renewalContact(trx, organizationId, r.customerId);
         const phone = b.contact.phone ?? null;
@@ -802,6 +810,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
                 plan: { versionId: offer.id, version: offer.version, termsSource: offer.termsText ? ("plan" as const) : ("organization" as const) },
                 options,
                 coverage: await coverageLines(trx, organizationId, offer.coverage),
+                ...(intake ? { intake: { templateId: intake.form.id, key: intake.form.key, version: intake.form.version, name: intake.form.name, answers: intake.answers } } : {}),
               }
             : {}),
         };

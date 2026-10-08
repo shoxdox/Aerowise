@@ -1,9 +1,10 @@
 "use client";
 
-import { invoiceTotals, type PublicRenewal } from "@aerowise/domain";
+import { invoiceTotals, validateInspection, visibleFields, type InspectionValues, type PublicRenewal, type ValidationProblem } from "@aerowise/domain";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
+import { TemplateSections } from "@/components/forms/TemplateFields";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
@@ -28,6 +29,9 @@ function RenewPage() {
   const { data: r, error, reload } = useLoad<PublicRenewal>(`/renew/${token}`);
   const [addonIds, setAddonIds] = useState<string[] | null>(null);
   const [optionKeys, setOptionKeys] = useState<string[] | null>(null);
+  // Answers to the plan's intake questions (SW-8), checked like the API checks them.
+  const [answers, setAnswers] = useState<InspectionValues>({});
+  const [intakeProblems, setIntakeProblems] = useState<ValidationProblem[]>([]);
   const [mode, setMode] = useState<"typed" | "drawn">("typed");
   const [drawn, setDrawn] = useState<string | null>(null);
   const [signer, setSigner] = useState("");
@@ -82,6 +86,14 @@ function RenewPage() {
       setFormError("Draw your signature in the box, or switch to typing your name.");
       return;
     }
+    if (r!.intake) {
+      const problems = validateInspection(r!.intake.definition, answers, {});
+      setIntakeProblems(problems);
+      if (problems.length) {
+        setFormError("Answer the questions above before signing.");
+        return;
+      }
+    }
     setBusy(true);
     setFormError(null);
     try {
@@ -92,6 +104,7 @@ function RenewPage() {
           contact: { email: v.email, phone: v.phone ?? null },
           addonIds: chosen,
           optionKeys: chosenOptions.map((o) => o.optionKey),
+          intakeAnswers: answers,
           signerName: signer.trim(),
           signature: mode === "drawn" ? { kind: "drawn", image: drawn } : { kind: "typed" },
           agree: v.agree === "on",
@@ -258,6 +271,18 @@ function RenewPage() {
                 <li key={c}>{c}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {r.intake && signable && (
+          <div className="stack" data-testid="renewal-intake">
+            <h2>{r.intake.name}</h2>
+            <TemplateSections
+              fields={visibleFields(r.intake.definition, answers)}
+              values={answers}
+              problemFor={(key) => intakeProblems.find((p) => p.key === key)}
+              onChange={(key, value) => setAnswers((a) => ({ ...a, [key]: value }))}
+            />
           </div>
         )}
 

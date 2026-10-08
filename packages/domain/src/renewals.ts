@@ -3,7 +3,8 @@ import { BILLING_FREQUENCIES, SERVICE_TYPES } from "./contracts.ts";
 import { CUSTOMER_TYPES } from "./crm.ts";
 import { id } from "./crm.ts";
 import { contractInstallments, invoiceTotals, MAX_CENTS, type InvoiceTotals } from "./invoices.ts";
-import { planOption, type PlanOption } from "./plans.ts";
+import { intakeValues, planOption, signedIntake, type PlanOption } from "./plans.ts";
+import { templateDefinition } from "./inspections.ts";
 
 // Renewals: the next term of a contract, offered to the homeowner through one link where
 // they confirm their details, pick add-ons, sign and pay.
@@ -167,6 +168,8 @@ export const agreementContent = z.object({
   plan: z.object({ versionId: id, version: z.number().int(), termsSource: z.enum(["plan", "organization"]) }).optional(),
   options: z.array(planOption).optional(),
   coverage: z.array(z.object({ ruleKey: z.string(), label: z.string(), summary: z.string() })).optional(),
+  /** SW-8: the plan version's intake form and the customer's answers, when it asks one. */
+  intake: signedIntake.optional(),
 });
 export type AgreementContent = z.infer<typeof agreementContent>;
 
@@ -188,6 +191,8 @@ export const renewalSignInput = z.object({
   addonIds: z.array(id).max(20).default([]),
   /** The plan's options chosen (SW-8); required ones are included whatever is sent. */
   optionKeys: z.array(z.string().max(64)).max(20).default([]),
+  /** Answers to the plan version's intake questions (SW-8), by field key. */
+  intakeAnswers: intakeValues.default({}),
   signerName: z.string().trim().min(2).max(200),
   signature: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("typed") }),
@@ -253,6 +258,8 @@ export const renewalDetail = renewalListItem.extend({
   selectedOptions: z.array(planOption),
   /** The plan version on offer (SW-8). */
   planVersion: z.object({ id, version: z.number().int() }).nullable(),
+  /** The intake answers in the signed agreement (SW-8); null when none were asked. */
+  intake: signedIntake.nullable(),
   customerUpdates: z.record(z.string(), z.unknown()),
   paidAt: datetime.nullable(),
   declinedAt: datetime.nullable(),
@@ -284,6 +291,8 @@ export const publicRenewal = z.object({
   selectedOptionKeys: z.array(z.string()),
   /** What the new term covers (SW-8); empty unless the plan builder is on. */
   coverage: z.array(z.string()),
+  /** The questions to answer before signing (SW-8); null when the plan asks none. */
+  intake: z.object({ name: z.string(), definition: templateDefinition }).nullable(),
   contact: z.object({ name: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable() }),
   agreementText: z.string(),
   consentText: z.string(),

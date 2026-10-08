@@ -253,6 +253,21 @@ export default function RenewalPage() {
               </dd>
             </dl>
             {r.selectedAddons.length > 0 && <p>Add-ons: {r.selectedAddons.map((a) => `${a.name} (${money(a.priceCents)})`).join(", ")}</p>}
+            {r.intake && (
+              <div data-testid="renewal-intake-answers">
+                <p>
+                  {r.intake.name} (version {r.intake.version}):
+                </p>
+                <dl>
+                  {r.intake.answers.map((a) => (
+                    <div key={a.key}>
+                      <dt>{a.label}</dt>
+                      <dd>{a.answer}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
             {"contact" in r.customerUpdates && <p className="muted small">The customer updated their contact details when signing.</p>}
             {r.signedDocument.pdfReady ? (
               <a href={`/api/renewals/${id}/agreement.pdf`} target="_blank" rel="noreferrer">

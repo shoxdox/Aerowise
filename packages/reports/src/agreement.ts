@@ -87,6 +87,16 @@ export function renderAgreement(c: AgreementContent, sig: AgreementSignature): P
   if (c.charges.taxCents > 0) row("Sales tax", money(c.charges.taxCents));
   row("Total", money(c.charges.totalCents));
 
+  // SW-8: only in agreements signed with the plan builder on, so earlier PDFs are unchanged.
+  if (c.coverage?.length) {
+    heading("What the plan covers");
+    for (const cov of c.coverage) doc.font(FONTS.regular).fontSize(10).fillColor("#000").text(cov.summary, left, doc.y, { width });
+  }
+  if (c.intake?.answers.length) {
+    heading(c.intake.name);
+    for (const a of c.intake.answers) row(a.label, a.answer);
+  }
+
   heading("Terms");
   doc.font(FONTS.regular).fontSize(9.5).fillColor("#000").text(c.terms, left, doc.y, { width, lineGap: 1.5 });
 
