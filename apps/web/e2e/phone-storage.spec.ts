@@ -1,13 +1,27 @@
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
+import pg from "pg";
 
 // Plan §12 row 28 (SW-2 storage and failures): a phone that runs out of storage keeps everything
 // already saved and queued, says so plainly and takes no new photos until sending makes room; a
 // change the server turned down is kept and goes again with Try again. The full phone is
 // simulated by failing IndexedDB writes of photo images with the browser's QuotaExceededError.
 // Pixel 7 emulation; not a physical-phone check.
+const databaseUrl = process.env.E2E_DATABASE_URL ?? "postgres://aerowise:aerowise@localhost:5432/aerowise_e2e";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
 test.use({ geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"] });
+
+/** Cancels the work order; one the phone completed cannot be cancelled, so its visit also moves to yesterday for later specs that count today's route and map. */
+async function cleanUp(api: APIRequestContext, workOrderId: string) {
+  await api.post(`/api/work-orders/${workOrderId}/cancel`, { data: { reason: "e2e cleanup" } });
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  try {
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where work_order_id = $1", [workOrderId]);
+  } finally {
+    await db.end();
+  }
+}
 
 async function office(browser: Browser): Promise<APIRequestContext> {
   const request = (await browser.newContext()).request;
@@ -128,7 +142,7 @@ test("a full phone keeps everything already saved, says so, and takes photos aga
       ["after", true],
     ]);
   } finally {
-    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+    await cleanUp(api, id);
   }
 });
 
@@ -161,7 +175,7 @@ test("a photo the server turned down stays on the phone and goes again with Try 
     expect(sent.blobs).toEqual([]);
     expect(sent.photos.map((p) => [p.photoKey, p.uploaded])).toEqual([["before", true]]);
   } finally {
-    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+    await cleanUp(api, id);
   }
 });
 
@@ -225,7 +239,7 @@ test("photos sent while the form is open stay sent on the phone after finishing 
     await expect(page.locator('[data-photo="before"]')).not.toContainText("not sent yet");
     await expect(page.locator('[data-photo="after"]')).not.toContainText("not sent yet");
   } finally {
-    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+    await cleanUp(api, id);
   }
 });
 
@@ -312,7 +326,7 @@ test("photos an earlier version left marked not sent read as sent once the serve
     ]);
     expect(kept.ops).toEqual([expect.objectContaining({ kind: "work-photo", failed: "Photo refused earlier" })]);
   } finally {
-    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+    await cleanUp(api, id);
   }
 });
 
@@ -359,6 +373,6 @@ test("leaving a visit straight after typing on a full phone says so, keeps what 
     expect((await workOnPhone(page, title)).values).toEqual(saved.values);
     expect(errors).toEqual([]);
   } finally {
-    await api.post(`/api/work-orders/${id}/cancel`, { data: { reason: "e2e cleanup" } });
+    await cleanUp(api, id);
   }
 });
