@@ -221,6 +221,7 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
               ? { taxMode: "off" }
               : {}),
           plans: m.plans.map((p) => ({ planId: p.planId, itemId: String(f.get(`plan-${p.planId}`) ?? "") || null })),
+          serviceItems: m.serviceItems.map((i) => ({ serviceItemId: i.serviceItemId, itemId: String(f.get(`service-item-${i.serviceItemId}`) ?? "") || null })),
         },
       });
       await Promise.all([mapping.reload(), onSaved()]);
@@ -271,7 +272,7 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
   return (
     <form className="card stack" onSubmit={save} key={JSON.stringify(m) + active.length + activeAccounts.length + activeCodes.length}>
       <h2>Products and services</h2>
-      <p className="muted small">Each invoice line goes to QuickBooks under a product or service. Plan installments use their plan&apos;s item; everything else uses the item for other charges.</p>
+      <p className="muted small">Each invoice line goes to QuickBooks under a product or service. Plan installments use their plan&apos;s item and lines written from a service item use that item&apos;s; everything else uses the item for other charges.</p>
       {items.error && <p className="error">{items.error}</p>}
       <div className="grid">
         <label>
@@ -283,6 +284,13 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
             {p.planName}
             {!p.active && " (inactive plan)"}
             {select(`plan-${p.planId}`, p.item?.id ?? null, "Same as other charges")}
+          </label>
+        ))}
+        {m.serviceItems.map((i) => (
+          <label key={i.serviceItemId}>
+            {i.name}
+            {!i.active && " (switched off)"}
+            {select(`service-item-${i.serviceItemId}`, i.item?.id ?? null, "Same as other charges")}
           </label>
         ))}
         <label>

@@ -1,11 +1,13 @@
 "use client";
 
-import type { WorkType } from "@aerowise/domain";
+import { SERVICE_ITEM_UNIT_LABELS, type ServiceItem, type WorkType } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
+import { useFeature } from "@/lib/features";
+import { money } from "@/lib/format";
 
 interface SiteOption {
   id: string;
@@ -20,6 +22,8 @@ function NewWorkOrder() {
   const fixedSite = params.get("siteId");
   const [search, setSearch] = useState("");
   const types = useLoad<{ items: WorkType[] }>("/work-types");
+  const catalogOn = useFeature("service_items");
+  const catalog = useLoad<{ items: ServiceItem[] }>(catalogOn ? "/service-items" : null);
   const list = useLoad<{ items: SiteOption[] }>(fixedSite ? null : `/sites?limit=50${search ? `&search=${encodeURIComponent(search)}` : ""}`);
   const one = useLoad<{ id: string; addressLine1: string; city: string; customer: { displayName: string } }>(fixedSite ? `/sites/${fixedSite}` : null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +38,14 @@ function NewWorkOrder() {
     const v = formValues(event.currentTarget);
     setError(null);
     try {
-      const lines = v.lineDescription && v.linePrice ? [{ description: v.lineDescription, quantity: Number(v.lineQuantity ?? "1"), unitPriceCents: Math.round(Number(v.linePrice) * 100) }] : [];
+      // A catalog item fills in what was left blank.
+      const item = catalog.data?.items.find((i) => i.id === v.lineServiceItemId);
+      const description = v.lineDescription ?? (item ? item.description || item.name : undefined);
+      const priceCents = v.linePrice !== undefined ? Math.round(Number(v.linePrice) * 100) : item?.unitPriceCents;
+      const lines =
+        description && priceCents !== undefined
+          ? [{ description, quantity: Number(v.lineQuantity ?? "1"), unitPriceCents: priceCents, taxable: item?.taxable ?? false, serviceItemId: item?.id ?? null }]
+          : [];
       const wo = await api<{ id: string }>("/work-orders", {
         method: "POST",
         body: { siteId: v.siteId, workTypeId: v.workTypeId, title: v.title, description: v.description ?? "", priority: v.priority ?? "normal", requestedOn: v.requestedOn, draft: v.draft === "on", lines },
@@ -103,6 +114,16 @@ function NewWorkOrder() {
       </div>
       <fieldset className="stack">
         <legend>Planned charge (optional)</legend>
+        {catalog.data && catalog.data.items.length > 0 && (
+          <select name="lineServiceItemId" defaultValue="" aria-label="Service item">
+            <option value="">Not from the catalog</option>
+            {catalog.data.items.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name} ({money(i.unitPriceCents)} {SERVICE_ITEM_UNIT_LABELS[i.unit]})
+              </option>
+            ))}
+          </select>
+        )}
         <div className="row">
           <input name="lineDescription" placeholder="Description" aria-label="Line description" maxLength={500} />
           <input name="lineQuantity" type="number" min="0.001" step="0.001" defaultValue="1" aria-label="Quantity" />
