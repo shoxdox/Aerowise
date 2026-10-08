@@ -303,3 +303,12 @@ Not deployed by this PR. Steps for whoever deploys it to staging after review (C
 4. Reseed the public demo (`pnpm db:reseed-demo` through the usual staging command) so its story gains the three work orders. Prospect demos and trials keep their data and gain no story.
 5. Walk owner and office through: Work list, a work order from a site, "Turn into work order" on an inbox issue and a customer request (twice, to see the same order), scheduling a visit, the schedule badge and filter, unscheduling, completing without a field record, cancelling. As technician: the phone route still lists inspections only (work visits arrive with SW-2).
 6. Rollback: turning the flag off (empty `AEROWISE_FEATURES`, redeploy) hides creation and keeps existing work readable. Once a work job exists, the floor is SW-1: do not deploy a SHA from before 0048 against that database.
+
+## Work forms (SW-F part 2) on staging
+
+Not deployed by this PR. Migration 0051 adds a purpose to every form version (existing ones become inspection forms), the two new signed document kinds, and links the starter repair and service-call kinds of work to their forms. The API adds the built-in forms (the inspection form and the repair and service-call work forms) when it starts, and `pnpm db:seed` does the same; neither needs a setting.
+
+1. Deploy the merged SHA to staging as usual. Afterwards `select key, version, purpose from inspection_templates where organization_id is null order by key` lists `aerobic-standard` (inspection), `work-repair` and `work-service-call` (work), and `select key, default_form_template_key from work_types where key in ('repair', 'service_call')` shows each company's repair and service call pointing at them (a company that had already chosen another key keeps it).
+2. As technician, reload `/tech` and open an inspection stop: the inspection form is unchanged. A phone or API still on an earlier release keeps getting the inspection form, because it only reads the `aerobic-standard` key; the database also refuses an inspection on a work form whichever release writes it.
+3. With `AEROWISE_FEATURES=work_orders`, an owner can save a company version of a work form (`POST /api/form-templates/work-repair/versions`); nothing on the phone uses work forms until SW-2.
+4. Rollback: an earlier release ignores the new column, kinds and forms, so deploying it back is safe; the forms stay and are picked up again on the next deploy. Do not roll back below the phone floor a39e875 or below SW-1 once work jobs exist.
