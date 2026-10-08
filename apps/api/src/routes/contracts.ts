@@ -34,6 +34,7 @@ import {
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
+import { requireSystemConfirmation, siteSystemWarning } from "../lib/system-categories.ts";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { usedCounts } from "../lib/coverage.ts";
@@ -533,7 +534,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (!site) throw notFound("Site");
       const terms = await activePlanTerms(organizationId, req.query.planId);
       const { terms: t, added, scheduleNotice } = await siteVisitTerms(db, organizationId, site.id, req.query.startOn, terms);
-      return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null, scheduleNotice };
+      const systemWarning = await siteSystemWarning(db, organizationId, site.id, terms.serviceType);
+      return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null, scheduleNotice, systemWarning };
     },
   );
 
@@ -561,6 +563,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (!site.active) throw unprocessable("This site is inactive");
       const terms = await activePlanTerms(organizationId, req.body.planId, req.body.priceCents);
       const contractId = await db.transaction().execute(async (trx) => {
+        // SW-7: a warning the office confirms, never a hard refusal.
+        await requireSystemConfirmation(trx, organizationId, site.id, terms.serviceType, req.body.confirmSystemCategory);
         const created = await insertContract(trx, organizationId, {
           siteId: site.id,
           startOn: req.body.startOn,

@@ -126,6 +126,22 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
         </details>
       )}
 
+      {site.completedWork.length > 0 && (
+        <div className="stack" data-testid="completed-work">
+          <h3>Completed work</h3>
+          <ul>
+            {site.completedWork.map((w) => (
+              <li key={w.id}>
+                <a href={`/api${w.url}`} target="_blank" rel="noreferrer">
+                  {w.title}, completed {day(w.completedOn)}
+                </a>
+                <span className="muted small"> · {w.label} · work completion summary</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {site.serviceRequests.length > 0 && (
         <div className="stack">
           <h3>Your requests</h3>

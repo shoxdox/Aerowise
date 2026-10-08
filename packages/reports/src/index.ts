@@ -8,3 +8,4 @@ export * from "./watermark.ts";
 export * from "./call-sheet.ts";
 export * from "./fonts.ts";
 export * from "./disposal-log.ts";
+export * from "./completion-summary.ts";

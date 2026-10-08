@@ -41,3 +41,4 @@ export * from "./work-sync.ts";
 export * from "./plans.ts";
 export * from "./deposits.ts";
 export * from "./pumping.ts";
+export * from "./completion.ts";
