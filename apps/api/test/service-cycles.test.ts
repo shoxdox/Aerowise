@@ -30,8 +30,8 @@ async function maintenanceType(api: Api) {
 const pumpingCycle = (workTypeId: string, extra: object = {}) => ({ cycleKey: "pumping", label: "Tank pumping", serviceType: "pumping", workTypeId, schedule: { kind: "every_months", everyMonths: 6, windowDays: 30 }, ...extra });
 
 /** A 12-month plan with 2 inspections and the given cycles (and inspections unless `aerobic` is false). */
-async function cyclePlan(api: Api, cycles: object[], aerobic = true) {
-  const plan = (await api.post("/plans", { name: "Aerobic plus pumping", termMonths: 12, visitsPerTerm: 2, priceCents: 40000 })).json();
+async function cyclePlan(api: Api, cycles: object[], aerobic = true, name = aerobic ? "Aerobic plus pumping" : "Pumping only") {
+  const plan = (await api.post("/plans", { name, termMonths: 12, visitsPerTerm: 2, priceCents: 40000 })).json();
   const res = await api.post(`/plans/${plan.id}/versions`, { termsText: null, options: [], coverage: [], serviceCycles: cycles, aerobic });
   expect(res.statusCode, res.body).toBe(201);
   return res.json() as { id: string; currentVersionId: string; versions: { aerobic: boolean; serviceCycles: { cycleKey: string }[] }[] };
@@ -582,5 +582,78 @@ describe("held records and renewals", () => {
     const r = (await t.api.post(`/contracts/${a.id}/renewal`, { send: false })).json();
     const view = (await client(ctx.app).get(`/renew/${(r.link as string).split("/renew/")[1]}`)).json();
     expect(view.cycles).toEqual(["Aerobic inspections: 2 visits per term", "Tank pumping: Every 6 months, within 30 days of the due date"]);
+  });
+});
+
+describe("offers and imports never turn cycles into inspections", () => {
+  it("offers a pumping-only renewal at a county that adds visits as pumping, without the county's inspection visits, through signing and activation", async () => {
+    ctx.now = new Date("2026-10-07T18:00:00Z");
+    const t = await createTenant(ctx, "Org A");
+    await t.api.post(`/customers/${t.customer.id}/contacts`, { name: "Billing", email: "billing@orga.test", type: "billing" });
+    expect((await t.api.post("/billing/stripe/connect", {})).statusCode).toBe(200);
+    await t.api.post("/billing/stripe/refresh", {});
+    const j = ((await t.api.get("/jurisdictions")).json().items as { id: string; key: string }[]).find((x) => x.key === "tx-hays-county")!;
+    const hays = async (siteId: string) => {
+      expect((await t.api.patch(`/sites/${siteId}`, { county: "Hays", state: "TX" })).statusCode).toBe(200);
+      expect((await t.api.put(`/sites/${siteId}/jurisdiction`, { jurisdictionId: j.id, evidenceKind: "authority_determination", evidenceReference: "Unincorporated; confirmed by phone 2026-10-06" })).statusCode).toBe(200);
+    };
+    const site2 = (await t.api.post(`/customers/${t.customer.id}/sites`, { addressLine1: "2 Main St", city: "Kyle" })).json();
+    await hays(t.site.id);
+    await hays(site2.id);
+    const pumpType = await workTypeId(t.api, "pumping");
+    const pumpOnly = await cyclePlan(t.api, [pumpingCycle(pumpType)], false);
+    const mixed = await cyclePlan(t.api, [pumpingCycle(pumpType)]);
+    // Contracts from before the county's profile began, renewed into a term under it.
+    const pumpContract = await contractOn(t, pumpOnly.id, "2025-11-01");
+    const mixedContract = await contractOn(t, mixed.id, "2025-11-01", site2.id);
+    const offer = async (contractId: string) => {
+      const r = await t.api.post(`/contracts/${contractId}/renewal`, { send: false });
+      expect(r.statusCode, r.body).toBe(201);
+      return r.json() as { id: string; link: string };
+    };
+    const terms = (id: string) => ctx.db.selectFrom("renewals").select(["serviceType", "visitsPerTerm", "customerType", "startOn", "endOn"]).where("id", "=", id).executeTakeFirstOrThrow();
+
+    // With inspections the county adds its visits (2 become 4); pumping only, it does not.
+    const m = await offer(mixedContract.id);
+    expect(await terms(m.id)).toMatchObject({ serviceType: "aerobic_inspection", visitsPerTerm: 4 });
+    const p = await offer(pumpContract.id);
+    expect(await terms(p.id)).toMatchObject({ serviceType: "pumping", visitsPerTerm: 2, startOn: "2026-11-01", endOn: "2027-10-31" });
+
+    const token = p.link.split("/renew/")[1]!;
+    const view = (await client(ctx.app).get(`/renew/${token}`)).json();
+    expect(view.terms).toMatchObject({ serviceType: "pumping", visitsPerTerm: 2 });
+    expect(view.cycles).toEqual(["Tank pumping: Every 6 months, within 30 days of the due date"]);
+    const signed = await client(ctx.app).post(`/renew/${token}/sign`, { version: view.version, contact: { email: "billing@orga.test" }, signerName: "Pat Homeowner", signature: { kind: "typed" }, agree: true });
+    expect(signed.statusCode, signed.body).toBe(200);
+    const doc = await ctx.db.selectFrom("signedDocuments").select("content").where("renewalId", "=", p.id).executeTakeFirstOrThrow();
+    expect(doc.content).toMatchObject({ term: { serviceType: "pumping", visitsPerTerm: 2 }, cycles: [{ cycleKey: "pumping", label: "Tank pumping" }] });
+
+    const activated = await t.api.post(`/renewals/${p.id}/activate`, {});
+    expect(activated.statusCode, activated.body).toBe(200);
+    const next = await ctx.db.selectFrom("contracts").select("id").where("previousContractId", "=", pumpContract.id).executeTakeFirstOrThrow();
+    const c = (await t.api.get(`/contracts/${next.id}`)).json() as ContractDetail;
+    expect(c.serviceType).toBe("pumping");
+    expect(visitsOf(c, "pumping")).toEqual([
+      ["pumping", 1, "2027-03-31", "2027-05-30", "2027-04-30"],
+      ["pumping", 2, "2027-10-01", "2027-10-31", "2027-10-31"],
+    ]);
+    expect(c.obligations.filter((o) => o.serviceType === "aerobic_inspection")).toEqual([]);
+    expect(await ctx.db.selectFrom("filings").select("id").where("contractId", "=", next.id).execute()).toEqual([]);
+  });
+
+  it("an import names plans with pumping or maintenance and creates no contract from them", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const pumpType = await workTypeId(t.api, "pumping");
+    await t.api.post("/plans", { name: "Annual Aerobic", termMonths: 12, visitsPerTerm: 3, priceCents: 27500 });
+    await cyclePlan(t.api, [pumpingCycle(pumpType)], false);
+    await cyclePlan(t.api, [pumpingCycle(pumpType)]);
+    const csv = ["Name,Address,City,Plan,Start Date", "Plain,1 A St,Austin,Annual Aerobic,3/1/2026", "Pumper,2 B St,Austin,Pumping only,3/1/2026", "Mixed,3 C St,Austin,Aerobic plus pumping,3/1/2026"].join("\n");
+    const imp = (await t.api.post("/imports", { filename: "c.csv", contentBase64: Buffer.from(csv).toString("base64") })).json();
+    const messages = (imp.rows as { messages: string[] }[]).map((r) => r.messages.filter((m) => /pumping or maintenance/.test(m)));
+    expect(messages).toEqual([[], [expect.stringContaining('Plan "Pumping only" includes pumping or maintenance')], [expect.stringContaining('Plan "Aerobic plus pumping" includes pumping or maintenance')]]);
+    const done = (await t.api.post(`/imports/${imp.id}/commit`, {})).json();
+    expect(done.result).toEqual({ customers: 3, sites: 3, contracts: 1 });
+    const kinds = await ctx.db.selectFrom("serviceObligations").select("serviceType").distinct().where("organizationId", "=", t.org.id).execute();
+    expect(kinds).toEqual([{ serviceType: "aerobic_inspection" }]);
   });
 });

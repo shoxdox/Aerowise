@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, contractInstallments, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
+import { addDays, buildIntervalSchedule, contractInstallments, parseServiceCycles, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
 import { insertContract, termsForSite, type ContractCycles } from "./contracts.ts";
 import { loadPlanVersion } from "./plans.ts";
@@ -99,9 +99,33 @@ export async function offerTerms(
           planVersionId: contract.planVersionId,
         };
   const priceCents = override.priceCents ?? base.priceCents;
+  // A version without inspections (SW-9) is offered as its own service: no authority visit
+  // rules, the site's own customer type, its first cycle's kind, and its visits in the term.
+  const cycles = base.planVersionId ? await versionCycles(db, organizationId, base.planVersionId) : null;
+  if (cycles && !cycles.aerobic && cycles.cycles.length) {
+    const site = await db.selectFrom("sites").select("customerType").where("organizationId", "=", organizationId).where("id", "=", contract.siteId).executeTakeFirstOrThrow();
+    const visits = cycles.cycles.reduce((n, c) => n + buildIntervalSchedule(startOn, base.termMonths, c.schedule).length, 0);
+    return {
+      ...base,
+      customerType: site.customerType,
+      serviceType: cycles.cycles[0]!.serviceType,
+      visitsPerTerm: visits ? Math.min(visits, 24) : base.visitsPerTerm,
+      planVersionId: base.planVersionId ?? null,
+      priceCents,
+      autoRenew: contract.autoRenew,
+      startOn,
+      endOn: termEndOn(startOn, base.termMonths),
+    };
+  }
   // The offer shows the visits the new contract will have under the site's authority.
   const terms = await termsForSite(db, organizationId, contract.siteId, startOn, base);
   return { ...terms, planVersionId: terms.planVersionId ?? null, priceCents, autoRenew: contract.autoRenew, startOn, endOn: termEndOn(startOn, terms.termMonths) };
+}
+
+/** A plan version's cycles (SW-9); null when it is not one of this organization's. */
+async function versionCycles(db: Executor, organizationId: string, versionId: string) {
+  const v = await db.selectFrom("planVersions").select("serviceCycles").where("organizationId", "=", organizationId).where("id", "=", versionId).executeTakeFirst();
+  return v ? parseServiceCycles(v.serviceCycles) : null;
 }
 
 export interface ContractRow {
