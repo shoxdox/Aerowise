@@ -121,6 +121,14 @@ export default function WorkOrderPage() {
         )}
       </dl>
       <p className="muted small">Work orders never count as an inspection visit, never open a filing and never go to an authority.</p>
+      {fieldWork && w.status === "completed" && !w.completedWithoutRecordReason && (
+        <p>
+          <a href={`/api/work-orders/${w.id}/completion-summary.pdf`} target="_blank" rel="noreferrer" data-testid="completion-summary">
+            Work completion summary (PDF)
+          </a>{" "}
+          <span className="muted small">· the customer&apos;s copy, also in their portal</span>
+        </p>
+      )}
 
       {problem && <p className="error">{problem}</p>}
 

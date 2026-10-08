@@ -135,6 +135,7 @@ describe("the office is warned before visits are added", () => {
       visitsPerTerm: 4,
       warning: "Quarterly Fixture County (fictional) requires an inspection at least every 3 months, so this contract needs 4 visits instead of the plan's 3, at the same price. Create it with 4 visits?",
       scheduleNotice: null,
+      systemWarning: null,
     });
 
     const body = { planId: plan.id, startOn: "2026-01-15" };
@@ -156,7 +157,7 @@ describe("the office is warned before visits are added", () => {
   it("does not ask when the plan already has enough visits", async () => {
     const t = await tenantIn(ctx, "Example County");
     const plan = await t.plan("residential");
-    expect((await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${plan.id}&startOn=2026-01-15`)).json()).toEqual({ planVisits: 3, visitsPerTerm: 3, warning: null, scheduleNotice: null });
+    expect((await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${plan.id}&startOn=2026-01-15`)).json()).toEqual({ planVisits: 3, visitsPerTerm: 3, warning: null, scheduleNotice: null, systemWarning: null });
     expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-15" })).statusCode).toBe(201);
   });
 });

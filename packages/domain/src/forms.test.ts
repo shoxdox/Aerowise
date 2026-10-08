@@ -7,6 +7,7 @@ import {
   keyAllowedForPurpose,
   signatureCapture,
   signatureProblems,
+  signaturesForVisit,
   snapshotSha256,
   STARTER_WORK_TEMPLATES,
 } from "./forms.ts";
@@ -47,6 +48,25 @@ describe("template definitions with signatures", () => {
     expect(signatureProblems(def, new Set())).toEqual([{ key: "customer", label: "Customer sign-off", problem: "missing", message: "Customer sign-off is required" }]);
     expect(signatureProblems(def, new Set(["customer"]))).toEqual([]);
   });
+
+  it("asks for a final-visit sign-off only on the final visit, and every other one on every visit (SW-7)", () => {
+    const def = templateDefinition.parse({
+      fields: [{ key: "notes", label: "Notes", section: "A", type: "text" }],
+      photos: [],
+      signatures: [
+        { key: "completion", label: "Completion sign-off", signer: "customer", required: true, finalVisitOnly: true },
+        { key: "visit", label: "Visit sign-off", signer: "customer", required: true },
+      ],
+    });
+    expect(signaturesForVisit(def, false).map((s) => s.key)).toEqual(["visit"]);
+    expect(signaturesForVisit(def, true).map((s) => s.key)).toEqual(["completion", "visit"]);
+    expect(signatureProblems(def, new Set(["visit"]), false)).toEqual([]);
+    expect(signatureProblems(def, new Set(["visit"]), true).map((p) => p.key)).toEqual(["completion"]);
+    // Without saying which visit, every required signature is asked for, as before SW-7.
+    expect(signatureProblems(def, new Set(["visit"])).map((p) => p.key)).toEqual(["completion"]);
+    // A definition saved without the flag reads back without it.
+    expect(templateDefinition.parse({ ...def, signatures: [{ key: "visit", label: "Visit sign-off", signer: "customer", required: true }] }).signatures![0]).not.toHaveProperty("finalVisitOnly");
+  });
 });
 
 describe("starter work templates", () => {
@@ -66,6 +86,8 @@ describe("starter work templates", () => {
       ["work-repair", "work"],
       ["work-service-call", "work"],
       ["work-pumping", "work"],
+      ["work-conventional", "work"],
+      ["work-installation", "work"],
     ]);
     expect(BUILT_IN_FORMS[0]).toMatchObject({ version: DEFAULT_TEMPLATE.version, definition: DEFAULT_TEMPLATE.definition });
   });

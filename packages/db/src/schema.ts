@@ -205,6 +205,8 @@ export interface WastewaterSystemsTable {
   treatmentType: string | null;
   disposalType: string | null;
   chlorinationMethod: string | null;
+  /** SW-7: null until set; see SYSTEM_CATEGORIES. */
+  systemCategory: "aerobic" | "conventional" | "low_pressure_dosing" | "drip" | "holding_tank" | "lift_station" | "other" | "unknown" | null;
   notes: string | null;
   active: Generated<boolean>;
   createdAt: CreatedAt;

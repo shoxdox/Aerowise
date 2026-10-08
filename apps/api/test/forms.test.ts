@@ -44,11 +44,15 @@ describe("work forms", () => {
     const t = await createTenant(ctx, "Org A");
     const forms = (await t.api.get("/form-templates?purpose=work")).json().items;
     expect(forms.map((f: { key: string; version: number; purpose: string; builtIn: boolean }) => [f.key, f.version, f.purpose, f.builtIn])).toEqual([
+      ["work-conventional", 1, "work", true],
+      ["work-installation", 1, "work", true],
       ["work-pumping", 1, "work", true],
       ["work-repair", 1, "work", true],
       ["work-service-call", 1, "work", true],
     ]);
-    expect(forms[1].definition.signatures).toEqual([{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: false }]);
+    expect(forms[3].definition.signatures).toEqual([{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: false }]);
+    // SW-7: the installation's completion sign-off is asked for once, on the final visit.
+    expect(forms[1].definition.signatures).toEqual([{ key: "customer_completion", label: "Customer completion sign-off", signer: "customer", required: true, finalVisitOnly: true }]);
     // The inspection form is listed under its own purpose, and never as a work form.
     const inspection = (await t.api.get("/form-templates?purpose=inspection")).json().items;
     expect(inspection.map((f: { key: string }) => f.key)).toEqual([DEFAULT_TEMPLATE_KEY]);
@@ -57,8 +61,9 @@ describe("work forms", () => {
     expect(types.map((x) => [x.key, x.defaultFormTemplateKey])).toEqual([
       ["pumping", "work-pumping"],
       ["repair", "work-repair"],
-      ["installation", null],
+      ["installation", "work-installation"],
       ["service_call", "work-service-call"],
+      ["conventional_service", "work-conventional"],
     ]);
 
     // A technician reads forms; only an owner saves versions.
@@ -219,6 +224,8 @@ describe("upgrading a database written by the earlier release", () => {
       expect(templates.filter((r) => r.organizationId === org.id)).toEqual([{ organizationId: org.id, key: DEFAULT_TEMPLATE_KEY, purpose: "inspection" }]);
       expect(templates.filter((r) => r.organizationId === null).map((r) => [r.key, r.purpose])).toEqual([
         [DEFAULT_TEMPLATE_KEY, "inspection"],
+        ["work-conventional", "work"],
+        ["work-installation", "work"],
         ["work-pumping", "work"],
         ["work-repair", "work"],
         ["work-service-call", "work"],
@@ -232,7 +239,7 @@ describe("upgrading a database written by the earlier release", () => {
       // A company created after the upgrade starts linked too.
       const fresh = await db.insertInto("organizations").values({ name: "New Co" } as never).returning("id").executeTakeFirstOrThrow();
       const freshTypes = await db.selectFrom("workTypes").select(["key", "defaultFormTemplateKey"]).where("organizationId", "=", fresh.id).orderBy("position").execute();
-      expect(freshTypes.map((x) => x.defaultFormTemplateKey)).toEqual(["work-pumping", "work-repair", null, "work-service-call"]);
+      expect(freshTypes.map((x) => x.defaultFormTemplateKey)).toEqual(["work-pumping", "work-repair", "work-installation", "work-service-call", "work-conventional"]);
       // The older release still finds its own inspection form, not a work form.
       expect(await old.activeTemplate(db, org.id)).toMatchObject({ key: DEFAULT_TEMPLATE_KEY, version: 1 });
       // Adding the built-in forms again changes nothing.
