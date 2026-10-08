@@ -116,6 +116,9 @@ export async function richTenant(c: TestContext) {
   const manifest = await s.techApi.putImage(`/disposal/loads/${loadClient}/photos/${crypto.randomUUID()}`, JPEG, { "x-photo-key": "manifest" });
   expect(manifest.statusCode, manifest.body).toBe(201);
 
+  // SW-7: a two-visit installation finished on its final visit with the completion sign-off.
+  const installation = await install(s.api, s.techApi, { techId: s.tech.id, siteId: s.site.id });
+
   const one = async (q: ReturnType<typeof sql<{ id: string }>>) => (await q.execute(c.db)).rows[0]?.id;
   const org = s.org.id;
   const ids: Record<string, string | undefined> = {
@@ -142,7 +145,39 @@ export async function richTenant(c: TestContext) {
     // Keyed by parameter name where one path prefix takes two kinds of id.
     "disposal/loads:clientId": loadClient,
   };
-  return { ...s, ids, formSaved: form.statusCode };
+  return { ...s, ids, installation, formSaved: form.statusCode };
+}
+
+/**
+ * SW-7: an installation work order of two visits on the technician's phone; the second is the
+ * final visit and carries the customer's completion sign-off, which completes the work order.
+ * Returns the work order id.
+ */
+export async function install(office: Api, phone: Api, at: { techId: string; siteId: string }) {
+  const type = ((await office.get("/work-types")).json().items as { id: string; key: string }[]).find((t) => t.key === "installation")!;
+  const wo = (await office.post("/work-orders", { siteId: at.siteId, workTypeId: type.id, title: "New conventional system" })).json();
+  const form = (await phone.get("/form-templates/work-installation")).json();
+  for (const [day, finalVisit] of [["2026-03-01", false], ["2026-03-08", true]] as const) {
+    const sch = await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: at.techId, scheduledDate: day });
+    expect(sch.statusCode, sch.body).toBe(201);
+    const jobId = (sch.json().visits as { jobId: string }[]).at(-1)!.jobId;
+    const clientId = crypto.randomUUID();
+    const summary = { workOrder: wo.title, visit: jobId, anotherVisitNeeded: !finalVisit };
+    const sync = (status: "draft" | "completed", revision: number) =>
+      phone.put("/work/sync", { clientId, jobId, templateId: form.id, status, revision, arrivedAt: `${day}T15:00:00Z`, completedAt: status === "completed" ? `${day}T17:00:00Z` : null, values: { system_status: "new", bedrooms: 3, tank_sizes: "1,000 gal", work_performed: "Set the tank" }, summary, finalVisit });
+    await sync("draft", 1);
+    for (const key of finalVisit ? ["install_location", "as_built"] : ["install_location"]) {
+      expect((await phone.putImage(`/work/${clientId}/photos/${crypto.randomUUID()}`, JPEG, { "x-photo-key": key })).statusCode).toBe(201);
+    }
+    if (finalVisit) {
+      const signed = await phone.put(`/work/${clientId}/signatures/${crypto.randomUUID()}`, { requirementKey: "customer_completion", signerName: "Pat Homeowner", capture: { kind: "typed" }, summary, summarySha256: await snapshotSha256(summary), consentText: "I confirm this work was done.", signedAt: `${day}T16:55:00Z` });
+      expect(signed.statusCode, signed.body).toBe(201);
+    }
+    const done = await sync("completed", 2);
+    expect(done.json(), done.body).toMatchObject({ status: "completed", validationStatus: "valid", finalVisit });
+  }
+  expect((await office.get(`/work-orders/${wo.id}`)).json().status).toBe("completed");
+  return wo.id as string;
 }
 
 type Api = ReturnType<typeof client>;

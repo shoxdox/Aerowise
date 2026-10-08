@@ -12,8 +12,7 @@ import { BODIES, EXTRA_PROBES, fingerprint, LIST_QUERY, NO_FOREIGN_IDS, pumpOut,
 // so a refusal comes from the tenant check, not from validation: it must be the very same answer
 // (status, error and message) an id nobody has gets, never a schema 400 and never a success. Lists must answer 200
 // with items and carry none of the other company's ids, and nothing of the other company may
-// change. The swept surface is the core six flags today: SW-6, SW-7 and SW-9 routes and flags are
-// added to SCOPE, ON and the bodies here as they merge.
+// change. Scope is current through SW-7; SW-9's routes and fixtures are added when it merges.
 
 // Every flag the build knows, so each slice's routes are registered and swept as it merges.
 const ctx = setupTestApp({ features: [...FEATURES], payments: new TestPaymentProvider() });
@@ -101,6 +100,17 @@ describe("SW-12 row 17: tenant sweep over the service-workflow routes", () => {
     expect(wrong, "routes that did not refuse another company's ids").toEqual([]);
     expect(lists, "lists that failed or showed another company's records").toEqual([]);
     expect(swept).toBeGreaterThanOrEqual(50);
+
+    // SW-7: B's own completion summary is a PDF, so the identical-to-unknown answer A got for it
+    // above came from the tenant check, not from the work being unfinished.
+    const summary = (cookie: string, woId: string) => ctx.app.inject({ method: "GET", url: `/work-orders/${woId}/completion-summary.pdf`, headers: { cookie } });
+    const mine = await summary(b.cookie, b.installation);
+    expect(mine.statusCode).toBe(200);
+    expect(mine.headers["content-type"]).toContain("application/pdf");
+    const theirs = await summary(a.cookie, b.installation);
+    const unknown = await summary(a.cookie, crypto.randomUUID());
+    expect(`${theirs.statusCode} ${theirs.body}`).toBe(`${unknown.statusCode} ${unknown.body}`);
+    expect((await summary(b.cookie, b.ids["work-orders"]!)).statusCode, "B's completed repair has a summary too").toBe(200);
 
     // Forms are keyed per company: A sees its own repair form, never B's saved version.
     expect(b.formSaved).toBe(201);
