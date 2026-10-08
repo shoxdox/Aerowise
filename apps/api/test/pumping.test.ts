@@ -1,6 +1,7 @@
 import { toMilligallons } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
+import { emptyEndedDemo } from "../src/lib/demo-lifecycle.ts";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 import { JPEG } from "./inspection-helpers.ts";
 
@@ -467,5 +468,31 @@ describe("what a technician reads", () => {
     expect([pr.items.length, pr.nextOffset]).toEqual([1, 1]);
     expect((await s.api.get(`/pumping-records?siteId=${s.site.id}&limit=1&offset=2`)).json().nextOffset).toBeNull();
     expect((await s.api.get("/disposal/loads?limit=201")).statusCode).toBe(400);
+  });
+});
+
+describe("an ended demo", () => {
+  it("takes its trucks, pump-outs, disposal records and manifest photos with it; another company keeps its own", async () => {
+    const demo = await company(ctx, "Ending demo", true);
+    const real = await company(ctx, "Real company");
+    for (const s of [demo, real]) {
+      const p = await pumped(s);
+      const body = load(s, [p.groupId]);
+      expect((await s.aApi.put("/disposal/loads/sync", body)).statusCode).toBe(201);
+      expect((await s.aApi.putImage(`/disposal/loads/${body.clientId}/photos/${uuid()}`, JPEG, { "x-photo-key": "manifest" })).statusCode).toBe(201);
+    }
+    const url = (s: Company) => s.api.get("/disposal/loads").then((r) => r.json().items[0].photos[0].url as string);
+    const [demoPhoto, realPhoto] = [await url(demo), await url(real)];
+    expect((await ctx.app.inject({ method: "GET", url: demoPhoto })).statusCode).toBe(200);
+
+    await sql`update organizations set demo_expires_at = now() - interval '1 hour' where id = ${demo.org.id}`.execute(ctx.db);
+    expect(await emptyEndedDemo(ctx.db, ctx.store, demo.org.id)).toBe(true);
+    for (const table of ["vehicles", "disposal_facilities", "pumping_records", "disposal_loads", "disposal_load_items", "work_attachments"]) {
+      expect([table, await count(table, demo.org.id)]).toEqual([table, 0]);
+      expect([table, await count(table, real.org.id)]).not.toEqual([table, 0]);
+    }
+    expect((await ctx.app.inject({ method: "GET", url: demoPhoto })).statusCode).toBe(404);
+    const kept = await ctx.app.inject({ method: "GET", url: realPhoto });
+    expect([kept.statusCode, kept.rawPayload.equals(JPEG)]).toEqual([200, true]);
   });
 });
