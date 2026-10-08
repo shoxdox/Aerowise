@@ -283,6 +283,58 @@ describe("estimates", () => {
     }
   });
 
+  it("invoices accepted work at the accepted version's discount and tax rate, not the company's current defaults", async () => {
+    const t = await tenant(ctx);
+    const other = await tenant(ctx, "Org B");
+    await t.api.patch("/billing/settings", { defaultTaxRateBps: 0 });
+    const a = await sent(t, { discountCents: 5000 });
+    const accepted = await anon().post(`/estimate/${a.token}/accept`, acceptBody(1, []));
+    expect(accepted.statusCode, accepted.body).toBe(200);
+    const detail = (await t.api.get(`/estimates/${a.estimate.id}`)).json();
+    const woId = detail.workOrder.id as string;
+    expect(detail.acceptance.totals).toEqual({ subtotalCents: 58500, discountCents: 5000, taxableCents: 41154, taxCents: 3395, totalCents: 56895 });
+    // The company's rate changes after acceptance; the accepted price does not.
+    await t.api.patch("/billing/settings", { defaultTaxRateBps: 500 });
+    await other.api.patch("/billing/settings", { defaultTaxRateBps: 300 });
+    const invoiceOf = async () => {
+      const r = await t.api.post(`/work-orders/${woId}/invoice`, {});
+      expect(r.statusCode, r.body).toBe(201);
+      return (await t.api.get(`/invoices/${r.json().invoiceId}`)).json();
+    };
+
+    // Unchanged work bills exactly what was accepted.
+    const first = await invoiceOf();
+    expect(first).toMatchObject({ taxRateBps: 825, discountCents: 5000, subtotalCents: 58500, taxCents: 3395, totalCents: 56895 });
+
+    // Its replacement after a void starts from the accepted price too.
+    expect((await t.api.post(`/invoices/${first.id}/issue`, { send: false })).statusCode).toBe(200);
+    expect((await t.api.post(`/invoices/${first.id}/void`, { reason: "Billed in error" })).statusCode).toBe(200);
+    const second = await invoiceOf();
+    expect(second).toMatchObject({ taxRateBps: 825, discountCents: 5000, totalCents: 56895 });
+
+    // Actual work that differs is still billed as done, at the accepted rate and discount.
+    expect((await t.api.post(`/invoices/${second.id}/discard`, {})).statusCode).toBe(204);
+    const wo = (await t.api.get(`/work-orders/${woId}`)).json();
+    const lines = [...wo.lines.map((l: { description: string; quantity: number; unitPriceCents: number; taxable: boolean }) => ({ description: l.description, quantity: l.quantity, unitPriceCents: l.unitPriceCents, taxable: l.taxable })), { description: "Extra riser", quantity: 1, unitPriceCents: 10000, taxable: true }];
+    const edited = await t.api.patch(`/work-orders/${woId}`, { lines });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const third = await invoiceOf();
+    expect(third).toMatchObject({ taxRateBps: 825, discountCents: 5000, subtotalCents: 68500 });
+
+    // The office can still change the draft's rate and discount, and other companies' work keeps their own defaults.
+    const changed = await t.api.patch(`/invoices/${third.id}`, { discountCents: 0, taxRateBps: 500, lines: third.lines.map((l: { id: string; description: string; quantity: number; unitPriceCents: number; taxable: boolean }) => ({ id: l.id, description: l.description, quantity: l.quantity, unitPriceCents: l.unitPriceCents, taxable: l.taxable })) });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect(changed.json()).toMatchObject({ taxRateBps: 500, discountCents: 0 });
+    const types = (await other.api.get("/work-types")).json().items as { id: string; key: string }[];
+    const plain = await other.api.post("/work-orders", { siteId: other.site.id, workTypeId: types[0]!.id, lines: [{ description: "Labor", quantity: 1, unitPriceCents: 9000, taxable: true }], ready: true });
+    expect(plain.statusCode, plain.body).toBe(201);
+    const plainInvoice = await other.api.post(`/work-orders/${plain.json().id}/invoice`, {});
+    expect(plainInvoice.statusCode, plainInvoice.body).toBe(201);
+    expect((await other.api.get(`/invoices/${plainInvoice.json().invoiceId}`)).json()).toMatchObject({ taxRateBps: 300, discountCents: 0 });
+    // Org B cannot invoice Org A's accepted work.
+    expect((await other.api.post(`/work-orders/${woId}/invoice`, {})).statusCode).toBe(404);
+  });
+
   it("drafts one estimate per inspection issue or request however often it is asked", async () => {
     const t = await tenant(ctx);
     const sr = await ctx.db
