@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 import { OutboxTransport } from "@aerowise/compliance";
 import { DEMO_ORG_NAME, type Database } from "@aerowise/db";
-import { addDays, DEFAULT_TEMPLATE, parseFeatures, snapshotSha256, type Feature } from "@aerowise/domain";
+import { addDays, addMonths, DEFAULT_TEMPLATE, parseFeatures, snapshotSha256, type Feature } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
 import { drainTasks } from "@aerowise/tasks";
 import { buildApp, type App } from "./app.ts";
@@ -32,6 +32,10 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     disposal record with a demo manifest/reference number. Nothing says it is compliant.
 //   - With field work on: a two-visit installation done on the phone, finished yesterday with the
 //     fictional homeowner's completion sign-off; its completion summary is in their portal.
+//   - With service cycles on (SW-9): a fictional pumping-only plan, and a fictional customer
+//     with a conventional system on it from five months ago. Its two pumping visits are frozen on
+//     the contract; the first, due next month, is booked as a work order ready to schedule. They
+//     are never inspections: nothing is reported or filed for them.
 //   - With the plan builder switched on: three fictional plan tiers (Basic, Gold, Platinum) whose
 //     own terms say they are fictional, with different coverage and options, and an intake form
 //     the Gold and Platinum tiers ask at online signing. No real terms or coverage are promised.
@@ -169,6 +173,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   const pumping = work && features.has("field_work") && features.has("pumping");
   // SW-7: an installation recorded on the phone over two visits.
   const fieldWork = work && features.has("field_work");
+  // SW-9: a pumping-only plan's visits, frozen on a contract and booked as work.
+  const cycles = work && tiers && features.has("service_cycles");
   const found = db.selectFrom("organizations").select(["id", "demo"]);
   const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
@@ -476,7 +482,30 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         tierCount++;
       }
     }
-    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates${tiers ? `, ${tierCount} fictional plan tiers` : ""}`);
+    // ---- A pumping-only contract, when service cycles are on (SW-9) ----
+    let cycleOrders = 0;
+    if (cycles) {
+      const types = await owner.get("/work-types");
+      const pumpType = (types.items as { id: string; key: string }[]).find((t) => t.key === "pumping")!;
+      const plan = await owner.post("/plans", { name: "Pumping only (demo)", termMonths: 12, visitsPerTerm: 1, priceCents: 45000 });
+      await owner.post(`/plans/${plan.id}/versions`, {
+        termsText: `DEMO ONLY. "Pumping only (demo)" is a fictional plan of a fictional company, shown to demonstrate pumping visits on a contract. It is not a real agreement, and no service is promised.`,
+        options: [],
+        coverage: [],
+        aerobic: false,
+        serviceCycles: [{ cycleKey: "pumping", label: "Tank pumping", serviceType: "pumping", workTypeId: pumpType.id, schedule: { kind: "every_months", everyMonths: 6, windowDays: 30 }, allowNoVisit: false }],
+      });
+      const customer = await office.post("/customers", { displayName: "Riley Pumpwell (demo)" });
+      const site = await office.post(`/customers/${customer.id}/sites`, { addressLine1: "48 Fictional Hollow Rd", city: "Dripping Springs", state: "TX", postalCode: "78620" });
+      await office.post(`/sites/${site.id}/systems`, { systemCategory: "conventional", manufacturer: "Fictional tank (demo)" });
+      const contract = await office.post(`/sites/${site.id}/contracts`, { planId: plan.id, startOn: addMonths(today, -5) });
+      const first = (contract.obligations as { id: string; serviceType: string; sequence: number }[]).find((o) => o.serviceType === "pumping" && o.sequence === 1);
+      if (first) {
+        await office.post(`/obligations/${first.id}/work-order`);
+        cycleOrders++;
+      }
+    }
+    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates${tiers ? `, ${tierCount} fictional plan tiers` : ""}${cycles ? `, a pumping-only contract with ${cycleOrders} visit booked` : ""}`);
     return true;
   } finally {
     // The story's own sign-ins end with it.
