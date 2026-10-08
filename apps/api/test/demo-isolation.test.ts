@@ -309,7 +309,7 @@ describe("a demo company next to a real one, with real services configured", () 
     expect(new TextDecoder().decode(files["README.txt"])).toMatch(/^DEMO:/);
     // STG-07: each CSV says so on its own, header and every row, ahead of the usual columns.
     const csvs = Object.keys(files).filter((f) => f.endsWith(".csv"));
-    expect(csvs).toHaveLength(22);
+    expect(csvs).toHaveLength(29);
     for (const name of csvs) {
       const lines = new TextDecoder().decode(files[name]).trimEnd().split("\r\n");
       expect(lines[0], name).toMatch(/^aerowise_demo_notice,(id,)?(seq,)?organization_id,/);
