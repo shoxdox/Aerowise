@@ -9,7 +9,7 @@ export const QUICKBOOKS_ENTITY_TYPES = ["customer", "plan", "invoice", "payment"
 export type QuickBooksEntityType = (typeof QUICKBOOKS_ENTITY_TYPES)[number];
 
 /** Per record. "Not connected" is not stored: it is the absence of a connection. */
-export const QUICKBOOKS_SYNC_STATUSES = ["new", "queued", "syncing", "synced", "conflict", "failed", "ignored"] as const;
+export const QUICKBOOKS_SYNC_STATUSES = ["new", "queued", "syncing", "synced", "conflict", "quarantined", "failed", "ignored"] as const;
 export type QuickBooksSyncStatus = (typeof QUICKBOOKS_SYNC_STATUSES)[number];
 
 export const QUICKBOOKS_SYNC_STATUS_LABELS: Record<QuickBooksSyncStatus, string> = {
@@ -18,6 +18,8 @@ export const QUICKBOOKS_SYNC_STATUS_LABELS: Record<QuickBooksSyncStatus, string>
   syncing: "Sending",
   synced: "In QuickBooks",
   conflict: "Needs a decision",
+  // In QuickBooks, but with different totals: nothing more is sent for it until a person settles it.
+  quarantined: "Held: totals differ",
   failed: "Failed",
   ignored: "Not synced",
 };
@@ -30,10 +32,11 @@ export const QUICKBOOKS_CONFLICT_KINDS = [
   "tax_mapping_missing",
   "payment_mismatch",
   "duplicate_number",
+  "tax_total_mismatch",
 ] as const;
 export type QuickBooksConflictKind = (typeof QUICKBOOKS_CONFLICT_KINDS)[number];
 
-export const QUICKBOOKS_ACTIONS = ["match", "create", "use_aerowise", "keep_quickbooks", "recreate", "send_anyway", "retry", "ignore"] as const;
+export const QUICKBOOKS_ACTIONS = ["match", "create", "use_aerowise", "keep_quickbooks", "recreate", "send_anyway", "retry", "ignore", "recheck", "keep_remote"] as const;
 export type QuickBooksAction = (typeof QUICKBOOKS_ACTIONS)[number];
 
 export const QUICKBOOKS_ACTION_LABELS: Record<QuickBooksAction, string> = {
@@ -45,6 +48,8 @@ export const QUICKBOOKS_ACTION_LABELS: Record<QuickBooksAction, string> = {
   send_anyway: "Send the payment anyway",
   retry: "Try again",
   ignore: "Stop syncing this record",
+  recheck: "I corrected it in QuickBooks, check again",
+  keep_remote: "Keep it as is and stop syncing this invoice",
 };
 
 /** What each kind of problem means, what to do, and which choices fix it. The first choice is recommended. */
@@ -83,6 +88,12 @@ export const QUICKBOOKS_CONFLICT_GUIDE: Record<QuickBooksConflictKind | "failed"
     title: "Invoice number already used in QuickBooks",
     explanation: "QuickBooks already has an invoice with this number for a different customer or amount. Link to it only if it is the same invoice.",
     actions: ["ignore", "match"],
+  },
+  tax_total_mismatch: {
+    title: "QuickBooks totals differ",
+    explanation:
+      "QuickBooks created this invoice with a different total or sales tax than Aerowise, for example because QuickBooks recalculated the tax. Aerowise does not change it there. Its payments and refunds wait until this is settled. Correct the invoice in QuickBooks and check again, or keep it as it is and stop syncing it.",
+    actions: ["recheck", "keep_remote"],
   },
   failed: {
     title: "Could not send to QuickBooks",
@@ -240,6 +251,13 @@ export const quickbooksStatus = z.object({
 });
 export type QuickBooksStatus = z.infer<typeof quickbooksStatus>;
 
+export const QUICKBOOKS_TAX_MODES = ["off", "taxcode"] as const;
+export type QuickBooksTaxMode = (typeof QUICKBOOKS_TAX_MODES)[number];
+
+/** A QuickBooks sales tax code: TAX and NON for lines, and the codes (rates) an invoice is taxed at. */
+export const quickbooksTaxCode = z.object({ id: z.string(), name: z.string(), taxable: z.boolean(), active: z.boolean() });
+export type QuickBooksTaxCode = z.infer<typeof quickbooksTaxCode>;
+
 export const quickbooksItem = z.object({ id: z.string(), name: z.string(), type: z.string(), active: z.boolean() });
 export type QuickBooksItem = z.infer<typeof quickbooksItem>;
 /** A bank or clearing account (such as Undeposited Funds) refunds can be paid from. */
@@ -254,6 +272,18 @@ export const quickbooksMapping = z.object({
   refundItem: choice,
   stripeRefundAccount: choice,
   manualRefundAccount: choice,
+  /**
+   * Sales tax. Off: a taxed invoice stays out of QuickBooks (tax_mapping_missing). On: lines
+   * carry the taxable or non-taxable code, and the invoice its sales tax code and tax total.
+   */
+  tax: z.object({
+    mode: z.enum(QUICKBOOKS_TAX_MODES),
+    taxableCode: choice,
+    nontaxableCode: choice,
+    taxRate: choice,
+    /** Off for live QuickBooks companies until sales tax has been checked against a sandbox (gate G-QBO-TAX). */
+    allowed: z.boolean(),
+  }),
   plans: z.array(
     z.object({
       planId: id,
@@ -272,6 +302,10 @@ export const quickbooksMappingInput = z.object({
   refundItemId: z.string().min(1).max(40).nullable().optional(),
   stripeRefundAccountId: z.string().min(1).max(40).nullable().optional(),
   manualRefundAccountId: z.string().min(1).max(40).nullable().optional(),
+  taxMode: z.enum(QUICKBOOKS_TAX_MODES).optional(),
+  taxableCodeRef: z.string().min(1).max(40).nullable().optional(),
+  nontaxableCodeRef: z.string().min(1).max(40).nullable().optional(),
+  taxRateRef: z.string().min(1).max(40).nullable().optional(),
   /** A null item means plan lines use the default item. */
   plans: z.array(z.object({ planId: id, itemId: z.string().min(1).max(40).nullable() })).max(500).optional(),
 });
@@ -331,9 +365,12 @@ export const quickbooksResolveInput = z.object({
   action: z.enum(QUICKBOOKS_ACTIONS),
   /** For "match": the QuickBooks record to link to. */
   externalId: z.string().min(1).max(40).optional(),
+  /** For "keep_remote": why the QuickBooks invoice is kept with different totals. */
+  reason: z.string().trim().max(500).optional(),
 });
 export type QuickBooksResolveInput = z.infer<typeof quickbooksResolveInput>;
 
 /** Whether a record needs a person: a conflict, or a failure with no automatic retry left. */
 export const needsAttention = (r: { status: QuickBooksSyncStatus; nextAttemptAt: Date | string | null }) =>
-  r.status === "conflict" || (r.status === "failed" && !r.nextAttemptAt);
+  r.status === "conflict" ||
+  r.status === "quarantined" || (r.status === "failed" && !r.nextAttemptAt);

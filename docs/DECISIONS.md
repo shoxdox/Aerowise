@@ -771,6 +771,17 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Demo CSVs say they are fictional by themselves**, like the data export (STG-07): a leading `aerowise_demo_notice` column reading `DEMO - FICTIONAL DATA - NOT FILED`, and a `DEMO-` file name.
 - **Cells a spreadsheet would run as formulas** (starting with = + - @, a tab or a return, other than plain numbers) get a leading quote.
 
+## 2026-10-07 · SW-4 QuickBooks sales tax and quarantine
+
+- **Off by default, per connection.** `quickbooks_connections.tax_mode` is `off` unless the owner turns it on. Off is byte-for-byte the earlier invoice payload and the same `tax_mapping_missing` conflict.
+- **Never on for a live QuickBooks company yet.** Turning tax mode on is refused for a `production` connection until gate G-QBO-TAX (a sandbox round trip with automated sales tax, recorded by Codex). Lifting it is a reviewed code change, not a setting. Test and sandbox connections may use it.
+- **Three codes.** Lines carry the taxable or non-taxable code (`TAX`/`NON` in a US company); the invoice carries `TxnTaxDetail` with one sales tax code, stored as `tax_rate_ref` per the plan and sent as `TxnTaxCodeRef`, and Aerowise's `TotalTax`. Codes must be active and of the right kind (taxable or not).
+- **Mismatch is detected after create.** QuickBooks may recalculate tax, so `TotalAmt` and `TotalTax` are compared after every tax-mode create (and after finding an earlier create whose answer was lost). A difference quarantines the link: status `quarantined`, conflict `tax_total_mismatch`, QuickBooks id kept. Quarantine limits the damage; it does not prevent the first wrong remote invoice.
+- **Held, not changed.** A quarantined invoice gets no further updates or voids; its payments and refunds wait as `queued` with a "Held" note. Aerowise never edits or deletes the QuickBooks invoice. "Check again" re-reads it and releases the hold only when both totals match. "Keep it as is" needs a reason, keeps the QuickBooks id, leaves the invoice and its payments out of the sync, and can only be undone by "check again" (a plain retry is not offered).
+- **Lost answers in tax mode.** An invoice found by number for the same customer is treated as the earlier create and compared, instead of raising `duplicate_number` because QuickBooks' recalculated total differs. With tax mode off, the old exact-total rule is unchanged.
+- **Turning tax mode on re-queues** invoices waiting in `tax_mapping_missing`. One entered in QuickBooks by hand under the same number is found there (compared, never created twice).
+- **Rollback floor:** SW-4 once any link is `quarantined`. With every connection's tax mode off and no quarantined links, rolling back below SW-4 is safe.
+
 ## 2026-10-08 · SW-3 Service items and work invoicing (service workflows plan §3.2)
 
 - **Fractions only where they are used.** Migration 0052 adds `invoice_lines.quantity_milli`, set only when a quantity is not a whole number; then it prices the line (`amount_cents = round(quantity_milli * unit_price_cents / 1000)`, half a cent up, the same in Postgres and `milliAmount`) and the integer `quantity` holds it rounded up for its old range check only. Whole-number lines, and every line written before 0052, keep `quantity_milli` null and the original check, so their amounts, PDFs, snapshots and QuickBooks payloads are byte-identical (tested on the payload handed to QuickBooks). Readers show `quantity_milli / 1000` when it is set. The invoice editor never cuts an existing fraction short, even with the flag off.

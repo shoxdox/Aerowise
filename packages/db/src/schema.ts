@@ -964,6 +964,13 @@ export interface QuickbooksConnectionsTable {
   stripeRefundAccountName: Generated<string | null>;
   manualRefundAccountId: Generated<string | null>;
   manualRefundAccountName: Generated<string | null>;
+  taxMode: Generated<"off" | "taxcode">;
+  taxableCodeRef: Generated<string | null>;
+  taxableCodeName: Generated<string | null>;
+  nontaxableCodeRef: Generated<string | null>;
+  nontaxableCodeName: Generated<string | null>;
+  taxRateRef: Generated<string | null>;
+  taxRateName: Generated<string | null>;
   reviewFetchedAt: Timestamp | null;
   reviewRemoteCount: number | null;
   changesSince: Timestamp | null;
