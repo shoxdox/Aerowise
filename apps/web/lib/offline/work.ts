@@ -1,7 +1,7 @@
 "use client";
 
 import type { InspectionValues, SignatureCapture } from "@aerowise/domain";
-import { done, openDb, openExisting, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
+import { done, openDb, openExisting, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
 // photos and the customer's signature, and an outbox of changes waiting for the server. All of it
@@ -106,6 +106,26 @@ export function runnableWorkOps(ops: StoredWorkOp[]): { runnable: QueuedWorkOp[]
   return { runnable, waiting, failed };
 }
 
+/**
+ * The form's copy of a record with what sending has since recorded on the phone's copy: the
+ * photos and signatures that reached the server, the server's answer, and the office's hold or
+ * decision. The form only edits the record, so its older copy of these must never undo them.
+ */
+export function withSentState(form: LocalWork, stored: LocalWork | undefined): LocalWork {
+  if (!stored) return form;
+  const photos = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
+  const signatures = new Set(stored.signatures.filter((s) => s.uploaded).map((s) => s.clientId));
+  return {
+    ...form,
+    server: stored.server,
+    draftAckedAt: stored.draftAckedAt,
+    held: stored.held,
+    resolved: stored.resolved,
+    photos: form.photos.map((p) => (photos.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)),
+    signatures: form.signatures.map((s) => (signatures.has(s.clientId) && !s.uploaded ? { ...s, uploaded: true } : s)),
+  };
+}
+
 const STORES: StoreSpecs = {
   kv: undefined,
   records: { keyPath: "clientId" },
@@ -144,10 +164,23 @@ async function tx<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMo
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();
-    trx.onerror = () => reject(trx.error);
+    // The failed request's error (a full phone's QuotaExceededError): the transaction's own is set only once it aborts.
+    trx.onerror = (e) => reject((e.target as IDBRequest | null)?.error ?? trx.error);
     trx.onabort = () => reject(trx.error ?? new Error("transaction aborted"));
   });
-  const result = await fn(trx);
+  let result: T;
+  try {
+    result = await fn(trx);
+  } catch (err) {
+    // Nothing of a save that failed partway is kept: the whole transaction is undone.
+    committed.catch(() => {});
+    try {
+      trx.abort();
+    } catch {
+      // Already finished or aborted.
+    }
+    throw err;
+  }
   await committed;
   return result;
 }
@@ -198,7 +231,7 @@ export function workStoreFor(t: KnownTenant) {
       run(["records", "blobs", "outbox"], "readwrite", async (trx) => {
         const records = trx.objectStore("records");
         const existing = (await done(records.get(rec.clientId))) as LocalWork | undefined;
-        records.put({ ...rec, revision: (existing?.revision ?? 0) + 1 });
+        records.put({ ...withSentState(rec, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         if (extra.photo) {
           trx.objectStore("blobs").put(extra.photo);
@@ -210,6 +243,8 @@ export function workStoreFor(t: KnownTenant) {
 
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedWorkOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),
+    /** Puts changes the server turned down back in line to send, in their places; nothing is deleted. */
+    retryFailed: async () => ((await readOps(t)).some((o) => o.failed) ? run(["outbox"], "readwrite", (trx) => unfail(trx.objectStore("outbox"))) : 0),
 
     /** Records what the server answered to a sync, and queues another if the record changed meanwhile. */
     acknowledgeSync: (op: QueuedWorkOp, sent: LocalWork, answer: SyncAnswer) =>

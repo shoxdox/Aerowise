@@ -17,7 +17,8 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
 import { TemplateSections } from "@/components/forms/TemplateFields";
 import { currentPosition, preparePhoto, workFormById } from "@/lib/offline/data";
-import type { LocalWork, WorkBlob, WorkSignatureLocal, WorkStore } from "@/lib/offline/work";
+import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
+import { withSentState, type LocalWork, type WorkBlob, type WorkSignatureLocal, type WorkStore } from "@/lib/offline/work";
 import { heldText, workStatus } from "./WorkStops";
 
 // One work visit on the phone (SW-2): what the office asked for, then the visit's work form,
@@ -121,10 +122,21 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   const [form, setForm] = useState<FormTemplate | null | undefined>(undefined);
   const [problems, setProblems] = useState<ValidationProblem[]>(initial.server?.validationStatus === "invalid" && initial.status === "draft" ? (initial.server.problems as ValidationProblem[]) : []);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  // No room for another photo until waiting items are sent; everything already taken is kept.
+  const storageFull = useStorageFull();
+  useEffect(() => {
+    if (!storageFull) setPhotoError((e) => (e === STORAGE_FULL_MESSAGE ? null : e));
+  }, [storageFull]);
   const [signing, setSigning] = useState(false);
   const [busy, setBusy] = useState(false);
   const latest = useRef(rec);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // What sending has recorded since the form opened (photos sent, the server's answer) shows here too.
+  useEffect(() => {
+    latest.current = withSentState(latest.current, initial);
+    setRec(latest.current);
+  }, [initial]);
 
   useEffect(() => {
     void workFormById(store, initial.templateId).then((f) => setForm(f ?? null));
@@ -133,14 +145,15 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   const persist = async (next: LocalWork, extra?: Parameters<WorkStore["saveWork"]>[1]) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    await store.saveWork(next, extra);
+    await saveOrReport(() => store.saveWork(next, extra));
     onSaved();
   };
   const update = (next: LocalWork) => {
     latest.current = next;
     setRec(next);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void persist(latest.current), 400);
+    // A save that does not fit is reported on screen; the edit stays there for the next save.
+    timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
   };
   useEffect(
     () => () => {
@@ -177,10 +190,11 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     e.target.value = "";
     setPhotoError(null);
     for (const file of files) {
+      let clientId: string | null = null;
       try {
         const { blob, contentType } = await preparePhoto(file);
         const gps = await currentPosition(3000);
-        const clientId = crypto.randomUUID();
+        clientId = crypto.randomUUID();
         const next: LocalWork = {
           ...latest.current,
           photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: gps?.lat ?? null, lng: gps?.lng ?? null, uploaded: false }],
@@ -190,7 +204,14 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
         await persist(next, { photo: { clientId, recordClientId: next.clientId, blob, contentType } satisfies WorkBlob });
         setProblems((ps) => ps.filter((p) => p.key !== photoKey));
       } catch (err) {
+        // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
+        if (clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
+          const without = { ...latest.current, photos: latest.current.photos.filter((p) => p.clientId !== clientId) };
+          latest.current = without;
+          setRec(without);
+        }
         setPhotoError((err as Error).message);
+        if (isStorageFull()) break;
       }
     }
   }
@@ -234,7 +255,14 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     }
     const done: LocalWork = { ...base, status: "completed", completedAt: new Date().toISOString(), completionGps: await currentPosition(5000), summary, signatures: [...base.signatures, ...sigs] };
     latest.current = done;
-    await persist(done, { signatureClientIds: sigs.map((s) => s.clientId) });
+    try {
+      await persist(done, { signatureClientIds: sigs.map((s) => s.clientId) });
+    } catch {
+      // Not saved (the phone is full): still a draft here, so finishing can be tried again.
+      latest.current = base;
+      setBusy(false);
+      return;
+    }
     onFinished();
   }
 
@@ -288,13 +316,19 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
                       {counts[p.key] ?? 0} taken{p.minCount > 0 ? `, ${p.minCount} needed` : ""}
                       {rec.photos.some((x) => x.photoKey === p.key && !x.uploaded) ? " · some not sent yet" : ""}
                     </span>
-                    <label className="button secondary photo-button">
+                    <label className={`button secondary photo-button${storageFull ? " disabled" : ""}`} aria-disabled={storageFull}>
                       Add photo
-                      <input type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => void addPhoto(p.key, e)} aria-label={`Add photo: ${p.label}`} />
+                      <input type="file" accept="image/*" capture="environment" multiple hidden disabled={storageFull} onChange={(e) => void addPhoto(p.key, e)} aria-label={`Add photo: ${p.label}`} />
                     </label>
                   </div>
                 ))}
-                {photoError && <p className="error small">{photoError}</p>}
+                {storageFull ? (
+                  <p className="error small" role="alert" data-testid="storage-full">
+                    {STORAGE_FULL_MESSAGE}
+                  </p>
+                ) : (
+                  photoError && <p className="error small">{photoError}</p>
+                )}
               </section>
             )}
 
@@ -310,6 +344,11 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
             <p className="muted small">
               Signed by {rec.signatures.map((s) => s.signerName).join(", ")}
               {rec.signatures.some((s) => !s.uploaded) ? " · not sent yet" : ""}
+            </p>
+          )}
+          {!readOnly && storageFull && (
+            <p className="error small" role="alert">
+              {STORAGE_FULL_MESSAGE}
             </p>
           )}
           {!readOnly && (

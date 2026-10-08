@@ -326,15 +326,50 @@ async function txOn<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransaction
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();
-    trx.onerror = () => reject(trx.error);
+    // The failed request's error (a full phone's QuotaExceededError): the transaction's own is set only once it aborts.
+    trx.onerror = (e) => reject((e.target as IDBRequest | null)?.error ?? trx.error);
     trx.onabort = () => reject(trx.error ?? new Error("transaction aborted"));
   });
-  const result = await fn(trx);
+  let result: T;
+  try {
+    result = await fn(trx);
+  } catch (err) {
+    // Nothing of a save that failed partway is kept: the whole transaction is undone.
+    committed.catch(() => {});
+    try {
+      trx.abort();
+    } catch {
+      // Already finished or aborted.
+    }
+    throw err;
+  }
   await committed;
   return result;
 }
 
 export type QueuedOp = OutboxOp & { seq: number };
+
+/**
+ * The form's copy of an inspection with what sending has since recorded on the phone's copy: the
+ * photos that reached the server and the server's answer. The form only edits the inspection, so
+ * its older copy of these must never undo them.
+ */
+export function withSentState(form: LocalInspection, stored: LocalInspection | undefined): LocalInspection {
+  if (!stored) return form;
+  const sent = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
+  return { ...form, server: stored.server, photos: form.photos.map((p) => (sent.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)) };
+}
+
+/** Clears the failed mark on every op in an outbox, keeping each op and its place in the queue. */
+export async function unfail(outbox: IDBObjectStore): Promise<number> {
+  const failed = ((await done(outbox.getAll())) as StoredOp[]).filter((o) => o.failed);
+  for (const op of failed) {
+    const again = { ...op };
+    delete again.failed;
+    outbox.put(again);
+  }
+  return failed.length;
+}
 
 /**
  * One sign-in's offline data. The outbox binds itself to the store it read from, so a
@@ -360,7 +395,7 @@ export function storeFor(t: KnownTenant) {
     saveInspection: (insp: LocalInspection, photo?: PhotoBlob) =>
       run(["inspections", "photos", "outbox"], "readwrite", async (trx) => {
         const existing = await done(trx.objectStore("inspections").get(insp.jobId)) as LocalInspection | undefined;
-        trx.objectStore("inspections").put({ ...insp, revision: (existing?.revision ?? 0) + 1 });
+        trx.objectStore("inspections").put({ ...withSentState(insp, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         const ops = (await done(outbox.getAll())) as StoredOp[];
         const mine = ops.filter((o) => o.inspectionClientId === insp.clientId && !o.failed);
@@ -376,6 +411,8 @@ export function storeFor(t: KnownTenant) {
 
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),
+    /** Puts changes the server turned down back in line to send, in their places; nothing is deleted. */
+    retryFailed: () => run(["outbox"], "readwrite", (trx) => unfail(trx.objectStore("outbox"))),
     putInspection: (insp: LocalInspection) => run(["inspections"], "readwrite", (trx) => done(trx.objectStore("inspections").put(insp)).then(() => undefined)),
 
     acknowledgeSync: (op: QueuedOp, sent: LocalInspection, server: NonNullable<LocalInspection["server"]>, completedSent: boolean) =>

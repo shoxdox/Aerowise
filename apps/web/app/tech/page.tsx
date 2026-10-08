@@ -14,7 +14,7 @@ import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
 import { currentPosition, loadActiveTemplate, loadRoute, loadWorkRoute } from "@/lib/offline/data";
-import { startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
+import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
 import type { Me } from "@/lib/session";
@@ -260,7 +260,7 @@ export default function TechApp() {
           Sign out
         </button>
       </header>
-      <SyncBanner state={sync} failures={failures} needsSignIn={needsSignIn} onRetry={() => void syncNow()} />
+      <SyncBanner state={sync} failures={failures} needsSignIn={needsSignIn} onRetry={() => void syncNow()} onRetryFailed={() => void retryFailed().then(refreshLocal)} />
       {(others.length > 0 || endedElsewhere.length > 0) && (
         <div className="sync-area" data-testid="other-sign-ins">
           {others.map(({ tenant, pending }) => (

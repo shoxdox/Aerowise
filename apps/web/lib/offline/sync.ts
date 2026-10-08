@@ -1,6 +1,7 @@
 "use client";
 
 import { activeTenant, isKnownOp, sameTenant, storeFor, type LocalInspection, type QueuedOp, type StoredOp, type Tenant, type TenantStore } from "./db";
+import { requestPersistentStorage, storageMayHaveRoom } from "./storage";
 import { workStoreFor, type LocalWork, type QueuedWorkOp, type WorkStore } from "./work";
 
 // Sends the outbox to the server, oldest first. Every request is idempotent on the
@@ -256,6 +257,8 @@ async function drainOnce() {
     try {
       if (next) await runOp(store, next, inspections.runnable, new Map((await store.allInspections()).map((i) => [i.clientId, i])));
       else await runWorkOp(work, nextWork!, visits.runnable, new Map((await work.allRecords()).map((r) => [r.clientId, r])));
+      // A sent photo leaves the phone, so a full phone may have room again; the next save that does not fit says so again.
+      storageMayHaveRoom();
     } catch (err) {
       if (err instanceof RetryLater) {
         const kind = err.reason === "server" ? "idle" : err.reason;
@@ -272,6 +275,19 @@ export async function unsentFor(t: Parameters<typeof storeFor>[0]) {
   const inspections = runnableOps(await storeFor(t).allOps());
   const visits = await workStoreFor(t).queue();
   return { unsent: inspections.runnable.length + visits.runnable.length, later: inspections.waiting + visits.waiting };
+}
+
+/**
+ * Sends again what the server turned down (the banner's Try again), for the active sign-in.
+ * Each change keeps its place in the queue and nothing is deleted; one still refused is marked
+ * failed again with the server's reason.
+ */
+export async function retryFailed(): Promise<void> {
+  const tenant = activeTenant();
+  if (!tenant) return;
+  await storeFor(tenant).retryFailed();
+  await workStoreFor(tenant).retryFailed();
+  await syncNow();
 }
 
 /** Starts sending queued changes; safe to call as often as you like. */
@@ -299,6 +315,7 @@ let started = false;
 export function startBackgroundSync() {
   if (started) return;
   started = true;
+  requestPersistentStorage();
   window.addEventListener("online", () => void syncNow());
   setInterval(() => {
     if (state.pending > 0) void syncNow();
