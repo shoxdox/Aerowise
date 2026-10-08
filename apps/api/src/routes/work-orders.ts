@@ -34,6 +34,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { consumeCoverage, coveredInvoiceLines, releaseOnCancel } from "../lib/coverage.ts";
 import { isWorkForm } from "../lib/forms.ts";
 import { checkDraftRefs, writeDraftLines } from "../lib/invoices.ts";
 import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
@@ -605,6 +606,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         const wo = await lockWorkOrder(trx, organizationId, req.params.id);
         const jobId = await endOpenVisit(trx, req, organizationId, wo.id, `Work order cancelled: ${req.body.reason}`, at);
         await setWorkOrderStatus(trx, organizationId, wo, "cancelled", at, { cancelledAt: at, cancelReason: req.body.reason });
+        await releaseOnCancel(trx, req, organizationId, wo.id, at);
         await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "cancelled", summary: `Cancelled: ${req.body.reason}`, details: { reason: req.body.reason, jobId }, homeownerVisible: true, at });
         await audit(trx, req, { action: "work_order.cancelled", entityType: "work_order", entityId: wo.id, changes: req.body });
       });
@@ -632,6 +634,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         if (wo.status === "draft") throw new HttpError(409, "invalid_transition", "Make the draft ready to schedule first");
         await setWorkOrderStatus(trx, organizationId, wo, "completed", at, { completedAt: at, completedWithoutRecordReason: req.body.reason });
         const jobId = await endOpenVisit(trx, req, organizationId, wo.id, "Work order completed by the office without a field record", at);
+        // Work done at no charge spends its coverage now; billed work spends it when invoiced.
+        if (wo.billingStatus === "no_charge") await consumeCoverage(trx, req, organizationId, wo.id, null, at);
         await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "completed", summary: `Completed by the office without a field record: ${req.body.reason}`, details: { reason: req.body.reason, jobId }, homeownerVisible: true, at });
         await audit(trx, req, { action: "work_order.completed", entityType: "work_order", entityId: wo.id, changes: { ...req.body, withoutRecord: true } });
       });
@@ -670,7 +674,13 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           if (wo.billingStatus === "no_charge") throw new HttpError(409, "no_charge", "This work order is marked no charge");
           const lines = await trx.selectFrom("workOrderLines").selectAll().where("organizationId", "=", organizationId).where("workOrderId", "=", wo.id).orderBy("position").orderBy("createdAt").execute();
           if (!lines.length) throw unprocessable("Add the work order's labor, parts or fees before invoicing it");
-          const invoiceLines = lines.map((l) => ({ description: l.description, quantity: l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId }));
+          // Lines the work order's applied coverage fits are priced under it, and say so (SW-8).
+          const invoiceLines = await coveredInvoiceLines(
+            trx,
+            organizationId,
+            wo,
+            lines.map((l) => ({ description: l.description, quantity: l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId })),
+          );
           await checkDraftRefs(trx, organizationId, wo.customerId, wo.siteId, invoiceLines);
           const org = await trx.selectFrom("organizations").select(["invoiceTermsDays", "defaultTaxRateBps"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
           const inv = await trx

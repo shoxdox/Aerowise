@@ -1,6 +1,6 @@
 import { openContractFiling } from "@aerowise/compliance";
-import type { Database } from "@aerowise/db";
-import { MoreVisitsRequired, siteVisitTerms } from "@aerowise/renewals";
+import type { Database, DB } from "@aerowise/db";
+import { agreementPreview, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms } from "@aerowise/renewals";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
   addDays,
@@ -9,6 +9,13 @@ import {
   contractInput,
   contractTermsPreview,
   contractState,
+  coverageSummary,
+  DEFAULT_RENEWAL_TERMS,
+  parseCoverageRules,
+  parsePlanOptions,
+  planDetail,
+  planVersionInput,
+  type Feature,
   dueObligation,
   dueQuery,
   id,
@@ -19,25 +26,28 @@ import {
   renewInput,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { usedCounts } from "../lib/coverage.ts";
 import { definedOnly, jsonRow } from "../lib/json.ts";
 import { insertContract, type Terms } from "../lib/contracts.ts";
 import { organizationToday } from "../lib/today.ts";
 
 const PLAN_COLUMNS = [
-  "id",
-  "name",
-  "customerType",
-  "termMonths",
-  "visitsPerTerm",
-  "priceCents",
-  "billingFrequency",
-  "serviceType",
-  "active",
-  "createdAt",
+  "p.id",
+  "p.name",
+  "p.customerType",
+  "p.termMonths",
+  "p.visitsPerTerm",
+  "p.priceCents",
+  "p.billingFrequency",
+  "p.serviceType",
+  "p.active",
+  "p.currentVersionId",
+  "v.version",
+  "p.createdAt",
 ] as const;
 
 const CONTRACT_COLUMNS = [
@@ -61,6 +71,7 @@ const CONTRACT_COLUMNS = [
   "c.serviceEndsOn",
   "c.discontinuedBy",
   "c.providerCredentialId",
+  "c.planVersionId",
   "c.notes",
   "c.createdAt",
 ] as const;
@@ -80,8 +91,63 @@ const OBLIGATION_COLUMNS = [
 
 const params = z.object({ id });
 
-export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }> = async (app, { db, now }) => {
+export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; features?: ReadonlySet<Feature> }> = async (app, { db, now, features = new Set() }) => {
   const today = (organizationId: string) => organizationToday(db, organizationId, now());
+  const planBuilder = features.has("plan_builder");
+
+  /** Plans with the number of their current version. */
+  const planQuery = (ex: Database | Transaction<DB>, organizationId: string) =>
+    ex
+      .selectFrom("plans as p")
+      .innerJoin("planVersions as v", "v.id", "p.currentVersionId")
+      .select(PLAN_COLUMNS)
+      .where("p.organizationId", "=", organizationId);
+
+  /**
+   * With the plan builder on (SW-8), a contract the office makes takes its version's coverage
+   * rules, frozen, and a record of the terms that apply. Off, it is made exactly as before.
+   */
+  async function planContent(ex: Database | Transaction<DB>, organizationId: string, planVersionId: string | null | undefined) {
+    if (!planBuilder || !planVersionId) return {};
+    const v = await loadPlanVersion(ex, organizationId, planVersionId);
+    if (!v) return {};
+    const org = await ex.selectFrom("organizations").select("renewalTerms").where("id", "=", organizationId).executeTakeFirstOrThrow();
+    return {
+      coverage: v.coverage,
+      agreementSnapshot: {
+        format: 1,
+        signed: false,
+        plan: { versionId: v.id, version: v.version, termsSource: v.termsText ? "plan" : "organization" },
+        terms: v.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
+        coverage: await coverageLines(ex, organizationId, v.coverage),
+      },
+    };
+  }
+
+  /** Each contract's frozen coverage rules with their use this term, and the version it was made from. */
+  async function contractPlanFacts(organizationId: string, contracts: { id: string; planVersionId: string | null }[]) {
+    const ids = contracts.map((c) => c.id);
+    const versionIds = [...new Set(contracts.flatMap((c) => (c.planVersionId ? [c.planVersionId] : [])))];
+    const [rules, versions] = await Promise.all([
+      ids.length ? db.selectFrom("contractCoverageRules").select(["id", "contractId", "ruleKey", "rule", "limitCount"]).where("organizationId", "=", organizationId).where("contractId", "in", ids).orderBy("position").execute() : [],
+      versionIds.length ? db.selectFrom("planVersions").select(["id", "version"]).where("organizationId", "=", organizationId).where("id", "in", versionIds).execute() : [],
+    ]);
+    const parsed = rules.map((r) => ({ ...r, rule: parseCoverageRules([r.rule])[0]! }));
+    const [used, names] = await Promise.all([usedCounts(db, organizationId, rules.map((r) => r.id)), coverageItemNames(db, organizationId, parsed.map((r) => r.rule))]);
+    return (c: { id: string; planVersionId: string | null }) => ({
+      planVersion: versions.find((v) => v.id === c.planVersionId) ?? null,
+      coverage: parsed
+        .filter((r) => r.contractId === c.id)
+        .map((r) => ({
+          id: r.id,
+          ruleKey: r.ruleKey,
+          label: r.rule.label,
+          summary: coverageSummary(r.rule, "serviceItemId" in r.rule.match ? names.get(r.rule.match.serviceItemId) : undefined),
+          limit: r.limitCount,
+          used: used.get(r.id) ?? 0,
+        })),
+    });
+  }
 
   const contractQuery = (organizationId: string) =>
     db
@@ -123,14 +189,14 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   async function loadContractDetail(organizationId: string, contractId: string) {
     const row = await contractQuery(organizationId).where("c.id", "=", contractId).executeTakeFirst();
     if (!row) throw notFound("Contract");
-    const [obligations, asOf] = await Promise.all([loadObligations(organizationId, row.id), today(organizationId)]);
-    return { ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf), obligations };
+    const [obligations, asOf, facts] = await Promise.all([loadObligations(organizationId, row.id), today(organizationId), contractPlanFacts(organizationId, [row])]);
+    return { ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf), obligations, ...facts(row) };
   }
 
   async function activePlanTerms(organizationId: string, planId: string, priceCents?: number): Promise<Terms> {
     const p = await db
       .selectFrom("plans")
-      .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active"])
+      .select(["id", "name", "customerType", "termMonths", "visitsPerTerm", "priceCents", "billingFrequency", "serviceType", "active", "currentVersionId"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", planId)
       .executeTakeFirst();
@@ -145,10 +211,57 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       priceCents: priceCents ?? p.priceCents,
       billingFrequency: p.billingFrequency,
       serviceType: p.serviceType,
+      planVersionId: p.currentVersionId,
     };
   }
 
   // Plans -----------------------------------------------------------------------------
+
+  const planRow = (ex: Database | Transaction<DB>, organizationId: string, planId: string) => planQuery(ex, organizationId).where("p.id", "=", planId).executeTakeFirst();
+
+  async function loadPlanDetail(organizationId: string, planId: string) {
+    const p = await planRow(db, organizationId, planId);
+    if (!p) throw notFound("Plan");
+    const [versions, current, org] = await Promise.all([
+      db
+        .selectFrom("planVersions as v")
+        .select([
+          "v.id",
+          "v.planId",
+          "v.version",
+          "v.name",
+          "v.customerType",
+          "v.termsText",
+          "v.termMonths",
+          "v.visitsPerTerm",
+          "v.priceCents",
+          "v.billingFrequency",
+          "v.serviceType",
+          "v.options",
+          "v.coverage",
+          "v.createdAt",
+          (eb) => eb.selectFrom("contracts as c").select(sql<number>`count(*)::int`.as("n")).whereRef("c.planVersionId", "=", "v.id").as("contracts"),
+          (eb) => eb.selectFrom("renewals as r").select(sql<number>`count(*)::int`.as("n")).whereRef("r.planVersionId", "=", "v.id").as("renewals"),
+        ])
+        .where("v.organizationId", "=", organizationId)
+        .where("v.planId", "=", p.id)
+        .orderBy("v.version", "desc")
+        .execute(),
+      loadPlanVersion(db, organizationId, p.currentVersionId),
+      db.selectFrom("organizations").select("renewalTerms").where("id", "=", organizationId).executeTakeFirstOrThrow(),
+    ]);
+    return {
+      ...jsonRow(p),
+      versions: versions.map((v) => ({
+        ...jsonRow(v),
+        options: parsePlanOptions(v.options),
+        coverage: parseCoverageRules(v.coverage),
+        contracts: Number(v.contracts ?? 0),
+        renewals: Number(v.renewals ?? 0),
+      })),
+      preview: await agreementPreview(db, organizationId, current!, org.renewalTerms),
+    };
+  }
 
   app.get(
     "/plans",
@@ -158,13 +271,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
-      const rows = await db
-        .selectFrom("plans")
-        .select(PLAN_COLUMNS)
-        .where("organizationId", "=", organizationId)
-        .orderBy("active", "desc")
-        .orderBy("name")
-        .execute();
+      const rows = await planQuery(db, organizationId).orderBy("p.active", "desc").orderBy("p.name").execute();
       return { items: rows.map(jsonRow) };
     },
   );
@@ -173,7 +280,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     "/plans",
     {
       config: { permission: "contracts:write" },
-      schema: { tags: ["plans"], summary: "Create a maintenance plan", body: planInput, response: { 201: plan } },
+      schema: { tags: ["plans"], summary: "Create a maintenance plan (its version 1 is made with it)", body: planInput, response: { 201: plan } },
     },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
@@ -181,20 +288,36 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         const created = await trx
           .insertInto("plans")
           .values({ ...req.body, organizationId })
-          .returning(PLAN_COLUMNS)
+          .returning("id")
           .executeTakeFirstOrThrow();
         await audit(trx, req, { action: "plan.created", entityType: "plan", entityId: created.id, changes: req.body });
-        return created;
+        return (await planRow(trx, organizationId, created.id))!;
       });
       return reply.status(201).send(jsonRow(row));
     },
+  );
+
+  app.get(
+    "/plans/:id",
+    {
+      config: { permission: "contracts:read" },
+      schema: { tags: ["plans"], summary: "A plan with its versions and what its current version has a customer sign", params, response: { 200: planDetail } },
+    },
+    async (req) => loadPlanDetail(req.requireAuth().organizationId, req.params.id),
   );
 
   app.patch(
     "/plans/:id",
     {
       config: { permission: "contracts:write" },
-      schema: { tags: ["plans"], summary: "Update a plan (existing contracts keep their terms)", params, body: planPatch, response: { 200: plan } },
+      schema: {
+        tags: ["plans"],
+        summary: "Update a plan (existing contracts keep their terms)",
+        description: "A change to its name, term, visits, price, billing or customer type makes a new version, keeping the current version's terms, options and coverage.",
+        params,
+        body: planPatch,
+        response: { 200: plan },
+      },
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
@@ -204,7 +327,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .set({ ...definedOnly(req.body), updatedAt: new Date() })
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
-          .returning(PLAN_COLUMNS)
+          .returning("id")
           .executeTakeFirst()
           .catch((err) => {
             // A partial edit can still break the term/visits rule against stored values.
@@ -213,9 +336,65 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           });
         if (!updated) throw notFound("Plan");
         await audit(trx, req, { action: "plan.updated", entityType: "plan", entityId: updated.id, changes: req.body });
-        return updated;
+        return (await planRow(trx, organizationId, updated.id))!;
       });
       return jsonRow(row);
+    },
+  );
+
+  app.post(
+    "/plans/:id/versions",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["plans"],
+        summary: "Save new terms, options or coverage for a plan as its next version",
+        description:
+          "Earlier versions never change. Contracts already made keep the coverage they were made with; new contracts and renewal offers made from now on take this version. Needs the plan builder (409 `feature_off` otherwise).",
+        params,
+        body: planVersionInput,
+        response: { 201: planDetail },
+      },
+    },
+    async (req, reply) => {
+      if (!planBuilder) throw new HttpError(409, "feature_off", "The plan builder is not switched on for this deployment");
+      const { organizationId, userId } = req.requireAuth();
+      const b = req.body;
+      await db.transaction().execute(async (trx) => {
+        // Locked, so two saves at once make versions one after the other.
+        const p = await trx.selectFrom("plans").select(["id", "currentVersionId"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).forUpdate().executeTakeFirst();
+        if (!p) throw notFound("Plan");
+        const itemIds = [...new Set(b.coverage.flatMap((r) => ("serviceItemId" in r.match ? [r.match.serviceItemId] : [])))];
+        if (itemIds.length) {
+          const found = await trx.selectFrom("serviceItems").select("id").where("organizationId", "=", organizationId).where("id", "in", itemIds).execute();
+          if (found.length !== itemIds.length) throw unprocessable("A coverage rule names a catalog item that is not in this company's catalog");
+        }
+        const cur = await trx.selectFrom("planVersions").selectAll().where("id", "=", p.currentVersionId).executeTakeFirstOrThrow();
+        const created = await trx
+          .insertInto("planVersions")
+          .values({
+            organizationId,
+            planId: p.id,
+            version: sql<number>`(select max(version) + 1 from plan_versions where plan_id = ${p.id})`,
+            name: cur.name,
+            customerType: cur.customerType,
+            termMonths: cur.termMonths,
+            visitsPerTerm: cur.visitsPerTerm,
+            priceCents: cur.priceCents,
+            billingFrequency: cur.billingFrequency,
+            serviceType: cur.serviceType,
+            termsText: b.termsText,
+            options: JSON.stringify(b.options),
+            coverage: JSON.stringify(b.coverage),
+            serviceCycles: JSON.stringify(cur.serviceCycles),
+            createdBy: userId,
+          })
+          .returning(["id", "version"])
+          .executeTakeFirstOrThrow();
+        await trx.updateTable("plans").set({ currentVersionId: created.id, updatedAt: now() }).where("id", "=", p.id).execute();
+        await audit(trx, req, { action: "plan.version_created", entityType: "plan", entityId: p.id, changes: { version: created.version, ...b } });
+      });
+      return reply.status(201).send(await loadPlanDetail(organizationId, req.params.id));
     },
   );
 
@@ -247,10 +426,12 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .execute(),
         today(organizationId),
       ]);
+      const facts = await contractPlanFacts(organizationId, rows);
       return {
         items: rows.map((row) => ({
           ...toContract({ ...row, renewedById: row.renewedById ?? null, renewalId: row.renewalId ?? null }, asOf),
           obligations: obligations.filter((o) => o.contractId === row.id).map(jsonRow),
+          ...facts(row),
         })),
       };
     },
@@ -308,6 +489,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           terms,
           autoRenew: req.body.autoRenew,
           notes: req.body.notes,
+          ...(await planContent(trx, organizationId, terms.planVersionId)),
         }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, { action: "contract.created", entityType: "contract", entityId: created, changes: req.body });
         // Opens a filing with the site's authority when it requires contracts on file.
@@ -358,6 +540,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             priceCents: req.body.priceCents ?? prev.priceCents,
             billingFrequency: prev.billingFrequency,
             serviceType: prev.serviceType,
+            planVersionId: prev.planVersionId,
           };
       const contractId = await db.transaction().execute(async (trx) => {
         const created = await insertContract(trx, organizationId, {
@@ -366,6 +549,7 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           terms,
           autoRenew: prev.autoRenew,
           previousContractId: prev.id,
+          ...(await planContent(trx, organizationId, terms.planVersionId)),
         }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, {
           action: "contract.renewed",
