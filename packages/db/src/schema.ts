@@ -1075,7 +1075,7 @@ export interface SignedDocumentsTable {
   pdfStorageKey: string | null;
   pdfSha256: string | null;
   pdfByteSize: number | null;
-  // SW-2 (0053): a work-completion signature's own phone client id, its record's client id
+  // SW-2 (0055): a work-completion signature's own phone client id, its record's client id
   // and the form's signature requirement it fulfils.
   offlineClientId: ColumnType<string | null, string | null | undefined, never>;
   recordClientId: ColumnType<string | null, string | null | undefined, never>;
@@ -1477,7 +1477,7 @@ export interface DB {
   workAttachments: WorkAttachmentsTable;
 }
 
-// ---- SW-2: field records for work visits (0053) ----
+// ---- SW-2: field records for work visits (0055) ----
 
 export type AssignmentEndReason = "reassigned" | "unassigned" | "cancelled" | "office_completed";
 export type WorkConflictReason = "reassigned" | "cancelled" | "office_completed";
