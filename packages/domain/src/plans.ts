@@ -215,6 +215,8 @@ export const workOrderCoverage = z.object({
     }),
   ),
   canApply: z.boolean(),
+  /** The work order's draft or issued invoice. While there is one, coverage can't be applied or declined. */
+  liveInvoiceId: id.nullable(),
 });
 export type WorkOrderCoverage = z.infer<typeof workOrderCoverage>;
 

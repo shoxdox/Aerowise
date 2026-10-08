@@ -2,6 +2,7 @@ import type { DB } from "@aerowise/db";
 import { canTransitionWorkOrder, workOrderLabel, type WorkOrderStatus } from "@aerowise/domain";
 import type { FastifyRequest } from "fastify";
 import type { Transaction } from "kysely";
+import { coverageOnClose } from "./coverage.ts";
 import { HttpError, notFound } from "./errors.ts";
 
 // Work order lifecycle helpers shared by the work order routes and the schedule routes.
@@ -47,7 +48,15 @@ export async function workOrderEvent(
 }
 
 /** Moves the work order to `to`, or refuses with 409 when the state machine does not allow it. */
-export async function setWorkOrderStatus(trx: Trx, organizationId: string, wo: { id: string; status: string }, to: WorkOrderStatus, at: Date, extra: Partial<{ completedAt: Date; completedWithoutRecordReason: string; cancelledAt: Date; cancelReason: string }> = {}) {
+export async function setWorkOrderStatus(
+  trx: Trx,
+  organizationId: string,
+  wo: { id: string; status: string },
+  to: WorkOrderStatus,
+  at: Date,
+  extra: Partial<{ completedAt: Date; completedWithoutRecordReason: string; cancelledAt: Date; cancelReason: string }> = {},
+  req: FastifyRequest | null = null,
+) {
   if (wo.status === to) return;
   if (!canTransitionWorkOrder(wo.status as WorkOrderStatus, to)) {
     throw new HttpError(409, "invalid_transition", `A ${wo.status.replace("_", " ")} work order cannot become ${to.replace("_", " ")}`);
@@ -58,6 +67,8 @@ export async function setWorkOrderStatus(trx: Trx, organizationId: string, wo: {
     .where("organizationId", "=", organizationId)
     .where("id", "=", wo.id)
     .execute();
+  // Coverage follows the order however it closed (SW-8); `req` credits the change on the timeline.
+  if (to === "cancelled" || to === "completed") await coverageOnClose(trx, req, organizationId, wo.id, to, at);
 }
 
 /** The next gapless number for the company (a rolled-back insert gives its number back). */

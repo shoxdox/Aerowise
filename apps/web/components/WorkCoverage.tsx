@@ -35,6 +35,7 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
   if (!c) return null;
   const reserved = c.rules.some((r) => r.use?.state === "reserved");
   const consumed = c.rules.some((r) => r.use?.state === "consumed");
+  const invoiced = c.liveInvoiceId !== null;
   return (
     <section className="stack" data-testid="work-coverage">
       <h2>Plan coverage</h2>
@@ -68,7 +69,7 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
       )}
       <div className="row">
         {c.canApply && <button onClick={() => void act("apply", {})}>Apply coverage</button>}
-        {reserved && !consumed && (
+        {reserved && !consumed && !invoiced && (
           <button className="secondary" onClick={() => setAsking(asking === "decline" ? null : "decline")}>
             Don&apos;t apply coverage
           </button>
@@ -79,7 +80,10 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
           </button>
         )}
       </div>
-      {c.canApply && <p className="muted">Apply coverage before creating the invoice: an invoice made earlier stays at full price.</p>}
+      {c.canApply && <p className="muted">Apply coverage before creating the invoice.</p>}
+      {invoiced && !consumed && c.rules.some((r) => r.matches) && (
+        <p className="muted">This work order has an invoice, so its coverage can&apos;t change. Discard the draft or void the invoice, change the coverage, then create the invoice again.</p>
+      )}
       {asking && (
         <form className="card grid" onSubmit={withReason(asking)}>
           <label className="wide">

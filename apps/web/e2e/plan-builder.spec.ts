@@ -61,4 +61,9 @@ test("the office gives a plan a coverage rule, and a work order at a site on it 
   const invoiceId = page.url().split("/").pop()!;
   const invoice = await (await page.request.get(`/api/invoices/${invoiceId}`)).json();
   expect(invoice.lines).toEqual([expect.objectContaining({ description: `Replace air pump (Covered by Gold TEST ${stamp}: Repairs)`, unitPriceCents: 0, amountCents: 0 })]);
+
+  // With the invoice made, its coverage can't change until the draft is discarded.
+  await page.goto(`/work/${wo.id}`);
+  await expect(coverage).toContainText("This work order has an invoice, so its coverage can't change");
+  await expect(coverage.getByRole("button", { name: "Don't apply coverage" })).toHaveCount(0);
 });

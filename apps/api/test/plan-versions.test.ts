@@ -3,6 +3,7 @@ import { canonicalJson, sha256Hex } from "@aerowise/renewals";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { lockWorkOrder, setWorkOrderStatus } from "../src/lib/work-orders.ts";
 import { client, createTenant, createUser, login, setupTestApp } from "./helpers.ts";
 
 // SW-8: versioned plans with their own terms, options and coverage, frozen per contract,
@@ -287,6 +288,86 @@ describe("coverage on work orders", () => {
     expect((await t.api.get(`/invoices/${full.invoiceId}`)).json().lines.map((l: { amountCents: number }) => l.amountCents)).toEqual([9500, 35000]);
   });
 
+  it("never changes coverage while the work order has a live invoice, so its prices and the uses agree", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { contract } = await goldContract(t);
+    const used = async () => (await t.api.get(`/contracts/${contract.id}`)).json().coverage.map((c: { used: number }) => c.used);
+    const amounts = async (invoiceId: string) => (await t.api.get(`/invoices/${invoiceId}`)).json().lines.map((l: { amountCents: number }) => l.amountCents);
+
+    // Applied, then a discounted draft: declining would free the uses while the draft keeps the discount.
+    const wo = await repairOrder(t);
+    await t.api.post(`/work-orders/${wo.id}/coverage/apply`, {});
+    const draft = (await t.api.post(`/work-orders/${wo.id}/invoice`, {})).json();
+    expect(await amounts(draft.invoiceId)).toEqual([0, 28000]);
+    const declined = await t.api.post(`/work-orders/${wo.id}/coverage/decline`, { reason: "TEST customer caused the damage" });
+    expect(declined.statusCode, declined.body).toBe(409);
+    expect(declined.json().error).toBe("invoice_exists");
+    expect((await uses(wo.id)).map((u) => u.state)).toEqual(["reserved", "reserved"]);
+    expect(await used()).toEqual([1, 1]);
+    expect(await amounts(draft.invoiceId)).toEqual([0, 28000]);
+    expect((await t.api.get(`/work-orders/${wo.id}/coverage`)).json()).toMatchObject({ canApply: false, liveInvoiceId: draft.invoiceId });
+    // With the plan builder off it is refused the same way.
+    expect((await client(await appWithout(), t.cookie).post(`/work-orders/${wo.id}/coverage/decline`, { reason: "TEST" })).json().error).toBe("invoice_exists");
+    // Discard the draft, decline, and the new invoice is at full price.
+    expect((await t.api.post(`/invoices/${draft.invoiceId}/discard`, {})).statusCode).toBe(204);
+    expect((await t.api.get(`/work-orders/${wo.id}/coverage`)).json().liveInvoiceId).toBeNull();
+    expect((await t.api.post(`/work-orders/${wo.id}/coverage/decline`, { reason: "TEST customer caused the damage" })).statusCode).toBe(200);
+    expect(await used()).toEqual([0, 0]);
+    const full = (await t.api.post(`/work-orders/${wo.id}/invoice`, {})).json();
+    expect(await amounts(full.invoiceId)).toEqual([9500, 35000]);
+
+    // The inverse: a full-price draft, then applying would take uses the draft never gives.
+    const late = await repairOrder(t);
+    const fullDraft = (await t.api.post(`/work-orders/${late.id}/invoice`, {})).json();
+    expect((await t.api.get(`/work-orders/${late.id}/coverage`)).json()).toMatchObject({ canApply: false, liveInvoiceId: fullDraft.invoiceId });
+    const applied = await t.api.post(`/work-orders/${late.id}/coverage/apply`, {});
+    expect(applied.statusCode, applied.body).toBe(409);
+    expect(applied.json().error).toBe("invoice_exists");
+    expect(await uses(late.id)).toEqual([]);
+    // An issued full-price invoice is the same; voiding it lets coverage be applied to the replacement.
+    expect((await t.api.post(`/invoices/${fullDraft.invoiceId}/issue`, { send: false })).statusCode).toBe(200);
+    expect((await t.api.post(`/work-orders/${late.id}/coverage/apply`, {})).json().error).toBe("invoice_exists");
+    expect((await t.api.post(`/invoices/${fullDraft.invoiceId}/void`, { reason: "TEST forgot the plan" })).statusCode).toBe(200);
+    expect((await t.api.post(`/work-orders/${late.id}/coverage/apply`, {})).statusCode).toBe(200);
+    const covered = (await t.api.post(`/work-orders/${late.id}/invoice`, {})).json();
+    expect(await amounts(covered.invoiceId)).toEqual([0, 28000]);
+
+    // A billed benefit can still be restored, with its reason, while the issued invoice stands.
+    expect((await t.api.post(`/invoices/${covered.invoiceId}/issue`, { send: false })).statusCode).toBe(200);
+    expect((await t.api.post(`/work-orders/${late.id}/coverage/decline`, { reason: "TEST" })).json().error).toBe("coverage_billed");
+    expect((await t.api.post(`/work-orders/${late.id}/coverage/restore`, { reason: "TEST refunded after a complaint" })).statusCode).toBe(200);
+    expect((await uses(late.id)).map((u) => [u.state, u.reason])).toEqual([
+      ["released", "Benefit restored: TEST refunded after a complaint"],
+      ["released", "Benefit restored: TEST refunded after a complaint"],
+    ]);
+  });
+
+  it("keeps coverage and invoice prices in step when they race", async () => {
+    const t = await createTenant(ctx, "Org A");
+    await goldContract(t, [{ ...GOLD.coverage[0]!, limit: { count: 20, per: "term" } }, GOLD.coverage[1]!]);
+    const amounts = async (invoiceId: string) => (await t.api.get(`/invoices/${invoiceId}`)).json().lines.map((l: { amountCents: number }) => l.amountCents);
+    for (let i = 0; i < 4; i++) {
+      // Declining against creating the invoice.
+      const a = await repairOrder(t);
+      await t.api.post(`/work-orders/${a.id}/coverage/apply`, {});
+      const [inv, dec] = await Promise.all([t.api.post(`/work-orders/${a.id}/invoice`, {}), t.api.post(`/work-orders/${a.id}/coverage/decline`, { reason: "TEST race" })]);
+      expect(inv.statusCode, inv.body).toBe(201);
+      const declinedFirst = dec.statusCode === 200;
+      if (!declinedFirst) expect(dec.json().error).toBe("invoice_exists");
+      expect(await amounts(inv.json().invoiceId)).toEqual(declinedFirst ? [9500, 35000] : [0, 28000]);
+      expect((await uses(a.id)).map((u) => u.state)).toEqual(declinedFirst ? ["released", "released"] : ["reserved", "reserved"]);
+
+      // Applying against creating the invoice.
+      const b = await repairOrder(t);
+      const [inv2, app] = await Promise.all([t.api.post(`/work-orders/${b.id}/invoice`, {}), t.api.post(`/work-orders/${b.id}/coverage/apply`, {})]);
+      expect(inv2.statusCode, inv2.body).toBe(201);
+      const appliedFirst = app.statusCode === 200;
+      if (!appliedFirst) expect(app.json().error).toBe("invoice_exists");
+      expect(await amounts(inv2.json().invoiceId)).toEqual(appliedFirst ? [0, 28000] : [9500, 35000]);
+      expect((await uses(b.id)).map((u) => u.state)).toEqual(appliedFirst ? ["reserved", "reserved"] : []);
+    }
+  });
+
   it("gives ten work orders reaching for the last use of a rule exactly one", async () => {
     const t = await createTenant(ctx, "Org A");
     const { contract } = await goldContract(t, [GOLD.coverage[0]!]);
@@ -343,6 +424,38 @@ describe("coverage on work orders", () => {
       ["released", "Invoice voided after the work order was cancelled"],
     ]);
     expect((await t.api.get(`/contracts/${contract.id}`)).json().coverage.map((c: { used: number }) => c.used)).toEqual([0, 0]);
+  });
+
+  it("moves coverage however a work order closes, not only from the office's cancel and complete routes", async () => {
+    // Other routes (an estimate's cancellation, the phone's final visit) close a work order
+    // through setWorkOrderStatus with no request at hand; coverage must follow all the same.
+    const t = await createTenant(ctx, "Org A");
+    await goldContract(t);
+    const close = (id: string, to: "cancelled" | "completed") =>
+      ctx.db.transaction().execute(async (trx) => setWorkOrderStatus(trx, t.org.id, await lockWorkOrder(trx, t.org.id, id), to, ctx.now, to === "cancelled" ? { cancelledAt: ctx.now, cancelReason: "TEST" } : { completedAt: ctx.now }));
+
+    const cancelled = await repairOrder(t);
+    await t.api.post(`/work-orders/${cancelled.id}/coverage/apply`, {});
+    await close(cancelled.id, "cancelled");
+    expect((await uses(cancelled.id)).map((u) => [u.state, u.reason])).toEqual([
+      ["released", "Work order cancelled"],
+      ["released", "Work order cancelled"],
+    ]);
+
+    const free = await repairOrder(t);
+    await t.api.post(`/work-orders/${free.id}/coverage/apply`, {});
+    expect((await t.api.patch(`/work-orders/${free.id}`, { billingStatus: "no_charge" })).statusCode).toBe(200);
+    await close(free.id, "completed");
+    expect((await uses(free.id)).map((u) => [u.state, u.invoiceId])).toEqual([
+      ["consumed", null],
+      ["consumed", null],
+    ]);
+
+    // Billed work keeps its uses reserved for the invoice (the one repair a term is spent, so only pumping is left).
+    const billed = await repairOrder(t);
+    await t.api.post(`/work-orders/${billed.id}/coverage/apply`, {});
+    await close(billed.id, "completed");
+    expect((await uses(billed.id)).map((u) => u.state)).toEqual(["reserved"]);
   });
 
   it("says when there is nothing to cover, and never covers excluded work", async () => {
