@@ -1,4 +1,5 @@
 import { checkConfig, ConfigError, configProblems, createPlatformAdmin } from "@aerowise/db";
+import { FEATURES } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { createOrg, createUser, PASSWORD, setupTestApp } from "./helpers.ts";
@@ -47,7 +48,7 @@ describe("boot-time configuration check", () => {
 
   it("refuses a feature name it does not know, so a typo never leaves a feature silently off", () => {
     expect(configProblems({ ...staging, AEROWISE_FEATURES: "work_orders" })).toEqual([]);
-    expect(configProblems({ ...staging, AEROWISE_FEATURES: "workorders" })).toEqual(['AEROWISE_FEATURES: unknown feature "workorders"; it may list work_orders, service_items, field_work, estimates, plan_builder']);
+    expect(configProblems({ ...staging, AEROWISE_FEATURES: "workorders" })).toEqual([`AEROWISE_FEATURES: unknown feature "workorders"; it may list ${FEATURES.join(", ")}`]);
   });
 
   it("names every problem at once", () => {

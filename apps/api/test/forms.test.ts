@@ -121,8 +121,10 @@ describe("work forms", () => {
     // A work-completion signature also names its phone ids and requirement (0055).
     await sql`insert into signed_documents (organization_id, kind, site_id, customer_id, title, content, content_sha256, signer_name, signature_kind, consent_text, signed_at, offline_client_id, record_client_id, requirement_key)
       values (${t.org.id}, 'work_completion', ${t.site.id}, ${t.customer.id}, 'Work done', '{}', 'x', 'Pat', 'typed', 'I agree', now(), gen_random_uuid(), gen_random_uuid(), 'customer_signoff')`.execute(ctx.db);
-    // An estimate acceptance is a known kind, and must name its estimate (0054): without one the
-    // estimate check refuses it, not the kind check.
+    // An estimate acceptance is an allowed kind, but only with the estimate it accepts (SW-5a,
+    // migration 0054); estimates.test.ts signs real ones.
+    const kinds = await sql<{ def: string }>`select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'signed_documents_kind_check'`.execute(ctx.db);
+    expect(kinds.rows[0]!.def).toContain("estimate_acceptance");
     await expect(
       sql`insert into signed_documents (organization_id, kind, site_id, customer_id, title, content, content_sha256, signer_name, signature_kind, consent_text, signed_at)
         values (${t.org.id}, 'estimate_acceptance', ${t.site.id}, ${t.customer.id}, 'Estimate', '{}', 'x', 'Pat', 'typed', 'I agree', now())`.execute(ctx.db),
