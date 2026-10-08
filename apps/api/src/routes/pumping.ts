@@ -242,7 +242,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
 
   app.get(
     "/pumping/settings",
-    { config: { permission: "work:read" }, schema: { tags: ["pumping"], summary: "Days after a pump-out before the inbox raises a missing disposal record", response: { 200: pumpingSettings } } },
+    { config: { permission: "work:read" }, schema: { tags: ["pumping"], summary: "The inbox raises a missing disposal record once a pump-out is more than this many days old", response: { 200: pumpingSettings } } },
     async (req) => settings(req.requireAuth().organizationId),
   );
 
@@ -250,7 +250,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
     "/pumping/settings",
     {
       config: { permission: "org:manage" },
-      schema: { tags: ["pumping"], summary: "Change the days after a pump-out before the inbox raises a missing disposal record (1 to 60)", body: pumpingSettings, response: { 200: pumpingSettings } },
+      schema: { tags: ["pumping"], summary: "Change how many days old (more than; 1 to 60) a pump-out with no disposal record is before the inbox raises it", body: pumpingSettings, response: { 200: pumpingSettings } },
     },
     async (req) => {
       const { organizationId } = req.requireAuth();

@@ -81,7 +81,7 @@ export default function TrucksPage() {
           {owner && on ? (
             <form className="row" onSubmit={(e) => void setGrace(e)} key={grace.data.disposalOverdueDays}>
               <label>
-                Days after a pump-out before the inbox shows &quot;Disposal not recorded&quot;
+                Show &quot;Disposal not recorded&quot; once a pump-out is more than this many days old without a disposal record
                 <input name="days" type="number" min={1} max={60} step={1} required defaultValue={grace.data.disposalOverdueDays} />
               </label>
               <button type="submit" className="secondary">
@@ -90,8 +90,8 @@ export default function TrucksPage() {
             </form>
           ) : (
             <p className="muted">
-              The inbox shows &quot;Disposal not recorded&quot; {grace.data.disposalOverdueDays} day{grace.data.disposalOverdueDays === 1 ? "" : "s"} after a pump-out with no disposal
-              record.
+              The inbox shows &quot;Disposal not recorded&quot; once a pump-out is more than {grace.data.disposalOverdueDays} day{grace.data.disposalOverdueDays === 1 ? "" : "s"} old
+              without a disposal record.
             </p>
           )}
         </section>

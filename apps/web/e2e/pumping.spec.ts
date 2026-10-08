@@ -79,6 +79,34 @@ async function pumpOutWithSignal(page: Page, db: pg.Client, wo: Awaited<ReturnTy
   return rows[0].group_id as string;
 }
 
+test("the first pumping visit offers the company's trucks before any facility is entered", async ({ page, browser }) => {
+  const api = await office(browser);
+  // No active facility yet: the ones earlier stories entered are switched off for this check.
+  const active = ((await (await api.get("/api/disposal-facilities")).json()).items as { id: string; active: boolean }[]).filter((f) => f.active);
+  for (const f of active) expect((await api.patch(`/api/disposal-facilities/${f.id}`, { data: { active: false } })).ok()).toBe(true);
+  const title = "Pump-out (first, no facility)";
+  const truck = await (await api.post("/api/vehicles", { data: { name: "Truck first pump" } })).json();
+  const types = (await (await api.get("/api/work-types")).json()).items as { id: string; key: string }[];
+  const site = (await (await api.get("/api/sites?limit=1")).json()).items[0] as { id: string };
+  const techs = (await (await api.get("/api/technicians")).json()).items as { id: string; name: string }[];
+  const { today } = await (await api.get("/api/obligations/due?limit=1")).json();
+  const wo = await (await api.post("/api/work-orders", { data: { siteId: site.id, workTypeId: types.find((t) => t.key === "pumping")!.id, title } })).json();
+  const visit = await (await api.post(`/api/work-orders/${wo.id}/schedule`, { data: { technicianId: techs.find((t) => t.name === "Tess Tech")!.id, scheduledDate: today } })).json();
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  try {
+    expect((await (await api.get("/api/disposal-facilities")).json()).items.filter((f: { active: boolean }) => f.active)).toEqual([]);
+    await techPhone(page);
+    await page.locator(".work-card", { hasText: title }).click();
+    await page.getByRole("button", { name: "Arrive and start work" }).click();
+    await expect(page.getByTestId("pump-out").getByLabel("Truck").locator("option", { hasText: truck.name })).toHaveCount(1);
+  } finally {
+    for (const f of active) await api.patch(`/api/disposal-facilities/${f.id}`, { data: { active: true } });
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [visit.visits[0].jobId]);
+    await db.end();
+  }
+});
+
 test("a pump-out done with no signal reaches the office once, then its disposal record and manifest photo", async ({ page, context, browser }) => {
   const api = await office(browser);
   const wo = await pumpingForTess(api, "Pump-out (phone)");
@@ -162,7 +190,7 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
     // The owner sets the company's disposal reminder; put back afterwards for the tests that follow.
     await officePage.goto("/settings/trucks");
     const grace = officePage.getByTestId("disposal-grace");
-    await grace.getByLabel(/Days after a pump-out/).fill("5");
+    await grace.getByLabel(/more than this many days old/).fill("5");
     await grace.getByRole("button", { name: "Save" }).click();
     await expect.poll(async () => (await (await api.get("/api/pumping/settings")).json()).disposalOverdueDays).toBe(5);
     expect((await api.patch("/api/pumping/settings", { data: { disposalOverdueDays: 2 } })).ok()).toBe(true);

@@ -111,8 +111,7 @@ export default function TechApp() {
     const work = workStoreFor(store.tenant);
     const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(work)]);
     const p = await loadPumpingField(work, !!w?.items.some((s) => s.requiresDisposalRecord));
-    // Off on the server, /pumping/field answers empty lists: nothing to record a disposal with.
-    setPumpingField(p && (p.facilities.length > 0 || p.unloaded.length > 0) ? p : undefined);
+    setPumpingField(p);
     setRoute(r.route ?? null);
     setWorkStops(w?.items ?? []);
     setFetchedAt(r.fetchedAt);
@@ -302,7 +301,8 @@ export default function TechApp() {
           />
         )}
         {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} numbers={numbers} onOpen={(jobId) => setView({ name: "work", jobId })} />}
-        {view.name === "list" && pumpingField && (
+        {/* Off on the server, /pumping/field answers empty lists: nothing to record a disposal with yet. */}
+        {view.name === "list" && pumpingField && (pumpingField.facilities.length > 0 || pumpingField.unloaded.length > 0) && (
           <button className="secondary" data-testid="open-disposal" onClick={() => setView({ name: "disposal" })}>
             Record disposal
             {pumpingField.unloaded.length > 0 && ` (${pumpingField.unloaded.length} pump-out${pumpingField.unloaded.length === 1 ? "" : "s"} waiting)`}
