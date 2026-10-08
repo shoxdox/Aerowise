@@ -509,6 +509,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           if (o.serviceType === "aerobic_inspection" || !o.workTypeId) throw new HttpError(422, "inspection_visit", "This is an inspection visit: schedule it as an inspection");
           const found = await live(trx);
           if (found) return { created: false, id: found.id };
+          // Booking new cycle work needs the switch; an order already booked stays readable and finishable.
+          if (!features.has("service_cycles")) throw new HttpError(409, "feature_off", "Pumping and maintenance cycles are not switched on for this deployment");
           if (o.status !== "open") throw new HttpError(409, "visit_closed", `This visit is ${o.status}`);
           if (o.contractStatus === "cancelled" || (o.serviceEndsOn !== null && o.windowStart > o.serviceEndsOn)) {
             throw new HttpError(409, "contract_ended", "The contract no longer serves this visit");

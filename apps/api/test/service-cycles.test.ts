@@ -286,6 +286,35 @@ describe("pumping and maintenance visits as work", () => {
     expect((await book(b.api, pump.id)).statusCode).toBe(404);
   });
 
+  it("with service cycles off, books no new cycle work but still returns, finishes and cancels orders already booked", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const c = await contractOn(t, (await cyclePlan(t.api, [pumpingCycle(await workTypeId(t.api, "pumping"))])).id);
+    const [first, second] = c.obligations.filter((o) => o.serviceType === "pumping");
+    const booked = await book(t.api, first!.id);
+    expect(booked.statusCode).toBe(201);
+    const created = await ctx.db.selectFrom("auditEvents").select("changes").where("organizationId", "=", t.org.id).where("action", "=", "work_order.created").execute();
+    expect(created.map((a) => a.changes)).toEqual([expect.objectContaining({ sourceKind: "contract_cycle", sourceId: first!.id })]);
+
+    const off = client(await appWithout(), t.cookie);
+    // A new order for a visit is refused, and nothing is written.
+    const refused = await book(off, second!.id);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toBe("feature_off");
+    expect(await workOrdersFor(second!.id)).toEqual([]);
+    expect(await ctx.db.selectFrom("auditEvents").select("id").where("organizationId", "=", t.org.id).where("action", "=", "work_order.created").execute()).toHaveLength(1);
+    // A replay for the visit already booked returns its order.
+    const replay = await book(off, first!.id);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().id).toBe(booked.json().id);
+    // The booked order is still read, finished and cancelled as any work order, and the contract keeps its cycles.
+    expect((await off.get(`/work-orders/${booked.json().id}`)).statusCode).toBe(200);
+    expect((await off.post(`/work-orders/${booked.json().id}/complete`, { reason: "Paper ticket" })).statusCode).toBe(200);
+    expect(await obligationStatus(first!.id)).toBe("completed");
+    const detail = (await off.get(`/contracts/${c.id}`)).json() as ContractDetail;
+    expect(detail.cycles.map((y) => y.cycleKey)).toEqual(["aerobic", "pumping"]);
+    expect((await off.get("/obligations/due?through=2026-12-31&serviceType=pumping")).json().items.map((o: Obligation) => o.id)).toEqual([second!.id]);
+  });
+
   it("completes the visit only with the order's final visit, and never books it again", async () => {
     const t = await createTenant(ctx, "Org A");
     const maint = await maintenanceType(t.api);
