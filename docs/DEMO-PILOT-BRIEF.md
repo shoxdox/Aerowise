@@ -1,5 +1,11 @@
 # Aerowise — current demo and pilot handoff
 
+## Work-order foundation live — October 7, 2026
+
+**Staging https://staging.deshain.com is on `79b3c122ec686fbafb677914c219d4b1dceb37b6`**, merged #100, with work_orders enabled only in staging. Enter through **Try the demo → Start my demo**, then Owner / Office / Technician. The demo now includes open, scheduled and completed work orders. Live owner scheduling, office completion/cancellation and the existing technician inspection route passed a bounded browser check; API/worker health and a scratch backup restore (78 tables, migration 0048, stored files) passed. Personalized demos/trials survived reseeding. [Deployment record and screenshots](engineering/RUNBOOK.md#work-foundation-review-and-staging-deployment--october-7-2026).
+
+The full reviewed build passed 673 API and 59 browser tests, including concurrency, phone compatibility and shared forms. **Fieldbase expansion remains incomplete:** work capture on the technician's phone, fractional work invoicing/catalog and forms part 2 are still being built. QuickBooks #101 and CSV #102 fixes passed review and are running combined integration checks; neither is deployed. Hosted Actions remain blocked by account billing/spending restrictions. Physical-phone/provider/authority acceptance and the final full expansion walkthrough remain open; no new P1/P2 product issue was found in this bounded live check. Test providers remain enabled, Twilio/Resend absent, production untouched. Justin needs no new account, keys or DNS change for this release. Application rollback must stay at/after this work foundation now that work records exist.
+
 ## Shared forms staging update — October 7, 2026
 
 **Staging https://staging.deshain.com is on `4d3fdadd4f202d29118c82e3a1322518e06350e3`**, merged #103 (shared form/signature foundation). Demo entry remains **Try the demo → Start my demo**, then Owner / Office / Technician. This release preserves the deployed street map and phone rollback floor. Configuration, migration/seed and API/web/database/worker health passed; live inspection fields retained the earlier fictional draft. Independent lint, full typecheck and 143 domain tests passed. [Deployment record and screenshot](engineering/RUNBOOK.md#shared-forms-review-and-staging-deploy--october-7-2026).
