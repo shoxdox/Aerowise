@@ -971,6 +971,17 @@ export interface DepositShortfallResolutionsTable {
   createdAt: CreatedAt;
 }
 
+export interface DepositRequestsTable {
+  organizationId: string;
+  requestId: string;
+  action: "refund" | "retain" | "retain_reverse" | "shortfall" | "refund_job";
+  invoiceId: string;
+  bodySha256: string;
+  result: ColumnType<unknown, string | undefined, string>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
 export interface CheckoutSessionsTable {
   id: Generated<string>;
   organizationId: string;
@@ -1625,6 +1636,7 @@ export interface DB {
   estimateInvoices: EstimateInvoicesTable;
   depositLedger: DepositLedgerTable;
   depositShortfallResolutions: DepositShortfallResolutionsTable;
+  depositRequests: DepositRequestsTable;
   portalLinks: PortalLinksTable;
   serviceRequests: ServiceRequestsTable;
   smsMessages: SmsMessagesTable;
