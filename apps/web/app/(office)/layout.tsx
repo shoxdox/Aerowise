@@ -16,6 +16,7 @@ function Shell({ children }: { children: ReactNode }) {
   // A link shows only to roles that can open its page (the API enforces this regardless).
   const can = (permission: Permission) => roleHasPermission(me.role, permission);
   const workOrders = useFeature("work_orders");
+  const serviceItems = useFeature("service_items");
   const nav = [
     { href: "/inbox", label: "Inbox" },
     { href: "/schedule", label: "Schedule" },
@@ -24,6 +25,7 @@ function Shell({ children }: { children: ReactNode }) {
     ...(can("filings:read") ? [{ href: "/filings", label: "Filings" }] : []),
     { href: "/renewals", label: "Renewals" },
     ...(can("invoices:read") ? [{ href: "/invoices", label: "Invoices" }] : []),
+    ...(serviceItems && can("invoices:write") ? [{ href: "/settings/service-items", label: "Service items" }] : []),
     ...(can("quickbooks:read") ? [{ href: "/quickbooks", label: "QuickBooks" }] : []),
     ...(can("sms:read") ? [{ href: "/sms", label: "Texts" }] : []),
     { href: "/customers", label: "Customers" },

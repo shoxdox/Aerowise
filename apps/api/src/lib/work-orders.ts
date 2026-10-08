@@ -16,7 +16,7 @@ export const featureOff = () => new HttpError(409, "feature_off", "Work orders a
 export async function lockWorkOrder(trx: Trx, organizationId: string, workOrderId: string) {
   const wo = await trx
     .selectFrom("workOrders")
-    .select(["id", "number", "status", "siteId", "customerId", "category"])
+    .select(["id", "number", "status", "siteId", "customerId", "category", "billingStatus"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", workOrderId)
     .forUpdate()
@@ -87,6 +87,34 @@ export async function afterWorkVisitCancelled(trx: Trx, req: FastifyRequest, arg
     homeownerVisible: true,
     at: args.at,
   });
+}
+
+/**
+ * Locks the work order an invoice was made from, before the invoice itself, as every change
+ * to that pair does (SW-3). Returns null for an invoice not made from a work order. The
+ * link never changes after the invoice is made, so reading it unlocked is safe.
+ */
+export async function lockInvoiceWorkOrder(trx: Trx, organizationId: string, invoiceId: string) {
+  const inv = await trx.selectFrom("invoices").select("workOrderId").where("organizationId", "=", organizationId).where("id", "=", invoiceId).executeTakeFirst();
+  return inv?.workOrderId ? lockWorkOrder(trx, organizationId, inv.workOrderId) : null;
+}
+
+/**
+ * The work order's invoice was voided or its draft discarded. With no other live invoice the
+ * order is unbilled again; its field work stays as it was.
+ */
+export async function afterWorkOrderInvoiceEnded(trx: Trx, req: FastifyRequest, wo: { id: string; billingStatus: string }, args: { organizationId: string; summary: string; at: Date }) {
+  const live = await trx
+    .selectFrom("invoices")
+    .select("id")
+    .where("organizationId", "=", args.organizationId)
+    .where("workOrderId", "=", wo.id)
+    .where("status", "<>", "void")
+    .executeTakeFirst();
+  if (!live && wo.billingStatus === "invoiced") {
+    await trx.updateTable("workOrders").set({ billingStatus: "unbilled", updatedAt: args.at }).where("organizationId", "=", args.organizationId).where("id", "=", wo.id).execute();
+  }
+  await workOrderEvent(trx, req, { organizationId: args.organizationId, workOrderId: wo.id, eventType: "invoice_ended", summary: args.summary, at: args.at });
 }
 
 export const label = workOrderLabel;

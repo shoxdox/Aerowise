@@ -827,6 +827,7 @@ export interface InvoicesTable {
   voidedAt: Timestamp | null;
   voidReason: string | null;
   createdBy: string | null;
+  workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -847,6 +848,25 @@ export interface InvoiceLinesTable {
   periodEnd: string | null;
   jobId: string | null;
   filingId: ColumnType<string | null, string | null | undefined, string | null>;
+  /** Thousandths, set only for a fractional quantity; then it, not `quantity`, prices the line. */
+  quantityMilli: ColumnType<number | null, number | null | undefined, number | null>;
+  serviceItemId: ColumnType<string | null, string | null | undefined, string | null>;
+}
+
+export type ServiceItemUnit = "each" | "hour" | "gallon" | "foot" | "visit";
+
+export interface ServiceItemsTable {
+  id: Generated<string>;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  unit: Generated<ServiceItemUnit>;
+  unitPriceCents: number;
+  taxable: Generated<boolean>;
+  category: WorkCategory | null;
+  active: Generated<boolean>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
 }
 
 export interface PaymentsTable {
@@ -1360,6 +1380,7 @@ export interface WorkOrderLinesTable {
   taxable: Generated<boolean>;
   coveredByContractId: ColumnType<string | null, string | null | undefined, string | null>;
   coverageNote: ColumnType<string | null, string | null | undefined, string | null>;
+  serviceItemId: ColumnType<string | null, string | null | undefined, string | null>;
   source: Generated<"planned" | "added_in_field">;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
@@ -1424,6 +1445,7 @@ export interface DB {
   dataExports: DataExportsTable;
   invoices: InvoicesTable;
   invoiceLines: InvoiceLinesTable;
+  serviceItems: ServiceItemsTable;
   payments: PaymentsTable;
   refunds: RefundsTable;
   checkoutSessions: CheckoutSessionsTable;

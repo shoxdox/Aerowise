@@ -29,6 +29,8 @@ describe("full data export", () => {
     await a.api.post("/customers", { displayName: "=HYPERLINK(\"http://x\")" });
     const invoice = (await a.api.post("/invoices", { customerId: a.customer.id, lines: [{ description: "Pump out, \"big\" tank", unitPriceCents: 30000 }] })).json();
     expect((await a.api.post(`/invoices/${invoice.id}/issue`, { send: false })).statusCode).toBe(200);
+    // The PDF first: under the frozen clock its task and the export's share a run time, so either could run first.
+    await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now });
     await b.api.post("/customers", { displayName: "Only in B" });
 
     const { files } = await exportZip(ctx, a.api);
@@ -47,6 +49,7 @@ describe("full data export", () => {
         "payments.csv",
         "sites.csv",
         "systems.csv",
+        "service_items.csv",
         "visits.csv",
         "work_order_events.csv",
         "work_order_lines.csv",

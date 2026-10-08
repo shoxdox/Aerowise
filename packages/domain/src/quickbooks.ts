@@ -5,7 +5,7 @@ import { id } from "./crm.ts";
 // provider's QuickBooks company. Nothing in QuickBooks is overwritten without a person
 // choosing to: anything Aerowise cannot settle on its own becomes a conflict to decide.
 
-export const QUICKBOOKS_ENTITY_TYPES = ["customer", "plan", "invoice", "payment", "refund"] as const;
+export const QUICKBOOKS_ENTITY_TYPES = ["customer", "plan", "invoice", "payment", "refund", "service_item"] as const;
 export type QuickBooksEntityType = (typeof QUICKBOOKS_ENTITY_TYPES)[number];
 
 /** Per record. "Not connected" is not stored: it is the absence of a connection. */
@@ -245,7 +245,7 @@ export const quickbooksStatus = z.object({
       lastSyncError: z.string().nullable(),
     })
     .nullable(),
-  counts: z.object({ customer: statusCounts, plan: statusCounts, invoice: statusCounts, payment: statusCounts, refund: statusCounts }),
+  counts: z.object({ customer: statusCounts, plan: statusCounts, invoice: statusCounts, payment: statusCounts, refund: statusCounts, service_item: statusCounts }),
   /** Records in conflict, or failed with no retry left: what the conflict center shows. */
   attention: z.number().int(),
 });
@@ -293,6 +293,15 @@ export const quickbooksMapping = z.object({
       status: z.enum(QUICKBOOKS_SYNC_STATUSES).nullable(),
     }),
   ),
+  /** Service items (SW-3): lines written from an item use its QuickBooks item, else the plan's, else the default. */
+  serviceItems: z.array(
+    z.object({
+      serviceItemId: id,
+      name: z.string(),
+      active: z.boolean(),
+      item: z.object({ id: z.string(), name: z.string() }).nullable(),
+    }),
+  ),
 });
 export type QuickBooksMapping = z.infer<typeof quickbooksMapping>;
 
@@ -308,6 +317,8 @@ export const quickbooksMappingInput = z.object({
   taxRateRef: z.string().min(1).max(40).nullable().optional(),
   /** A null item means plan lines use the default item. */
   plans: z.array(z.object({ planId: id, itemId: z.string().min(1).max(40).nullable() })).max(500).optional(),
+  /** A null item means the service item's lines use the default item. */
+  serviceItems: z.array(z.object({ serviceItemId: id, itemId: z.string().min(1).max(40).nullable() })).max(500).optional(),
 });
 export type QuickBooksMappingInput = z.infer<typeof quickbooksMappingInput>;
 

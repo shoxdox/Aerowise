@@ -47,7 +47,7 @@ describe("boot-time configuration check", () => {
 
   it("refuses a feature name it does not know, so a typo never leaves a feature silently off", () => {
     expect(configProblems({ ...staging, AEROWISE_FEATURES: "work_orders" })).toEqual([]);
-    expect(configProblems({ ...staging, AEROWISE_FEATURES: "workorders" })).toEqual(['AEROWISE_FEATURES: unknown feature "workorders"; it may list work_orders']);
+    expect(configProblems({ ...staging, AEROWISE_FEATURES: "workorders" })).toEqual(['AEROWISE_FEATURES: unknown feature "workorders"; it may list work_orders, service_items']);
   });
 
   it("names every problem at once", () => {

@@ -293,6 +293,27 @@ describe("demo reseed", () => {
     }
   });
 
+  it("prices and invoices the pump-out from the catalog when service items are switched on too", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "service_items"]) })).toBe(true);
+    const pumpOut = await ctx.db.selectFrom("workOrders").select(["id", "organizationId", "billingStatus"]).where("category", "=", "pumping").executeTakeFirstOrThrow();
+    expect(pumpOut.billingStatus).toBe("invoiced");
+    const organizationId = pumpOut.organizationId;
+    expect((await ctx.db.selectFrom("serviceItems").select("name").where("organizationId", "=", organizationId).orderBy("name").execute()).map((i) => i.name)).toEqual(["Float switch", "Labor", "Pumping"]);
+    const inv = await ctx.db.selectFrom("invoices").select(["id", "status", "totalCents"]).where("workOrderId", "=", pumpOut.id).executeTakeFirstOrThrow();
+    // 1,000 gallons at $0.35 and an hour and a half at $95.
+    expect(inv).toMatchObject({ status: "open", totalCents: 49250 });
+    expect(await ctx.db.selectFrom("invoiceLines").select(["quantity", "quantityMilli", "amountCents"]).where("invoiceId", "=", inv.id).orderBy("position").execute()).toEqual([
+      { quantity: 1000, quantityMilli: null, amountCents: 35000 },
+      { quantity: 2, quantityMilli: 1500, amountCents: 14250 },
+    ]);
+
+    await reseedDemo(ctx.db, { filesDir: files });
+    expect(await ctx.db.selectFrom("serviceItems").select("id").where("organizationId", "=", organizationId).execute()).toEqual([]);
+  });
+
   it("refuses to seed or reseed a production database outside demo mode", async () => {
     const tsx = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
     const cli = fileURLToPath(new URL("../../../packages/db/src/cli.ts", import.meta.url));

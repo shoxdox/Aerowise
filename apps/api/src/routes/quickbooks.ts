@@ -81,7 +81,7 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       .where("status", "<>", "new")
       .groupBy(["entityType", "status"])
       .execute();
-    const counts: QuickBooksStatus["counts"] = { customer: {}, plan: {}, invoice: {}, payment: {}, refund: {} };
+    const counts: QuickBooksStatus["counts"] = { customer: {}, plan: {}, invoice: {}, payment: {}, refund: {}, service_item: {} };
     let attention = 0;
     for (const r of rows) {
       counts[r.entityType][r.status] = Number(r.n);
@@ -261,6 +261,15 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       .orderBy("p.active", "desc")
       .orderBy("p.name")
       .execute();
+    const serviceItems = await db
+      .selectFrom("serviceItems as s")
+      .leftJoin("quickbooksLinks as l", (j) => j.onRef("l.entityId", "=", "s.id").onRef("l.organizationId", "=", "s.organizationId").on("l.entityType", "=", "service_item"))
+      .select(["s.id", "s.name", "s.active", "l.externalId", "l.conflict"])
+      .where("s.organizationId", "=", organizationId)
+      .orderBy("s.active", "desc")
+      .orderBy("s.name")
+      .execute();
+    const chosen = (externalId: string | null, conflict: unknown) => (externalId ? { id: externalId, name: (conflict as { itemName?: string } | null)?.itemName ?? externalId } : null);
     return {
       syncFrom: c.syncFrom,
       defaultItem: c.defaultItemId ? { id: c.defaultItemId, name: c.defaultItemName ?? c.defaultItemId } : null,
@@ -281,12 +290,13 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
         item: p.externalId ? { id: p.externalId, name: ((p.conflict as { itemName?: string } | null)?.itemName ?? p.externalId) as string } : null,
         status: p.status,
       })),
+      serviceItems: serviceItems.map((i) => ({ serviceItemId: i.id, name: i.name, active: i.active, item: chosen(i.externalId, i.conflict) })),
     };
   }
 
   app.get(
     "/quickbooks/mapping",
-    { config: { permission: "quickbooks:read" }, schema: { tags: ["quickbooks"], summary: "Which QuickBooks item each plan's invoice lines use, and from when invoices are sent", response: { 200: quickbooksMapping } } },
+    { config: { permission: "quickbooks:read" }, schema: { tags: ["quickbooks"], summary: "Which QuickBooks item each plan's and service item's invoice lines use, and from when invoices are sent", response: { 200: quickbooksMapping } } },
     async (req) => mapping(req.requireAuth().organizationId),
   );
 
@@ -294,12 +304,12 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
     "/quickbooks/mapping",
     {
       config: { permission: "billing:manage" },
-      schema: { tags: ["quickbooks"], summary: "Choose QuickBooks items for plans and other charges, and the date invoices start syncing from", body: quickbooksMappingInput, response: { 200: quickbooksMapping } },
+      schema: { tags: ["quickbooks"], summary: "Choose QuickBooks items for plans, service items and other charges, and the date invoices start syncing from", body: quickbooksMappingInput, response: { 200: quickbooksMapping } },
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
       const body = req.body;
-      const wanted = [...new Set([body.defaultItemId, body.refundItemId, ...(body.plans ?? []).map((p) => p.itemId)].filter((x): x is string => !!x))];
+      const wanted = [...new Set([body.defaultItemId, body.refundItemId, ...(body.plans ?? []).map((p) => p.itemId), ...(body.serviceItems ?? []).map((i) => i.itemId)].filter((x): x is string => !!x))];
       let names = new Map<string, string>();
       if (wanted.length) {
         try {
@@ -364,6 +374,11 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
         const known = await db.selectFrom("plans").select("id").where("organizationId", "=", organizationId).where("id", "in", body.plans.map((p) => p.planId)).execute();
         if (known.length !== new Set(body.plans.map((p) => p.planId)).size) throw notFound("Plan");
       }
+      if (body.serviceItems?.length) {
+        const ids = body.serviceItems.map((i) => i.serviceItemId);
+        const known = await db.selectFrom("serviceItems").select("id").where("organizationId", "=", organizationId).where("id", "in", ids).execute();
+        if (known.length !== new Set(ids).size) throw notFound("Service item");
+      }
       await db.transaction().execute(async (trx) => {
         const at = now();
         const conn: Record<string, unknown> = { updatedAt: at };
@@ -390,16 +405,20 @@ export const quickbooksRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
           conn[`${key}Name`] = chosen ? codeNames.get(chosen)! : null;
         }
         await trx.updateTable("quickbooksConnections").set(conn).where("organizationId", "=", organizationId).execute();
-        for (const p of body.plans ?? []) {
-          if (!p.itemId) {
-            await trx.deleteFrom("quickbooksLinks").where("organizationId", "=", organizationId).where("entityType", "=", "plan").where("entityId", "=", p.planId).execute();
+        // A plan or service item link is a choice of item, not a sent record; several may share one item.
+        const choices = [
+          ...(body.plans ?? []).map((p) => ({ entityType: "plan" as const, entityId: p.planId, itemId: p.itemId })),
+          ...(body.serviceItems ?? []).map((i) => ({ entityType: "service_item" as const, entityId: i.serviceItemId, itemId: i.itemId })),
+        ];
+        for (const { entityType, entityId, itemId } of choices) {
+          if (!itemId) {
+            await trx.deleteFrom("quickbooksLinks").where("organizationId", "=", organizationId).where("entityType", "=", entityType).where("entityId", "=", entityId).execute();
             continue;
           }
-          // A plan link is a choice of item, not a sent record; several plans may share one item.
-          const values = { status: "synced" as const, externalId: p.itemId, conflict: JSON.stringify({ itemName: names.get(p.itemId) }), lastSyncedAt: at, updatedAt: at };
+          const values = { status: "synced" as const, externalId: itemId, conflict: JSON.stringify({ itemName: names.get(itemId) }), lastSyncedAt: at, updatedAt: at };
           await trx
             .insertInto("quickbooksLinks")
-            .values({ organizationId, entityType: "plan", entityId: p.planId, ...values, createdAt: at })
+            .values({ organizationId, entityType, entityId, ...values, createdAt: at })
             .onConflict((oc) => oc.columns(["organizationId", "entityType", "entityId"]).doUpdateSet(values))
             .execute();
         }
