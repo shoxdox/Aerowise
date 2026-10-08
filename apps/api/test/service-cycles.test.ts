@@ -2,7 +2,9 @@ import { type Feature, snapshotSha256 } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { reseedDemo } from "@aerowise/db";
 import { client, createTenant, createUser, login, setupTestApp } from "./helpers.ts";
+import { eraseOrganization } from "../src/lib/org-erase.ts";
 import { JPEG } from "./inspection-helpers.ts";
 
 // SW-9: pumping and maintenance cycles on a contract (service workflows plan §4.4). Each
@@ -37,7 +39,7 @@ async function cyclePlan(api: Api, cycles: object[], aerobic = true, name = aero
   return res.json() as { id: string; currentVersionId: string; versions: { aerobic: boolean; serviceCycles: { cycleKey: string }[] }[] };
 }
 
-async function contractOn(t: Tenant, planId: string, startOn = "2026-01-01", siteId = t.site.id) {
+async function contractOn(t: Pick<Tenant, "api" | "site">, planId: string, startOn = "2026-01-01", siteId = t.site.id) {
   const res = await t.api.post(`/sites/${siteId}/contracts`, { planId, startOn });
   expect(res.statusCode, res.body).toBe(201);
   return res.json() as ContractDetail;
@@ -685,5 +687,58 @@ describe("offers and imports never turn cycles into inspections", () => {
     expect(done.result).toEqual({ customers: 3, sites: 3, contracts: 1 });
     const kinds = await ctx.db.selectFrom("serviceObligations").select("serviceType").distinct().where("organizationId", "=", t.org.id).execute();
     expect(kinds).toEqual([{ serviceType: "aerobic_inspection" }]);
+  });
+});
+
+describe("demo cleanup with service cycles", () => {
+  /** Rows per tenant table for one organization. */
+  async function rowsByTable(organizationId: string) {
+    const tables = (
+      await sql<{ name: string }>`
+        select c.table_name as name from information_schema.columns c
+        join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'
+        where c.table_schema = current_schema() and c.column_name = 'organization_id' and c.table_name not in ('organizations', 'platform_audit_events', 'audit_events')
+        order by 1`.execute(ctx.db)
+    ).rows.map((r) => r.name);
+    const counts: Record<string, number> = {};
+    for (const t of tables) counts[t] = (await sql<{ n: number }>`select count(*)::int as n from ${sql.table(t)} where organization_id = ${organizationId}`.execute(ctx.db)).rows[0]!.n;
+    return counts;
+  }
+
+  /** A company with a mixed contract, one pumping visit booked and one booked then cancelled. */
+  async function withCycleWork(name: string, demo = false) {
+    let t: Pick<Tenant, "api" | "org" | "site">;
+    if (demo) {
+      // A demo company is one from the moment it is made.
+      const org = await ctx.db.insertInto("organizations").values({ name, demo: true } as never).returning("id").executeTakeFirstOrThrow();
+      const api = client(ctx.app, await login(ctx.app, (await createUser(ctx.db, org.id, "owner")).email));
+      const customer = (await api.post("/customers", { displayName: `${name} customer` })).json();
+      t = { org, api, site: (await api.post(`/customers/${customer.id}/sites`, { addressLine1: "1 Main St", city: "Austin" })).json() };
+    } else t = await createTenant(ctx, name);
+    const plan = await cyclePlan(t.api, [pumpingCycle(await workTypeId(t.api, "pumping"))]);
+    const c = await contractOn(t, plan.id);
+    const [first, second] = c.obligations.filter((o) => o.serviceType === "pumping");
+    expect((await book(t.api, first!.id)).statusCode).toBe(201);
+    const wo = (await book(t.api, second!.id)).json();
+    expect((await t.api.post(`/work-orders/${wo.id}/cancel`, { reason: "Customer asked to wait" })).statusCode).toBeLessThan(300);
+    return t;
+  }
+
+  it("a visitor demo's erase and the nightly reseed remove cycles, their visits and their work orders, and leave a real company as it was", async () => {
+    const real = await withCycleWork("Real Septic");
+    const realBefore = await rowsByTable(real.org.id);
+    expect(realBefore).toMatchObject({ contract_service_cycles: 2, work_orders: 2 });
+
+    const visitor = await withCycleWork("Visitor Demo", true);
+    const nightly = await withCycleWork("Public Demo", true);
+    expect((await rowsByTable(visitor.org.id)).contract_service_cycles).toBe(2);
+
+    await ctx.db.transaction().execute((trx) => eraseOrganization(trx, visitor.org.id));
+    expect(Object.entries(await rowsByTable(visitor.org.id)).filter(([, n]) => n > 0)).toEqual([]);
+
+    const r = await reseedDemo(ctx.db);
+    expect(r.removed).toContain(nightly.org.id);
+    expect(Object.entries(await rowsByTable(nightly.org.id)).filter(([, n]) => n > 0)).toEqual([]);
+    expect(await rowsByTable(real.org.id)).toEqual(realBefore);
   });
 });
