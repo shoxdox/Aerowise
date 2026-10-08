@@ -43,10 +43,13 @@ export const syncQuickBooksOnce = (organizationId: string) => runOnce("quickbook
 /** The inspection's reports and its filing checked and made ready, as the report task does; sending stays queued. */
 export const prepareFilingOnce = (organizationId: string, inspectionId: string) => runOnce("prepare-filing", organizationId, inspectionId);
 
+/** The queued email send of a filing, run once while the mail provider is down: the filing fails (forced, test-only). */
+export const failFilingSendOnce = (organizationId: string, filingId: string) => runOnce("submit-filing-failing", organizationId, filingId);
+
 function runOnce(...args: string[]) {
   const out = execFileSync("pnpm", ["--filter", "@aerowise/api", "exec", "tsx", "test/sw12-run-once.ts", ...args], {
     cwd: resolve(process.cwd(), "../.."),
-    env: { ...process.env, DATABASE_URL: databaseUrl, DEMO_MODE: "true", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files" },
+    env: { ...process.env, DATABASE_URL: databaseUrl, DEMO_MODE: "true", DEMO_LIVE_SERVICES: "", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files" },
     encoding: "utf8",
     timeout: 60_000,
   });
