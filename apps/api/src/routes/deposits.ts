@@ -4,11 +4,10 @@ import { appliedTo, depositBalances, depositLink, dollars, invoiceEvent, pushRes
 import { queueQuickBooksSync } from "@aerowise/tasks";
 import type { FastifyBaseLogger } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { randomUUID } from "node:crypto";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
-import { depositViewFor, lockDeposit, lockDepositForWorkOrder, notAvailable, refundableOn, reserveRefunds } from "../lib/deposits.ts";
+import { claimDepositRequest, depositViewFor, lockDeposit, lockDepositForWorkOrder, notAvailable, recordDepositRequest, refundableOn, reserveRefunds, type DepositAction } from "../lib/deposits.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import type { PaymentsConfig } from "../lib/invoices.ts";
 import { lockInvoiceWorkOrder } from "../lib/work-orders.ts";
@@ -38,6 +37,10 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     const deposit = await depositViewFor(db, organizationId, estimateId, requested);
     return { deposit: deposit! };
   }
+
+  /** The request id first, under D's lock: a repeat returns the first result before anything is checked again. */
+  const claim = (trx: Trx, organizationId: string, userId: string, action: DepositAction, invoiceId: string, body: { requestId: string } & Record<string, unknown>) =>
+    claimDepositRequest(trx, { organizationId, requestId: body.requestId, action, invoiceId, body, actorUserId: userId });
 
   /** Online refunds need the company's Stripe account; check and cash refunds do not. */
   async function needsProvider(trx: Trx, organizationId: string, invoiceId: string) {
@@ -74,11 +77,15 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const r = await db.transaction().execute(async (trx) => {
         const at = now();
         const dep = await lockedDeposit(trx, organizationId, req.params.id);
+        const prior = await claim(trx, organizationId, userId, "refund", dep.depositInvoiceId, b);
+        // A repeat asks the provider again for its refunds (same idempotency keys), in case the first answer was lost.
+        if (prior) return { dep, rows: prior.refundIds.map((id) => ({ id, stripe: true })) };
         const bal = await depositBalances(trx, organizationId, dep.depositInvoiceId);
         if (b.amountCents > Math.max(0, bal.free)) throw notAvailable(bal.free);
         await needsProvider(trx, organizationId, dep.depositInvoiceId);
         const rows = await reserveRefunds(trx, { organizationId, invoiceId: dep.depositInvoiceId, amountCents: b.amountCents, reason: b.reason, actorUserId: userId, at, reservation: "deposit_free" });
         await audit(trx, req, { action: "deposit.refunded", entityType: "invoice", entityId: dep.depositInvoiceId, changes: { ...b, refundIds: rows.map((x) => x.id) } });
+        await recordDepositRequest(trx, organizationId, b.requestId, { refundIds: rows.map((x) => x.id) });
         if (rows.some((x) => !x.stripe)) await queueQuickBooksSync(trx, organizationId, at);
         return { dep, rows };
       });
@@ -99,9 +106,10 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const dep = await db.transaction().execute(async (trx) => {
         const at = now();
         const dep = await lockedDeposit(trx, organizationId, req.params.id);
+        if (await claim(trx, organizationId, userId, "retain", dep.depositInvoiceId, b)) return dep;
         const bal = await depositBalances(trx, organizationId, dep.depositInvoiceId);
         if (b.amountCents > Math.max(0, bal.free)) throw notAvailable(bal.free);
-        await writeEntry(trx, { ...dep, organizationId, kind: "retained", amountCents: b.amountCents, causeKey: `retain:${randomUUID()}`, actorUserId: userId, reason: b.reason });
+        await writeEntry(trx, { ...dep, organizationId, kind: "retained", amountCents: b.amountCents, causeKey: `retain:${b.requestId}`, actorUserId: userId, reason: b.reason });
         await settleShortfall(trx, organizationId, dep.depositInvoiceId, dep.estimateId, userId);
         await invoiceEvent(trx, { organizationId, invoiceId: dep.depositInvoiceId, eventType: "deposit_retained", summary: `Kept ${dollars(b.amountCents)} of the deposit: ${b.reason}`, actorUserId: userId, at });
         await audit(trx, req, { action: "deposit.retained", entityType: "invoice", entityId: dep.depositInvoiceId, changes: b });
@@ -123,9 +131,10 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const dep = await db.transaction().execute(async (trx) => {
         const at = now();
         const dep = await lockedDeposit(trx, organizationId, req.params.id);
+        if (await claim(trx, organizationId, userId, "retain_reverse", dep.depositInvoiceId, b)) return dep;
         const bal = await depositBalances(trx, organizationId, dep.depositInvoiceId);
         if (b.amountCents > bal.retained) throw new HttpError(409, "deposit_not_retained", `Only ${dollars(bal.retained)} of the deposit is kept`);
-        await writeEntry(trx, { ...dep, organizationId, kind: "retain_reversed", amountCents: b.amountCents, causeKey: `retain_reversed:${randomUUID()}`, actorUserId: userId, reason: b.reason });
+        await writeEntry(trx, { ...dep, organizationId, kind: "retain_reversed", amountCents: b.amountCents, causeKey: `retain_reversed:${b.requestId}`, actorUserId: userId, reason: b.reason });
         await settleShortfall(trx, organizationId, dep.depositInvoiceId, dep.estimateId, userId);
         await invoiceEvent(trx, { organizationId, invoiceId: dep.depositInvoiceId, eventType: "deposit_retain_reversed", summary: `${dollars(b.amountCents)} of the kept deposit put back: ${b.reason}`, actorUserId: userId, at });
         await audit(trx, req, { action: "deposit.retain_reversed", entityType: "invoice", entityId: dep.depositInvoiceId, changes: b });
@@ -153,6 +162,7 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const b = req.body;
       const dep = await db.transaction().execute(async (trx) => {
         const dep = await lockedDeposit(trx, organizationId, req.params.id);
+        if (await claim(trx, organizationId, userId, "shortfall", dep.depositInvoiceId, b)) return dep;
         const bal = await depositBalances(trx, organizationId, dep.depositInvoiceId);
         const resolved = await trx
           .selectFrom("depositShortfallResolutions")
@@ -209,6 +219,8 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const dep = wo ? await lockDepositForWorkOrder(trx, organizationId, wo.id) : null;
         const f = await trx.selectFrom("invoices").select(["id", "status"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).forUpdate().executeTakeFirst();
         if (!f) throw notFound("Invoice");
+        const prior = await claim(trx, organizationId, userId, "refund_job", f.id, b);
+        if (prior && dep) return { dep, rows: prior.refundIds.map((id) => ({ id, stripe: true })) };
         const link = dep
           ? await trx.selectFrom("estimateInvoices").select("id").where("invoiceId", "=", f.id).where("role", "=", "final").where("voidedAt", "is", null).executeTakeFirst()
           : undefined;
@@ -238,6 +250,7 @@ export const depositRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           at,
         });
         await audit(trx, req, { action: "invoice.job_refunded", entityType: "invoice", entityId: f.id, changes: { ...b, direct, fromDeposit, refundIds: rows.map((x) => x.id) } });
+        await recordDepositRequest(trx, organizationId, b.requestId, { refundIds: rows.map((x) => x.id) });
         if (rows.some((x) => !x.stripe)) await queueQuickBooksSync(trx, organizationId, at);
         return { dep, rows };
       });

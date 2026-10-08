@@ -57,6 +57,7 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
   deposit_refund_failed: "Open invoice",
   deposit_refund_pending: "Open invoice",
   deposit_unapplied: "Refund or keep",
+  deposit_disposition: "Refund or keep",
   deposit_shortfall: "Resolve",
   sms_reply: "All texts",
   complaint_unresolved: "Record response",

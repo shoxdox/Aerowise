@@ -719,7 +719,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       free: number;
       shortfall: number;
       resolved: number;
-      unappliedMatters: boolean;
+      cancelled: boolean;
+      invoiced: boolean;
     }>`
       with b as (
         select ei.invoice_id, ei.estimate_id,
@@ -742,7 +743,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       )
       select i.id, i.number, e.number as "estimateNumber", s.id as "siteId", s.address_line1 as "addressLine1", s.city, c.id as "customerId", c.display_name as "displayName",
         (b.r - b.x - coalesce(q.q, 0) - b.a - b.t + b.s)::int as free, b.s::int as shortfall, coalesce(res.n, 0)::int as resolved,
-        (e.status = 'cancelled' or exists (select 1 from estimate_invoices f where f.estimate_id = b.estimate_id and f.role = 'final' and f.voided_at is null)) as "unappliedMatters"
+        e.status = 'cancelled' as cancelled,
+        exists (select 1 from estimate_invoices f where f.estimate_id = b.estimate_id and f.role = 'final' and f.voided_at is null) as invoiced
       from b
       join invoices i on i.id = b.invoice_id
       join estimates e on e.id = b.estimate_id
@@ -796,7 +798,18 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           },
     );
     for (const d of rows.rows) {
-      if (d.free > 0 && d.unappliedMatters) {
+      if (d.free > 0 && d.cancelled) {
+        // Plan §3.4: a cancelled estimate's paid deposit waits here; nothing is refunded or kept automatically.
+        out.push({
+          ...where(d, d.id),
+          key: `deposit_disposition:${d.id}`,
+          kind: "deposit_disposition",
+          severity: "high",
+          title: "Deposit disposition needed",
+          detail: `${label(d)}: the estimate was cancelled with ${dollars(d.free)} of its deposit held. Refund it, or keep it under the estimate's terms with a reason.`,
+          dueOn: null,
+        });
+      } else if (d.free > 0 && d.invoiced) {
         out.push({ ...where(d, d.id), key: `deposit_unapplied:${d.id}`, kind: "deposit_unapplied", severity: "medium", title: "Unapplied deposit", detail: `${label(d)}: ${dollars(d.free)} is held and not applied. Refund it or keep it.`, dueOn: null });
       }
       const outstanding = Math.max(0, d.shortfall - d.resolved);

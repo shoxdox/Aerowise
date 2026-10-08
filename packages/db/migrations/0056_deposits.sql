@@ -159,3 +159,22 @@ create constraint trigger deposit_refund_reconciled after insert or update on re
 alter table quickbooks_links drop constraint quickbooks_links_conflict_kind_check;
 alter table quickbooks_links add constraint quickbooks_links_conflict_kind_check
   check (conflict_kind in ('ambiguous_match', 'changed_in_both', 'deleted_in_quickbooks', 'item_missing', 'tax_mapping_missing', 'payment_mismatch', 'duplicate_number', 'tax_total_mismatch', 'deposit_mapping_missing'));
+
+-- One row per office deposit action (refund, keep, put back, shortfall, refund the job), keyed
+-- by the id the office's screen made for it. A retry or double submit with the same id finds
+-- this row and gets the first result back instead of moving money again; the same id with a
+-- different action, invoice or body is refused. Kept per company: another company's id is
+-- never looked at.
+create table deposit_requests (
+  organization_id uuid not null references organizations (id),
+  request_id uuid not null,
+  action text not null check (action in ('refund', 'retain', 'retain_reverse', 'shortfall', 'refund_job')),
+  invoice_id uuid not null,
+  body_sha256 text not null check (body_sha256 ~ '^[0-9a-f]{64}$'),
+  -- {refundIds: [...]} once the action committed; written in the same transaction.
+  result jsonb not null default '{}'::jsonb,
+  created_by uuid references users (id),
+  created_at timestamptz not null default now(),
+  primary key (organization_id, request_id),
+  foreign key (organization_id, invoice_id) references invoices (organization_id, id)
+);
