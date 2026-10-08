@@ -293,6 +293,28 @@ describe("demo reseed", () => {
     }
   });
 
+  it("adds the pumping story when pumping is on: the pump-out recorded on the phone and its disposal record, cleared by the nightly reset", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "service_items", "field_work", "pumping"]) })).toBe(true);
+    const wo = await ctx.db.selectFrom("workOrders").select(["organizationId", "status", "completedWithoutRecordReason"]).where("category", "=", "pumping").executeTakeFirstOrThrow();
+    expect([wo.status, wo.completedWithoutRecordReason]).toEqual(["completed", null]);
+    const organizationId = wo.organizationId;
+    const pumped = await ctx.db.selectFrom("currentPumpingRecords").select(["volumeMilligallons", "wasteType"]).where("organizationId", "=", organizationId).execute();
+    expect(pumped).toEqual([{ volumeMilligallons: "1000000", wasteType: "septage" }]);
+    const load = await ctx.db.selectFrom("currentDisposalLoads").select(["manifestReference", "groupId"]).where("organizationId", "=", organizationId).executeTakeFirstOrThrow();
+    expect(load.manifestReference).toBe("DEMO-MANIFEST-0001");
+    expect(await ctx.db.selectFrom("disposalLoadItems").select("id").where("loadGroupId", "=", load.groupId).execute()).toHaveLength(1);
+    const facility = await ctx.db.selectFrom("disposalFacilities").select(["name", "source"]).where("organizationId", "=", organizationId).executeTakeFirstOrThrow();
+    expect(facility).toEqual({ name: "Example Water Reclamation (fictional)", source: "entered_by_provider" });
+
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["vehicles", "disposalFacilities", "pumpingRecords", "disposalLoads", "disposalLoadItems"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", organizationId).execute()).toEqual([]);
+    }
+  });
+
   it("adds the estimate story when estimates are switched on: one waiting, one signed and made a work order", async () => {
     const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
     await reseedDemo(ctx.db, { filesDir: files });

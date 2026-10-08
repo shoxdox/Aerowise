@@ -132,6 +132,8 @@ export const workOrderLineInput = z.object({
   taxable: z.boolean().default(false),
   /** The catalog item the line started from (service items, SW-3). */
   serviceItemId: id.nullish(),
+  /** Priced per gallon: at invoicing the quantity is the work order's recorded pump-out volume, cited on the line (SW-6). */
+  billPumpedVolume: z.boolean().default(false),
 });
 export const workOrderLine = z.object({
   id,
@@ -144,6 +146,7 @@ export const workOrderLine = z.object({
   source: z.enum(["planned", "added_in_field"]),
   amountCents: z.number().int(),
   serviceItemId: id.nullable(),
+  billPumpedVolume: z.boolean().default(false),
 });
 
 // ---- Work orders ----
