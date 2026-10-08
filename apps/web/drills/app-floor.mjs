@@ -2,6 +2,7 @@
 // Scratch only: it talks to http://localhost:4000 and the scratch database it is given.
 //
 //   node drills/app-floor.mjs fixtures                 service-workflow records for the demo company
+//                                                      (core, SW-6 pumping and disposal, SW-7 installation)
 //   node drills/app-floor.mjs smoke <label> [floor]    every list and every record of the signed-in company
 //   node drills/app-floor.mjs files <label>            every stored photo downloads with its recorded checksum
 //
@@ -48,7 +49,7 @@ async function session(email) {
     }
     return { status: r.status, json, text };
   };
-  return { get: (p) => call("GET", p), post: (p, b) => call("POST", p, b ?? {}), put: (p, b, h) => call("PUT", p, b, h), patch: (p, b) => call("PATCH", p, b) };
+  return { cookie, get: (p) => call("GET", p), post: (p, b) => call("POST", p, b ?? {}), put: (p, b, h) => call("PUT", p, b, h), patch: (p, b) => call("PATCH", p, b) };
 }
 /** The phone's summary checksum: SHA-256 of the canonical JSON (keys sorted), as packages/domain computes it. */
 const canonicalJson = (v) =>
@@ -97,15 +98,61 @@ try {
     must(await owner.post(`/estimates/${est.id}/record-acceptance`, { evidence: "Signed paper copy" }), 200, "estimate acceptance");
     const plan = must(await owner.post("/plans", { name: "Drill B Gold", termMonths: 12, visitsPerTerm: 2, priceCents: 40000 }), 201, "plan");
     must(await owner.post(`/plans/${plan.id}/versions`, { termsText: "Fictional test terms.", options: [], coverage: [{ ruleKey: "repairs", label: "Repairs", match: { category: "repair" }, effect: "included", limit: { count: 1, per: "term" } }] }), 201, "plan version");
+    // SW-6: a pump-out on the phone, a disposal load carrying it, and the load's manifest photo.
+    const truck = must(await owner.post("/vehicles", { name: `Drill B truck ${clientId.slice(0, 6)}`, capacityGallons: 3000 }), 201, "truck");
+    const facility = must(await owner.post("/disposal-facilities", { name: `Drill B plant ${clientId.slice(0, 6)}`, kind: "wastewater_treatment_plant", city: "Austin" }), 201, "facility");
+    const tessId = techs.find((t) => t.name === "Tess Tech").id;
+    const pwo = must(await owner.post("/work-orders", { siteId: site.id, workTypeId: types.find((t) => t.key === "pumping").id, title: "Drill B pump-out" }), 201, "pumping work order");
+    const pjob = must(await owner.post(`/work-orders/${pwo.id}/schedule`, { technicianId: tessId, scheduledDate: today }), 201, "pumping schedule").visits[0].jobId;
+    const pform = must(await tech.get("/form-templates/work-pumping"), 200, "pumping form");
+    const pclient = crypto.randomUUID();
+    const psync = (status, revision) =>
+      tech.put("/work/sync", { clientId: pclient, jobId: pjob, templateId: pform.id, status, revision, arrivedAt: `${today}T15:00:00Z`, completedAt: status === "completed" ? `${today}T16:00:00Z` : null, values: { tank_count: 1, lid_condition: "good" }, pumpOut: { clientId: crypto.randomUUID(), volume: 1000, unit: "gallons", wasteType: "septage", tanks: [{ label: "Tank 1", volume: 1000 }], vehicleId: truck.id } });
+    must(await psync("draft", 1), 200, "pump-out draft");
+    must(await psync("completed", 2), 200, "pump-out completion");
+    const pumpingGroup = must(await owner.get(`/pumping-records?workOrderId=${pwo.id}`), 200, "pump-outs").items[0].groupId;
+    const loadClient = crypto.randomUUID();
+    must(await tech.put("/disposal/loads/sync", { clientId: loadClient, vehicleId: truck.id, facilityId: facility.id, deliveredOn: today, manifestReference: "DRILL-B-1", total: 1000, unit: "gallons", pumpingGroupIds: [pumpingGroup] }), 201, "disposal load");
+    must(await tech.put(`/disposal/loads/${loadClient}/photos/${crypto.randomUUID()}`, JPEG, { "content-type": "image/jpeg", "x-photo-key": "manifest" }), 201, "manifest photo");
+
+    // SW-7: a two-visit installation; the final visit carries the customer's completion sign-off.
+    const iwo = must(await owner.post("/work-orders", { siteId: site.id, workTypeId: types.find((t) => t.key === "installation").id, title: "Drill B installation" }), 201, "installation work order");
+    const iform = must(await tech.get("/form-templates/work-installation"), 200, "installation form");
+    for (const finalVisit of [false, true]) {
+      const visits = must(await owner.post(`/work-orders/${iwo.id}/schedule`, { technicianId: tessId, scheduledDate: today }), 201, "installation schedule").visits;
+      const ijob = visits[visits.length - 1].jobId;
+      const iclient = crypto.randomUUID();
+      const isummary = { workOrder: "Drill B installation", visit: ijob, anotherVisitNeeded: !finalVisit };
+      const isync = (status, revision) =>
+        tech.put("/work/sync", { clientId: iclient, jobId: ijob, templateId: iform.id, status, revision, arrivedAt: `${today}T15:00:00Z`, completedAt: status === "completed" ? `${today}T17:00:00Z` : null, values: { system_status: "new", bedrooms: 3, tank_sizes: "1,000 gal", work_performed: "Set the tank" }, summary: isummary, finalVisit });
+      must(await isync("draft", 1), 200, "installation draft");
+      for (const key of finalVisit ? ["install_location", "as_built"] : ["install_location"]) must(await tech.put(`/work/${iclient}/photos/${crypto.randomUUID()}`, JPEG, { "content-type": "image/jpeg", "x-photo-key": key }), 201, `installation photo ${key}`);
+      if (finalVisit) {
+        must(
+          await tech.put(`/work/${iclient}/signatures/${crypto.randomUUID()}`, { requirementKey: "customer_completion", signerName: "Pat Customer", capture: { kind: "typed" }, summary: isummary, summarySha256: snapshotSha256(isummary), consentText: "I confirm this work was done.", signedAt: `${today}T16:55:00Z` }),
+          201,
+          "completion sign-off",
+        );
+      }
+      must(await isync("completed", 2), 200, "installation visit completion");
+    }
+
     const rec = (await db.query("select status, validation_status from work_records where job_id = $1", [jobId])).rows[0];
     check(rec?.status === "completed" && rec?.validation_status === "valid", "a repair record completed on the phone, with two photos and a signature");
     check(Number((await db.query("select count(*) n from work_attachments where organization_id = $1", [org])).rows[0].n) >= 2, "work photos stored");
+    check(Number((await db.query("select count(*) n from work_attachments where organization_id = $1 and disposal_load_group_id is not null", [org])).rows[0].n) >= 1, "a disposal load with its manifest photo stored");
+    check((await db.query("select status from work_orders where id = $1", [iwo.id])).rows[0].status === "completed", "an installation completed on its final visit");
+    check(
+      Number((await db.query("select count(*) n from signed_documents d join work_records r on r.organization_id = d.organization_id and r.offline_client_id = d.record_client_id where r.work_order_id = $1 and d.kind = 'work_completion'", [iwo.id])).rows[0].n) === 1,
+      "one completion sign-off for the installation",
+    );
   }
 
   if (mode === "smoke") {
     const tech = await session("tech@example.com");
     const { today } = must(await owner.get("/obligations/due?limit=1"), 200, "due list");
-    const skip = (p) => onFloor && unsupported.some((u) => p.startsWith(u));
+    // An entry starting with "/" is a path prefix; any other entry is a path suffix (".../completion-summary.pdf").
+    const skip = (p) => onFloor && unsupported.some((u) => (u.startsWith("/") ? p.startsWith(u) : p.endsWith(u)));
     const expect200 = async (who, api, p) => {
       const r = await api.get(p);
       if (skip(p)) return check(r.status === 404, `${who} GET ${p} is newer than the floor: UNSUPPORTED on the floor (answered ${r.status})`);
@@ -113,7 +160,7 @@ try {
       return r.json;
     };
     // Lists the floor supports, as the owner and the technician.
-    const lists = ["/customers", "/estimates", "/exports", "/filings", "/form-templates", "/inbox", "/invoices", "/plans", "/service-items", "/service-requests", "/sites", "/work-orders", "/work-types", "/work/conflicts", "/subscription", "/form-templates?purpose=intake", `/schedule?from=${today}&to=${today}`];
+    const lists = ["/customers", "/estimates", "/exports", "/filings", "/form-templates", "/inbox", "/invoices", "/plans", "/service-items", "/service-requests", "/sites", "/work-orders", "/work-types", "/work/conflicts", "/subscription", "/form-templates?purpose=intake", `/schedule?from=${today}&to=${today}`, "/vehicles", "/disposal-facilities", "/pumping-records", "/disposal/loads", "/pumping/settings"];
     for (const p of lists) await expect200("owner", owner, p);
     for (const p of ["/route", "/work/route"]) await expect200("technician", tech, p);
     // Every record of the signed-in company (never another company's) answers 200.
@@ -127,7 +174,15 @@ try {
       ["/contracts/", await ids("select id from contracts where organization_id = $1 order by id limit 40")],
     ];
     for (const [prefix, list] of details.slice(0, 4)) check(list.length > 0, `the company has ${prefix.slice(1, -1)} to read (${list.length})`);
+    details.push(
+      ["/pumping-records/", await ids("select distinct group_id as id from pumping_records where organization_id = $1")],
+      ["/disposal/loads/", await ids("select distinct group_id as id from disposal_loads where organization_id = $1")],
+    );
     for (const [prefix, list] of details) for (const id of list) await expect200("owner", owner, `${prefix}${id}`);
+    // SW-7: every completed installation's completion summary.
+    const installs = await ids("select w.id from work_orders w join work_types t on t.id = w.work_type_id where w.organization_id = $1 and t.key = 'installation' and w.status = 'completed'");
+    if (!skip("/work-orders/x/completion-summary.pdf")) check(installs.length > 0, `the company has completed installations to read (${installs.length})`);
+    for (const id of installs) await expect200("owner", owner, `/work-orders/${id}/completion-summary.pdf`);
     for (const id of await ids("select job_id as id from work_records where organization_id = $1")) await expect200("owner", owner, `/jobs/${id}/work-record`);
   }
 
@@ -146,6 +201,32 @@ try {
       }
     }
     check(seen >= 2, `${seen} stored work photos retrieved`);
+
+    // SW-6: each disposal load's manifest photos, with their recorded checksums.
+    let manifests = 0;
+    for (const { id } of (await db.query("select distinct group_id as id from disposal_loads where organization_id = $1", [org])).rows) {
+      const load = must(await owner.get(`/disposal/loads/${id}`), 200, "disposal load");
+      for (const photo of load.photos) {
+        const want = (await db.query("select sha256 from work_attachments where id = $1", [photo.id])).rows[0].sha256;
+        const res = await fetch(`${API}${photo.url.replace(/^\/api/, "")}`);
+        const got = createHash("sha256").update(Buffer.from(await res.arrayBuffer())).digest("hex");
+        check(res.status === 200 && got === want, `manifest photo ${photo.id} downloads (${res.status}) with its recorded checksum`);
+        manifests++;
+      }
+    }
+    check(manifests >= 1, `${manifests} stored manifest photos retrieved`);
+
+    // SW-7: each completed installation's completion summary is made from the restored records,
+    // and its completion sign-off is the one recorded (same checksum).
+    const installs = (await db.query("select w.id from work_orders w join work_types t on t.id = w.work_type_id where w.organization_id = $1 and t.key = 'installation' and w.status = 'completed'", [org])).rows;
+    for (const { id } of installs) {
+      const res = await fetch(`${API}/work-orders/${id}/completion-summary.pdf`, { headers: { cookie: owner.cookie } });
+      const pdf = Buffer.from(await res.arrayBuffer());
+      check(res.status === 200 && pdf.subarray(0, 5).toString() === "%PDF-", `installation ${id} completion summary is a PDF (${res.status}, ${pdf.length} bytes)`);
+      const signed = (await db.query("select d.content_sha256 as sha256 from signed_documents d join work_records r on r.organization_id = d.organization_id and r.offline_client_id = d.record_client_id where r.work_order_id = $1 and d.kind = 'work_completion'", [id])).rows;
+      check(signed.length === 1 && /^[0-9a-f]{64}$/.test(signed[0].sha256 ?? ""), `installation ${id} keeps its one completion sign-off with its checksum`);
+    }
+    check(installs.length >= 1, `${installs.length} completed installations summarized`);
   }
 } catch (e) {
   fails++;

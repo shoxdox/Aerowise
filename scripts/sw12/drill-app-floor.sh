@@ -12,8 +12,8 @@
 # is a core-floor rehearsal, not final-floor evidence, and the results file says so.
 #
 # Both worktrees installed. Port 4000 must be free; the script stops only the process groups it
-# started. Env: PGHOST_URL, FINAL_FEATURES (every flag of the final SHA), FLOOR_FEATURES (default:
-# the six 81048d3 knows; a rollback must drop flags the floor does not know), FLOOR_UNSUPPORTED
+# started. Env: PGHOST_URL, FINAL_FEATURES (default: every flag in the final SHA's FEATURES), FLOOR_FEATURES (default:
+# every flag the floor SHA knows; a rollback must drop flags the floor does not know), FLOOR_UNSUPPORTED
 # (comma-separated path prefixes newer than the floor: reported as unsupported there, never as reads
 # that passed).
 #
@@ -24,8 +24,12 @@ FINAL=$(cd "$1" && pwd); FLOOR=$(cd "$2" && pwd)
 PG=${PGHOST_URL:-postgres://aerowise:aerowise@localhost:5432}
 DB=aerowise_drilltest_b; RDB=aerowise_drilltest_restore
 URL=$PG/$DB; RURL=$PG/$RDB
-FEATURES=${FINAL_FEATURES:-work_orders,service_items,field_work,estimates,deposits,plan_builder}
-FLOOR_FEATURES=${FLOOR_FEATURES:-work_orders,service_items,field_work,estimates,deposits,plan_builder}
+# The final run uses every flag the final SHA knows (plan: final flags include all waves).
+ALL_FEATURES=$(sed -n 's/^export const FEATURES = \[\(.*\)\] as const;$/\1/p' "$FINAL/packages/domain/src/features.ts" | tr -d ' "')
+[ -n "$ALL_FEATURES" ] || { echo "could not read FEATURES from the final worktree" >&2; exit 2; }
+FEATURES=${FINAL_FEATURES:-$ALL_FEATURES}
+FLOOR_KNOWS=$(sed -n 's/^export const FEATURES = \[\(.*\)\] as const;$/\1/p' "$FLOOR/packages/domain/src/features.ts" | tr -d ' "')
+FLOOR_FEATURES=${FLOOR_FEATURES:-$FLOOR_KNOWS}
 OUT=${DRILL_OUT:-$(mktemp -d /tmp/sw12-drill-b.XXXX)}
 FILES=$OUT/files; RFILES=$OUT/files-restored; mkdir -p "$FILES"
 RESULTS=$OUT/results.txt; : > "$RESULTS"
@@ -94,7 +98,7 @@ manifest() { (cd "$1" && find . -type f -print0 | sort -z | xargs -0 -r sha256su
 [ -z "$(listeners)" ] || { echo "port 4000 is in use; stop whatever runs there first"; exit 2; }
 psql "$PG/postgres" -qc "drop database if exists $DB" -c "drop database if exists $RDB" -c "create database $DB"
 rm -rf "$RFILES"
-if (cd "$FINAL" && DATABASE_URL=$URL pnpm db:migrate && DATABASE_URL=$URL DEMO_MODE=true AEROWISE_FEATURES=$FEATURES pnpm db:seed) > "$OUT/setup.log" 2>&1
+if (cd "$FINAL" && DATABASE_URL=$URL pnpm db:migrate && DATABASE_URL=$URL DEMO_MODE=true FILE_STORAGE_DIR="$FILES" AEROWISE_FEATURES=$FEATURES pnpm db:seed) > "$OUT/setup.log" 2>&1
 then check ok "final SHA migrated ($(psql "$URL" -Atc "select count(*) from schema_migrations") migrations) and seeded"; else check fail "final SHA migrated and seeded" "(see $OUT/setup.log)"; fi
 
 # Final: add service-workflow records, read everything, take the reference snapshot.
