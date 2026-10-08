@@ -1,6 +1,6 @@
 import { loadCatalog, resolveSite, siteMonitoredOn, type CatalogEntry } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, serviceIntervalMonths, siteScheduleProblem, visitsWithin, type ContractVisitRule } from "@aerowise/domain";
+import { anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, serviceIntervalMonths, siteScheduleProblem, visitsWithin, type ContractVisitRule, type CoverageRule } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -14,6 +14,8 @@ export interface Terms {
   priceCents: number;
   billingFrequency: DB["contracts"]["billingFrequency"];
   serviceType: DB["contracts"]["serviceType"];
+  /** The plan version these terms came from (SW-8); null when there is none. */
+  planVersionId?: string | null;
 }
 
 type VisitTerms = Pick<Terms, "customerType" | "termMonths" | "visitsPerTerm">;
@@ -99,7 +101,19 @@ export class MoreVisitsRequired extends Error {
 export async function insertContract(
   trx: Transaction<DB>,
   organizationId: string,
-  input: { siteId: string; startOn: string; terms: Terms; autoRenew: boolean; notes?: string | null; previousContractId?: string; signedDocumentId?: string | null },
+  input: {
+    siteId: string;
+    startOn: string;
+    terms: Terms;
+    autoRenew: boolean;
+    notes?: string | null;
+    previousContractId?: string;
+    signedDocumentId?: string | null;
+    /** Coverage rules to freeze on the contract (SW-8), from `terms.planVersionId`. */
+    coverage?: readonly CoverageRule[];
+    /** What was agreed, for a contract made without a signature (SW-8). */
+    agreementSnapshot?: unknown;
+  },
   opts: { catalog?: CatalogEntry[]; acceptVisits?: number; confirmExtraVisits?: boolean } = {},
 ) {
   const { terms, added, contractVisits } = await siteVisitTerms(trx, organizationId, input.siteId, input.startOn, input.terms, opts.catalog);
@@ -120,6 +134,7 @@ export async function insertContract(
       notes: input.notes ?? null,
       previousContractId: input.previousContractId ?? null,
       signedDocumentId: input.signedDocumentId ?? null,
+      agreementSnapshot: input.agreementSnapshot === undefined ? null : JSON.stringify(input.agreementSnapshot),
       cancelledAt: null,
       cancelReason: null,
     })
@@ -141,5 +156,25 @@ export async function insertContract(
       })),
     )
     .execute();
+  if (input.coverage?.length) {
+    if (!terms.planVersionId) throw new Error("Coverage is frozen from a plan version");
+    // Frozen for the contract's own term: the contract is judged by these alone from now on.
+    await trx
+      .insertInto("contractCoverageRules")
+      .values(
+        input.coverage.map((r, i) => ({
+          organizationId,
+          contractId: created.id,
+          ruleKey: r.ruleKey,
+          position: i + 1,
+          rule: JSON.stringify(r),
+          planVersionId: terms.planVersionId!,
+          limitCount: r.limit?.count ?? null,
+          periodStart: input.startOn,
+          periodEnd: schedule.endOn,
+        })),
+      )
+      .execute();
+  }
   return created.id;
 }

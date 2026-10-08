@@ -39,6 +39,7 @@ import {
   writeDraftLines,
   type PaymentsConfig,
 } from "../lib/invoices.ts";
+import { afterCoveredInvoiceVoided, consumeCoverage } from "../lib/coverage.ts";
 import { afterWorkOrderInvoiceEnded, lockInvoiceWorkOrder } from "../lib/work-orders.ts";
 import { dateInZone, organizationToday } from "../lib/today.ts";
 import { readForDownload } from "../lib/demo.ts";
@@ -377,7 +378,11 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId, userId } = req.requireAuth();
       await db.transaction().execute(async (trx) => {
         const at = now();
+        // The work order it was made from first, then the invoice, as every change to the pair.
+        const wo = await lockInvoiceWorkOrder(trx, organizationId, req.params.id);
         const issued = await issueDraft(trx, organizationId, req.params.id, { send: req.body.send, now: at });
+        // Billing the work spends the plan coverage it was priced under (SW-8).
+        if (wo) await consumeCoverage(trx, req, organizationId, wo.id, req.params.id, at);
         await invoiceEvent(trx, {
           organizationId,
           invoiceId: req.params.id,
@@ -457,6 +462,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await recalcInvoice(trx, organizationId, inv.id, at);
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "voided", summary: `Voided: ${req.body.reason}`, actorUserId: userId, at });
         if (wo) await afterWorkOrderInvoiceEnded(trx, req, wo, { organizationId, summary: `Invoice ${invoiceNumberLabel(inv.number)} voided: ${req.body.reason}`, at });
+        if (wo) await afterCoveredInvoiceVoided(trx, req, organizationId, wo, inv.id, at);
         await audit(trx, req, { action: "invoice.voided", entityType: "invoice", entityId: inv.id, changes: { reason: req.body.reason } });
         await queueQuickBooksSync(trx, organizationId, at);
         return trx
