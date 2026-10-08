@@ -118,12 +118,14 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
     return own ?? (await builtInTemplate());
   }
 
-  /** Any version visible to the organization: its own, or a built-in one. */
+  /** Any inspection form version visible to the organization: its own, or a built-in one. */
   const findTemplate = (organizationId: string, templateId: string) =>
     db
       .selectFrom("inspectionTemplates")
       .select(TEMPLATE_COLUMNS)
       .where("id", "=", templateId)
+      // Work and intake forms share the table; an inspection never uses one.
+      .where("purpose", "=", "inspection")
       .where((eb) => eb.or([eb("organizationId", "is", null), eb("organizationId", "=", organizationId)]))
       .executeTakeFirst();
 
