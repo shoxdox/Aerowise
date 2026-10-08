@@ -116,6 +116,7 @@ describe("Hays County visits counted from the contract's start (10.V.2)", () => 
         "Hays County Development Services, On-Site Sewage Facilities counts visits from the contract's start: one within 14 days of it, one at least every 4 months, and one in the last 14 days, so this contract needs 4 visits instead of the plan's 3, at the same price. " +
         'Aerowise reads "within 14 days of the end of the contract period" as the 14 days before the end; Hays County has not confirmed this. Create it with 4 visits?',
       scheduleNotice: null,
+      systemWarning: null,
     });
   });
 

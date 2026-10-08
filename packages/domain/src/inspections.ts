@@ -61,6 +61,12 @@ export const signatureRequirement = z.object({
   label: z.string().min(1).max(200),
   signer: z.enum(["customer", "technician"]),
   required: z.boolean().default(false),
+  /**
+   * SW-7: asked for only on the visit that finishes the work (a multi-visit installation's
+   * completion sign-off), on the phone and on the server alike. Absent means every visit, as
+   * before, so every form saved without it reads unchanged.
+   */
+  finalVisitOnly: z.boolean().optional(),
 });
 export type SignatureRequirement = z.infer<typeof signatureRequirement>;
 

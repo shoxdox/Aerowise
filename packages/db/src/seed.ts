@@ -223,6 +223,7 @@ export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {
             serial: `SN${100000 + r.int(900000)}`,
             installedAt: `${2008 + r.int(16)}-0${1 + r.int(9)}-1${r.int(9)}`,
             systemType: "aerobic",
+            systemCategory: "aerobic",
             treatmentType: "aerobic treatment unit",
             disposalType: r.pick(DISPOSAL),
             chlorinationMethod: r.pick(CHLORINE),

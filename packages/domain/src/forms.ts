@@ -19,9 +19,19 @@ export const keyAllowedForPurpose = (key: string, purpose: TemplatePurpose) => p
 /** The signatures a form asks for. */
 export const signatureRequirements = (def: TemplateDefinition): SignatureRequirement[] => def.signatures ?? [];
 
-/** Required signatures not yet given, as problems the phone and the API both report the same way. */
-export function signatureProblems(def: TemplateDefinition, signedKeys: ReadonlySet<string>): ValidationProblem[] {
-  return signatureRequirements(def)
+/**
+ * The signatures a visit asks for. One marked `finalVisitOnly` belongs to the visit that finishes
+ * the work, so a visit with another one to come does not ask for it (SW-7).
+ */
+export const signaturesForVisit = (def: TemplateDefinition, finalVisit: boolean): SignatureRequirement[] =>
+  signatureRequirements(def).filter((s) => finalVisit || !s.finalVisitOnly);
+
+/**
+ * Required signatures not yet given, as problems the phone and the API both report the same way.
+ * `finalVisit` defaults to true, which asks for every required signature as before SW-7.
+ */
+export function signatureProblems(def: TemplateDefinition, signedKeys: ReadonlySet<string>, finalVisit = true): ValidationProblem[] {
+  return signaturesForVisit(def, finalVisit)
     .filter((s) => s.required && !signedKeys.has(s.key))
     .map((s) => ({ key: s.key, label: s.label, problem: "missing" as const, message: `${s.label} is required` }));
 }
@@ -161,7 +171,127 @@ export const GENERIC_PUMPING_TEMPLATE: StarterTemplate = {
   },
 };
 
-export const STARTER_WORK_TEMPLATES: readonly StarterTemplate[] = [GENERIC_REPAIR_TEMPLATE, GENERIC_SERVICE_CALL_TEMPLATE, GENERIC_PUMPING_TEMPLATE];
+const condition = (key: string, label: string, section: string): TemplateDefinition["fields"][number] => ({
+  key,
+  label,
+  section,
+  type: "select",
+  required: true,
+  options: [
+    { value: "good", label: "Good" },
+    { value: "damaged", label: "Damaged" },
+    { value: "missing", label: "Missing" },
+    { value: "not_checked", label: "Not checked" },
+  ],
+});
+
+/**
+ * Servicing a conventional (non-aerobic) system (SW-7): the tank and its baffles, the
+ * distribution box and the drain field as the technician found them. A record of what was seen,
+ * not an authority's inspection: nothing here is filed or reported.
+ */
+export const GENERIC_CONVENTIONAL_TEMPLATE: StarterTemplate = {
+  key: "work-conventional",
+  version: 1,
+  name: "Conventional system service",
+  purpose: "work",
+  definition: {
+    fields: [
+      { key: "tank_count", label: "Tanks checked", section: "Tank", type: "number", required: true, min: 1, max: 20 },
+      condition("inlet_baffle", "Inlet baffle", "Tank"),
+      condition("outlet_baffle", "Outlet baffle", "Tank"),
+      {
+        key: "effluent_filter",
+        label: "Effluent filter",
+        section: "Tank",
+        type: "select",
+        required: false,
+        options: [
+          { value: "cleaned", label: "Cleaned" },
+          { value: "not_cleaned", label: "Present, not cleaned" },
+          { value: "none", label: "None fitted" },
+        ],
+      },
+      text("tank_notes", "Tank notes", "Tank"),
+      {
+        key: "distribution_box",
+        label: "Distribution box",
+        section: "Distribution box",
+        type: "select",
+        required: true,
+        options: [
+          { value: "good", label: "Good" },
+          { value: "damaged", label: "Damaged" },
+          { value: "not_found", label: "Not found" },
+          { value: "not_checked", label: "Not checked" },
+        ],
+      },
+      { key: "outlets_even", label: "Outlets level and flowing evenly", section: "Distribution box", type: "boolean", required: false },
+      {
+        key: "field_condition",
+        label: "Drain field",
+        section: "Drain field",
+        type: "select",
+        required: true,
+        options: [
+          { value: "normal", label: "No problems seen" },
+          { value: "wet", label: "Wet or soggy areas" },
+          { value: "surfacing", label: "Effluent surfacing" },
+          { value: "not_checked", label: "Not checked" },
+        ],
+      },
+      text("field_notes", "Drain field observations", "Drain field"),
+      text("recommendations", "Recommendations", "Drain field"),
+    ],
+    photos: [{ key: "site", label: "Site photos", minCount: 0 }],
+    signatures: [{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: false }],
+  },
+};
+
+/**
+ * An installation (SW-7), which may take more than one visit. Every visit records what was done
+ * and where; the customer signs the completion summary once, on the visit that finishes the work.
+ * It records intake, work and sign-off only: no design, permit or approval.
+ */
+export const GENERIC_INSTALLATION_TEMPLATE: StarterTemplate = {
+  key: "work-installation",
+  version: 1,
+  name: "Installation",
+  purpose: "work",
+  definition: {
+    fields: [
+      {
+        key: "system_status",
+        label: "Existing or new system",
+        section: "System",
+        type: "select",
+        required: true,
+        options: [
+          { value: "new", label: "New system" },
+          { value: "existing", label: "Work on an existing system" },
+        ],
+      },
+      { key: "bedrooms", label: "Bedrooms served", section: "System", type: "number", required: false, min: 0, max: 50 },
+      text("tank_sizes", "Tank sizes", "System", false, "One tank per line, with its capacity in gallons."),
+      text("line_lengths", "Line lengths", "System", false, "Each line with its length in feet."),
+      text("work_performed", "Work done on this visit", "Installation", true),
+      text("notes", "Notes", "Installation"),
+    ],
+    photos: [
+      { key: "install_location", label: "Install location", minCount: 1 },
+      { key: "as_built", label: "As-built sketch", minCount: 0 },
+    ],
+    signatures: [{ key: "customer_completion", label: "Customer completion sign-off", signer: "customer", required: true, finalVisitOnly: true }],
+  },
+};
+
+export const STARTER_WORK_TEMPLATES: readonly StarterTemplate[] = [
+  GENERIC_REPAIR_TEMPLATE,
+  GENERIC_SERVICE_CALL_TEMPLATE,
+  GENERIC_PUMPING_TEMPLATE,
+  GENERIC_CONVENTIONAL_TEMPLATE,
+  GENERIC_INSTALLATION_TEMPLATE,
+];
 
 /** Every built-in form, one row each in inspection_templates (organization_id null). */
 export const BUILT_IN_FORMS: readonly StarterTemplate[] = [{ ...DEFAULT_TEMPLATE, purpose: "inspection" }, ...STARTER_WORK_TEMPLATES];

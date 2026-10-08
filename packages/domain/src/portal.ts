@@ -97,6 +97,8 @@ export const portalSite = z.object({
   nextVisit: z.object({ dueOn: date, windowStart: date, windowEnd: date, scheduledDate: date.nullable() }).nullable(),
   /** Customer copies of inspection reports, newest first. */
   reports: z.array(z.object({ id, inspectedOn: date, url: z.string() })),
+  /** SW-7: finished work with its completion summary, newest first. */
+  completedWork: z.array(z.object({ id, label: z.string(), title: z.string(), completedOn: date, url: z.string() })),
   serviceRequests: z.array(portalServiceRequest),
 });
 export type PortalSite = z.infer<typeof portalSite>;

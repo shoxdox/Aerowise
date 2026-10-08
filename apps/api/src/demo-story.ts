@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 import { OutboxTransport } from "@aerowise/compliance";
 import { DEMO_ORG_NAME, type Database } from "@aerowise/db";
-import { addDays, DEFAULT_TEMPLATE, parseFeatures, type Feature } from "@aerowise/domain";
+import { addDays, DEFAULT_TEMPLATE, parseFeatures, snapshotSha256, type Feature } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
 import { drainTasks } from "@aerowise/tasks";
 import { buildApp, type App } from "./app.ts";
@@ -30,6 +30,8 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //   - With field work and pumping on too: the technician recorded that pump-out on the phone (1,000
 //     gallons on a fictional truck) and delivered it to a fictional facility, recorded as a
 //     disposal record with a demo manifest/reference number. Nothing says it is compliant.
+//   - With field work on: a two-visit installation done on the phone, finished yesterday with the
+//     fictional homeowner's completion sign-off; its completion summary is in their portal.
 //   - With the plan builder switched on: three fictional plan tiers (Basic, Gold, Platinum) whose
 //     own terms say they are fictional, with different coverage and options, and an intake form
 //     the Gold and Platinum tiers ask at online signing. No real terms or coverage are promised.
@@ -101,6 +103,49 @@ async function pumpedOnThePhone(owner: ReturnType<typeof as>, tech: ReturnType<t
   });
 }
 
+/**
+ * SW-7: a two-visit installation recorded on the phone. The first visit needs another one; the
+ * second finishes the work, with the fictional homeowner's completion sign-off given once.
+ */
+async function installedOnThePhone(office: ReturnType<typeof as>, tech: ReturnType<typeof as>, techId: string, siteId: string, days: [string, string]) {
+  const kind = ((await office.get("/work-types")).items as { id: string; key: string }[]).find((t) => t.key === "installation");
+  if (!kind) return false;
+  const wo = await office.post("/work-orders", { siteId, workTypeId: kind.id, title: "Replace the drip field", description: "Fictional: new drip field lines and a replacement pump tank." });
+  const form = await tech.get("/form-templates/work-installation");
+  for (const [i, day] of days.entries()) {
+    const finalVisit = i === days.length - 1;
+    const scheduled = await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: day, notes: finalVisit ? "Finish the field and walk the homeowner through it." : "Set the pump tank." });
+    const jobId = (scheduled.visits as { jobId: string }[]).at(-1)!.jobId;
+    const clientId = randomUUID();
+    const values = {
+      system_status: "existing",
+      bedrooms: 3,
+      tank_sizes: "Pump tank: 1,000 gallons",
+      line_lengths: finalVisit ? "6 lines, 50 ft each" : "",
+      work_performed: finalVisit ? "Laid and pressure-tested the drip lines; restored the yard." : "Set and leveled the pump tank; ran the conduit.",
+    };
+    const base = { clientId, jobId, templateId: form.id, arrivedAt: afternoon(day, "14:00"), values, finalVisit };
+    await tech.put("/work/sync", { ...base, status: "draft", revision: 1 });
+    await tech.photo(`/work/${clientId}/photos/${randomUUID()}`, PHOTOS.overview, { "x-photo-key": "install_location", "x-captured-at": afternoon(day, "14:30") });
+    let summary: object | null = null;
+    if (finalVisit) {
+      summary = { workOrder: "Replace the drip field", visit: 2, anotherVisitNeeded: false, answers: [{ label: "Work done on this visit", answer: values.work_performed }] };
+      await tech.put(`/work/${clientId}/signatures/${randomUUID()}`, {
+        requirementKey: "customer_completion",
+        signerName: "Pat Example (fictional)",
+        capture: { kind: "typed" },
+        summary,
+        summarySha256: await snapshotSha256(summary),
+        consentText: "I have read the summary of the work above and confirm it describes the work done at this property.",
+        signedAt: afternoon(day, "16:50"),
+      });
+    }
+    const done = await tech.put("/work/sync", { ...base, status: "completed", revision: 2, completedAt: afternoon(day, "17:00"), summary });
+    if (done.status !== "completed") throw new Error(`demo story: installation visit did not complete: ${JSON.stringify(done.validationProblems ?? done)}`);
+  }
+  return true;
+}
+
 /** A session made for the person directly: demo people may have no password (W10.2). */
 async function signIn(app: App, db: Database, organizationId: string, userId: string) {
   const { token } = await createSession(db, organizationId, userId);
@@ -122,6 +167,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   const tiers = features.has("plan_builder");
   // SW-6: the pump-out is recorded on the technician's phone, with a fictional truck and facility.
   const pumping = work && features.has("field_work") && features.has("pumping");
+  // SW-7: an installation recorded on the phone over two visits.
+  const fieldWork = work && features.has("field_work");
   const found = db.selectFrom("organizations").select(["id", "demo"]);
   const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
@@ -307,6 +354,11 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         const asked = await as(app, "").post(`/portal/${token}/service-requests`, { siteId: site.id, kind: "odor", description: "Smell near the spray heads after the rain." });
         await office.post(`/service-requests/${asked.id}/work-order`);
         workOrders++;
+      }
+      // SW-7, with field work on: a two-visit installation finished yesterday and signed off once.
+      if (fieldWork) {
+        const installSite = await db.selectFrom("sites").select("id").where("organizationId", "=", org.id).orderBy("addressLine1").offset(1).limit(1).executeTakeFirst();
+        if (installSite && (await installedOnThePhone(office, tech, techId, installSite.id, [addDays(today, -3), yesterday]))) workOrders++;
       }
       await worker();
     }
