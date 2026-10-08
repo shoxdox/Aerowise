@@ -285,4 +285,43 @@ describe("estimates", () => {
       await off.close();
     }
   });
+  it("refuses accepting nothing when every line is optional, on the homeowner's link and the office's record, leaving nothing behind", async () => {
+    const t = await tenant(ctx);
+    const allOptional = LINES.map((l) => ({ ...l, optional: true, selectedByDefault: false }));
+    const { estimate, token } = await sent(t, { lines: allOptional });
+    const before = { docs: await count(ctx, "signed_documents", t.org.id), orders: await count(ctx, "work_orders", t.org.id) };
+
+    const signed = await anon().post(`/estimate/${token}/accept`, acceptBody(1, []));
+    expect(signed.statusCode, signed.body).toBe(422);
+    expect(signed.json()).toMatchObject({ error: "nothing_chosen", message: "Choose at least one item to accept this estimate." });
+    const recorded = await t.api.post(`/estimates/${estimate.id}/record-acceptance`, { selectedOptionalLineIds: [], evidence: "Phoned in, nothing chosen" });
+    expect(recorded.statusCode, recorded.body).toBe(422);
+    expect(recorded.json().error).toBe("nothing_chosen");
+
+    // No signature, work order or acceptance was kept.
+    expect(await count(ctx, "signed_documents", t.org.id)).toBe(before.docs);
+    expect(await count(ctx, "work_orders", t.org.id)).toBe(before.orders);
+    const after = (await t.api.get(`/estimates/${estimate.id}`)).json();
+    expect(after).toMatchObject({ status: "sent", acceptance: null, workOrder: null });
+
+    // Choosing one option still works, exactly once.
+    const one = estimate.versions[0].lines[1].id as string;
+    const [a, b] = await Promise.all([anon().post(`/estimate/${token}/accept`, acceptBody(1, [one])), anon().post(`/estimate/${token}/accept`, acceptBody(1, [one]))]);
+    expect([a.statusCode, b.statusCode], a.body + b.body).toEqual([200, 200]);
+    expect([a.json().alreadyAccepted, b.json().alreadyAccepted].sort()).toEqual([false, true]);
+    const done = (await t.api.get(`/estimates/${estimate.id}`)).json();
+    const lines = await ctx.db.selectFrom("workOrderLines").select("description").where("workOrderId", "=", done.workOrder.id).execute();
+    expect(lines).toEqual([{ description: "Labor" }]);
+    expect(await count(ctx, "work_orders", t.org.id)).toBe(before.orders + 1);
+  });
+
+  it("refuses an office-recorded acceptance of nothing on a draft too, without freezing a version", async () => {
+    const t = await tenant(ctx);
+    const e = await draft(t, { lines: [{ description: "Optional pump-out", quantity: 1, unitPriceCents: 30000, optional: true }] });
+    const r = await t.api.post(`/estimates/${e.id}/record-acceptance`, { selectedOptionalLineIds: [], evidence: "Phoned in" });
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.json().error).toBe("nothing_chosen");
+    expect((await t.api.get(`/estimates/${e.id}`)).json()).toMatchObject({ status: "draft", versions: [], acceptance: null, workOrder: null });
+    expect(await count(ctx, "work_orders", t.org.id)).toBe(0);
+  });
 });

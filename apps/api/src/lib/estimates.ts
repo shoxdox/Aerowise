@@ -130,11 +130,15 @@ export async function versionOf(trx: Trx, estimateId: string, version: number) {
   return { ...v, lines: v.lines as EstimateLine[], totals: v.totals as ReturnType<typeof estimateTotals> };
 }
 
-/** The selection checked against the version: only its optional lines can be chosen. */
+export const NOTHING_CHOSEN = "Choose at least one item to accept this estimate.";
+
+/** The optional lines chosen, checked against the version: each must be one of its options, and something must be chosen. */
 export function checkSelection(lines: readonly EstimateLine[], selected: readonly string[]) {
   const optional = new Set(lines.filter((l) => l.optional).map((l) => l.id));
   const chosen = [...new Set(selected)];
   if (chosen.some((id) => !optional.has(id))) throw unprocessable("A chosen option is not on this estimate. Reload the page.");
+  // Every line can be optional: accepting none of them would make an empty work order.
+  if (selectedLines(lines, chosen).length === 0) throw new HttpError(422, "nothing_chosen", NOTHING_CHOSEN);
   return chosen;
 }
 
