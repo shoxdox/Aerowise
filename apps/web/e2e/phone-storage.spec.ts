@@ -164,6 +164,8 @@ test("a photo the server turned down stays on the phone and goes again with Try 
     const failed = await workOnPhone(page, title);
     expect(failed.ops.filter((o) => o.failed)).toEqual([expect.objectContaining({ kind: "work-photo", failed: "Photo refused for the test" })]);
     expect(failed.blobs).toHaveLength(1);
+    // The refused photo is still on the phone, so nothing claims everything was sent.
+    await expect(page.getByText("All changes sent")).toHaveCount(0);
 
     // Try again sends the same photo, which the server now takes.
     await page.unroute("**/api/work/*/photos/*");

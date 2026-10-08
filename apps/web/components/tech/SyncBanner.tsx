@@ -48,7 +48,9 @@ export function SyncBanner({
           Checking for changes to send…
         </p>
       ) : (
-        waiting === 0 && (
+        // Not while anything waits for a later version, or was turned down (still on the phone, shown below).
+        waiting === 0 &&
+        state.failed === 0 && (
           <p className="sync ok" role="status" data-testid="sync-status">
             All changes sent
           </p>
