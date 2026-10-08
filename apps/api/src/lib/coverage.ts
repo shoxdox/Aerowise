@@ -241,12 +241,24 @@ export async function restoreCoverage(trx: Trx, req: FastifyRequest, organizatio
 }
 
 /** The work order was cancelled: what was only reserved goes back. Billed uses stay with their invoice. */
-export async function releaseOnCancel(trx: Trx, req: FastifyRequest, organizationId: string, workOrderId: string, at: Date) {
+export async function releaseOnCancel(trx: Trx, req: FastifyRequest | null, organizationId: string, workOrderId: string, at: Date) {
   await release(trx, req, organizationId, workOrderId, ["reserved"], "Work order cancelled", at);
 }
 
+/**
+ * The work order closed, by whichever route (the office, an estimate's cancellation, the
+ * phone's final visit or a held record the office attached): cancelled work gives back what
+ * it only reserved, and work completed at no charge spends it. Billed work spends it when
+ * its invoice is issued. Called from setWorkOrderStatus, so no route can skip it.
+ */
+export async function coverageOnClose(trx: Trx, req: FastifyRequest | null, organizationId: string, workOrderId: string, to: "cancelled" | "completed", at: Date) {
+  if (to === "cancelled") return releaseOnCancel(trx, req, organizationId, workOrderId, at);
+  const wo = await trx.selectFrom("workOrders").select("billingStatus").where("organizationId", "=", organizationId).where("id", "=", workOrderId).executeTakeFirstOrThrow();
+  if (wo.billingStatus === "no_charge") await consumeCoverage(trx, req, organizationId, workOrderId, null, at);
+}
+
 /** The work was billed (its invoice issued) or completed at no charge: its reserved uses are spent. */
-export async function consumeCoverage(trx: Trx, req: FastifyRequest, organizationId: string, workOrderId: string, invoiceId: string | null, at: Date) {
+export async function consumeCoverage(trx: Trx, req: FastifyRequest | null, organizationId: string, workOrderId: string, invoiceId: string | null, at: Date) {
   const r = await trx
     .updateTable("coverageUses")
     .set({ state: "consumed", consumedAt: at, invoiceId, updatedAt: at })

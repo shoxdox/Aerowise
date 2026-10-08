@@ -3,6 +3,7 @@ import { canonicalJson, sha256Hex } from "@aerowise/renewals";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { lockWorkOrder, setWorkOrderStatus } from "../src/lib/work-orders.ts";
 import { client, createTenant, createUser, login, setupTestApp } from "./helpers.ts";
 
 // SW-8: versioned plans with their own terms, options and coverage, frozen per contract,
@@ -423,6 +424,38 @@ describe("coverage on work orders", () => {
       ["released", "Invoice voided after the work order was cancelled"],
     ]);
     expect((await t.api.get(`/contracts/${contract.id}`)).json().coverage.map((c: { used: number }) => c.used)).toEqual([0, 0]);
+  });
+
+  it("moves coverage however a work order closes, not only from the office's cancel and complete routes", async () => {
+    // Other routes (an estimate's cancellation, the phone's final visit) close a work order
+    // through setWorkOrderStatus with no request at hand; coverage must follow all the same.
+    const t = await createTenant(ctx, "Org A");
+    await goldContract(t);
+    const close = (id: string, to: "cancelled" | "completed") =>
+      ctx.db.transaction().execute(async (trx) => setWorkOrderStatus(trx, t.org.id, await lockWorkOrder(trx, t.org.id, id), to, ctx.now, to === "cancelled" ? { cancelledAt: ctx.now, cancelReason: "TEST" } : { completedAt: ctx.now }));
+
+    const cancelled = await repairOrder(t);
+    await t.api.post(`/work-orders/${cancelled.id}/coverage/apply`, {});
+    await close(cancelled.id, "cancelled");
+    expect((await uses(cancelled.id)).map((u) => [u.state, u.reason])).toEqual([
+      ["released", "Work order cancelled"],
+      ["released", "Work order cancelled"],
+    ]);
+
+    const free = await repairOrder(t);
+    await t.api.post(`/work-orders/${free.id}/coverage/apply`, {});
+    expect((await t.api.patch(`/work-orders/${free.id}`, { billingStatus: "no_charge" })).statusCode).toBe(200);
+    await close(free.id, "completed");
+    expect((await uses(free.id)).map((u) => [u.state, u.invoiceId])).toEqual([
+      ["consumed", null],
+      ["consumed", null],
+    ]);
+
+    // Billed work keeps its uses reserved for the invoice (the one repair a term is spent, so only pumping is left).
+    const billed = await repairOrder(t);
+    await t.api.post(`/work-orders/${billed.id}/coverage/apply`, {});
+    await close(billed.id, "completed");
+    expect((await uses(billed.id)).map((u) => u.state)).toEqual(["reserved"]);
   });
 
   it("says when there is nothing to cover, and never covers excluded work", async () => {
