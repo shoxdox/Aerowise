@@ -1,4 +1,4 @@
-import { TestCompanies, TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
+import { recheckInvoice, resolveLink, TestCompanies, TestQuickBooksProvider, TokenCipher, type QuickBooksCompany } from "@aerowise/quickbooks";
 import { drainTasks } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
@@ -593,6 +593,291 @@ describe("conflicts and retries", () => {
     await runWorker(ctx);
     expect(await link("invoice", inv.id)).toMatchObject({ status: "synced" });
     expect(await link("customer", cs.dana.id)).toMatchObject({ status: "synced" });
+  });
+});
+
+describe("sales tax", () => {
+  const taxed = [
+    { description: "Aerator repair", quantity: 1, unitPriceCents: 30000 },
+    { description: "Chlorine", quantity: 2, unitPriceCents: 1250, taxable: true },
+  ];
+  /** Synced, with the 8.25% rate in Aerowise and, unless `on` is false, sales tax sync on. */
+  async function withTax(t: Tenant, on = true) {
+    const s = await synced(t);
+    await t.api.patch("/billing/settings", { defaultTaxRateBps: 825 });
+    if (on) {
+      const res = await t.api.put("/quickbooks/mapping", { taxMode: "taxcode", taxableCodeRef: "TAX", nontaxableCodeRef: "NON", taxRateRef: "TX825" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().tax).toEqual({ mode: "taxcode", taxableCode: { id: "TAX", name: "TAX" }, nontaxableCode: { id: "NON", name: "NON" }, taxRate: { id: "TX825", name: "Travis County 8.25%" }, allowed: true });
+    }
+    return s;
+  }
+  const remoteInvoices = async (realm: string) => Object.values((await companies().get(realm)).invoices);
+
+  it("is off by default and leaves the invoice payload as it was", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t, false);
+    expect((await t.api.get("/quickbooks/mapping")).json().tax).toEqual({ mode: "off", taxableCode: null, nontaxableCode: null, taxRate: null, allowed: true });
+    const plain = await issue(t, cs.nora.id);
+    const withTaxLine = await issue(t, cs.nora.id, taxed);
+    await runWorker(ctx);
+    expect(await link("invoice", plain.id)).toMatchObject({ status: "synced" });
+    expect(await link("invoice", withTaxLine.id)).toMatchObject({ status: "conflict", conflictKind: "tax_mapping_missing" });
+    const [sent] = await remoteInvoices(realm);
+    expect(sent!.txnTax).toBeUndefined();
+    expect(sent!.lines).toEqual([{ itemId: expect.any(String), description: "Aerator repair", quantity: 1, unitPriceCents: 30000, amountCents: 30000 }]);
+  });
+
+  it("is turned on only with all three codes of the right kind, and never for a live QuickBooks company", async () => {
+    const t = await createTenant(ctx, "Org A");
+    await withTax(t, false);
+    const codes = (await t.api.get("/quickbooks/tax-codes")).json();
+    expect(codes.map((c: { id: string }) => c.id).sort()).toEqual(["NON", "TAX", "TX825"]);
+    expect((await t.api.put("/quickbooks/mapping", { taxMode: "taxcode", taxableCodeRef: "TAX" })).json().message).toMatch(/all three/);
+    expect((await t.api.put("/quickbooks/mapping", { nontaxableCodeRef: "TAX" })).statusCode).toBe(422);
+    expect((await t.api.put("/quickbooks/mapping", { taxRateRef: "NOPE" })).statusCode).toBe(422);
+    expect((await t.api.put("/quickbooks/mapping", { taxableCodeRef: "TAX", nontaxableCodeRef: "NON", taxRateRef: "TX825" })).json().tax.mode).toBe("off");
+    // Office staff cannot change it.
+    const office = client(ctx.app, await login(ctx.app, (await createUser(ctx.db, t.org.id, "office")).email));
+    expect((await office.put("/quickbooks/mapping", { taxMode: "taxcode" })).statusCode).toBe(403);
+    // A live company: refused until G-QBO-TAX.
+    await ctx.db.updateTable("quickbooksConnections").set({ environment: "production" }).execute();
+    expect((await t.api.get("/quickbooks/mapping")).json().tax.allowed).toBe(false);
+    const refused = await t.api.put("/quickbooks/mapping", { taxMode: "taxcode" });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().message).toMatch(/live QuickBooks companies/);
+    expect((await ctx.db.selectFrom("quickbooksConnections").select("taxMode").executeTakeFirstOrThrow()).taxMode).toBe("off");
+  });
+
+  it("sends mixed taxable lines with tax codes and the tax total when QuickBooks agrees", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t);
+    const inv = await issue(t, cs.nora.id, taxed);
+    expect(inv.totalCents).toBe(32706);
+    await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 32706, method: "cash", receivedOn: "2026-03-01" });
+    await runWorker(ctx);
+    expect(await link("invoice", inv.id)).toMatchObject({ status: "synced", remoteState: "open" });
+    const [sent] = await remoteInvoices(realm);
+    expect(sent).toMatchObject({ totalCents: 32706, taxCents: 206, balanceCents: 0, txnTax: { taxCodeRef: "TX825", totalTaxCents: 206 } });
+    expect(sent!.lines.map((l) => l.taxCodeRef)).toEqual(["NON", "TAX"]);
+    expect(Object.values((await companies().get(realm)).payments)).toHaveLength(1);
+  });
+
+  it("sends the taxed invoices that waited once tax sync is turned on", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t, false);
+    const inv = await issue(t, cs.nora.id, taxed);
+    await runWorker(ctx);
+    expect(await link("invoice", inv.id)).toMatchObject({ conflictKind: "tax_mapping_missing" });
+    await t.api.put("/quickbooks/mapping", { taxMode: "taxcode", taxableCodeRef: "TAX", nontaxableCodeRef: "NON", taxRateRef: "TX825" });
+    await runWorker(ctx);
+    expect(await link("invoice", inv.id)).toMatchObject({ status: "synced" });
+    expect(await remoteInvoices(realm)).toHaveLength(1);
+  });
+
+  it("quarantines an invoice QuickBooks taxed differently, holds its payments and refunds, and releases them once corrected", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm, items } = await withTax(t);
+    const services = items.find((i) => i.name === "Services")!;
+    const checking = ((await t.api.get("/quickbooks/accounts")).json() as { id: string; name: string }[]).find((a) => a.name === "Checking")!;
+    await t.api.put("/quickbooks/mapping", { refundItemId: services.id, manualRefundAccountId: checking.id });
+    await companies().setAutomatedTax(realm, 900);
+    const inv = await issue(t, cs.nora.id, taxed);
+    await runWorker(ctx);
+    const held = (await link("invoice", inv.id))!;
+    expect(held).toMatchObject({ status: "quarantined", conflictKind: "tax_total_mismatch" });
+    expect(held.externalId).toBeTruthy();
+    expect(held.conflict).toMatchObject({ aerowise: { totalCents: 32706, taxCents: 206 }, quickbooks: { totalCents: 32725, taxCents: 225 }, matches: false });
+
+    // The person sees both totals and the two choices; it is in the inbox too.
+    const rec = (await t.api.get("/quickbooks/records")).json().find((r: { entityId: string }) => r.entityId === inv.id);
+    expect(rec).toMatchObject({ status: "quarantined", title: "QuickBooks totals differ", actions: ["recheck", "keep_remote"], details: { aerowise: { taxCents: 206 }, quickbooks: { taxCents: 225 } } });
+    expect((await t.api.get("/quickbooks")).json().attention).toBe(1);
+    expect((await t.api.get("/inbox")).json().items.find((e: { kind: string }) => e.kind === "quickbooks_conflict")).toMatchObject({ title: "QuickBooks: QuickBooks totals differ" });
+
+    // A payment and a refund are held; nothing more reaches QuickBooks for this invoice.
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 20000, method: "check", reference: "1", receivedOn: "2026-03-01" })).json();
+    const refunded = (await t.api.post(`/payments/${paid.payments[0].id}/refund`, { amountCents: 500, reason: "Overcharged" })).json();
+    const refundId = refunded.payments[0].refunds[0].id as string;
+    await runWorker(ctx);
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "queued", syncError: "Held: the invoice's totals in QuickBooks differ from Aerowise's. Settle the invoice first." });
+    expect(await link("refund", refundId)).toMatchObject({ status: "queued", syncError: "Held: the invoice's totals in QuickBooks differ from Aerowise's. Settle the invoice first." });
+    const before = await companies().get(realm);
+    expect(Object.keys(before.payments)).toHaveLength(0);
+    expect(before.refundReceipts).toEqual({});
+    // Checking again before it is corrected keeps it held, with fresh totals.
+    const again = (await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "recheck" })).json();
+    expect(again).toMatchObject({ status: "quarantined", details: { quickbooks: { taxCents: 225 } } });
+    // Corrected in QuickBooks: checking again releases the hold, and the payment and refund go.
+    await companies().setInvoiceTax(realm, held.externalId!, 206);
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "recheck" })).json()).toMatchObject({ status: "synced" });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    expect(await link("payment", paid.payments[0].id)).toMatchObject({ status: "synced" });
+    expect(await link("refund", refundId)).toMatchObject({ status: "synced" });
+    const after = await companies().get(realm);
+    expect(Object.keys(after.invoices)).toEqual([held.externalId]);
+    expect(Object.values(after.payments)).toMatchObject([{ amountCents: 20000 }]);
+    expect(Object.values(after.refundReceipts ?? {})).toMatchObject([{ amountCents: 500 }]);
+  });
+
+  it("keeps a mismatched invoice as it is only with a reason, and then sends nothing for it", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t);
+    await companies().setAutomatedTax(realm, 900);
+    const inv = await issue(t, cs.nora.id, taxed);
+    await runWorker(ctx);
+    const rec = (await t.api.get("/quickbooks/records")).json()[0];
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "keep_remote" })).statusCode).toBe(422);
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "keep_remote", reason: "   " })).statusCode).toBe(422);
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "ignore" })).statusCode).toBe(422);
+    const kept = (await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "keep_remote", reason: "Accountant fixes tax by hand" })).json();
+    expect(kept).toMatchObject({ status: "ignored", actions: ["recheck"], syncError: "Kept as it is in QuickBooks: Accountant fixes tax by hand" });
+    const audit = await ctx.db.selectFrom("auditEvents").select("changes").where("action", "=", "quickbooks.record_resolved").executeTakeFirstOrThrow();
+    expect(audit.changes).toMatchObject({ action: "keep_remote", reason: "Accountant fixes tax by hand" });
+    // A plain retry cannot sneak it back without a comparison.
+    expect((await t.api.post(`/quickbooks/records/${rec.id}/resolve`, { action: "retry" })).statusCode).toBe(422);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 1000, method: "cash", receivedOn: "2026-03-01" })).json();
+    await runWorker(ctx);
+    // Its payments are not sent either: the office records them in QuickBooks itself.
+    expect(await link("payment", paid.payments[0].id)).toBeUndefined();
+    const company = await companies().get(realm);
+    expect(Object.keys(company.invoices)).toEqual([kept.externalId]);
+    expect(company.payments).toEqual({});
+  });
+
+  it("sends nothing for an already-sent payment or its refunds while its invoice is kept as is, and sends it once on release", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm, items } = await withTax(t);
+    const services = items.find((i) => i.name === "Services")!;
+    const checking = ((await t.api.get("/quickbooks/accounts")).json() as { id: string; name: string }[]).find((a) => a.name === "Checking")!;
+    await t.api.put("/quickbooks/mapping", { refundItemId: services.id, manualRefundAccountId: checking.id });
+    const inv = await issue(t, cs.nora.id, taxed);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 20000, method: "check", reference: "7", receivedOn: "2026-03-01" })).json();
+    const paymentId = paid.payments[0].id as string;
+    await runWorker(ctx);
+    const sentPayment = (await link("payment", paymentId))!;
+    expect(sentPayment).toMatchObject({ status: "synced" });
+    // Today an invoice is only quarantined before its payments go, so this state is built
+    // directly: the guard must hold whatever path leads here (an already-sent payment on an
+    // invoice that is then quarantined and kept as is).
+    const invLink = (await link("invoice", inv.id))!;
+    await ctx.db
+      .updateTable("quickbooksLinks")
+      .set({ status: "quarantined", conflictKind: "tax_total_mismatch", conflict: JSON.stringify({ aerowise: { totalCents: 32706, taxCents: 206 }, quickbooks: { totalCents: 32725, taxCents: 225 } }) })
+      .where("id", "=", invLink.id)
+      .execute();
+    expect((await t.api.post(`/quickbooks/records/${invLink.id}/resolve`, { action: "keep_remote", reason: "Checking with the accountant" })).statusCode).toBe(200);
+
+    // A refund reversing part of the payment, and a credit refund, while the invoice is kept.
+    expect((await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 500, reason: "Overcharged", intent: "reverse" })).statusCode).toBe(200);
+    const credited = (await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 300, reason: "Goodwill" })).json();
+    const creditId = credited.payments[0].refunds.find((r: { intent: string }) => r.intent === "credit").id as string;
+    const before = await companies().get(realm);
+    await runWorker(ctx);
+    await runWorker(ctx);
+    // Nothing was created, changed or deleted in QuickBooks.
+    const held = await companies().get(realm);
+    expect({ payments: held.payments, refundReceipts: held.refundReceipts, invoices: held.invoices, requests: held.requests }).toEqual({
+      payments: before.payments,
+      refundReceipts: before.refundReceipts,
+      invoices: before.invoices,
+      requests: before.requests,
+    });
+    const kept = "Not sent: the invoice is kept as it is in QuickBooks. Record this there yourself, or check the invoice again.";
+    expect(await link("payment", paymentId)).toMatchObject({ status: "queued", syncError: kept, externalId: sentPayment.externalId, syncToken: sentPayment.syncToken });
+    expect(await link("refund", creditId)).toMatchObject({ status: "queued", syncError: kept, externalId: null });
+
+    // QuickBooks' totals match, so checking again releases both, each sent exactly once.
+    expect((await t.api.post(`/quickbooks/records/${invLink.id}/resolve`, { action: "recheck" })).json()).toMatchObject({ status: "synced" });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    const after = await companies().get(realm);
+    expect(Object.values(after.payments)).toMatchObject([{ id: sentPayment.externalId, amountCents: 19500 }]);
+    expect(Object.values(after.refundReceipts ?? {})).toMatchObject([{ amountCents: 300 }]);
+    await t.api.post("/quickbooks/sync", {});
+    await runWorker(ctx);
+    const again = await companies().get(realm);
+    expect(again.payments).toEqual(after.payments);
+    expect(again.refundReceipts).toEqual(after.refundReceipts);
+    expect(await link("payment", paymentId)).toMatchObject({ status: "synced", pushedHash: "19500" });
+    expect(await link("refund", creditId)).toMatchObject({ status: "synced" });
+  });
+
+  it("never lets a check again overwrite a decision made while QuickBooks was being read", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t);
+    await companies().setAutomatedTax(realm, 900);
+    const inv = await issue(t, cs.nora.id, taxed);
+    await runWorker(ctx);
+    const held = (await link("invoice", inv.id))!;
+    await companies().setInvoiceTax(realm, held.externalId!, 206);
+    const base = new TestQuickBooksProvider(ctx.db, () => ctx.now);
+    // Another person keeps it as it is while this check is reading QuickBooks.
+    const racing = Object.assign(Object.create(base), {
+      company(realmId: string): QuickBooksCompany {
+        const company = base.company(realmId);
+        return Object.assign(Object.create(company), {
+          async getInvoice(id: string) {
+            const read = await company.getInvoice(id);
+            await resolveLink(qbCtx, t.org.id, held.id, { action: "keep_remote", reason: "Decided meanwhile" });
+            return read;
+          },
+        });
+      },
+    });
+    const qbCtx = { db: ctx.db, now: () => ctx.now, provider: racing, cipher: new TokenCipher() };
+    await expect(recheckInvoice(qbCtx, t.org.id, held.id)).rejects.toThrow(/changed meanwhile/);
+    expect(await link("invoice", inv.id)).toMatchObject({ status: "ignored", remoteState: "kept_mismatch", syncError: "Kept as it is in QuickBooks: Decided meanwhile" });
+  });
+
+  it("never creates a second invoice when QuickBooks' answer is lost, matching or not", async () => {
+    for (const automated of [null, 900]) {
+      const t = await createTenant(ctx, `Org ${automated ?? "plain"}`);
+      const { cs, realm } = await withTax(t);
+      await companies().setAutomatedTax(realm, automated);
+      const inv = await issue(t, cs.nora.id, taxed);
+      await companies().loseNext(realm, 1);
+      await runWorker(ctx);
+      // QuickBooks made it, but Aerowise never heard: it retries on its own.
+      const failed = (await link("invoice", inv.id))!;
+      expect(failed).toMatchObject({ status: "failed", externalId: null });
+      expect(await remoteInvoices(realm)).toHaveLength(1);
+      later(2);
+      await t.api.post("/quickbooks/sync", {});
+      await runWorker(ctx);
+      const settled = (await link("invoice", inv.id))!;
+      expect(settled.status).toBe(automated ? "quarantined" : "synced");
+      const remote = await remoteInvoices(realm);
+      expect(remote).toHaveLength(1);
+      expect(settled.externalId).toBe(remote[0]!.id);
+    }
+  });
+
+  it("returns the first invoice when the same create request is replayed", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t);
+    const customer = (await link("customer", cs.dana.id))!;
+    const company = new TestQuickBooksProvider(ctx.db, () => ctx.now).company(realm);
+    const payload = {
+      customerId: customer.externalId!,
+      docNumber: "INV-9001",
+      txnDate: "2026-03-01",
+      dueDate: "2026-03-31",
+      lines: [{ itemId: Object.keys((await companies().get(realm)).items)[0]!, description: "Chlorine", quantity: 1, unitPriceCents: 1000, amountCents: 1000, taxCodeRef: "TAX" }],
+      discountCents: 0,
+      txnTax: { taxCodeRef: "TX825", totalTaxCents: 83 },
+      memo: null,
+      privateNote: "Aerowise invoice INV-9001",
+      billEmail: null,
+      shipAddress: null,
+    };
+    const first = await company.createInvoice(payload, "aw-replay-1");
+    const second = await company.createInvoice(payload, "aw-replay-1");
+    expect(second.id).toBe(first.id);
+    expect(first).toMatchObject({ totalCents: 1083, taxCents: 83 });
+    await expect(company.createInvoice({ ...payload, txnTax: { taxCodeRef: "GONE", totalTaxCents: 0 } }, "aw-replay-2")).rejects.toMatchObject({ kind: "validation" });
+    expect(await remoteInvoices(realm)).toHaveLength(1);
   });
 });
 

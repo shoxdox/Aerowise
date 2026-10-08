@@ -136,6 +136,46 @@ describe("Intuit company API", () => {
       { DetailType: "DiscountLineDetail", Amount: 10, DiscountLineDetail: { PercentBased: false } },
     ]);
     expect(body.ShipAddr).toMatchObject({ Line1: "1 Main", City: "Austin", CountrySubDivisionCode: "TX", PostalCode: "78701" });
+    // Tax mode off: no tax fields at all, exactly the payload from before tax mode existed.
+    expect(Object.keys(body)).toEqual(["CustomerRef", "DocNumber", "TxnDate", "DueDate", "Line", "PrivateNote", "BillEmail", "ShipAddr"]);
+    expect(inv.taxCents).toBe(0);
+  });
+
+  it("sends tax codes per line and the tax total when tax mode is on, and reads QuickBooks' tax back", async () => {
+    const f = fakeFetch({ body: { Invoice: { Id: "9", SyncToken: "0", DocNumber: "INV-1002", CustomerRef: { value: "5" }, TotalAmt: 327.23, Balance: 327.23, TxnTaxDetail: { TotalTax: 2.23 } } } });
+    const inv = await company(f).createInvoice(
+      {
+        customerId: "5",
+        docNumber: "INV-1002",
+        txnDate: "2026-03-01",
+        dueDate: "2026-03-31",
+        lines: [
+          { itemId: "1", description: "Repair", quantity: 1, unitPriceCents: 30000, amountCents: 30000, taxCodeRef: "NON" },
+          { itemId: "1", description: "Chlorine", quantity: 2, unitPriceCents: 1250, amountCents: 2500, taxCodeRef: "TAX" },
+        ],
+        discountCents: 0,
+        txnTax: { taxCodeRef: "TX825", totalTaxCents: 206 },
+        memo: null,
+        privateNote: "Aerowise invoice INV-1002",
+        billEmail: null,
+        shipAddress: null,
+      },
+      "aw-2-1",
+    );
+    const body = JSON.parse(String(f.calls[0]!.init.body));
+    expect(body.Line.map((l: { SalesItemLineDetail: { TaxCodeRef: unknown } }) => l.SalesItemLineDetail.TaxCodeRef)).toEqual([{ value: "NON" }, { value: "TAX" }]);
+    expect(body.TxnTaxDetail).toEqual({ TxnTaxCodeRef: { value: "TX825" }, TotalTax: 2.06 });
+    expect(f.calls[0]!.url.searchParams.get("requestid")).toBe("aw-2-1");
+    expect(inv).toMatchObject({ totalCents: 32723, taxCents: 223 });
+  });
+
+  it("lists sales tax codes", async () => {
+    const f = fakeFetch({ body: { QueryResponse: { TaxCode: [{ Id: "TAX", Name: "TAX", Taxable: true, Active: true }, { Id: "NON", Name: "NON", Taxable: false }, { Id: "3", Name: "Travis", Active: false }] } } });
+    expect(await company(f).listTaxCodes()).toEqual([
+      { id: "TAX", name: "TAX", taxable: true, active: true },
+      { id: "NON", name: "NON", taxable: false, active: true },
+      { id: "3", name: "Travis", taxable: true, active: false },
+    ]);
   });
 
   it("maps QuickBooks faults to what the sync does with them", async () => {

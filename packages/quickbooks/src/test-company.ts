@@ -12,6 +12,7 @@ import {
   type QboCustomer,
   type QboInvoice,
   type QboItem,
+  type QboTaxCode,
   type QuickBooksCompany,
   type QuickBooksProvider,
   type Tokens,
@@ -23,11 +24,21 @@ export interface TestCompanyData {
   next: number;
   customers: Record<string, QboCustomer>;
   items: Record<string, QboItem>;
-  invoices: Record<string, QboInvoice & { lines: InvoicePayload["lines"]; discountCents: number }>;
+  /** `taxCents` is missing on invoices saved before tax mode. */
+  invoices: Record<string, Omit<QboInvoice, "taxCents"> & { taxCents?: number; lines: InvoicePayload["lines"]; discountCents: number; txnTax?: InvoicePayload["txnTax"] }>;
   payments: Record<string, { id: string; syncToken: string; customerId: string; invoiceId: string; amountCents: number; txnDate: string }>;
   /** Missing in companies saved before refunds were synced. */
   accounts?: Record<string, QboAccount>;
   refundReceipts?: Record<string, RefundReceiptPayload & { id: string; syncToken: string }>;
+  /** Sales tax codes. Missing in companies saved before tax mode: those get DEFAULT_TAX_CODES. */
+  taxCodes?: Record<string, QboTaxCode>;
+  /**
+   * Tests: QuickBooks' automated sales tax. When set, an invoice sent with a tax total gets
+   * its tax recalculated at this rate on its taxable lines, whatever Aerowise sent.
+   */
+  automatedTaxBps?: number | null;
+  /** Tests: make this many of the next changes happen, but lose QuickBooks' answer on the way back. */
+  loseNext?: number;
   /** What a request id created, so a repeated create returns the same record. */
   requests: Record<string, string>;
   /** Changes in order, for change data capture. */
@@ -39,6 +50,15 @@ export interface TestCompanyData {
 }
 
 const bump = (token: string) => String(Number(token) + 1);
+
+/** The sales tax codes of a US QuickBooks company: TAX and NON for lines, and one county rate. */
+export const DEFAULT_TAX_CODES: Record<string, QboTaxCode> = {
+  TAX: { id: "TAX", name: "TAX", taxable: true, active: true },
+  NON: { id: "NON", name: "NON", taxable: false, active: true },
+  TX825: { id: "TX825", name: "Travis County 8.25%", taxable: true, active: true },
+};
+
+const asInvoice = (i: TestCompanyData["invoices"][string]): QboInvoice => ({ ...i, taxCents: i.taxCents ?? 0 });
 
 /**
  * Stands in for QuickBooks Online in development and tests: no network, no Intuit keys.
@@ -165,7 +185,7 @@ export class TestCompanies {
       const aid = id();
       accounts[aid] = { id: aid, name: accountName, type, active: true };
     }
-    const data: TestCompanyData = { name, next: n, customers, items, accounts, invoices: {}, payments: {}, refundReceipts: {}, requests: {}, log: [] };
+    const data: TestCompanyData = { name, next: n, customers, items, accounts, taxCodes: { ...DEFAULT_TAX_CODES }, invoices: {}, payments: {}, refundReceipts: {}, requests: {}, log: [] };
     await this.db
       .insertInto("quickbooksTestCompanies")
       .values({ realmId, data: JSON.stringify(data), updatedAt: this.now() })
@@ -217,6 +237,30 @@ export class TestCompanies {
     });
   }
 
+  /** As if the company used QuickBooks' automated sales tax at this rate (null: tax as sent). */
+  setAutomatedTax(realmId: string, bps: number | null) {
+    return this.update(realmId, (c) => {
+      c.automatedTaxBps = bps;
+    });
+  }
+
+  /** As if someone corrected an invoice's sales tax in QuickBooks. */
+  setInvoiceTax(realmId: string, id: string, taxCents: number) {
+    return this.update(realmId, (c, at) => {
+      const inv = c.invoices[id]!;
+      const total = inv.lines.reduce((s, l) => s + l.amountCents, 0) - inv.discountCents + taxCents;
+      c.invoices[id] = { ...inv, taxCents, totalCents: total, balanceCents: inv.balanceCents + (total - inv.totalCents), syncToken: bump(inv.syncToken), updatedAt: at };
+      c.log.push({ entity: "invoice", id, at });
+    });
+  }
+
+  /** The next `calls` changes go through, but their answers are lost, as on a dropped connection. */
+  loseNext(realmId: string, calls = 1) {
+    return this.update(realmId, (c) => {
+      c.loseNext = calls;
+    });
+  }
+
   failNext(realmId: string, calls: number, kind: "transient" | "validation" = "transient") {
     return this.update(realmId, (c) => {
       c.failNext = calls;
@@ -244,7 +288,14 @@ class TestCompany implements QuickBooksCompany {
     });
     if (down === "transient") throw new QuickBooksError("transient", "QuickBooks is busy or unavailable (503)");
     if (down) throw new QuickBooksError("validation", "Business Validation Error: Transaction date is in a closed period", "6140");
-    return this.store.update(this.realmId, (c, at) => fn(c, at, () => String(c.next++)));
+    const { out, lost } = await this.store.update(this.realmId, (c, at) => {
+      const out = fn(c, at, () => String(c.next++));
+      if (!c.loseNext) return { out, lost: false };
+      c.loseNext--;
+      return { out, lost: true };
+    });
+    if (lost) throw new QuickBooksError("transient", "Could not reach QuickBooks: the connection was reset");
+    return out;
   }
 
   companyName() {
@@ -302,25 +353,46 @@ class TestCompany implements QuickBooksCompany {
     return this.read((c) => c.items[id] ?? null);
   }
 
+  listTaxCodes() {
+    return this.read((c) => Object.values(c.taxCodes ?? DEFAULT_TAX_CODES));
+  }
+
   findInvoiceByNumber(docNumber: string) {
-    return this.read((c) => Object.values(c.invoices).find((i) => i.docNumber === docNumber) ?? null);
+    return this.read((c) => {
+      const i = Object.values(c.invoices).find((x) => x.docNumber === docNumber);
+      return i ? asInvoice(i) : null;
+    });
   }
 
   getInvoice(id: string) {
-    return this.read((c) => c.invoices[id] ?? null);
+    return this.read((c) => (c.invoices[id] ? asInvoice(c.invoices[id]) : null));
   }
 
   createInvoice(p: InvoicePayload, requestId: string) {
     return this.write((c, at, newId) => {
       const done = c.requests[requestId];
-      if (done && c.invoices[done]) return c.invoices[done];
+      if (done && c.invoices[done]) return asInvoice(c.invoices[done]);
       const cust = c.customers[p.customerId];
       if (!cust?.active) throw new QuickBooksError("validation", "Invalid Reference Id: the customer is inactive or missing", "2500");
       for (const l of p.lines) {
         if (!c.items[l.itemId]?.active) throw new QuickBooksError("validation", `Invalid Reference Id: item ${l.itemId} is inactive or missing`, "2500");
       }
+      const codes = c.taxCodes ?? DEFAULT_TAX_CODES;
+      for (const ref of [...p.lines.map((l) => l.taxCodeRef), p.txnTax?.taxCodeRef].filter((x): x is string => !!x)) {
+        if (!codes[ref]?.active) throw new QuickBooksError("validation", `Invalid Reference Id: tax code ${ref} is inactive or missing`, "2500");
+      }
+      const subtotal = p.lines.reduce((s, l) => s + l.amountCents, 0);
+      let taxCents = 0;
+      if (p.txnTax) {
+        taxCents = p.txnTax.totalTaxCents;
+        if (c.automatedTaxBps != null) {
+          // Automated sales tax: QuickBooks works it out itself, before the discount.
+          const taxable = p.lines.filter((l) => l.taxCodeRef && codes[l.taxCodeRef]?.taxable).reduce((s, l) => s + l.amountCents, 0);
+          taxCents = Math.round((taxable * c.automatedTaxBps) / 10_000);
+        }
+      }
       const id = newId();
-      const total = p.lines.reduce((s, l) => s + l.amountCents, 0) - p.discountCents;
+      const total = subtotal - p.discountCents + taxCents;
       c.invoices[id] = {
         id,
         syncToken: "0",
@@ -328,15 +400,17 @@ class TestCompany implements QuickBooksCompany {
         customerId: p.customerId,
         customerName: cust.name,
         totalCents: total,
+        taxCents,
         balanceCents: total,
         voided: false,
         updatedAt: at,
         lines: p.lines,
         discountCents: p.discountCents,
+        ...(p.txnTax ? { txnTax: p.txnTax } : {}),
       };
       c.requests[requestId] = id;
       c.log.push({ entity: "invoice", id, at });
-      return c.invoices[id];
+      return asInvoice(c.invoices[id]);
     });
   }
 
@@ -345,9 +419,9 @@ class TestCompany implements QuickBooksCompany {
       const inv = c.invoices[id];
       if (!inv) throw new QuickBooksError("validation", "Not found in QuickBooks", "610");
       if (inv.syncToken !== syncToken) throw new QuickBooksError("stale", "Stale Object Error", "5010");
-      c.invoices[id] = { ...inv, totalCents: 0, balanceCents: 0, voided: true, syncToken: bump(inv.syncToken), updatedAt: at };
+      c.invoices[id] = { ...inv, totalCents: 0, taxCents: 0, balanceCents: 0, voided: true, syncToken: bump(inv.syncToken), updatedAt: at };
       c.log.push({ entity: "invoice", id, at });
-      return c.invoices[id];
+      return asInvoice(c.invoices[id]);
     });
   }
 

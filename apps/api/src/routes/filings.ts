@@ -14,6 +14,7 @@ import {
   retryFiling,
   rulesetOn,
   submitNow,
+  useCsvExport,
   useManualFiling,
   type ComplianceContext,
 } from "@aerowise/compliance";
@@ -21,6 +22,7 @@ import type { Database, DB } from "@aerowise/db";
 import {
   authorityRequirements,
   deadlineState,
+  exportLayoutFor,
   FILING_ATTENTION_STATUSES,
   FILING_OPEN_STATUSES,
   filingConfirmInput,
@@ -393,7 +395,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     const f = await db
       .selectFrom("filings as f")
       .leftJoin("jurisdictionRulesets as r", "r.id", "f.rulesetId")
-      .select(["f.stateMachineVersion", "f.submissionNo", "f.methodVersion", "f.templateId", "f.proof", "f.confirmationNote", "f.confirmationEvidence", "f.rejectionReason", "f.reportId", "f.inspectionId", "r.rules"])
+      .select(["f.stateMachineVersion", "f.kind", "f.submissionNo", "f.methodVersion", "f.templateId", "f.proof", "f.confirmationNote", "f.confirmationEvidence", "f.rejectionReason", "f.reportId", "f.inspectionId", "r.rules"])
       .where("f.organizationId", "=", organizationId)
       .where("f.id", "=", filingId)
       .executeTakeFirstOrThrow();
@@ -426,6 +428,8 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     const rules = f.rules as RulesetRules | null;
     const current = packages.find((p) => p.submissionNo === f.submissionNo);
     const currentDocs = (current?.documents as PackageDocument[] | undefined) ?? [];
+    const layout = rules && exportLayoutFor(rules, f.kind);
+    const csvIndex = currentDocs.findIndex((d) => d.role === "authority_csv");
     const pkg: FilingDetail["package"] = rules
       ? {
           destination: current?.recipient ?? rules.submission.email?.to ?? null,
@@ -434,12 +438,14 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           // The filed document itself (report or contract), not the cover sheet.
           reportUrl: current
             ? currentDocs.length
-              ? packageFileUrl(organizationId, current.id, Math.max(0, currentDocs.findIndex((d) => d.role !== "cover_sheet")))
+              ? packageFileUrl(organizationId, current.id, Math.max(0, currentDocs.findIndex((d) => d.role !== "cover_sheet" && d.role !== "authority_csv")))
               : null
             : f.reportId
               ? signer.url(organizationId, f.reportId, now().getTime(), "report-files")
               : null,
           fallback: rules.submission.fallback,
+          csvExport: layout ? { formReference: layout.formReference } : null,
+          csvUrl: current && csvIndex >= 0 ? packageFileUrl(organizationId, current.id, csvIndex) : null,
         }
       : null;
     return {
@@ -585,7 +591,12 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     act(req, req.params.id, "switched_manual", (trx, f, a) => useManualFiling(trx, f, a)),
   );
 
-  app.post("/filings/:id/mark-sent", action("Record that it was filed by hand", filingManualSentInput), async (req) => {
+  app.post("/filings/:id/csv-export", action("File this one by uploading the authority's CSV instead: checked again, with a new package that carries the CSV"), async (req) => {
+    await act(req, req.params.id, "switched_csv_export", (trx, f, a) => useCsvExport(trx, f, a));
+    return prepared(req, req.params.id);
+  });
+
+  app.post("/filings/:id/mark-sent", action("Record that it was filed by hand or its CSV uploaded", filingManualSentInput), async (req) => {
     const me = await db.selectFrom("users").select("name").where("id", "=", req.requireAuth().userId).executeTakeFirstOrThrow();
     const body = filingManualSentInput.parse(req.body);
     return act(req, req.params.id, "marked_sent", (trx, f, a) => markFiledManually(trx, f, { ...a, reference: body.reference ?? null, note: body.note ?? null, actorName: me.name }), body);

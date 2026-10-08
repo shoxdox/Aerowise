@@ -14,7 +14,12 @@ describe("authority requirements on the site panel", () => {
     expect(authorityRequirements(r).map((l) => l.key)).toEqual(["service", "reportDeadline", "reportChannel", "contracts", "acknowledgment"]);
     expect(line(r, "service")).toBe("At least every 4 months.");
     expect(line(r, "reportDeadline")).toBe("Within 14 days of the inspection.");
-    expect(line(r, "reportChannel")).toBe("By email to filings@tx-example-county.example. Sent automatically once the report is ready.");
+    expect(line(r, "reportChannel")).toBe(
+      "By email to filings@tx-example-county.example. Sent automatically once the report is ready. The office may file by CSV upload instead (FICTIONAL: Example County CSV layout EC-CSV-1, made up for development and tests).",
+    );
+    // Without a CSV layout the line is only the email channel; filing by CSV says so instead.
+    expect(line(base({ export: undefined }), "reportChannel")).toBe("By email to filings@tx-example-county.example. Sent automatically once the report is ready.");
+    expect(line(base({ submission: { method: "csv_export", fallback: "manual_export", portalUrl: null } }), "reportChannel")).toMatch(/^By CSV upload, in its own column layout \(FICTIONAL: Example County CSV layout EC-CSV-1/);
     expect(line(r, "contracts")).toBe("Not filed with this authority.");
     expect(line(r, "acknowledgment")).toMatch(/record its reference/);
     expect(requirementsSource(r)).toMatch(/Example rules/);

@@ -54,8 +54,10 @@ export default function FilingPage() {
   };
 
   const manual = f.submissionMethod === "manual_export";
+  const csv = f.submissionMethod === "csv_export";
   const draft = f.profile?.status === "draft";
   const canFallBack = f.package?.fallback === "manual_export" && !manual;
+  const canExportCsv = !!f.package?.csvExport && !csv;
 
   return (
     <div className="stack">
@@ -126,13 +128,15 @@ export default function FilingPage() {
           </>
         )}
         <dt>Method</dt>
-        <dd>{f.submissionMethod === "email" ? "Email" : manual ? "By hand (portal, mail or counter)" : "—"}</dd>
+        <dd>{f.submissionMethod === "email" ? "Email" : manual ? "By hand (portal, mail or counter)" : csv ? "CSV upload in the authority's layout" : "—"}</dd>
         <dt>Sent</dt>
         <dd>
           {when(f.sentAt)}
           {f.proof && (
             <div className="muted small">
-              {f.proof.kind === "email_message_id" ? `Message ID ${f.proof.reference}` : `Filed by hand${f.proof.by ? ` by ${f.proof.by}` : ""}${f.proof.reference ? `, portal reference ${f.proof.reference}` : ""}`}
+              {f.proof.kind === "email_message_id"
+                ? `Message ID ${f.proof.reference}`
+                : `${csv ? "CSV uploaded" : "Filed by hand"}${f.proof.by ? ` by ${f.proof.by}` : ""}${f.proof.reference ? `, portal reference ${f.proof.reference}` : ""}`}
               {f.proof.note && ` · ${f.proof.note}`}
             </div>
           )}
@@ -311,6 +315,52 @@ export default function FilingPage() {
             </form>
           )}
 
+          {f.status === "ready" && csv && (
+            <form className="card stack" onSubmit={onForm("mark-sent")}>
+              <strong>Upload the CSV</strong>
+              <p className="muted small">
+                {f.package?.csvUrl ? (
+                  <a href={`/api${f.package.csvUrl}`} target="_blank" rel="noreferrer">
+                    Download the authority CSV
+                  </a>
+                ) : (
+                  "The CSV is in the package below"
+                )}
+                {f.package?.reportUrl && (
+                  <>
+                    {" and "}
+                    <a href={`/api${f.package.reportUrl}`} target="_blank" rel="noreferrer">
+                      the authority report
+                    </a>
+                  </>
+                )}
+                {f.package?.portalUrl ? (
+                  <>
+                    , upload them on{" "}
+                    <a href={f.package.portalUrl} target="_blank" rel="noreferrer">
+                      the authority&apos;s portal
+                    </a>
+                  </>
+                ) : (
+                  <>, send them to {f.package?.destination ?? "the authority"}</>
+                )}
+                , then record it here. Making the CSV did not send anything.
+              </p>
+              {f.package?.csvExport && <p className="muted small">Layout: {f.package.csvExport.formReference}</p>}
+              <label>
+                Upload or receipt reference
+                <input name="reference" placeholder="Optional" />
+              </label>
+              <label>
+                Note
+                <input name="note" placeholder="Optional" />
+              </label>
+              <button type="submit" disabled={busy}>
+                Mark as filed
+              </button>
+            </form>
+          )}
+
           <div className="row">
             {f.status === "ready" && f.submissionMethod === "email" && (
               <button disabled={busy} onClick={() => void run("submit")}>
@@ -337,6 +387,11 @@ export default function FilingPage() {
                 File by hand instead
               </button>
             )}
+            {canExportCsv && (f.status === "ready" || f.status === "failed") && (
+              <button className="secondary" disabled={busy} onClick={() => void run("csv-export")}>
+                Export CSV instead
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -353,7 +408,7 @@ export default function FilingPage() {
                 <span className="badge inactive">Never sent (replaced)</span>
               )}
               <span className="muted small">
-                {p.method === "email" ? `Email to ${p.recipient ?? "—"}` : "By hand"} · made {when(p.createdAt)}
+                {p.method === "email" ? `Email to ${p.recipient ?? "—"}` : p.method === "csv_export" ? "CSV upload" : "By hand"} · made {when(p.createdAt)}
               </span>
             </div>
             <div className="small">Subject: {p.subject}</div>
@@ -364,7 +419,14 @@ export default function FilingPage() {
                     {d.filename}
                   </a>{" "}
                   <span className="muted">
-                    {d.role === "cover_sheet" ? "cover sheet" : d.role === "contract" ? "signed contract" : `authority report${d.sourceVersion ? ` v${d.sourceVersion}` : ""}`} · SHA-256 {d.sha256.slice(0, 12)}…
+                    {d.role === "cover_sheet"
+                      ? "cover sheet"
+                      : d.role === "contract"
+                        ? "signed contract"
+                        : d.role === "authority_csv"
+                          ? "authority CSV"
+                          : `authority report${d.sourceVersion ? ` v${d.sourceVersion}` : ""}`}{" "}
+                    · SHA-256 {d.sha256.slice(0, 12)}…
                   </span>
                 </li>
               ))}
@@ -423,7 +485,7 @@ export default function FilingPage() {
                     {f.submissionNo > 1 && <span className="muted small"> (submission {a.submissionNo})</span>}
                   </td>
                   <td>{when(a.startedAt)}</td>
-                  <td>{a.method === "email" ? "Email" : "By hand"}</td>
+                  <td>{a.method === "email" ? "Email" : a.method === "csv_export" ? "CSV upload" : "By hand"}</td>
                   <td>{a.recipient ?? "—"}</td>
                   <td>{a.status === "failed" ? <span className="error">{a.error}</span> : a.status === "succeeded" ? (a.method === "email" ? "Accepted by the mail provider" : "Recorded as filed") : "In progress"}</td>
                 </tr>

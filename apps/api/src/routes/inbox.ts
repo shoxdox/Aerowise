@@ -703,7 +703,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .filter((r) => r.customer)
       .map((r) => ({
         key: `quickbooks:${r.id}`,
-        kind: r.status === "conflict" ? ("quickbooks_conflict" as const) : ("quickbooks_failed" as const),
+        kind: r.status === "conflict" || r.status === "quarantined" ? ("quickbooks_conflict" as const) : ("quickbooks_failed" as const),
         severity: "medium" as const,
         title: `QuickBooks: ${r.title ?? "needs attention"}`,
         detail: r.status === "failed" ? `${r.label}: ${r.syncError ?? "could not be sent"}` : r.label,

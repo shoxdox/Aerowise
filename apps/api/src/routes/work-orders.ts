@@ -30,11 +30,12 @@ import {
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { invoiceEvent } from "@aerowise/payments";
-import { sql, type Transaction } from "kysely";
+import { sql, type Kysely, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { consumeCoverage, coveredInvoiceLines, releaseOnCancel } from "../lib/coverage.ts";
+import { isWorkForm } from "../lib/forms.ts";
 import { checkDraftRefs, writeDraftLines } from "../lib/invoices.ts";
 import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
 
@@ -46,6 +47,14 @@ import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, wor
 
 const params = z.object({ id });
 type Trx = Transaction<DB>;
+
+const WORK_TYPE_COLUMNS = ["id", "key", "name", "category", "defaultFormTemplateKey", "defaultDurationMinutes", "requiresDisposalRecord", "active", "position"] as const;
+
+/** A kind of work may point only at a work form the company can use (SW-F). */
+async function checkWorkForm(ex: Kysely<DB>, organizationId: string, key: string | null | undefined) {
+  if (key == null) return;
+  if (!(await isWorkForm(ex, organizationId, key))) throw unprocessable(`There is no work form with the key ${key}`);
+}
 
 // Members who can be sent on a visit, as for inspections.
 const ASSIGNABLE_ROLES = ["technician", "owner"] as const;
@@ -314,7 +323,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       const { organizationId } = req.requireAuth();
       const items = await db
         .selectFrom("workTypes")
-        .select(["id", "key", "name", "category", "defaultDurationMinutes", "requiresDisposalRecord", "active", "position"])
+        .select(WORK_TYPE_COLUMNS)
         .where("organizationId", "=", organizationId)
         .orderBy("position")
         .orderBy("name")
@@ -330,11 +339,12 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       requireFeature();
       const { organizationId } = req.requireAuth();
       const created = await db.transaction().execute(async (trx) => {
+        await checkWorkForm(trx, organizationId, req.body.defaultFormTemplateKey);
         const position = await trx.selectFrom("workTypes").select(sql<number>`coalesce(max(position), 0) + 1`.as("n")).where("organizationId", "=", organizationId).executeTakeFirstOrThrow();
         const row = await trx
           .insertInto("workTypes")
-          .values({ organizationId, key: req.body.key, name: req.body.name, category: req.body.category, defaultDurationMinutes: req.body.defaultDurationMinutes ?? null, requiresDisposalRecord: req.body.requiresDisposalRecord, position: Number(position.n), updatedAt: now() })
-          .returning(["id", "key", "name", "category", "defaultDurationMinutes", "requiresDisposalRecord", "active", "position"])
+          .values({ organizationId, key: req.body.key, name: req.body.name, category: req.body.category, defaultFormTemplateKey: req.body.defaultFormTemplateKey ?? null, defaultDurationMinutes: req.body.defaultDurationMinutes ?? null, requiresDisposalRecord: req.body.requiresDisposalRecord, position: Number(position.n), updatedAt: now() })
+          .returning(WORK_TYPE_COLUMNS)
           .executeTakeFirstOrThrow()
           .catch((err) => {
             if ((err as { code?: string }).code === "23505") throw new HttpError(409, "duplicate_key", `There is already a kind of work with the key ${req.body.key}`);
@@ -353,10 +363,12 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     async (req) => {
       const { organizationId } = req.requireAuth();
       return db.transaction().execute(async (trx) => {
+        await checkWorkForm(trx, organizationId, req.body.defaultFormTemplateKey);
         const row = await trx
           .updateTable("workTypes")
           .set({
             ...(req.body.name !== undefined ? { name: req.body.name } : {}),
+            ...(req.body.defaultFormTemplateKey !== undefined ? { defaultFormTemplateKey: req.body.defaultFormTemplateKey } : {}),
             ...(req.body.defaultDurationMinutes !== undefined ? { defaultDurationMinutes: req.body.defaultDurationMinutes } : {}),
             ...(req.body.requiresDisposalRecord !== undefined ? { requiresDisposalRecord: req.body.requiresDisposalRecord } : {}),
             ...(req.body.active !== undefined ? { active: req.body.active } : {}),
@@ -365,7 +377,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           })
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
-          .returning(["id", "key", "name", "category", "defaultDurationMinutes", "requiresDisposalRecord", "active", "position"])
+          .returning(WORK_TYPE_COLUMNS)
           .executeTakeFirst();
         if (!row) throw notFound("Kind of work");
         await audit(trx, req, { action: "work_type.updated", entityType: "work_type", entityId: row.id, changes: req.body });

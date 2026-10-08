@@ -147,6 +147,52 @@ describe("fractional quantities", () => {
       await off.close();
     }
   });
+
+  it("saves a fractional draft from the office editor after the flag is turned off, but takes no new fraction", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const made = (
+      await t.api.post("/invoices", {
+        customerId: t.customer.id,
+        lines: [
+          { description: "Labor", quantity: 1.5, unitPriceCents: 9500 },
+          { description: "Filter", quantity: 2, unitPriceCents: 1250 },
+        ],
+      })
+    ).json();
+    const off = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, loginRateLimit: 1000, features: new Set(["work_orders"]) });
+    try {
+      const api = client(off, await login(off, t.owner.email));
+      // Every line, as the office editor sends them on Save draft (InvoiceEditor), with a changed price.
+      const editorLines = (draft: { lines: { id: string; description: string; quantity: number; unitPriceCents: number; taxable: boolean; serviceItemId: string | null }[] }) =>
+        draft.lines.map((l) => ({ id: l.id, description: l.description, quantity: l.quantity, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId }));
+      const lines = editorLines((await api.get(`/invoices/${made.id}`)).json());
+      lines[0]!.unitPriceCents = 10000;
+      const saved = await api.patch(`/invoices/${made.id}`, { taxRateBps: 0, discountCents: 0, termsDays: 30, memo: "Edited after the flag went off", lines });
+      expect(saved.statusCode, saved.body).toBe(200);
+      expect(saved.json().lines).toMatchObject([
+        { quantity: 1.5, quantityMilli: 1500, amountCents: 15000 },
+        { quantity: 2, quantityMilli: null, amountCents: 2500 },
+      ]);
+
+      // A different fraction, or a fraction on a new or whole-number line, is new and refused.
+      const again = editorLines(saved.json());
+      for (const bad of [
+        again.map((l, i) => (i === 0 ? { ...l, quantity: 1.75 } : l)),
+        again.map((l, i) => (i === 1 ? { ...l, quantity: 2.5 } : l)),
+        [...again, { description: "More labor", quantity: 0.5, unitPriceCents: 9500, taxable: false, serviceItemId: null }],
+        again.map((l, i) => (i === 0 ? { ...l, id: undefined } : l)),
+      ]) {
+        const res = await api.patch(`/invoices/${made.id}`, { lines: bad });
+        expect(res.statusCode, res.body).toBe(409);
+        expect(res.json().error).toBe("feature_off");
+      }
+      // A fraction can always become a whole number.
+      const whole = await api.patch(`/invoices/${made.id}`, { lines: again.map((l, i) => (i === 0 ? { ...l, quantity: 2 } : l)) });
+      expect(whole.json().lines[0]).toMatchObject({ quantity: 2, quantityMilli: null, amountCents: 20000 });
+    } finally {
+      await off.close();
+    }
+  });
 });
 
 describe("invoicing a work order", () => {
@@ -336,6 +382,75 @@ describe("QuickBooks", () => {
       `[{"itemId":"${item}","description":"Aerator repair","quantity":2,"unitPriceCents":15000,"amountCents":30000},{"itemId":"${item}","description":"Filter","quantity":1,"unitPriceCents":1250,"amountCents":1250}]`,
       `[{"itemId":"${item}","description":"Labor","quantity":1.25,"unitPriceCents":9500,"amountCents":11875}]`,
     ]);
+  });
+
+  it("sends a service item's lines under the QuickBooks item chosen for it, and the default item otherwise", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { realm, nora } = await connected(t);
+    const { labor, pumping } = await catalog(t.api);
+    const items = (await t.api.get("/quickbooks/items")).json() as { id: string; name: string }[];
+    const services = items.find((i) => i.name === "Services")!;
+    const repair = items.find((i) => i.name === "Septic repair")!;
+    const put = await t.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: labor.id, itemId: repair.id }] });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().serviceItems).toEqual([
+      { serviceItemId: labor.id, name: "Labor", active: true, item: { id: repair.id, name: "Septic repair" } },
+      { serviceItemId: pumping.id, name: "Pumping", active: true, item: null },
+    ]);
+    // The choice is a mapping, not a sent record: the sync health counts it apart from invoices.
+    expect((await t.api.get("/quickbooks")).json().counts.service_item).toEqual({ synced: 1 });
+
+    const inv = (
+      await t.api.post("/invoices", {
+        customerId: nora.id,
+        lines: [
+          { description: "Labor", quantity: 1.5, unitPriceCents: 9500, serviceItemId: labor.id },
+          { description: "Pumping", quantity: 1000, unitPriceCents: 35, serviceItemId: pumping.id },
+          { description: "Trip charge", unitPriceCents: 4500 },
+        ],
+      })
+    ).json();
+    await t.api.post(`/invoices/${inv.id}/issue`, { send: false });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    expect((await sentInvoice(realm, "INV-1001")).lines.map((l) => [l.description, l.itemId])).toEqual([
+      ["Labor", repair.id],
+      ["Pumping", services.id],
+      ["Trip charge", services.id],
+    ]);
+
+    // Clearing the choice puts the item's lines back on the default item.
+    const cleared = await t.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: labor.id, itemId: null }] });
+    expect(cleared.json().serviceItems.find((i: { serviceItemId: string }) => i.serviceItemId === labor.id).item).toBeNull();
+    expect(await ctx.db.selectFrom("quickbooksLinks").select("id").where("entityType", "=", "service_item").execute()).toEqual([]);
+  });
+
+  it("holds an invoice whose service item maps to an archived QuickBooks item, naming the service item", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { realm, nora } = await connected(t);
+    const { labor } = await catalog(t.api);
+    const repair = ((await t.api.get("/quickbooks/items")).json() as { id: string; name: string }[]).find((i) => i.name === "Septic repair")!;
+    await t.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: labor.id, itemId: repair.id }] });
+    await new TestCompanies(ctx.db, () => ctx.now).setItemActive(realm, repair.id, false);
+    const inv = (await t.api.post("/invoices", { customerId: nora.id, lines: [{ description: "Labor", quantity: 2, unitPriceCents: 9500, serviceItemId: labor.id }] })).json();
+    await t.api.post(`/invoices/${inv.id}/issue`, { send: false });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    const link = await ctx.db.selectFrom("quickbooksLinks").select(["status", "conflictKind", "conflict"]).where("entityType", "=", "invoice").where("entityId", "=", inv.id).executeTakeFirstOrThrow();
+    expect(link).toMatchObject({ status: "conflict", conflictKind: "item_missing", conflict: { reason: "inactive", itemId: repair.id, plans: ["Labor"] } });
+  });
+
+  it("maps only the company's own service items", async () => {
+    const a = await createTenant(ctx, "Org A");
+    const b = await createTenant(ctx, "Org B");
+    await connected(a);
+    const theirs = (await b.api.post("/service-items", { name: "Labor", unit: "hour", unitPriceCents: 9900 })).json();
+    const repair = ((await a.api.get("/quickbooks/items")).json() as { id: string; name: string }[]).find((i) => i.name === "Septic repair")!;
+    const res = await a.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: theirs.id, itemId: repair.id }] });
+    expect(res.statusCode).toBe(404);
+    expect(await ctx.db.selectFrom("quickbooksLinks").select("id").where("entityType", "=", "service_item").execute()).toEqual([]);
+    // Org A's mapping never lists Org B's items.
+    expect((await a.api.get("/quickbooks/mapping")).json().serviceItems).toEqual([]);
   });
 
   it("syncs an untaxed invoice made from a work order", async () => {

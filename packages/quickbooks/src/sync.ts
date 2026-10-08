@@ -3,7 +3,7 @@ import { matchCustomer, normalizeName, PAYMENT_METHOD_LABELS, QUICKBOOKS_RETRY_M
 import { sql, type Selectable } from "kysely";
 import { openCompany, type QuickBooksContext } from "./connection.ts";
 import { customerPayloads, payloadHash } from "./records.ts";
-import { QuickBooksError, type CustomerPayload, type QboCustomer, type QboItem, type QuickBooksCompany } from "./types.ts";
+import { QuickBooksError, type CustomerPayload, type QboCustomer, type QboInvoice, type QboItem, type QuickBooksCompany } from "./types.ts";
 
 export type Link = Selectable<QuickbooksLinksTable>;
 
@@ -23,6 +23,43 @@ export type StoredCandidate = ReturnType<typeof candidateOf>;
 /** What refunds reversing a payment (not credits) have taken off it; the payment is lowered by this. */
 const reversedSql = sql<number>`(select coalesce(sum(r.amount_cents), 0) from refunds r where r.payment_id = p.id and r.status = 'succeeded' and r.intent = 'reverse')`;
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+/** What a payment or refund says while its invoice is quarantined. */
+export const HELD_FOR_INVOICE = "Held: the invoice's totals in QuickBooks differ from Aerowise's. Settle the invoice first.";
+/** What a payment or refund says while its invoice is kept as it is in QuickBooks and out of the sync. */
+export const KEPT_FOR_INVOICE = "Not sent: the invoice is kept as it is in QuickBooks. Record this there yourself, or check the invoice again.";
+/** remote_state of an invoice kept in QuickBooks with totals that differ from Aerowise's. */
+export const KEPT_MISMATCH = "kept_mismatch";
+
+/**
+ * Why nothing may be sent for a payment or refund of this invoice, if anything: it is
+ * quarantined, or kept as it is after a mismatch. Checked before every payment and refund
+ * change, whether or not the record is already in QuickBooks, so a held record keeps its
+ * QuickBooks id and goes on exactly once when the invoice is released.
+ */
+export function heldBy(invLink: Pick<Link, "status" | "remoteState"> | undefined): string | null {
+  if (invLink?.status === "quarantined") return HELD_FOR_INVOICE;
+  if (invLink?.status === "ignored" && invLink.remoteState === KEPT_MISMATCH) return KEPT_FOR_INVOICE;
+  return null;
+}
+
+/** Tax mode and the QuickBooks tax codes it uses, as the company chose on the QuickBooks page. */
+export interface TaxMapping {
+  mode: "off" | "taxcode";
+  taxableCodeRef: string | null;
+  nontaxableCodeRef: string | null;
+  taxRateRef: string | null;
+}
+
+/** QuickBooks' totals next to Aerowise's: what a quarantined invoice shows the person settling it. */
+export function totalsCompared(local: { totalCents: number; taxCents: number }, remote: { totalCents: number; taxCents: number }, docNumber: string | null) {
+  return {
+    docNumber,
+    aerowise: { totalCents: local.totalCents, taxCents: local.taxCents },
+    quickbooks: { totalCents: remote.totalCents, taxCents: remote.taxCents },
+    matches: local.totalCents === remote.totalCents && local.taxCents === remote.taxCents,
+  };
+}
+
 const dateIn = (d: Date, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
 /** Writes a link's outcome. Every outcome clears what the previous one left. */
@@ -44,6 +81,25 @@ export class LinkWriter {
 
   conflict(link: Pick<Link, "id">, kind: QuickBooksConflictKind, details: Record<string, unknown>) {
     return this.set(link, { status: "conflict", conflictKind: kind, conflict: JSON.stringify(details), syncError: null, nextAttemptAt: null, force: false });
+  }
+
+  /**
+   * In QuickBooks, but with totals that differ from Aerowise's. The QuickBooks id is kept, so
+   * nothing is ever created again for it; nothing more is sent for it until a person settles it.
+   */
+  quarantined(link: Pick<Link, "id">, remote: { id: string; syncToken: string; updatedAt: string | null }, details: Record<string, unknown>) {
+    return this.set(link, {
+      status: "quarantined",
+      conflictKind: "tax_total_mismatch",
+      conflict: JSON.stringify(details),
+      externalId: remote.id,
+      syncToken: remote.syncToken,
+      remoteState: "open",
+      remoteUpdatedAt: remote.updatedAt,
+      syncError: null,
+      nextAttemptAt: null,
+      force: false,
+    });
   }
 
   /** Waiting on another record (its customer or invoice) to reach QuickBooks first. */
@@ -93,11 +149,19 @@ export async function syncOrganization(ctx: QuickBooksContext, organizationId: s
   try {
     const company = await openCompany(ctx, organizationId);
     const org = await ctx.db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
-    const run = new SyncRun(ctx, company, organizationId, org.timezone, conn.defaultItemId, {
-      itemId: conn.refundItemId,
-      stripeAccountId: conn.stripeRefundAccountId,
-      manualAccountId: conn.manualRefundAccountId,
-    });
+    const run = new SyncRun(
+      ctx,
+      company,
+      organizationId,
+      org.timezone,
+      conn.defaultItemId,
+      {
+        itemId: conn.refundItemId,
+        stripeAccountId: conn.stripeRefundAccountId,
+        manualAccountId: conn.manualRefundAccountId,
+      },
+      { mode: conn.taxMode, taxableCodeRef: conn.taxableCodeRef, nontaxableCodeRef: conn.nontaxableCodeRef, taxRateRef: conn.taxRateRef },
+    );
     await run.readChanges(conn.changesSince ?? conn.connectedAt);
     await run.discover(conn.syncFrom);
     more = await run.push();
@@ -125,6 +189,7 @@ class SyncRun {
     private readonly defaultItemId: string | null,
     /** Where Refund Receipts go, as the company chose on the QuickBooks page. */
     private readonly refunds: { itemId: string | null; stripeAccountId: string | null; manualAccountId: string | null },
+    private readonly tax: TaxMapping = { mode: "off", taxableCodeRef: null, nontaxableCodeRef: null, taxRateRef: null },
   ) {
     this.write = new LinkWriter(ctx);
   }
@@ -374,45 +439,65 @@ class SyncRun {
     if (customer?.status === "ignored") return this.write.ignored(link, "The customer is set not to sync to QuickBooks");
     if (customer?.status !== "synced" || !customer.externalId) return this.write.waiting(link, "Waiting for the customer to reach QuickBooks");
 
-    if (inv.taxCents > 0) return this.write.conflict(link, "tax_mapping_missing", { taxCents: inv.taxCents });
+    // Tax mode off: a taxed invoice stays out of QuickBooks, as it always has.
+    const taxOn = this.tax.mode === "taxcode";
+    if (!taxOn && inv.taxCents > 0) return this.write.conflict(link, "tax_mapping_missing", { taxCents: inv.taxCents });
+    if (taxOn && (!this.tax.taxableCodeRef || !this.tax.nontaxableCodeRef || !this.tax.taxRateRef)) {
+      return this.write.waiting(link, "Choose the sales tax codes on the QuickBooks page");
+    }
 
     const lines = await db
       .selectFrom("invoiceLines as l")
       .leftJoin("contracts as c", (j) => j.onRef("c.id", "=", "l.contractId").onRef("c.organizationId", "=", "l.organizationId"))
       .leftJoin("plans as p", (j) => j.onRef("p.id", "=", "c.planId").onRef("p.organizationId", "=", "c.organizationId"))
-      .select(["l.description", "l.quantity", "l.quantityMilli", "l.unitPriceCents", "l.amountCents", "c.planId", "p.name as planName"])
+      .leftJoin("serviceItems as si", (j) => j.onRef("si.id", "=", "l.serviceItemId").onRef("si.organizationId", "=", "l.organizationId"))
+      .select(["l.description", "l.quantity", "l.quantityMilli", "l.unitPriceCents", "l.amountCents", "l.taxable", "c.planId", "p.name as planName", "l.serviceItemId", "si.name as serviceItemName"])
       .where("l.organizationId", "=", this.org)
       .where("l.invoiceId", "=", inv.id)
       .orderBy("l.position")
       .execute();
-    const planIds = [...new Set(lines.map((l) => l.planId).filter((x): x is string => !!x))];
-    const planItems = new Map<string, string>();
-    if (planIds.length) {
+    // A line written from a service item (SW-3) uses that item's QuickBooks item, then its plan's, then the default.
+    const chosenItems = async (entityType: "plan" | "service_item", ids: (string | null)[]) => {
+      const wanted = [...new Set(ids.filter((x): x is string => !!x))];
+      const found = new Map<string, string>();
+      if (!wanted.length) return found;
       const rows = await db
         .selectFrom("quickbooksLinks")
         .select(["entityId", "externalId"])
         .where("organizationId", "=", this.org)
-        .where("entityType", "=", "plan")
-        .where("entityId", "in", planIds)
+        .where("entityType", "=", entityType)
+        .where("entityId", "in", wanted)
         .where("status", "=", "synced")
         .execute();
-      for (const r of rows) if (r.externalId) planItems.set(r.entityId, r.externalId);
-    }
-    const mapped = lines.map((l) => ({ ...l, itemId: (l.planId && planItems.get(l.planId)) || this.defaultItemId }));
+      for (const r of rows) if (r.externalId) found.set(r.entityId, r.externalId);
+      return found;
+    };
+    const planItems = await chosenItems("plan", lines.map((l) => l.planId));
+    const serviceItems = await chosenItems("service_item", lines.map((l) => l.serviceItemId));
+    const mapped = lines.map((l) => ({
+      ...l,
+      itemId: (l.serviceItemId && serviceItems.get(l.serviceItemId)) || (l.planId && planItems.get(l.planId)) || this.defaultItemId,
+      chargeName: l.serviceItemName ?? l.planName,
+    }));
     const unmapped = mapped.filter((l) => !l.itemId);
     if (unmapped.length) {
-      return this.write.conflict(link, "item_missing", { reason: "unmapped", lines: unmapped.map((l) => ({ description: l.description, plan: l.planName })) });
+      return this.write.conflict(link, "item_missing", { reason: "unmapped", lines: unmapped.map((l) => ({ description: l.description, plan: l.planName, ...(l.serviceItemName ? { serviceItem: l.serviceItemName } : {}) })) });
     }
     for (const id of new Set(mapped.map((l) => l.itemId!))) {
       const item = await this.item(id);
       if (!item || !item.active) {
-        return this.write.conflict(link, "item_missing", { reason: item ? "inactive" : "deleted", itemId: id, itemName: item?.name ?? null, plans: [...new Set(mapped.filter((l) => l.itemId === id).map((l) => l.planName ?? "Other charges"))] });
+        return this.write.conflict(link, "item_missing", { reason: item ? "inactive" : "deleted", itemId: id, itemName: item?.name ?? null, plans: [...new Set(mapped.filter((l) => l.itemId === id).map((l) => l.chargeName ?? "Other charges"))] });
       }
     }
 
     const snapshot = inv.snapshot as { number: string; billTo: { email: string | null } };
     const docNumber = snapshot.number;
     const existing = await this.company.findInvoiceByNumber(docNumber);
+    if (existing && taxOn && existing.customerId === customer.externalId) {
+      // Ours: an earlier create whose answer was lost. QuickBooks may have recalculated its tax,
+      // so its total is compared rather than required to match before it is taken.
+      return this.settleCreated(link, inv, existing);
+    }
     if (existing) {
       if (existing.customerId === customer.externalId && existing.totalCents === inv.totalCents) {
         return this.write.synced(link, { externalId: existing.id, syncToken: existing.syncToken, remoteState: existing.voided ? "void" : "open", remoteUpdatedAt: existing.updatedAt });
@@ -428,8 +513,17 @@ class SyncRun {
         docNumber,
         txnDate: inv.issuedOn!,
         dueDate: inv.dueOn!,
-        lines: mapped.map((l) => ({ itemId: l.itemId!, description: l.description, quantity: l.quantityMilli === null ? l.quantity : l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, amountCents: l.amountCents })),
+        lines: mapped.map((l) => ({
+          itemId: l.itemId!,
+          description: l.description,
+          // A fractional line (SW-3) sends its thousandths; a whole-number line sends what it always did.
+          quantity: l.quantityMilli === null ? l.quantity : l.quantityMilli / 1000,
+          unitPriceCents: l.unitPriceCents,
+          amountCents: l.amountCents,
+          ...(taxOn ? { taxCodeRef: l.taxable ? this.tax.taxableCodeRef! : this.tax.nontaxableCodeRef! } : {}),
+        })),
         discountCents: inv.discountCents,
+        ...(taxOn ? { txnTax: { taxCodeRef: this.tax.taxRateRef!, totalTaxCents: inv.taxCents } } : {}),
         memo: inv.memo,
         privateNote: `Aerowise invoice ${docNumber}`,
         billEmail: snapshot.billTo.email,
@@ -437,7 +531,15 @@ class SyncRun {
       },
       `aw-${link.id}-${link.generation}`,
     );
+    if (taxOn) return this.settleCreated(link, inv, created);
     return this.write.synced(link, { externalId: created.id, syncToken: created.syncToken, remoteState: "open", remoteUpdatedAt: created.updatedAt });
+  }
+
+  /** Tax mode on: the invoice QuickBooks now has is synced if its totals are Aerowise's, quarantined if not. */
+  private settleCreated(link: Link, inv: { totalCents: number; taxCents: number }, remote: QboInvoice) {
+    const compared = totalsCompared(inv, remote, remote.docNumber);
+    if (compared.matches) return this.write.synced(link, { externalId: remote.id, syncToken: remote.syncToken, remoteState: remote.voided ? "void" : "open", remoteUpdatedAt: remote.updatedAt });
+    return this.write.quarantined(link, remote, compared);
   }
 
   async pushPayment(link: Link) {
@@ -450,6 +552,10 @@ class SyncRun {
       .where("p.id", "=", link.entityId)
       .executeTakeFirst();
     if (!p || p.status !== "succeeded") return this.write.ignored(link, "Only cleared payments are sent to QuickBooks");
+    const invLink = await this.link("invoice", p.invoiceId);
+    // Nothing compounds a quarantined or kept invoice: its payments wait, new or already sent.
+    const held = heldBy(invLink);
+    if (held) return this.write.waiting(link, held);
     // A refund reversing the payment (the customer owes it again) comes off the payment itself,
     // so QuickBooks shows the balance Aerowise does. Credit refunds go over as Refund Receipts.
     const net = p.amountCents - p.reversedCents;
@@ -458,7 +564,6 @@ class SyncRun {
     const privateNote = `Aerowise ${label.toLowerCase()} payment on INV-${p.number}${p.providerPaymentId ? ` (Stripe ${p.providerPaymentId})` : ""}${reversed}`;
     if (link.externalId) return this.reversePayment(link, { invoiceId: p.invoiceId, number: p.number, amountCents: p.amountCents, reversedCents: p.reversedCents }, privateNote);
     if (net === 0) return this.write.ignored(link, "Reversed in full before it reached QuickBooks");
-    const invLink = await this.link("invoice", p.invoiceId);
     if (invLink?.status === "ignored") return this.write.ignored(link, "The invoice is not synced to QuickBooks");
     if (invLink?.status !== "synced" || !invLink.externalId) return this.write.waiting(link, "Waiting for the invoice to reach QuickBooks");
     const custLink = await this.link("customer", p.customerId);
@@ -537,11 +642,13 @@ class SyncRun {
       .selectFrom("refunds as r")
       .innerJoin("payments as p", (j) => j.onRef("p.id", "=", "r.paymentId").onRef("p.organizationId", "=", "r.organizationId"))
       .innerJoin("invoices as i", (j) => j.onRef("i.id", "=", "p.invoiceId").onRef("i.organizationId", "=", "p.organizationId"))
-      .select(["r.id", "r.status", "r.intent", "r.amountCents", "r.reason", "r.providerRefundId", "r.updatedAt", "p.id as paymentId", "p.method", "p.source", "p.reference", "p.providerPaymentId", "i.customerId", "i.number"])
+      .select(["r.id", "r.status", "r.intent", "r.amountCents", "r.reason", "r.providerRefundId", "r.updatedAt", "p.id as paymentId", "p.invoiceId", "p.method", "p.source", "p.reference", "p.providerPaymentId", "i.customerId", "i.number"])
       .where("r.organizationId", "=", this.org)
       .where("r.id", "=", link.entityId)
       .executeTakeFirst();
     if (!r || r.status !== "succeeded" || r.intent !== "credit") return this.write.ignored(link, "Only completed credit refunds are sent as Refund Receipts");
+    const held = heldBy(await this.link("invoice", r.invoiceId));
+    if (held) return this.write.waiting(link, held);
     if (link.externalId) return this.write.synced(link);
     const payLink = await this.link("payment", r.paymentId);
     if (payLink?.status === "ignored") return this.write.ignored(link, "The payment is not synced to QuickBooks");

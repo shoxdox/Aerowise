@@ -11,6 +11,7 @@ import {
   type QuickBooksRecord,
   type QuickBooksStatus,
   type QuickBooksSyncStatus,
+  type QuickBooksTaxCode,
 } from "@aerowise/domain";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -27,7 +28,7 @@ const RETURN_MESSAGES: Record<string, string> = {
 };
 
 const ENTITY_LABELS = { customer: "Customers", invoice: "Invoices", payment: "Payments", refund: "Refunds" } as const;
-const HEALTH_ORDER: QuickBooksSyncStatus[] = ["synced", "queued", "syncing", "failed", "conflict", "ignored"];
+const HEALTH_ORDER: QuickBooksSyncStatus[] = ["synced", "queued", "syncing", "failed", "conflict", "quarantined", "ignored"];
 
 function errorText(err: unknown, fallback: string) {
   return err instanceof ApiError ? err.message : fallback;
@@ -38,13 +39,17 @@ function RecordCard({ r, editable, onDone }: { r: QuickBooksRecord; editable: bo
   const [pick, setPick] = useState<string>(r.candidates[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const details = (r.details ?? {}) as Record<string, unknown>;
 
   async function act(action: QuickBooksAction) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/quickbooks/records/${r.id}/resolve`, { method: "POST", body: { action, ...(action === "match" && r.conflictKind === "ambiguous_match" ? { externalId: pick } : {}) } });
+      await api(`/quickbooks/records/${r.id}/resolve`, {
+        method: "POST",
+        body: { action, ...(action === "match" && r.conflictKind === "ambiguous_match" ? { externalId: pick } : {}), ...(action === "keep_remote" ? { reason } : {}) },
+      });
       await onDone();
     } catch (err) {
       setError(errorText(err, "Could not save that choice"));
@@ -54,10 +59,11 @@ function RecordCard({ r, editable, onDone }: { r: QuickBooksRecord; editable: bo
 
   const fields = (details.fields ?? []) as { field: string; aerowise: string | null; quickbooks: string | null }[];
   const existing = details.existing as { customerName: string | null; totalCents: number } | undefined;
+  const totals = details as { aerowise?: { totalCents: number; taxCents: number }; quickbooks?: { totalCents: number; taxCents: number }; checkedAt?: string };
   return (
     <li className="card stack qb-record" data-testid="qb-record">
       <div className="row">
-        <span className={`badge ${r.status === "failed" ? "danger" : "warn"}`}>{r.title}</span>
+        <span className={`badge ${r.status === "failed" || r.status === "quarantined" ? "danger" : "warn"}`}>{r.title}</span>
         <strong>{r.label}</strong>
         {r.customer && r.entityType !== "customer" && <span className="muted">{r.customer.displayName}</span>}
         <span className="spacer" />
@@ -122,11 +128,48 @@ function RecordCard({ r, editable, onDone }: { r: QuickBooksRecord; editable: bo
         </p>
       )}
       {r.conflictKind === "tax_mapping_missing" && <p className="small">Sales tax on this invoice: {money(Number(details.taxCents))}.</p>}
+      {r.conflictKind === "tax_total_mismatch" && totals.aerowise && totals.quickbooks && (
+        <>
+          <table className="compact" data-testid="qb-totals">
+            <thead>
+              <tr>
+                <th />
+                <th>Aerowise</th>
+                <th>QuickBooks</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="muted">Sales tax</td>
+                <td>{money(totals.aerowise.taxCents)}</td>
+                <td>{money(totals.quickbooks.taxCents)}</td>
+              </tr>
+              <tr>
+                <td className="muted">Total</td>
+                <td>{money(totals.aerowise.totalCents)}</td>
+                <td>{money(totals.quickbooks.totalCents)}</td>
+              </tr>
+            </tbody>
+          </table>
+          {totals.checkedAt && <p className="muted small">Checked again {when(totals.checkedAt)}: still different.</p>}
+          {editable && r.actions.includes("keep_remote") && (
+            <label>
+              Why keep it as it is (needed to stop syncing it)
+              <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+            </label>
+          )}
+        </>
+      )}
 
       {editable && (
         <div className="row">
           {r.actions.map((a, i) => (
-            <button key={a} className={i === 0 ? undefined : "secondary"} disabled={busy || (a === "match" && r.conflictKind === "ambiguous_match" && !pick)} onClick={() => void act(a)}>
+            <button
+              key={a}
+              className={i === 0 ? undefined : "secondary"}
+              disabled={busy || (a === "match" && r.conflictKind === "ambiguous_match" && !pick) || (a === "keep_remote" && !reason.trim())}
+              onClick={() => void act(a)}
+            >
               {a === "match" && r.conflictKind === "duplicate_number" ? "Link to that invoice" : QUICKBOOKS_ACTION_LABELS[a]}
             </button>
           ))}
@@ -142,6 +185,7 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
   const mapping = useLoad<QuickBooksMapping>("/quickbooks/mapping");
   const items = useLoad<QuickBooksItem[]>("/quickbooks/items");
   const accounts = useLoad<QuickBooksAccount[]>("/quickbooks/accounts");
+  const taxCodes = useLoad<QuickBooksTaxCode[]>("/quickbooks/tax-codes");
   const [message, setMessage] = useState<string | null>(null);
   if (mapping.error) return <p className="error">{mapping.error}</p>;
   if (!mapping.data) return <p className="muted">Loading…</p>;
@@ -150,6 +194,7 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
   const known = new Set(active.map((i) => i.id));
   const activeAccounts = (accounts.data ?? []).filter((a) => a.active);
   const knownAccounts = new Set(activeAccounts.map((a) => a.id));
+  const activeCodes = (taxCodes.data ?? []).filter((c) => c.active);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -164,7 +209,19 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
           refundItemId: String(f.get("refundItem") ?? "") || null,
           stripeRefundAccountId: String(f.get("stripeRefundAccount") ?? "") || null,
           manualRefundAccountId: String(f.get("manualRefundAccount") ?? "") || null,
+          // Where tax sync is not allowed, only turning it off can be sent.
+          ...(m.tax.allowed
+            ? {
+                taxableCodeRef: String(f.get("taxableCode") ?? "") || null,
+                nontaxableCodeRef: String(f.get("nontaxableCode") ?? "") || null,
+                taxRateRef: String(f.get("taxRate") ?? "") || null,
+                taxMode: f.get("taxMode") === "taxcode" ? "taxcode" : "off",
+              }
+            : m.tax.mode === "taxcode" && f.get("taxMode") !== "taxcode"
+              ? { taxMode: "off" }
+              : {}),
           plans: m.plans.map((p) => ({ planId: p.planId, itemId: String(f.get(`plan-${p.planId}`) ?? "") || null })),
+          serviceItems: m.serviceItems.map((i) => ({ serviceItemId: i.serviceItemId, itemId: String(f.get(`service-item-${i.serviceItemId}`) ?? "") || null })),
         },
       });
       await Promise.all([mapping.reload(), onSaved()]);
@@ -198,10 +255,24 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
     </select>
   );
 
+  const codeSelect = (name: string, value: string | null, taxable: boolean) => (
+    <select name={name} defaultValue={value ?? ""} disabled={!owner || !m.tax.allowed}>
+      <option value="">Not chosen</option>
+      {value && !activeCodes.some((c) => c.id === value) && <option value={value}>Missing in QuickBooks ({value})</option>}
+      {activeCodes
+        .filter((c) => c.taxable === taxable)
+        .map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+    </select>
+  );
+
   return (
-    <form className="card stack" onSubmit={save} key={JSON.stringify(m) + active.length + activeAccounts.length}>
+    <form className="card stack" onSubmit={save} key={JSON.stringify(m) + active.length + activeAccounts.length + activeCodes.length}>
       <h2>Products and services</h2>
-      <p className="muted small">Each invoice line goes to QuickBooks under a product or service. Plan installments use their plan&apos;s item; everything else uses the item for other charges.</p>
+      <p className="muted small">Each invoice line goes to QuickBooks under a product or service. Plan installments use their plan&apos;s item and lines written from a service item use that item&apos;s; everything else uses the item for other charges.</p>
       {items.error && <p className="error">{items.error}</p>}
       <div className="grid">
         <label>
@@ -213,6 +284,13 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
             {p.planName}
             {!p.active && " (inactive plan)"}
             {select(`plan-${p.planId}`, p.item?.id ?? null, "Same as other charges")}
+          </label>
+        ))}
+        {m.serviceItems.map((i) => (
+          <label key={i.serviceItemId}>
+            {i.name}
+            {!i.active && " (switched off)"}
+            {select(`service-item-${i.serviceItemId}`, i.item?.id ?? null, "Same as other charges")}
           </label>
         ))}
         <label>
@@ -238,6 +316,31 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
         <label>
           Check and cash refunds paid from
           {accountSelect("manualRefundAccount", m.manualRefundAccount?.id ?? null)}
+        </label>
+      </div>
+      <h2>Sales tax</h2>
+      <p className="muted small">
+        Off: an invoice that charges sales tax stays out of QuickBooks, for you to enter there yourself. On: each line goes with its taxable or non-taxable code, and the invoice with its tax code and
+        Aerowise&apos;s tax. If QuickBooks ends up with different totals (for example, it recalculated the tax), the invoice is held for you to settle and its payments wait.
+      </p>
+      {!m.tax.allowed && <p className="restriction small">Sales tax sync stays off for live QuickBooks companies until it has been checked against a QuickBooks sandbox.</p>}
+      {taxCodes.error && <p className="error">{taxCodes.error}</p>}
+      <div className="grid">
+        <label className="check">
+          <input type="checkbox" name="taxMode" value="taxcode" defaultChecked={m.tax.mode === "taxcode"} disabled={!owner || (!m.tax.allowed && m.tax.mode !== "taxcode")} />
+          <span>Send sales tax to QuickBooks</span>
+        </label>
+        <label>
+          Taxable lines
+          {codeSelect("taxableCode", m.tax.taxableCode?.id ?? null, true)}
+        </label>
+        <label>
+          Untaxed lines
+          {codeSelect("nontaxableCode", m.tax.nontaxableCode?.id ?? null, false)}
+        </label>
+        <label>
+          Invoice tax code (rate)
+          {codeSelect("taxRate", m.tax.taxRate?.id ?? null, true)}
         </label>
       </div>
       {owner && (

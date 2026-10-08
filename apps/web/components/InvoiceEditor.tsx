@@ -17,6 +17,8 @@ interface LineDraft {
   installment?: number | null;
   /** The catalog item the line started from. */
   serviceItemId?: string | null;
+  /** The line already had a fraction when the draft was opened; it may keep it even with service items off. */
+  hadFraction?: boolean;
 }
 
 const toCents = (dollars: string) => Math.round(Number(dollars || "0") * 100);
@@ -67,12 +69,14 @@ export function InvoiceEditor({
       taxable: l.taxable,
       installment: l.installment,
       serviceItemId: l.serviceItemId,
+      hadFraction: l.quantityMilli !== null,
     })) ?? [blank()],
   );
   const catalogOn = useFeature("service_items");
   const catalog = useLoad<{ items: ServiceItem[] }>(catalogOn ? "/service-items" : null);
-  // A draft that already has a fraction keeps it, even where service items are off.
-  const fractions = catalogOn || !!invoice?.lines.some((l) => l.quantityMilli !== null);
+  // With service items off, only a line that already had a fraction keeps one; the API takes
+  // it back unchanged, so a draft made while they were on can still be saved.
+  const fractionsFor = (l: LineDraft) => catalogOn || !!l.hadFraction;
   const [discount, setDiscount] = useState(invoice ? toDollars(invoice.discountCents) : "");
   const [taxRate, setTaxRate] = useState(String(((invoice?.taxRateBps ?? defaults?.taxRateBps ?? 0) / 100).toFixed(2)));
   const [termsDays, setTermsDays] = useState(String(invoice?.termsDays ?? defaults?.termsDays ?? 30));
@@ -81,7 +85,7 @@ export function InvoiceEditor({
   const [busy, setBusy] = useState(false);
 
   const taxRateBps = Math.round(Number(taxRate || "0") * 100);
-  const parsed = lines.map((l) => parseLine(l, fractions));
+  const parsed = lines.map((l) => parseLine(l, fractionsFor(l)));
   const totals = invoiceTotals(parsed, toCents(discount), taxRateBps);
   const update = (i: number, patch: Partial<LineDraft>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
@@ -190,7 +194,7 @@ export function InvoiceEditor({
                 {l.installment && <div className="muted small">Contract installment {l.installment}</div>}
               </td>
               <td>
-                <input aria-label="Quantity" type="number" min={fractions ? 0.001 : 1} step={fractions ? "any" : 1} value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} required style={{ width: "100%" }} />
+                <input aria-label="Quantity" type="number" min={fractionsFor(l) ? 0.001 : 1} step={fractionsFor(l) ? "any" : 1} value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} required style={{ width: "100%" }} />
               </td>
               <td>
                 <input aria-label="Price" type="number" min={0} step="0.01" value={l.price} onChange={(e) => update(i, { price: e.target.value })} required style={{ width: "100%" }} />

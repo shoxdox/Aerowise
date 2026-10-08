@@ -48,3 +48,8 @@ alter table work_order_lines add foreign key (organization_id, service_item_id) 
 alter table invoices add column work_order_id uuid;
 alter table invoices add foreign key (organization_id, work_order_id) references work_orders (organization_id, id);
 create unique index invoices_one_live_per_work_order on invoices (organization_id, work_order_id) where work_order_id is not null and status <> 'void';
+
+-- A service item can name the QuickBooks product or service its invoice lines go under, the
+-- same way a plan does (a link row holding the choice). Unmapped items use the default item.
+alter table quickbooks_links drop constraint quickbooks_links_entity_type_check;
+alter table quickbooks_links add constraint quickbooks_links_entity_type_check check (entity_type in ('customer', 'plan', 'invoice', 'payment', 'refund', 'service_item'));
