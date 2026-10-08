@@ -450,33 +450,43 @@ class SyncRun {
       .selectFrom("invoiceLines as l")
       .leftJoin("contracts as c", (j) => j.onRef("c.id", "=", "l.contractId").onRef("c.organizationId", "=", "l.organizationId"))
       .leftJoin("plans as p", (j) => j.onRef("p.id", "=", "c.planId").onRef("p.organizationId", "=", "c.organizationId"))
-      .select(["l.description", "l.quantity", "l.quantityMilli", "l.unitPriceCents", "l.amountCents", "l.taxable", "c.planId", "p.name as planName"])
+      .leftJoin("serviceItems as si", (j) => j.onRef("si.id", "=", "l.serviceItemId").onRef("si.organizationId", "=", "l.organizationId"))
+      .select(["l.description", "l.quantity", "l.quantityMilli", "l.unitPriceCents", "l.amountCents", "l.taxable", "c.planId", "p.name as planName", "l.serviceItemId", "si.name as serviceItemName"])
       .where("l.organizationId", "=", this.org)
       .where("l.invoiceId", "=", inv.id)
       .orderBy("l.position")
       .execute();
-    const planIds = [...new Set(lines.map((l) => l.planId).filter((x): x is string => !!x))];
-    const planItems = new Map<string, string>();
-    if (planIds.length) {
+    // A line written from a service item (SW-3) uses that item's QuickBooks item, then its plan's, then the default.
+    const chosenItems = async (entityType: "plan" | "service_item", ids: (string | null)[]) => {
+      const wanted = [...new Set(ids.filter((x): x is string => !!x))];
+      const found = new Map<string, string>();
+      if (!wanted.length) return found;
       const rows = await db
         .selectFrom("quickbooksLinks")
         .select(["entityId", "externalId"])
         .where("organizationId", "=", this.org)
-        .where("entityType", "=", "plan")
-        .where("entityId", "in", planIds)
+        .where("entityType", "=", entityType)
+        .where("entityId", "in", wanted)
         .where("status", "=", "synced")
         .execute();
-      for (const r of rows) if (r.externalId) planItems.set(r.entityId, r.externalId);
-    }
-    const mapped = lines.map((l) => ({ ...l, itemId: (l.planId && planItems.get(l.planId)) || this.defaultItemId }));
+      for (const r of rows) if (r.externalId) found.set(r.entityId, r.externalId);
+      return found;
+    };
+    const planItems = await chosenItems("plan", lines.map((l) => l.planId));
+    const serviceItems = await chosenItems("service_item", lines.map((l) => l.serviceItemId));
+    const mapped = lines.map((l) => ({
+      ...l,
+      itemId: (l.serviceItemId && serviceItems.get(l.serviceItemId)) || (l.planId && planItems.get(l.planId)) || this.defaultItemId,
+      chargeName: l.serviceItemName ?? l.planName,
+    }));
     const unmapped = mapped.filter((l) => !l.itemId);
     if (unmapped.length) {
-      return this.write.conflict(link, "item_missing", { reason: "unmapped", lines: unmapped.map((l) => ({ description: l.description, plan: l.planName })) });
+      return this.write.conflict(link, "item_missing", { reason: "unmapped", lines: unmapped.map((l) => ({ description: l.description, plan: l.planName, ...(l.serviceItemName ? { serviceItem: l.serviceItemName } : {}) })) });
     }
     for (const id of new Set(mapped.map((l) => l.itemId!))) {
       const item = await this.item(id);
       if (!item || !item.active) {
-        return this.write.conflict(link, "item_missing", { reason: item ? "inactive" : "deleted", itemId: id, itemName: item?.name ?? null, plans: [...new Set(mapped.filter((l) => l.itemId === id).map((l) => l.planName ?? "Other charges"))] });
+        return this.write.conflict(link, "item_missing", { reason: item ? "inactive" : "deleted", itemId: id, itemName: item?.name ?? null, plans: [...new Set(mapped.filter((l) => l.itemId === id).map((l) => l.chargeName ?? "Other charges"))] });
       }
     }
 

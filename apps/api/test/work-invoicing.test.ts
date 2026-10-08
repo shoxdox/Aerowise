@@ -384,6 +384,75 @@ describe("QuickBooks", () => {
     ]);
   });
 
+  it("sends a service item's lines under the QuickBooks item chosen for it, and the default item otherwise", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { realm, nora } = await connected(t);
+    const { labor, pumping } = await catalog(t.api);
+    const items = (await t.api.get("/quickbooks/items")).json() as { id: string; name: string }[];
+    const services = items.find((i) => i.name === "Services")!;
+    const repair = items.find((i) => i.name === "Septic repair")!;
+    const put = await t.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: labor.id, itemId: repair.id }] });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().serviceItems).toEqual([
+      { serviceItemId: labor.id, name: "Labor", active: true, item: { id: repair.id, name: "Septic repair" } },
+      { serviceItemId: pumping.id, name: "Pumping", active: true, item: null },
+    ]);
+    // The choice is a mapping, not a sent record: the sync health counts it apart from invoices.
+    expect((await t.api.get("/quickbooks")).json().counts.service_item).toEqual({ synced: 1 });
+
+    const inv = (
+      await t.api.post("/invoices", {
+        customerId: nora.id,
+        lines: [
+          { description: "Labor", quantity: 1.5, unitPriceCents: 9500, serviceItemId: labor.id },
+          { description: "Pumping", quantity: 1000, unitPriceCents: 35, serviceItemId: pumping.id },
+          { description: "Trip charge", unitPriceCents: 4500 },
+        ],
+      })
+    ).json();
+    await t.api.post(`/invoices/${inv.id}/issue`, { send: false });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    expect((await sentInvoice(realm, "INV-1001")).lines.map((l) => [l.description, l.itemId])).toEqual([
+      ["Labor", repair.id],
+      ["Pumping", services.id],
+      ["Trip charge", services.id],
+    ]);
+
+    // Clearing the choice puts the item's lines back on the default item.
+    const cleared = await t.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: labor.id, itemId: null }] });
+    expect(cleared.json().serviceItems.find((i: { serviceItemId: string }) => i.serviceItemId === labor.id).item).toBeNull();
+    expect(await ctx.db.selectFrom("quickbooksLinks").select("id").where("entityType", "=", "service_item").execute()).toEqual([]);
+  });
+
+  it("holds an invoice whose service item maps to an archived QuickBooks item, naming the service item", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { realm, nora } = await connected(t);
+    const { labor } = await catalog(t.api);
+    const repair = ((await t.api.get("/quickbooks/items")).json() as { id: string; name: string }[]).find((i) => i.name === "Septic repair")!;
+    await t.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: labor.id, itemId: repair.id }] });
+    await new TestCompanies(ctx.db, () => ctx.now).setItemActive(realm, repair.id, false);
+    const inv = (await t.api.post("/invoices", { customerId: nora.id, lines: [{ description: "Labor", quantity: 2, unitPriceCents: 9500, serviceItemId: labor.id }] })).json();
+    await t.api.post(`/invoices/${inv.id}/issue`, { send: false });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    const link = await ctx.db.selectFrom("quickbooksLinks").select(["status", "conflictKind", "conflict"]).where("entityType", "=", "invoice").where("entityId", "=", inv.id).executeTakeFirstOrThrow();
+    expect(link).toMatchObject({ status: "conflict", conflictKind: "item_missing", conflict: { reason: "inactive", itemId: repair.id, plans: ["Labor"] } });
+  });
+
+  it("maps only the company's own service items", async () => {
+    const a = await createTenant(ctx, "Org A");
+    const b = await createTenant(ctx, "Org B");
+    await connected(a);
+    const theirs = (await b.api.post("/service-items", { name: "Labor", unit: "hour", unitPriceCents: 9900 })).json();
+    const repair = ((await a.api.get("/quickbooks/items")).json() as { id: string; name: string }[]).find((i) => i.name === "Septic repair")!;
+    const res = await a.api.put("/quickbooks/mapping", { serviceItems: [{ serviceItemId: theirs.id, itemId: repair.id }] });
+    expect(res.statusCode).toBe(404);
+    expect(await ctx.db.selectFrom("quickbooksLinks").select("id").where("entityType", "=", "service_item").execute()).toEqual([]);
+    // Org A's mapping never lists Org B's items.
+    expect((await a.api.get("/quickbooks/mapping")).json().serviceItems).toEqual([]);
+  });
+
   it("syncs an untaxed invoice made from a work order", async () => {
     const t = await createTenant(ctx, "Org A");
     const { realm, nora, site } = await connected(t);
