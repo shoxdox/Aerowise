@@ -238,6 +238,31 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             .orderBy("y.cycleKey")
             .execute()
         : [];
+      // SW-9: a site's next pumping or maintenance visit, shown when it has no inspection due,
+      // and which sites have inspections at all (a pumping-only site has no "last inspection").
+      const [cycleVisits, inspectedSites] = none
+        ? [[], []]
+        : await Promise.all([
+            db
+              .selectFrom("serviceObligations as o")
+              .innerJoin("contractServiceCycles as y", (j) => j.onRef("y.id", "=", "o.cycleId").onRef("y.organizationId", "=", "o.organizationId"))
+              .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "y.cycleKey", sql<string | null>`y.snapshot->>'label'`.as("label")])
+              .where("o.organizationId", "=", organizationId)
+              .where("o.siteId", "in", siteIds)
+              .where("o.serviceType", "<>", "aerobic_inspection")
+              .where("o.status", "=", "open")
+              .orderBy("o.dueOn")
+              .execute(),
+            db
+              .selectFrom("serviceObligations")
+              .select("siteId")
+              .distinct()
+              .where("organizationId", "=", organizationId)
+              .where("siteId", "in", siteIds)
+              .where("serviceType", "=", "aerobic_inspection")
+              .execute(),
+          ]);
+      const hasInspections = new Set(inspectedSites.map((x) => x.siteId));
       const progressOf = (contractId: string) =>
         cycleProgress
           .filter((p) => p.contractId === contractId)
@@ -258,6 +283,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           mine[0];
         const r = renewals.find((x) => x.siteId === s.id && (!k || x.contractId === k.id));
         const next = obligations.find((o) => o.siteId === s.id);
+        const nextCycle = next ? undefined : cycleVisits.find((o) => o.siteId === s.id);
         return {
           id: s.id,
           address: [s.addressLine1, s.addressLine2, cityLine(s.city, s.state, s.postalCode)].filter(Boolean).join(", "),
@@ -275,7 +301,12 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             : null,
           contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0), visitProgress: progressOf(k.id) } : null,
           renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.publicToken) } : null,
-          nextVisit: next ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate } : null,
+          nextVisit: next
+            ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate, label: null }
+            : nextCycle
+              ? { dueOn: nextCycle.dueOn, windowStart: nextCycle.windowStart, windowEnd: nextCycle.windowEnd, scheduledDate: null, label: nextCycle.label ?? nextCycle.cycleKey }
+              : null,
+          inspections: hasInspections.has(s.id) || reports.some((x) => x.siteId === s.id),
           reports: reports
             .filter((x) => x.siteId === s.id && ready.has(x.id))
             .map((x) => ({ id: x.id, inspectedOn: dateInZone(x.completedAt ?? x.arrivedAt, org.timezone), url: `/portal/${req.params.token}/reports/${x.id}` }))

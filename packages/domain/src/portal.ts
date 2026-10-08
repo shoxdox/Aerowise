@@ -109,7 +109,13 @@ export const portalSite = z.object({
     .nullable(),
   /** A renewal the homeowner can act on, or the latest one. */
   renewal: z.object({ status: z.enum(RENEWAL_STATUSES), startOn: date, url: z.string().nullable() }).nullable(),
-  nextVisit: z.object({ dueOn: date, windowStart: date, windowEnd: date, scheduledDate: date.nullable() }).nullable(),
+  /**
+   * The next inspection; with none due, the next pumping or maintenance visit (SW-9), named by
+   * `label` (null for an inspection).
+   */
+  nextVisit: z.object({ dueOn: date, windowStart: date, windowEnd: date, scheduledDate: date.nullable(), label: z.string().nullable().default(null) }).nullable(),
+  /** SW-9: false for a site with only pumping or maintenance service, which has no inspection reports to show. */
+  inspections: z.boolean().default(true),
   /** Customer copies of inspection reports, newest first. */
   reports: z.array(z.object({ id, inspectedOn: date, url: z.string() })),
   /** SW-7: finished work with its completion summary, newest first. */

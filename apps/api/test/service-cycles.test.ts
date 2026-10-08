@@ -727,6 +727,8 @@ describe("offers and imports never turn cycles into inspections", () => {
     const link = (await t.api.post(`/customers/${t.customer.id}/portal-link`, { send: false })).json();
     const portal = (await client(ctx.app).get(`/portal/${link.url.split("/portal/")[1]}`)).json();
     expect(portal.sites[0].contract).toMatchObject({ visitProgress: [{ label: "Tank pumping", done: 0, total: 36 }] });
+    // Its next visit is the next pumping one, named; with no inspections, no "last inspection" row.
+    expect(portal.sites[0]).toMatchObject({ nextVisit: { label: "Tank pumping", scheduledDate: null }, inspections: false });
   });
 
   it("a mixed agreement lists the inspections the authority requires, not the plan's count", async () => {
@@ -746,6 +748,7 @@ describe("offers and imports never turn cycles into inspections", () => {
     const link = (await t.api.post(`/customers/${t.customer.id}/portal-link`, { send: false })).json();
     const portal = (await client(ctx.app).get(`/portal/${link.url.split("/portal/")[1]}`)).json();
     expect(portal.sites[0].contract.visitProgress.map((p: { label: string }) => p.label)).toEqual(["Aerobic inspections", "Tank pumping"]);
+    expect(portal.sites[0]).toMatchObject({ nextVisit: { label: null }, inspections: true });
   });
 
   it("an import names plans with pumping or maintenance and creates no contract from them", async () => {

@@ -98,21 +98,27 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
         <dt>Next visit</dt>
         <dd>
           {site.nextVisit
-            ? site.nextVisit.scheduledDate
-              ? `Scheduled for ${day(site.nextVisit.scheduledDate)}`
-              : `Due between ${day(site.nextVisit.windowStart)} and ${day(site.nextVisit.windowEnd)}`
+            ? `${site.nextVisit.label ? `${site.nextVisit.label}: ` : ""}${
+                site.nextVisit.scheduledDate
+                  ? `Scheduled for ${day(site.nextVisit.scheduledDate)}`
+                  : `${site.nextVisit.label ? "due" : "Due"} between ${day(site.nextVisit.windowStart)} and ${day(site.nextVisit.windowEnd)}`
+              }`
             : "None planned"}
         </dd>
-        <dt>Last inspection</dt>
-        <dd>
-          {latest ? (
-            <a href={`/api${latest.url}`} target="_blank" rel="noreferrer">
-              Report from {day(latest.inspectedOn)}
-            </a>
-          ) : (
-            "No reports yet"
-          )}
-        </dd>
+        {site.inspections && (
+          <>
+            <dt>Last inspection</dt>
+            <dd>
+              {latest ? (
+                <a href={`/api${latest.url}`} target="_blank" rel="noreferrer">
+                  Report from {day(latest.inspectedOn)}
+                </a>
+              ) : (
+                "No reports yet"
+              )}
+            </dd>
+          </>
+        )}
         {site.system && (
           <>
             <dt>System</dt>
