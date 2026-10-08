@@ -139,6 +139,60 @@ describe("field records from the phone", () => {
     expect((await s.api.get(`/work-orders/${s.wo.id}`)).json()).toMatchObject({ status: "open", visits: [{ status: "completed" }] });
   });
 
+  it("a replay of an older revision changes nothing in a newer draft: answers, summary, GPS and next-visit flag are kept", async () => {
+    const s = await setup(ctx);
+    const v = visit(s, {
+      values: { ...VALUES, problem: "Newest: alarm and float both failed" },
+      summary: { ...SUMMARY, notes: "Newest summary" },
+      arrivalGps: { lat: 30.1, lng: -97.1 },
+      finalVisit: false,
+    });
+    expect((await v.sync(s.aApi, "draft", 7)).statusCode).toBe(200);
+    const read = () => sql<Record<string, unknown>>`select answers, summary, summary_sha256, final_visit, phone_revision, arrival_lat, arrival_lng, completion_lat, completion_lng, status, validation_status, updated_at from work_records where offline_client_id = ${v.clientId}`.execute(ctx.db).then((r) => r.rows[0]);
+    const newest = await read();
+
+    // The same record as it was at revision 1, arriving late (a retried request, a second tab).
+    ctx.now = new Date("2026-03-01T18:05:00Z");
+    const stale = await s.aApi.put("/work/sync", {
+      clientId: v.clientId,
+      jobId: s.jobId,
+      templateId: s.form.id,
+      status: "draft",
+      revision: 1,
+      arrivedAt: "2026-03-01T14:00:00Z",
+      values: { ...VALUES, problem: "Older text" },
+      summary: { ...SUMMARY, notes: "Older summary" },
+      arrivalGps: { lat: 29.9, lng: -97.9 },
+      completionGps: { lat: 29.9, lng: -97.9 },
+      finalVisit: true,
+    });
+    expect(stale.statusCode, stale.body).toBe(200);
+    expect(stale.json()).toMatchObject({ values: expect.objectContaining({ problem: "Newest: alarm and float both failed" }), finalVisit: false, summary: expect.objectContaining({ notes: "Newest summary" }) });
+    expect(await read()).toEqual(newest);
+  });
+
+  it("an older completion never finalizes a newer draft; completing at the newest revision still works", async () => {
+    const s = await setup(ctx);
+    const v = visit(s);
+    expect((await v.sync(s.aApi, "draft", 7)).statusCode).toBe(200);
+    expect((await v.photo(s.aApi, 0)).statusCode).toBe(201);
+    expect((await v.photo(s.aApi, 1)).statusCode).toBe(201);
+    expect((await v.sign(s.aApi)).statusCode).toBe(201);
+
+    const stale = await v.sync(s.aApi, "completed", 3);
+    expect(stale.statusCode, stale.body).toBe(200);
+    expect(stale.json()).toMatchObject({ status: "draft", completedAt: null });
+    expect((await s.api.get(`/work-orders/${s.wo.id}`)).json().status).toBe("scheduled");
+    const completions = await sql<{ n: string }>`select count(*) as n from audit_events where action = 'work_record.completed' and organization_id = ${s.org.id}`.execute(ctx.db);
+    expect(Number(completions.rows[0]!.n)).toBe(0);
+
+    // The phone's own order: the draft, its uploads, then completion at the same revision.
+    const done = await v.sync(s.aApi, "completed", 7);
+    expect(done.statusCode, done.body).toBe(200);
+    expect(done.json()).toMatchObject({ status: "completed", validationStatus: "valid" });
+    expect((await s.api.get(`/work-orders/${s.wo.id}`)).json().status).toBe("completed");
+  });
+
   it("lists the technician's work visits with their form, and nothing when field work is off", async () => {
     const s = await setup(ctx);
     const route = (await s.aApi.get("/work/route?date=2026-03-01")).json();
