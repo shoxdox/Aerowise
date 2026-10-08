@@ -379,3 +379,13 @@ Not deployed by this PR. Migration 0055 adds field records for work visits, held
 2. Add `field_work` (`AEROWISE_FEATURES=work_orders,field_work`) and redeploy the same SHA. `/api/app-info` lists both.
 3. The phone screens arrive with the SW-2 phone PR; until then this part is exercised through the API tests (`apps/api/test/work-sync.test.ts`), including the R4 cases from the plan §8.5.
 4. Rollback: turning `field_work` off stops new field records and keeps every stored one. An earlier release ignores the new tables; the jobs trigger keeps writing assignment history under it. Do not roll back below the phone floor a39e875 or below SW-1 once work jobs exist.
+
+## Work visits on the phone (SW-2, phone part) on staging
+
+Not deployed by this PR. It needs the SW-2 server part (migration 0055) already on staging, and has no migration or setting of its own: the technician's phone shows work visits only when `field_work` is on (with it off, `/work/route` is empty and nothing work-related appears or is created on the phone). Work data stays in its own phone database, `aerowise-tech-work:<company>:<user>`, so the inspection database is never upgraded for it and the phone rollback floor a39e875 can still open, count and keep it.
+
+1. Deploy the merged SHA to staging with `AEROWISE_FEATURES=work_orders,field_work`.
+2. In the fictional demo company, create a Repair work order and schedule its visit for today for a demo technician. Switch to Technician and open `/tech`: the visit is listed under "Work visits". Open it once with signal so the form is saved on the phone.
+3. With the browser's network offline: Arrive and start work, fill the form, add the two photos, Review and sign with a TEST name, and Sign and finish visit. The card reads "Done · not sent yet". Reconnect: it reads "Done" and the banner "All changes sent". As the office, the work order is Completed and shows the record, both photos and "Signed by" under the visit.
+4. Held records: start a second visit with signal, go offline, finish it, and meanwhile complete its work order as the office ("Complete without a field record"). Reconnect: the phone shows "Held for the office". On the work order, "Held field records" offers Accept or Set aside.
+5. Rollback: turning `field_work` off hides work visits from the phone; anything the phone still holds waits in its outbox until it is turned on again. Rolling the app back to the SW-2 server part or to the phone floor keeps the phone's work database untouched and counts its unsent changes in the sign-out warning.

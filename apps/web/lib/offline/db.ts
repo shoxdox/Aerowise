@@ -102,11 +102,10 @@ export const sameTenant = (a: Tenant | null | undefined, b: Tenant | null | unde
 const scopedName = (t: Tenant) => `aerowise-tech:${t.organizationId}:${t.userId}`;
 
 /**
- * Where a later release (SW-2) keeps a sign-in's offline work orders, apart from the inspection
- * database above. This version never creates or writes it. It only counts the work still waiting
- * in its outbox store, and deletes it with the rest of an ended demo's data.
- * Contract for that release: this name, and a store named WORK_OUTBOX_STORE holding one record
- * per unsent change.
+ * Where a sign-in's work visits (SW-2) are kept, apart from the inspection database above, so the
+ * inspection database never changes for them (see ./work.ts). The phone rollback floor (SW-2a)
+ * counts this database's outbox store as unsent and deletes it with an ended demo's data; this
+ * name and a store named WORK_OUTBOX_STORE holding one record per unsent change are the contract.
  */
 export const workDbName = (t: Tenant) => `aerowise-tech-work:${t.organizationId}:${t.userId}`;
 export const WORK_OUTBOX_STORE = "outbox";
@@ -169,13 +168,16 @@ const STORES: Record<StoreName, IDBObjectStoreParameters | undefined> = {
   photos: { keyPath: "clientId" },
   outbox: { keyPath: "seq", autoIncrement: true },
 };
-const missingStores = (db: IDBDatabase) => (Object.keys(STORES) as StoreName[]).filter((s) => !db.objectStoreNames.contains(s));
 
-function openAt(name: string, version?: number): Promise<IDBDatabase> {
+/** The stores a database must have, by name, with how each is keyed. */
+export type StoreSpecs = Record<string, IDBObjectStoreParameters | undefined>;
+const missingStores = (db: IDBDatabase, stores: StoreSpecs) => Object.keys(stores).filter((s) => !db.objectStoreNames.contains(s));
+
+function openAt(name: string, stores: StoreSpecs, version?: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = version === undefined ? indexedDB.open(name) : indexedDB.open(name, version);
     req.onupgradeneeded = () => {
-      for (const store of missingStores(req.result)) req.result.createObjectStore(store, STORES[store]);
+      for (const store of missingStores(req.result, stores)) req.result.createObjectStore(store, stores[store]);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -188,15 +190,15 @@ function openAt(name: string, version?: number): Promise<IDBDatabase> {
  * code ran). A new database is created at version 1, exactly as earlier versions create it, so
  * they can still open it. The version is raised only when a store this version needs is missing.
  */
-async function openByStores(name: string): Promise<IDBDatabase> {
+async function openByStores(name: string, stores: StoreSpecs): Promise<IDBDatabase> {
   for (let attempt = 0; ; attempt++) {
-    const db = await openAt(name);
-    if (missingStores(db).length === 0) return db;
+    const db = await openAt(name, stores);
+    if (missingStores(db, stores).length === 0) return db;
     const next = db.version + 1;
     db.close();
     try {
-      const upgraded = await openAt(name, next);
-      if (missingStores(upgraded).length === 0) return upgraded;
+      const upgraded = await openAt(name, stores, next);
+      if (missingStores(upgraded, stores).length === 0) return upgraded;
       upgraded.close();
     } catch (err) {
       // Another tab raised the version first: look again at what it left.
@@ -206,10 +208,11 @@ async function openByStores(name: string): Promise<IDBDatabase> {
   }
 }
 
-function openDb(name: string): Promise<IDBDatabase> {
+/** One shared connection per database name, opened (and created if need be) with these stores. */
+export function openDb(name: string, stores: StoreSpecs = STORES): Promise<IDBDatabase> {
   let opening = connections.get(name);
   if (!opening) {
-    opening = openByStores(name).then((db) => {
+    opening = openByStores(name, stores).then((db) => {
       // Another tab deleting this database (an ended demo) must not wait on us.
       db.onversionchange = () => {
         db.close();
@@ -224,7 +227,7 @@ function openDb(name: string): Promise<IDBDatabase> {
 }
 
 /** Opens a database at its current version only if it already exists; never creates one. */
-async function openExisting(name: string): Promise<IDBDatabase | null> {
+export async function openExisting(name: string): Promise<IDBDatabase | null> {
   if (typeof indexedDB.databases === "function") {
     const names = await indexedDB.databases().then((list) => list.map((d) => d.name), () => null);
     if (names && !names.includes(name)) return null;
@@ -295,6 +298,9 @@ export async function forgetTenant(t: Tenant) {
   );
   if (sameTenant(readJson<Tenant>(ACTIVE_KEY), t)) writeJson(ACTIVE_KEY, undefined);
   if (sameTenant(active, t)) active = null;
+  const work = connections.get(workDbName(t));
+  connections.delete(workDbName(t));
+  if (work) (await work.catch(() => null))?.close();
   await deleteDb(workDbName(t));
   if (!entry) return;
   const conn = connections.get(entry.dbName);
@@ -308,7 +314,7 @@ function requireActive(): KnownTenant {
   return active;
 }
 
-const done = <T>(req: IDBRequest<T>) =>
+export const done = <T>(req: IDBRequest<T>) =>
   new Promise<T>((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -346,8 +352,6 @@ export function storeFor(t: KnownTenant) {
     getPhotoBlob: (clientId: string) => run(["photos"], "readonly", (trx) => done(trx.objectStore("photos").get(clientId)) as Promise<PhotoBlob | undefined>),
     /** Every op in the outbox, including ones only a later version can send. */
     allOps: () => run(["outbox"], "readonly", (trx) => done(trx.objectStore("outbox").getAll()) as Promise<StoredOp[]>),
-    /** Changes a later version saved in the separate work database; this version cannot send them. */
-    pendingWork: () => countOutbox(workDbName(t), WORK_OUTBOX_STORE),
 
     /**
      * Saves the inspection and queues a sync in the same transaction, so a change on the

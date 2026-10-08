@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
+import { HeldFieldRecords, useWorkForms, VisitFieldRecord } from "@/components/WorkFieldRecords";
 import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
 import { WorkCoverage } from "@/components/WorkCoverage";
@@ -40,6 +41,9 @@ export default function WorkOrderPage() {
       setProblem(err instanceof ApiError ? err.message : "Could not make the invoice");
     }
   }
+  // SW-2: technicians record visits on their phones.
+  const fieldWork = useFeature("field_work");
+  const forms = useWorkForms(fieldWork);
 
   async function act(path: string, body: unknown, method = "POST") {
     setProblem(null);
@@ -132,6 +136,7 @@ export default function WorkOrderPage() {
             <span className={`badge ${v.status === "cancelled" ? "cancelled" : v.status === "completed" ? "completed" : ""}`}>{v.status.replace("_", " ")}</span>
             {v.notes && <div className="muted small">{v.notes}</div>}
             {v.cancelReason && <div className="muted small">{v.cancelReason}</div>}
+            {fieldWork && <VisitFieldRecord key={`${v.jobId}:${w.events.length}`} jobId={v.jobId} forms={forms} />}
           </div>
         ))}
         {editable && w.status === "open" && (
@@ -148,10 +153,12 @@ export default function WorkOrderPage() {
             <button type="submit">Schedule visit</button>
           </form>
         )}
-        {w.visits.some((v) => v.status === "scheduled") && (
+        {!fieldWork && w.visits.some((v) => v.status === "scheduled") && (
           <p className="muted small">The technician&apos;s phone lists work visits after the next phone update; until then, record the outcome here.</p>
         )}
       </section>
+
+      {fieldWork && <HeldFieldRecords key={w.events.length} workOrderId={w.id} forms={forms} editable={editable} onChanged={() => void reload()} />}
 
       <section className="stack">
         <h2>Charges</h2>
