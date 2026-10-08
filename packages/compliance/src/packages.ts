@@ -324,6 +324,8 @@ async function unsentPriorReports(db: Executor, organizationId: string, contract
     .select("o.id")
     .where("o.organizationId", "=", organizationId)
     .where("o.contractId", "=", contractId)
+    // Only inspections are reported (SW-9): a pumping or maintenance visit never holds a filing back.
+    .where("o.serviceType", "=", "aerobic_inspection")
     .where("o.status", "<>", "cancelled")
     .where("o.completedByImport", "is", null)
     .where((eb) => eb.or([eb("o.status", "=", "completed"), eb("o.dueOn", "<=", today)]))

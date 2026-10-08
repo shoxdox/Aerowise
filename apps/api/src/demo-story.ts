@@ -181,6 +181,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
       .select(["o.id", "o.siteId", "s.lat", "s.lng"])
       .where("o.organizationId", "=", org.id)
+      .where("o.serviceType", "=", "aerobic_inspection")
       .where("o.status", "=", "open")
       .where("o.dueOn", "<", today)
       .orderBy("o.dueOn")

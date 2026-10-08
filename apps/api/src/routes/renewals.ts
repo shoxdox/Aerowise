@@ -32,7 +32,7 @@ import {
   type RenewalStatus,
 } from "@aerowise/domain";
 import { invoiceEvent } from "@aerowise/payments";
-import { activateRenewal, canonicalJson, coverageLines, createRenewal, loadPlanVersion, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
+import { activateRenewal, agreementCycles, canonicalJson, coverageLines, createRenewal, loadPlanVersion, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
 import type { ObjectStore } from "@aerowise/storage";
 import { enqueue, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -161,6 +161,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
 ) => {
   const { provider, appUrl } = payments;
   const planBuilder = features.has("plan_builder");
+  const serviceCycles = features.has("service_cycles");
 
   /**
    * The plan version a renewal offers, when the plan builder is on (SW-8): its own terms,
@@ -586,7 +587,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (r.status === "activated") throw new HttpError(409, "already_activated", "This renewal is already active");
         if (!allowed) throw unprocessable(contract.autoRenew ? "This renewal cannot be activated" : "The customer has to sign first, unless the contract is set to auto-renew");
         const note = req.body.note ?? (signed ? "activated by the office" : "auto-renewed by the office");
-        return activateRenewal(trx, organizationId, r.id, { now: now(), actorUserId: userId, requestId: req.id, note, planBuilder });
+        return activateRenewal(trx, organizationId, r.id, { now: now(), actorUserId: userId, requestId: req.id, note, planBuilder, serviceCycles });
       });
       if (result.status === "needs_review") throw new HttpError(409, "needs_review", result.reason);
       return detail(organizationId, req.params.id);
@@ -665,6 +666,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         options,
         selectedOptionKeys: (signedContent ? options : offer ? offer.options.filter((o) => o.default) : parsePlanOptions(r.selectedOptions)).map((o) => o.optionKey),
         coverage: coverage.map((c) => c.summary),
+        cycles: (signedContent ? (signedContent.cycles ?? []) : offer && (serviceCycles || !offer.aerobic) ? (agreementCycles(offer) ?? []) : []).map((c) => `${c.label}: ${c.summary}`),
         // Asked only while it can be signed; the signed answers are in the agreement itself.
         intake: offer?.intake ? { name: offer.intake.name, definition: offer.intake.definition } : null,
         contact: { name: contact?.name ?? null, email: contact?.email ?? null, phone: contact?.phone ?? null },
@@ -811,6 +813,8 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
                 options,
                 coverage: await coverageLines(trx, organizationId, offer.coverage),
                 ...(intake ? { intake: { templateId: intake.form.id, key: intake.form.key, version: intake.form.version, name: intake.form.name, answers: intake.answers } } : {}),
+                // SW-9: pumping or maintenance the term includes. A version without inspections lists its cycles even with the switch off.
+                ...(offer && (serviceCycles || !offer.aerobic) && agreementCycles(offer) ? { cycles: agreementCycles(offer)! } : {}),
               }
             : {}),
         };

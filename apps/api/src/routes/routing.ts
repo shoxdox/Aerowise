@@ -325,6 +325,7 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
           .select(["o.id", "s.lat", "s.lng"])
           .where("o.organizationId", "=", organizationId)
+          .where("o.serviceType", "=", "aerobic_inspection")
           .where("o.status", "=", "open")
           .where("o.dueOn", "<=", addDays(day, 30))
           .where(({ not, exists, selectFrom }) =>

@@ -2,7 +2,10 @@ import { z } from "zod";
 import { CUSTOMER_TYPES, id } from "./crm.ts";
 
 export const BILLING_FREQUENCIES = ["annual", "semiannual", "quarterly", "monthly"] as const;
-export const SERVICE_TYPES = ["aerobic_inspection"] as const;
+/** Kinds of visit: aerobic inspections, and pumping or maintenance cycles (SW-9). */
+export const SERVICE_TYPES = ["aerobic_inspection", "pumping", "maintenance"] as const;
+/** A plan itself is an inspection plan; pumping and maintenance come as its cycles (SW-9). */
+export const PLAN_SERVICE_TYPES = ["aerobic_inspection"] as const;
 export const CONTRACT_STATES = ["upcoming", "active", "expired", "cancelled"] as const;
 export const OBLIGATION_STATUSES = ["open", "completed", "cancelled"] as const;
 
@@ -16,7 +19,7 @@ const planFields = z.object({
   visitsPerTerm: z.number().int().min(1).max(24),
   priceCents: money,
   billingFrequency: z.enum(BILLING_FREQUENCIES),
-  serviceType: z.enum(SERVICE_TYPES),
+  serviceType: z.enum(PLAN_SERVICE_TYPES),
   active: z.boolean(),
 });
 
@@ -97,13 +100,29 @@ export const obligation = z.object({
   contractId: id,
   siteId: id,
   serviceType: z.enum(SERVICE_TYPES),
+  /** The contract cycle the visit belongs to: "aerobic" for inspections (SW-9). Each cycle numbers its visits from 1. */
+  cycleKey: z.string(),
   sequence: z.number().int(),
   windowStart: date,
   windowEnd: date,
   dueOn: date,
   status: z.enum(OBLIGATION_STATUSES),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
+  /** The work order a pumping or maintenance visit is done as (SW-9); null until it is booked, and always for inspections. */
+  workOrder: z.object({ id, label: z.string(), status: z.string() }).nullable(),
 });
+
+/** A contract's frozen cycle, as the office sees it (SW-9). */
+export const contractCycle = z.object({
+  id,
+  cycleKey: z.string(),
+  serviceType: z.enum(SERVICE_TYPES),
+  label: z.string(),
+  workType: z.object({ id, name: z.string() }).nullable(),
+  /** "Every 6 months, …", or the inspection visits per term. */
+  summary: z.string(),
+});
+export type ContractCycle = z.infer<typeof contractCycle>;
 
 export const contract = z.object({
   id,
@@ -143,6 +162,8 @@ export const contract = z.object({
 
 export const contractDetail = contract.extend({
   obligations: z.array(obligation),
+  /** The cycles frozen on the contract when it was made (SW-9). */
+  cycles: z.array(contractCycle),
   /** The plan version the contract was made from (SW-8); null for one made before versions, or without a plan. */
   planVersion: z.object({ id, version: z.number().int() }).nullable(),
   /** The coverage rules frozen on the contract when it was made, with their use this term. */
@@ -172,6 +193,8 @@ export const dueQuery = z.object({
   overdueOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   /** Only visits that have no live job yet: the scheduler's "unscheduled work". */
   unscheduledOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
+  /** The kind of visit (SW-9); aerobic inspections unless asked, so the inspection list is as before. */
+  serviceType: z.enum(SERVICE_TYPES).default("aerobic_inspection"),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });

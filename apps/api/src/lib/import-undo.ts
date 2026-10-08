@@ -8,7 +8,7 @@ const IMPORTED = ["customers", "contacts", "sites", "wastewater_systems", "contr
 type Imported = (typeof IMPORTED)[number];
 
 /** Rows an import may delete along with what it created, whoever added them: they are details of the record, not work done. */
-const DETAILS = new Set<string>(["contacts", "wastewater_systems"]);
+const DETAILS = new Set<string>(["contacts", "wastewater_systems", "contract_service_cycles"]);
 
 /** How a blocker is named to the person, by table. Tables added later fall back to their own name. */
 const LABELS: Record<string, [string, string]> = {
@@ -142,6 +142,8 @@ export async function deleteImportRecords(trx: Transaction<DB>, organizationId: 
     if (ids.length) await trx.deleteFrom(table).where("organizationId", "=", organizationId).where("id", "in", ids).execute();
   };
   await del("serviceObligations", records.service_obligations);
+  // A contract's frozen cycles (SW-9) go with it; a cycle a later visit still uses blocks the delete.
+  if (records.contracts.length) await trx.deleteFrom("contractServiceCycles").where("organizationId", "=", organizationId).where("contractId", "in", records.contracts).execute();
   await del("contracts", records.contracts);
   await del("wastewaterSystems", records.wastewater_systems);
   await del("contacts", records.contacts);

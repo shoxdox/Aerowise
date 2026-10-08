@@ -263,6 +263,17 @@ function RenewPage() {
           </label>
         </div>
 
+        {r.cycles.length > 0 && (
+          <div className="card stack" data-testid="renewal-cycles">
+            <h2>Service included</h2>
+            <ul className="plain">
+              {r.cycles.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {r.coverage.length > 0 && (
           <div className="card stack" data-testid="renewal-coverage">
             <h2>What your plan covers</h2>

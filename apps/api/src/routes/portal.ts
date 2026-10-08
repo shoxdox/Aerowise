@@ -147,6 +147,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
                   .selectFrom("serviceObligations as o")
                   .select(sql<number>`count(*)::int`.as("n"))
                   .whereRef("o.contractId", "=", "k.id")
+                  .where("o.serviceType", "=", "aerobic_inspection")
                   .where("o.status", "=", "completed")
                   .as("visitsDone"),
               )
@@ -171,6 +172,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "j.scheduledDate"])
               .where("o.organizationId", "=", organizationId)
               .where("o.siteId", "in", siteIds)
+              .where("o.serviceType", "=", "aerobic_inspection")
               .where("o.status", "=", "open")
               .orderBy("o.dueOn")
               .execute(),

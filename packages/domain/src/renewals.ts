@@ -170,6 +170,8 @@ export const agreementContent = z.object({
   coverage: z.array(z.object({ ruleKey: z.string(), label: z.string(), summary: z.string() })).optional(),
   /** SW-8: the plan version's intake form and the customer's answers, when it asks one. */
   intake: signedIntake.optional(),
+  /** SW-9: the service the new term includes, when it is more than inspections (pumping, maintenance). */
+  cycles: z.array(z.object({ cycleKey: z.string(), label: z.string(), summary: z.string() })).optional(),
 });
 export type AgreementContent = z.infer<typeof agreementContent>;
 
@@ -291,6 +293,8 @@ export const publicRenewal = z.object({
   selectedOptionKeys: z.array(z.string()),
   /** What the new term covers (SW-8); empty unless the plan builder is on. */
   coverage: z.array(z.string()),
+  /** The service the new term includes when it is more than inspections (SW-9), one line each; empty otherwise. */
+  cycles: z.array(z.string()).default([]),
   /** The questions to answer before signing (SW-8); null when the plan asks none. */
   intake: z.object({ name: z.string(), definition: templateDefinition }).nullable(),
   contact: z.object({ name: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable() }),

@@ -285,11 +285,15 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (obligationId) {
         const found = await db
           .selectFrom("serviceObligations")
-          .select(["id", "siteId", "status"])
+          .select(["id", "siteId", "status", "serviceType"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", obligationId)
           .executeTakeFirst();
         if (!found) throw unprocessable("obligationId does not match a visit in this organization");
+        // Pumping and maintenance visits are done as work orders (SW-9); the database refuses an inspection job on them too.
+        if (found.serviceType !== "aerobic_inspection") {
+          throw new HttpError(422, "not_an_inspection", `This is a ${found.serviceType} visit, not an inspection. Book it as a work order from the contract.`);
+        }
         if (found.status !== "open") throw unprocessable(`This visit is ${found.status}`);
         await assertWithinService(organizationId, found.id, scheduledDate);
         ob = found;

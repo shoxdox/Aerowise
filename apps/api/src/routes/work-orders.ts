@@ -283,7 +283,22 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
   async function insertWorkOrder(
     trx: Trx,
     req: FastifyRequest,
-    o: { siteId: string; customerId: string; workTypeId: string; title: string; description: string; priority: "normal" | "urgent"; requestedOn: string | null; draft: boolean; sourceKind: WorkSourceKind; sourceId: string | null; lines: z.infer<typeof workOrderInput>["lines"]; createdSummary: string },
+    o: {
+      siteId: string;
+      customerId: string;
+      workTypeId: string;
+      title: string;
+      description: string;
+      priority: "normal" | "urgent";
+      requestedOn: string | null;
+      draft: boolean;
+      sourceKind: WorkSourceKind;
+      sourceId: string | null;
+      lines: z.infer<typeof workOrderInput>["lines"];
+      createdSummary: string;
+      /** The pumping or maintenance visit it is done for (SW-9). */
+      obligationId?: string;
+    },
   ) {
     const { organizationId, userId } = req.requireAuth();
     const at = now();
@@ -307,6 +322,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         createdBy: userId,
         sourceKind: o.sourceKind,
         sourceId: o.sourceId,
+        obligationId: o.obligationId ?? null,
         updatedAt: at,
       })
       .returning("id")
@@ -453,6 +469,75 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         });
       });
       return reply.status(201).send(await loadDetail(req, id));
+    },
+  );
+
+  app.post(
+    "/obligations/:id/work-order",
+    {
+      config: { permission: "work:write" },
+      schema: {
+        tags: ["work"],
+        summary: "Book a contract's pumping or maintenance visit as its work order; a second call returns the same order",
+        description:
+          "One work order per visit (SW-9), of the cycle's kind of work, requested for the visit's due date. Its visits are scheduled like any work order's; completing the order completes the visit, and cancelling it leaves the visit to book again while the contract still serves it.",
+        params,
+        body: z.object({}).optional(),
+        response: { 200: workOrderDetail, 201: workOrderDetail },
+      },
+    },
+    async (req, reply) => {
+      requireFeature();
+      const { organizationId } = req.requireAuth();
+      const live = (ex: Database | Trx) =>
+        ex.selectFrom("workOrders").select("id").where("organizationId", "=", organizationId).where("obligationId", "=", req.params.id).where("status", "<>", "cancelled").executeTakeFirst();
+      let r: { created: boolean; id: string };
+      try {
+        r = await db.transaction().execute(async (trx) => {
+          // The visit is locked, so two clicks at once take turns and the second finds the first's order.
+          const o = await trx
+            .selectFrom("serviceObligations as o")
+            .innerJoin("contractServiceCycles as y", (j) => j.onRef("y.id", "=", "o.cycleId").onRef("y.organizationId", "=", "o.organizationId"))
+            .innerJoin("contracts as c", (j) => j.onRef("c.id", "=", "o.contractId").onRef("c.organizationId", "=", "o.organizationId"))
+            .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
+            .select(["o.id", "o.status", "o.serviceType", "o.siteId", "o.sequence", "o.dueOn", "o.windowStart", "y.workTypeId", "y.snapshot", "c.status as contractStatus", "c.serviceEndsOn", "s.customerId"])
+            .where("o.organizationId", "=", organizationId)
+            .where("o.id", "=", req.params.id)
+            .forUpdate("o")
+            .executeTakeFirst();
+          if (!o) throw notFound("Visit");
+          if (o.serviceType === "aerobic_inspection" || !o.workTypeId) throw new HttpError(422, "inspection_visit", "This is an inspection visit: schedule it as an inspection");
+          const found = await live(trx);
+          if (found) return { created: false, id: found.id };
+          if (o.status !== "open") throw new HttpError(409, "visit_closed", `This visit is ${o.status}`);
+          if (o.contractStatus === "cancelled" || (o.serviceEndsOn !== null && o.windowStart > o.serviceEndsOn)) {
+            throw new HttpError(409, "contract_ended", "The contract no longer serves this visit");
+          }
+          const label = (o.snapshot as { label?: string }).label ?? "Service";
+          const id = await insertWorkOrder(trx, req, {
+            siteId: o.siteId,
+            customerId: o.customerId,
+            workTypeId: o.workTypeId,
+            title: `${label}, visit ${o.sequence}`,
+            description: "",
+            priority: "normal",
+            requestedOn: o.dueOn,
+            draft: false,
+            sourceKind: "contract_cycle",
+            sourceId: o.id,
+            obligationId: o.id,
+            lines: [],
+            createdSummary: `Booked from the contract: ${label}, visit ${o.sequence}, due ${o.dueOn}`,
+          });
+          return { created: true, id };
+        });
+      } catch (err) {
+        // The one-per-visit index is the backstop: the other request's order is the one.
+        const found = (err as { code?: string }).code === "23505" ? await live(db) : undefined;
+        if (!found) throw err;
+        r = { created: false, id: found.id };
+      }
+      return reply.status(r.created ? 201 : 200).send(await loadDetail(req, r.id));
     },
   );
 

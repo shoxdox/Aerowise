@@ -78,7 +78,9 @@ export function renderAgreement(c: AgreementContent, sig: AgreementSignature): P
   heading("Service term");
   row("Plan", c.term.planName);
   row("Term", `${day(c.term.startOn)} to ${day(c.term.endOn)} (${c.term.termMonths} months)`);
-  row("Visits", `${c.term.visitsPerTerm} maintenance visit${c.term.visitsPerTerm === 1 ? "" : "s"}`);
+  // SW-9: an agreement with pumping or maintenance lists each cycle; earlier PDFs are unchanged.
+  if (c.cycles) for (const y of c.cycles) row(y.label, y.summary);
+  else row("Visits", `${c.term.visitsPerTerm} maintenance visit${c.term.visitsPerTerm === 1 ? "" : "s"}`);
   row("Price", `${money(c.term.priceCents)} for the term, billed ${FREQUENCY[c.term.billingFrequency]}${c.charges.installments > 1 ? ` in ${c.charges.installments} payments` : ""}`);
   row("Renews", `Follows the term that ended ${day(c.previousTerm.endOn)}${c.term.autoRenew ? ". Renews automatically unless either party gives notice." : "."}`);
 

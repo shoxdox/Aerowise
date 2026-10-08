@@ -213,6 +213,7 @@ export const importRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               .selectFrom("serviceObligations")
               .select("dueOn")
               .where("organizationId", "=", organizationId)
+              .where("serviceType", "=", "aerobic_inspection")
               .where("status", "=", "open")
               .$if(importId !== null, (q) => q.where("siteId", "in", siteIds))
               .execute(),
@@ -654,7 +655,7 @@ async function saveRows(trx: Transaction<DB>, organizationId: string, importId: 
     const contractId = await insertContract(trx, organizationId, { siteId: results[i]!.siteId, startOn: r.contractStart, terms, autoRenew: false }, { catalog });
     results[i]!.contractId = contractId;
     contracts++;
-    const visits = trx.updateTable("serviceObligations").where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("status", "=", "open");
+    const visits = trx.updateTable("serviceObligations").where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("serviceType", "=", "aerobic_inspection").where("status", "=", "open");
     if (r.lastInspection) {
       // The window holding the last inspection, and every window before it, was covered.
       await visits
