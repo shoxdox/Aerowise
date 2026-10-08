@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormTemplate, InspectionTemplate, Stop, WorkStop } from "@aerowise/domain";
+import type { FormTemplate, InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
 import type { Me } from "../session";
 import { activeStore, type CachedRoute, type Gps, type Tenant, type TenantStore } from "./db";
 import { tenantHeader } from "./sync";
@@ -91,6 +91,14 @@ export async function loadWorkRoute(store: WorkStore): Promise<{ date: string; i
     const forms = await fetchJson<{ items: FormTemplate[] }>("/form-templates?purpose=work", store.tenant);
     if (forms.ok) for (const f of forms.data.items) await store.kvSet(`form:${f.id}`, f);
   }
+  return res.data;
+}
+
+/** SW-6: trucks, facilities and the technician's pump-outs in no load yet; the last copy when offline. */
+export async function loadPumpingField(store: WorkStore): Promise<PumpingFieldData | undefined> {
+  const res = await fetchJson<PumpingFieldData>("/pumping/field", store.tenant);
+  if (!res.ok) return store.kvGet("pumping-field");
+  await store.kvSet("pumping-field", res.data);
   return res.data;
 }
 

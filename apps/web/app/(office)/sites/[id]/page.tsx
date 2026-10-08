@@ -8,6 +8,7 @@ import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
 import { ComplianceTimeline } from "@/components/ComplianceTimeline";
 import { SiteAuthority } from "@/components/SiteAuthority";
 import { SiteContracts } from "@/components/SiteContracts";
+import { PumpingHistory } from "@/components/PumpingHistory";
 import { SiteLabTests } from "@/components/SiteLabTests";
 import { SiteServiceRequests } from "@/components/SiteServiceRequests";
 import { SiteWorkOrders } from "@/components/SiteWorkOrders";
@@ -229,6 +230,7 @@ export default function SitePage() {
       <SiteLabTests siteId={site.id} editable={editable} />
       <SiteServiceRequests siteId={site.id} editable={editable} />
       <SiteWorkOrders siteId={site.id} editable={editable} />
+      <PumpingHistory siteId={site.id} />
       <ComplianceTimeline siteId={site.id} editable={editable} />
 
       <section className="stack">

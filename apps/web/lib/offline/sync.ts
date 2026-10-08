@@ -163,6 +163,8 @@ function workPayload(rec: LocalWork, othersQueued: boolean) {
     values: rec.values,
     summary: rec.summary,
     finalVisit: rec.finalVisit,
+    // SW-6: only when recorded, so a record from before pumping sends exactly what it did.
+    ...(rec.pumpOut && rec.pumpOut.volume > 0 ? { pumpOut: rec.pumpOut } : {}),
   };
 }
 
@@ -176,7 +178,45 @@ async function sendWork(store: WorkStore, url: string, init: RequestInit & { hea
   return res;
 }
 
+/**
+ * SW-6: a load, then each of its manifest photos. Every answer the server gives a delivered load
+ * carries its group id: the load as it stands, or, once the office has put another technician's
+ * pump-out in it, only an acknowledgment. Either way the phone's copy is done.
+ */
+async function runLoadOp(store: WorkStore, op: QueuedWorkOp & { kind: "disposal-load" | "disposal-photo" }) {
+  const load = (await store.allLoads()).find((l) => l.clientId === op.recordClientId);
+  if (!load) return store.removeOp(op.seq);
+  let res: Response;
+  if (op.kind === "disposal-load") {
+    const body = {
+      clientId: load.clientId,
+      vehicleId: load.vehicleId,
+      facilityId: load.facilityId,
+      deliveredOn: load.deliveredOn,
+      manifestReference: load.manifestReference,
+      total: load.total,
+      unit: load.unit,
+      notes: load.notes,
+      pumpingGroupIds: load.pumpingGroupIds,
+    };
+    res = await sendWork(store, "/api/disposal/loads/sync", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  } else {
+    const photo = load.photos.find((p) => p.clientId === op.photoClientId);
+    const blob = await store.getBlob(op.photoClientId);
+    if (!photo || !blob) return store.removeOp(op.seq);
+    res = await sendWork(store, `/api/disposal/loads/${load.clientId}/photos/${photo.clientId}`, {
+      method: "PUT",
+      headers: { "content-type": blob.contentType, "x-photo-key": "manifest", "x-captured-at": photo.capturedAt },
+      body: blob.blob,
+    });
+  }
+  if (!res.ok) return store.failOp(op, await message(res));
+  const out = (await res.json()) as { groupId: string };
+  return store.loadDelivered(op, out.groupId);
+}
+
 async function runWorkOp(store: WorkStore, op: QueuedWorkOp, ops: QueuedWorkOp[], records: Map<string, LocalWork>) {
+  if (op.kind === "disposal-load" || op.kind === "disposal-photo") return runLoadOp(store, op);
   const rec = records.get(op.recordClientId);
   if (!rec) return store.removeOp(op.seq);
 

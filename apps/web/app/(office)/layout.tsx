@@ -18,11 +18,13 @@ function Shell({ children }: { children: ReactNode }) {
   const workOrders = useFeature("work_orders");
   const estimates = useFeature("estimates");
   const serviceItems = useFeature("service_items");
+  const pumping = useFeature("pumping");
   const nav = [
     { href: "/inbox", label: "Inbox" },
     { href: "/schedule", label: "Schedule" },
     ...(workOrders && can("work:read") ? [{ href: "/work", label: "Work" }] : []),
     ...(estimates && can("estimates:read") ? [{ href: "/estimates", label: "Estimates" }] : []),
+    ...(pumping && can("work:write") ? [{ href: "/disposal", label: "Disposal" }] : []),
     { href: "/due", label: "Due" },
     ...(can("filings:read") ? [{ href: "/filings", label: "Filings" }] : []),
     { href: "/renewals", label: "Renewals" },
@@ -33,6 +35,7 @@ function Shell({ children }: { children: ReactNode }) {
     { href: "/customers", label: "Customers" },
     { href: "/sites", label: "Sites" },
     { href: "/plans", label: "Plans" },
+    ...(pumping && can("work:write") ? [{ href: "/settings/trucks", label: "Trucks" }] : []),
     ...(canEdit(me) ? [{ href: "/import", label: "Import" }] : []),
     ...(canEdit(me) || isSupportView(me) ? [{ href: "/settings/users", label: "Users" }] : []),
     ...(canEdit(me) || isSupportView(me) ? [{ href: "/settings/company", label: "Company" }] : []),

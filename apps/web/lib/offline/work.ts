@@ -1,6 +1,6 @@
 "use client";
 
-import type { InspectionValues, SignatureCapture } from "@aerowise/domain";
+import type { InspectionValues, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
 import { done, openDb, openExisting, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
@@ -61,7 +61,33 @@ export interface LocalWork {
   held: { conflictId: string; reason: "reassigned" | "cancelled" | "office_completed" } | null;
   /** What the office decided about a held record. */
   resolved: { conflictId: string; resolution: "attached" | "dismissed" } | null;
+  /** SW-6: the pump-out, on a kind of work that needs a disposal record. Absent on older records. */
+  pumpOut?: PumpOutInput | null;
 }
+
+/**
+ * SW-6: a load the technician delivered to a disposal facility, recorded on the phone. Loads live
+ * in the kv store under LOADS_KEY (no new store, so the database version never changes); their
+ * outbox ops use the load's client id as `recordClientId`, so an older app version holds them
+ * waiting, untouched, and keeps a load's photo behind the load itself.
+ */
+export interface LocalLoad {
+  clientId: string;
+  vehicleId: string | null;
+  facilityId: string;
+  facilityName: string;
+  deliveredOn: string;
+  manifestReference: string | null;
+  total: number;
+  unit: VolumeUnit;
+  notes: string | null;
+  pumpingGroupIds: string[];
+  createdAt: string;
+  photos: { clientId: string; capturedAt: string; uploaded: boolean }[];
+  /** The server has the load. */
+  groupId: string | null;
+}
+export const LOADS_KEY = "disposal-loads";
 
 export interface WorkBlob {
   clientId: string;
@@ -73,16 +99,18 @@ export interface WorkBlob {
 export type WorkOp =
   | { seq?: number; kind: "work-sync"; recordClientId: string; failed?: string }
   | { seq?: number; kind: "work-photo"; recordClientId: string; photoClientId: string; failed?: string }
-  | { seq?: number; kind: "work-signature"; recordClientId: string; signatureClientId: string; failed?: string };
+  | { seq?: number; kind: "work-signature"; recordClientId: string; signatureClientId: string; failed?: string }
+  | { seq?: number; kind: "disposal-load"; recordClientId: string; failed?: string }
+  | { seq?: number; kind: "disposal-photo"; recordClientId: string; photoClientId: string; failed?: string };
 export type QueuedWorkOp = WorkOp & { seq: number };
 
 /** Anything in the work outbox, including ops a later app version queued that this one cannot send. */
 export type StoredWorkOp = { seq: number; kind: string; recordClientId?: string; failed?: string };
-const KNOWN_KINDS: ReadonlySet<string> = new Set<WorkOp["kind"]>(["work-sync", "work-photo", "work-signature"]);
+const KNOWN_KINDS: ReadonlySet<string> = new Set<WorkOp["kind"]>(["work-sync", "work-photo", "work-signature", "disposal-load", "disposal-photo"]);
 const isKnown = (op: StoredWorkOp): op is QueuedWorkOp =>
   KNOWN_KINDS.has(op.kind) &&
   typeof op.recordClientId === "string" &&
-  (op.kind !== "work-photo" || typeof (op as { photoClientId?: unknown }).photoClientId === "string") &&
+  ((op.kind !== "work-photo" && op.kind !== "disposal-photo") || typeof (op as { photoClientId?: unknown }).photoClientId === "string") &&
   (op.kind !== "work-signature" || typeof (op as { signatureClientId?: unknown }).signatureClientId === "string");
 
 /**
@@ -206,6 +234,49 @@ export function workStoreFor(t: KnownTenant) {
         }
         for (const signatureClientId of extra.signatureClientIds ?? []) outbox.add({ kind: "work-signature", recordClientId: rec.clientId, signatureClientId } satisfies WorkOp);
         await queueSync(outbox, rec.clientId);
+      }),
+
+    /** SW-6: loads recorded on this phone, newest first. */
+    allLoads: async (): Promise<LocalLoad[]> => {
+      const db = await openExisting(workDbName(t));
+      if (!db) return [];
+      try {
+        if (!db.objectStoreNames.contains("kv")) return [];
+        return (((await done(db.transaction(["kv"], "readonly").objectStore("kv").get(LOADS_KEY))) as LocalLoad[] | undefined) ?? []).slice().reverse();
+      } finally {
+        db.close();
+      }
+    },
+
+    /** Saves a load, or a photo added to one, and queues what has to reach the server, in one transaction. */
+    saveLoad: (load: LocalLoad, extra: { photo?: WorkBlob } = {}) =>
+      run(["kv", "blobs", "outbox"], "readwrite", async (trx) => {
+        const kv = trx.objectStore("kv");
+        const loads = ((await done(kv.get(LOADS_KEY))) as LocalLoad[] | undefined) ?? [];
+        const isNew = !loads.some((l) => l.clientId === load.clientId);
+        kv.put(isNew ? [...loads, load] : loads.map((l) => (l.clientId === load.clientId ? load : l)), LOADS_KEY);
+        const outbox = trx.objectStore("outbox");
+        if (isNew) outbox.add({ kind: "disposal-load", recordClientId: load.clientId } satisfies WorkOp);
+        if (extra.photo) {
+          trx.objectStore("blobs").put(extra.photo);
+          outbox.add({ kind: "disposal-photo", recordClientId: load.clientId, photoClientId: extra.photo.clientId } satisfies WorkOp);
+        }
+      }),
+
+    /** Records that the server has a load (or one of its photos) and drops the op; a photo's image leaves the phone. */
+    loadDelivered: (op: QueuedWorkOp, groupId: string) =>
+      run(["kv", "blobs", "outbox"], "readwrite", async (trx) => {
+        const kv = trx.objectStore("kv");
+        const loads = ((await done(kv.get(LOADS_KEY))) as LocalLoad[] | undefined) ?? [];
+        const photoClientId = op.kind === "disposal-photo" ? op.photoClientId : null;
+        kv.put(
+          loads.map((l) =>
+            l.clientId !== op.recordClientId ? l : { ...l, groupId, photos: photoClientId ? l.photos.map((p) => (p.clientId === photoClientId ? { ...p, uploaded: true } : p)) : l.photos },
+          ),
+          LOADS_KEY,
+        );
+        if (photoClientId) trx.objectStore("blobs").delete(photoClientId);
+        trx.objectStore("outbox").delete(op.seq);
       }),
 
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
