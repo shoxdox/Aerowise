@@ -1,8 +1,9 @@
-import { depositBalances, reversedOn, TestPaymentProvider } from "@aerowise/payments";
+import { depositBalances, recalcInvoice, reversedOn, TestPaymentProvider } from "@aerowise/payments";
 import { reconcileRefunds } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
+import { invoiceByToken, openCheckout } from "../src/lib/checkout.ts";
 import { createTenant, setupTestApp, type TestContext } from "./helpers.ts";
 
 // SW-5b deposits (service workflows plan §3.6), with the built-in test payment provider only:
@@ -580,6 +581,75 @@ describe("deposits", () => {
       }
       expect(await refundRows(a.depositId)).toEqual([]);
     }
+  });
+
+  it("opens checkout from the invoice as it is under its lock, never from a copy read before a payment, void or cancellation landed", async () => {
+    const t = await tenant(ctx);
+    const open = (inv: Awaited<ReturnType<typeof invoiceByToken>>, token: string) => openCheckout(ctx.db, { provider: payments, appUrl: "https://app.example.test", token, inv, now: ctx.now });
+    const fresh = async () => {
+      const a = await accepted(t, 20000, 10000);
+      const { publicToken } = await ctx.db.selectFrom("invoices").select("publicToken").where("id", "=", a.depositId).executeTakeFirstOrThrow();
+      return { ...a, token: publicToken!, stale: await invoiceByToken(ctx.db, publicToken!) };
+    };
+    const sessions = (invoiceId: string) => ctx.db.selectFrom("checkoutSessions").select(["amountCents", "status"]).where("invoiceId", "=", invoiceId).orderBy("createdAt").execute();
+
+    // Paid in full after the page read it: nothing is due, no page.
+    const paid = await fresh();
+    await payByCard(ctx, t, paid.depositId, 10000, "stalepaid");
+    await expect(open(paid.stale, paid.token)).rejects.toMatchObject({ statusCode: 422, message: "Nothing is due on this invoice" });
+    expect(await sessions(paid.depositId)).toEqual([]);
+
+    // Partly paid: the page charges only what is left, and reuses itself.
+    const part = await fresh();
+    expect((await t.api.post(`/invoices/${part.depositId}/payments`, { amountCents: 4000, method: "check", receivedOn: "2026-03-01" })).statusCode).toBe(200);
+    const first = await open(part.stale, part.token);
+    expect(await open(part.stale, part.token)).toEqual(first);
+    expect(await sessions(part.depositId)).toEqual([{ amountCents: 6000, status: "open" }]);
+
+    // A bank payment clearing covers it: nothing more to charge.
+    const pending = await fresh();
+    const s1 = new URL((await open(pending.stale, pending.token)).url).searchParams.get("session")!;
+    expect((await ctx.app.inject({ method: "POST", url: `/pay/${pending.token}/test-checkout`, payload: { sessionId: s1, outcome: "ach_pending" } })).statusCode).toBe(200);
+    await expect(open(pending.stale, pending.token)).rejects.toMatchObject({ statusCode: 422, message: "Nothing is due on this invoice" });
+
+    // Voided after the read: the link is gone.
+    const voided = await fresh();
+    expect((await t.api.post(`/invoices/${voided.depositId}/void`, { reason: "Wrong amount" })).statusCode).toBe(200);
+    await expect(open(voided.stale, voided.token)).rejects.toMatchObject({ statusCode: 404 });
+
+    // The estimate cancelled after the read: refused, as for a fresh read.
+    const cancelled = await fresh();
+    expect((await t.api.post(`/invoices/${cancelled.depositId}/payments`, { amountCents: 2000, method: "check", receivedOn: "2026-03-01" })).statusCode).toBe(200);
+    expect((await t.api.post(`/estimates/${cancelled.estimateId}/cancel`, { reason: "Changed mind" })).statusCode).toBe(200);
+    await expect(open(cancelled.stale, cancelled.token)).rejects.toMatchObject({ statusCode: 409, code: "payment_closed" });
+
+    // The real interleaving: a payment holds the invoice's lock while checkout waits for it.
+    const raced = await fresh();
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const payment = ctx.db.transaction().execute(async (trx) => {
+      await trx.selectFrom("invoices").select("id").where("id", "=", raced.depositId).forUpdate().executeTakeFirstOrThrow();
+      await trx
+        .insertInto("payments")
+        .values({ organizationId: t.org.id, invoiceId: raced.depositId, amountCents: 10000, method: "check", source: "manual", status: "succeeded", providerPaymentId: null, providerSessionId: null, receivedOn: "2026-03-01", reference: null, note: null, failureReason: null, recordedBy: null, succeededAt: ctx.now, failedAt: null, createdAt: ctx.now, updatedAt: ctx.now } as never)
+        .execute();
+      await recalcInvoice(trx, t.org.id, raced.depositId, ctx.now);
+      locked();
+      await held;
+    });
+    await isLocked;
+    const checkout = open(raced.stale, raced.token);
+    const settled = checkout.then(
+      () => "opened",
+      (e: { message: string }) => e.message,
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    release();
+    await payment;
+    expect(await settled).toBe("Nothing is due on this invoice");
+    expect(await sessions(raced.depositId)).toEqual([]);
   });
 
   it("returns the first result for a repeated deposit refund request, sequential or at once, and refuses the id with other details", async () => {
