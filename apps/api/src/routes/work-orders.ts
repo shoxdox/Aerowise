@@ -34,7 +34,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
-import { consumeCoverage, coveredInvoiceLines, releaseOnCancel } from "../lib/coverage.ts";
+import { coveredInvoiceLines } from "../lib/coverage.ts";
 import { isWorkForm } from "../lib/forms.ts";
 import { checkDraftRefs, writeDraftLines } from "../lib/invoices.ts";
 import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
@@ -605,8 +605,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       await db.transaction().execute(async (trx) => {
         const wo = await lockWorkOrder(trx, organizationId, req.params.id);
         const jobId = await endOpenVisit(trx, req, organizationId, wo.id, `Work order cancelled: ${req.body.reason}`, at);
-        await setWorkOrderStatus(trx, organizationId, wo, "cancelled", at, { cancelledAt: at, cancelReason: req.body.reason });
-        await releaseOnCancel(trx, req, organizationId, wo.id, at);
+        await setWorkOrderStatus(trx, organizationId, wo, "cancelled", at, { cancelledAt: at, cancelReason: req.body.reason }, req);
         await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "cancelled", summary: `Cancelled: ${req.body.reason}`, details: { reason: req.body.reason, jobId }, homeownerVisible: true, at });
         await audit(trx, req, { action: "work_order.cancelled", entityType: "work_order", entityId: wo.id, changes: req.body });
       });
@@ -632,10 +631,9 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       await db.transaction().execute(async (trx) => {
         const wo = await lockWorkOrder(trx, organizationId, req.params.id);
         if (wo.status === "draft") throw new HttpError(409, "invalid_transition", "Make the draft ready to schedule first");
-        await setWorkOrderStatus(trx, organizationId, wo, "completed", at, { completedAt: at, completedWithoutRecordReason: req.body.reason });
-        const jobId = await endOpenVisit(trx, req, organizationId, wo.id, "Work order completed by the office without a field record", at);
         // Work done at no charge spends its coverage now; billed work spends it when invoiced.
-        if (wo.billingStatus === "no_charge") await consumeCoverage(trx, req, organizationId, wo.id, null, at);
+        await setWorkOrderStatus(trx, organizationId, wo, "completed", at, { completedAt: at, completedWithoutRecordReason: req.body.reason }, req);
+        const jobId = await endOpenVisit(trx, req, organizationId, wo.id, "Work order completed by the office without a field record", at);
         await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "completed", summary: `Completed by the office without a field record: ${req.body.reason}`, details: { reason: req.body.reason, jobId }, homeownerVisible: true, at });
         await audit(trx, req, { action: "work_order.completed", entityType: "work_order", entityId: wo.id, changes: { ...req.body, withoutRecord: true } });
       });
