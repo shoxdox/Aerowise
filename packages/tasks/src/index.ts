@@ -46,7 +46,7 @@ export { createPortalLink, hashPortalToken, PORTAL_LINK_EMAIL, portalUrlFor, sen
 export { queueSms, runSmsSweep, scheduleSmsSweeps, SEND_SMS, sendSms, SMS_SWEEP } from "./sms-task.ts";
 export { LOCATE_SITES, locateSites, queueSiteLocating, scheduleSiteLocating } from "./routing-task.ts";
 export { cancelOpenVisits, serviceEndForVisit } from "./contract-end.ts";
-export { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
+export { CONTRACT_FILINGS, endContractsPastService, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 export { BILLING_RUN, scheduleBillingRuns } from "./billing-task.ts";
 export { buildExport, DEMO_CSV_COLUMN, EXPORT_DATA, EXPORT_TABLES, queueExport } from "./export-task.ts";
 export {
