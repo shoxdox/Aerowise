@@ -25,6 +25,22 @@ const reversedSql = sql<number>`(select coalesce(sum(r.amount_cents), 0) from re
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 /** What a payment or refund says while its invoice is quarantined. */
 export const HELD_FOR_INVOICE = "Held: the invoice's totals in QuickBooks differ from Aerowise's. Settle the invoice first.";
+/** What a payment or refund says while its invoice is kept as it is in QuickBooks and out of the sync. */
+export const KEPT_FOR_INVOICE = "Not sent: the invoice is kept as it is in QuickBooks. Record this there yourself, or check the invoice again.";
+/** remote_state of an invoice kept in QuickBooks with totals that differ from Aerowise's. */
+export const KEPT_MISMATCH = "kept_mismatch";
+
+/**
+ * Why nothing may be sent for a payment or refund of this invoice, if anything: it is
+ * quarantined, or kept as it is after a mismatch. Checked before every payment and refund
+ * change, whether or not the record is already in QuickBooks, so a held record keeps its
+ * QuickBooks id and goes on exactly once when the invoice is released.
+ */
+export function heldBy(invLink: Pick<Link, "status" | "remoteState"> | undefined): string | null {
+  if (invLink?.status === "quarantined") return HELD_FOR_INVOICE;
+  if (invLink?.status === "ignored" && invLink.remoteState === KEPT_MISMATCH) return KEPT_FOR_INVOICE;
+  return null;
+}
 
 /** Tax mode and the QuickBooks tax codes it uses, as the company chose on the QuickBooks page. */
 export interface TaxMapping {
@@ -526,8 +542,9 @@ class SyncRun {
       .executeTakeFirst();
     if (!p || p.status !== "succeeded") return this.write.ignored(link, "Only cleared payments are sent to QuickBooks");
     const invLink = await this.link("invoice", p.invoiceId);
-    // Nothing compounds a quarantined invoice: its payments wait, new or already sent.
-    if (invLink?.status === "quarantined") return this.write.waiting(link, HELD_FOR_INVOICE);
+    // Nothing compounds a quarantined or kept invoice: its payments wait, new or already sent.
+    const held = heldBy(invLink);
+    if (held) return this.write.waiting(link, held);
     // A refund reversing the payment (the customer owes it again) comes off the payment itself,
     // so QuickBooks shows the balance Aerowise does. Credit refunds go over as Refund Receipts.
     const net = p.amountCents - p.reversedCents;
@@ -619,8 +636,9 @@ class SyncRun {
       .where("r.id", "=", link.entityId)
       .executeTakeFirst();
     if (!r || r.status !== "succeeded" || r.intent !== "credit") return this.write.ignored(link, "Only completed credit refunds are sent as Refund Receipts");
+    const held = heldBy(await this.link("invoice", r.invoiceId));
+    if (held) return this.write.waiting(link, held);
     if (link.externalId) return this.write.synced(link);
-    if ((await this.link("invoice", r.invoiceId))?.status === "quarantined") return this.write.waiting(link, HELD_FOR_INVOICE);
     const payLink = await this.link("payment", r.paymentId);
     if (payLink?.status === "ignored") return this.write.ignored(link, "The payment is not synced to QuickBooks");
     if (payLink?.status !== "synced" || !payLink.externalId) return this.write.waiting(link, "Waiting for the payment to reach QuickBooks");

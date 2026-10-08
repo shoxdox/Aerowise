@@ -1,4 +1,4 @@
-import { TestCompanies, TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
+import { recheckInvoice, resolveLink, TestCompanies, TestQuickBooksProvider, TokenCipher, type QuickBooksCompany } from "@aerowise/quickbooks";
 import { drainTasks } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
@@ -744,6 +744,91 @@ describe("sales tax", () => {
     const company = await companies().get(realm);
     expect(Object.keys(company.invoices)).toEqual([kept.externalId]);
     expect(company.payments).toEqual({});
+  });
+
+  it("sends nothing for an already-sent payment or its refunds while its invoice is kept as is, and sends it once on release", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm, items } = await withTax(t);
+    const services = items.find((i) => i.name === "Services")!;
+    const checking = ((await t.api.get("/quickbooks/accounts")).json() as { id: string; name: string }[]).find((a) => a.name === "Checking")!;
+    await t.api.put("/quickbooks/mapping", { refundItemId: services.id, manualRefundAccountId: checking.id });
+    const inv = await issue(t, cs.nora.id, taxed);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 20000, method: "check", reference: "7", receivedOn: "2026-03-01" })).json();
+    const paymentId = paid.payments[0].id as string;
+    await runWorker(ctx);
+    const sentPayment = (await link("payment", paymentId))!;
+    expect(sentPayment).toMatchObject({ status: "synced" });
+    // Today an invoice is only quarantined before its payments go, so this state is built
+    // directly: the guard must hold whatever path leads here (an already-sent payment on an
+    // invoice that is then quarantined and kept as is).
+    const invLink = (await link("invoice", inv.id))!;
+    await ctx.db
+      .updateTable("quickbooksLinks")
+      .set({ status: "quarantined", conflictKind: "tax_total_mismatch", conflict: JSON.stringify({ aerowise: { totalCents: 32706, taxCents: 206 }, quickbooks: { totalCents: 32725, taxCents: 225 } }) })
+      .where("id", "=", invLink.id)
+      .execute();
+    expect((await t.api.post(`/quickbooks/records/${invLink.id}/resolve`, { action: "keep_remote", reason: "Checking with the accountant" })).statusCode).toBe(200);
+
+    // A refund reversing part of the payment, and a credit refund, while the invoice is kept.
+    expect((await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 500, reason: "Overcharged", intent: "reverse" })).statusCode).toBe(200);
+    const credited = (await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 300, reason: "Goodwill" })).json();
+    const creditId = credited.payments[0].refunds.find((r: { intent: string }) => r.intent === "credit").id as string;
+    const before = await companies().get(realm);
+    await runWorker(ctx);
+    await runWorker(ctx);
+    // Nothing was created, changed or deleted in QuickBooks.
+    const held = await companies().get(realm);
+    expect({ payments: held.payments, refundReceipts: held.refundReceipts, invoices: held.invoices, requests: held.requests }).toEqual({
+      payments: before.payments,
+      refundReceipts: before.refundReceipts,
+      invoices: before.invoices,
+      requests: before.requests,
+    });
+    const kept = "Not sent: the invoice is kept as it is in QuickBooks. Record this there yourself, or check the invoice again.";
+    expect(await link("payment", paymentId)).toMatchObject({ status: "queued", syncError: kept, externalId: sentPayment.externalId, syncToken: sentPayment.syncToken });
+    expect(await link("refund", creditId)).toMatchObject({ status: "queued", syncError: kept, externalId: null });
+
+    // QuickBooks' totals match, so checking again releases both, each sent exactly once.
+    expect((await t.api.post(`/quickbooks/records/${invLink.id}/resolve`, { action: "recheck" })).json()).toMatchObject({ status: "synced" });
+    await runWorker(ctx);
+    await runWorker(ctx);
+    const after = await companies().get(realm);
+    expect(Object.values(after.payments)).toMatchObject([{ id: sentPayment.externalId, amountCents: 19500 }]);
+    expect(Object.values(after.refundReceipts ?? {})).toMatchObject([{ amountCents: 300 }]);
+    await t.api.post("/quickbooks/sync", {});
+    await runWorker(ctx);
+    const again = await companies().get(realm);
+    expect(again.payments).toEqual(after.payments);
+    expect(again.refundReceipts).toEqual(after.refundReceipts);
+    expect(await link("payment", paymentId)).toMatchObject({ status: "synced", pushedHash: "19500" });
+    expect(await link("refund", creditId)).toMatchObject({ status: "synced" });
+  });
+
+  it("never lets a check again overwrite a decision made while QuickBooks was being read", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs, realm } = await withTax(t);
+    await companies().setAutomatedTax(realm, 900);
+    const inv = await issue(t, cs.nora.id, taxed);
+    await runWorker(ctx);
+    const held = (await link("invoice", inv.id))!;
+    await companies().setInvoiceTax(realm, held.externalId!, 206);
+    const base = new TestQuickBooksProvider(ctx.db, () => ctx.now);
+    // Another person keeps it as it is while this check is reading QuickBooks.
+    const racing = Object.assign(Object.create(base), {
+      company(realmId: string): QuickBooksCompany {
+        const company = base.company(realmId);
+        return Object.assign(Object.create(company), {
+          async getInvoice(id: string) {
+            const read = await company.getInvoice(id);
+            await resolveLink(qbCtx, t.org.id, held.id, { action: "keep_remote", reason: "Decided meanwhile" });
+            return read;
+          },
+        });
+      },
+    });
+    const qbCtx = { db: ctx.db, now: () => ctx.now, provider: racing, cipher: new TokenCipher() };
+    await expect(recheckInvoice(qbCtx, t.org.id, held.id)).rejects.toThrow(/changed meanwhile/);
+    expect(await link("invoice", inv.id)).toMatchObject({ status: "ignored", remoteState: "kept_mismatch", syncError: "Kept as it is in QuickBooks: Decided meanwhile" });
   });
 
   it("never creates a second invoice when QuickBooks' answer is lost, matching or not", async () => {
