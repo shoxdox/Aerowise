@@ -223,7 +223,6 @@ Authorized by Justin: merge #93–96, deploy by hand to staging, repeat the walk
    In a browser: `/schedule` on a day with stops shows streets, numbered stops and "© OpenStreetMap contributors (ODbL)"; `/tech` on a phone, **Map** shows the technician's stops and tapping one opens it. The browser's network panel shows requests to the staging address only. nginx needs no change: it passes `Range` requests through as they are.
 5. **Undo:** delete or move `/var/lib/aerowise/map/basemap.pmtiles`. The maps then say they are unavailable and every list works as before. Deploying the previous commit removes the mount.
 
-
 ## Street map review and staging deployment — October 7, 2026
 
 1. Reviewed Claude's three current implementation threads and GitHub PRs. Reviewed #97 lifecycle fixes at `572b78fd2d349f39105b7d9f65d80bee6ba263e4` and its exact-head local evidence: 646 API tests, 52 browser tests, lint/typecheck/build/seed. Docker smoke and proxy checks were recorded on the prior map head; the lifecycle-only revision did not repeat those checks. Hosted Actions never started because of the existing billing/quota limit. Squash-merged #97 as `220b4e747d34b23d7a6dc9451f0a16df35dacafc`; fast-forwarded the local checkout without changing Justin's untracked web guidance files. SW-1 and SW-2a received the new baseline through Claude's coordinator. #99 remained draft while checks were running.
@@ -249,3 +248,26 @@ Authorized by Justin: merge #93–96, deploy by hand to staging, repeat the walk
 9. Switched the fictional visitor company to Technician and set browser viewport 390×844. The real map reached `ready` with five stops; tapping marker 3 opened Susan Villarreal's correct address, permit and inspection action. Simulated offline network and reloaded: the cached five-stop route survived. With HTTP cache disabled, Map showed its unavailable note and all five list cards; opening stop 3 from that list still worked. Restored network and HTTP cache, then switched List → Map to retry. Screenshots under `staging-map-2026-10/`: `phone-real-map.jpg`, `phone-selected-stop.jpg`, `phone-offline-fallback.jpg`, `phone-offline-stop.jpg`. No Directions/Call links were followed. This was map regression verification in a desktop browser, not a physical-phone test or a fresh complete-inspection/photo sync walkthrough; the map PR's recorded local suite includes exactly-once photo sync tests.
 10. Independently ran frozen-lockfile install, lint, typecheck (16 tasks, 11 cached) and domain tests (133 passed) on merged local main. Preserved the map worker's exact-head full-suite evidence and its disclosed Docker/proxy exceptions rather than claiming hosted CI ran. Record the observed browser request origins and final map retry below.
 11. The reconnect retry reached `ready` with five markers. Captured 13 request events since a fresh network cursor; all HTTP origins were `https://staging.deshain.com`, no truncated/remaining events. Earlier broader event history was truncated and is not used as exhaustive proof. Restored the browser network, HTTP cache and default viewport. An online reload restored demo role controls; recorded their reconnect quirk as STG-12/P3 with the offline screenshot. No production container restart, real contact, provider call or charge occurred. The visitor demo expires normally after one day.
+
+## Phone compatibility release (SW-2a) and the phone rollback floor
+
+SW-2a changes only the technician app in the browser (`apps/web/lib/offline`, the sync banner and the sign-out check). It has no migration, no API change and no new setting. It is the **phone rollback floor** for the service-workflow program: once it is deployed to staging, staging is never rolled back below it, and SW-2 (offline work orders) merges only after it has been deployed here.
+
+What it guarantees, and what SW-2 must keep:
+
+- The inspection database `aerowise-tech:<organization>:<user>` (or the old shared `aerowise-tech`) is opened at whatever version it already has. A new one is still created at version 1, exactly as earlier releases create it. The version is raised only if a store the app needs is missing. **SW-2 must never raise this database's version.**
+- SW-2 keeps work in `aerowise-tech-work:<organization>:<user>`, with one record per unsent change in a store named `outbox`. SW-2a never creates or writes that database. It counts its `outbox` as unsent work in the sign-out warning, in other sign-ins' "saved on this phone" notice, and in the ended-demo count. It deletes that database together with the inspection database when a demo has ended.
+- An outbox op of a kind SW-2a does not know is never run, marked failed or deleted. It holds back later ops for the same record, and the banner says "N items will send after the app updates".
+
+Deploy to staging (Codex), with no settings change:
+
+```sh
+sudo -u deploy /opt/aerowise/staging/deploy/vps/deploy.sh staging <merged SW-2a commit>
+```
+
+Then check:
+
+1. Open `/tech` on a phone-sized browser with an inspection in progress and no signal, and reload. The draft is still there. With signal, it sends once and the banner reads "All changes sent".
+2. Record the deployed commit here as the phone floor. A later rollback picks a commit at or after it. Below the floor, inspections still work, because the database stays at version 1. Unsent SW-2 work would wait unsent, and an ended demo's work database would not be cleaned until a release at or above the floor returns.
+
+The browser tests for this are in `apps/web/e2e/phone-compat.spec.ts` (Pixel 7 emulation). A physical-phone close/reopen/reconnect check stays a separate gate (G-DEVICE) before pilot reliance.
