@@ -29,6 +29,8 @@ interface DayStop {
   technicianName: string;
   lat: number | null;
   lng: number | null;
+  /** Minutes on site set by a work visit's kind of work; null takes the company's average. */
+  durationMinutes: number | null;
 }
 
 const pointOf = (s: { lat: number | null; lng: number | null }): Point | null => (s.lat !== null && s.lng !== null ? { lat: s.lat, lng: s.lng } : null);
@@ -73,7 +75,9 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       .selectFrom("jobs as j")
       .innerJoin("sites as s", (k) => k.onRef("s.id", "=", "j.siteId").onRef("s.organizationId", "=", "j.organizationId"))
       .innerJoin("users as u", "u.id", "j.technicianUserId")
-      .select(["j.id as jobId", "j.status", "j.technicianUserId as technicianId", "u.name as technicianName", "s.lat", "s.lng"])
+      .leftJoin("workOrders as wo", (k) => k.onRef("wo.id", "=", "j.workOrderId").onRef("wo.organizationId", "=", "j.organizationId"))
+      .leftJoin("workTypes as wt", (k) => k.onRef("wt.id", "=", "wo.workTypeId").onRef("wt.organizationId", "=", "wo.organizationId"))
+      .select(["j.id as jobId", "j.status", "j.technicianUserId as technicianId", "u.name as technicianName", "s.lat", "s.lng", "wt.defaultDurationMinutes as durationMinutes"])
       .where("j.organizationId", "=", organizationId)
       // Every stop on the day, inspection or work: both take the technician's time.
       .where("j.type", "in", ["inspection", "work"])
@@ -87,7 +91,8 @@ export const routingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
 
   function technicianRoute(s: RoutingSettings, stops: DayStop[]): TechnicianRoute {
     const summary = summarizeRoute(stops.map(routeStop), routeOptions(s));
-    const serviceMinutes = stops.length * s.stopMinutes;
+    // A work visit takes its kind of work's minutes on site; an inspection, or work with none set, the average.
+    const serviceMinutes = stops.reduce((n, x) => n + (x.durationMinutes ?? s.stopMinutes), 0);
     const totalMinutes = summary.driveMinutes + serviceMinutes;
     return {
       technicianId: stops[0]!.technicianId,
