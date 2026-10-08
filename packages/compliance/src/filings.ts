@@ -300,7 +300,7 @@ function termsFor(resolved: ResolvedJurisdiction, completedOn: string, basis: { 
 async function contractVisitDeadline<T extends { deadlineOn: string; deadlineBasis: string }>(db: Executor, organizationId: string, inspectionId: string, resolved: ResolvedJurisdiction, terms: T): Promise<T> {
   const visit = await db
     .selectFrom("inspections as i")
-    .innerJoin("jobs as j", (x) => x.onRef("j.id", "=", "i.jobId").onRef("j.organizationId", "=", "i.organizationId"))
+    .innerJoin("jobs as j", (x) => x.onRef("j.id", "=", "i.jobId").onRef("j.organizationId", "=", "i.organizationId").on("j.type", "=", "inspection"))
     .innerJoin("serviceObligations as o", (x) => x.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
     .select(["o.dueOn", "o.sequence"])
     .where("i.organizationId", "=", organizationId)

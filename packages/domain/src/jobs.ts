@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { id, SAFETY_FLAGS } from "./crm.ts";
 import { inspectionRequirements } from "./filings.ts";
+import { JOB_TYPES, WORK_CATEGORIES } from "./work.ts";
 
 export const JOB_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -86,6 +87,13 @@ export const stop = z.object({
   system: z
     .object({ manufacturer: z.string().nullable(), model: z.string().nullable(), disposalType: z.string().nullable(), chlorinationMethod: z.string().nullable() })
     .nullable(),
+  /** An inspection visit or a work order's visit. Older clients ignore it; every inspection stop says "inspection". */
+  kind: z.enum(JOB_TYPES).optional(),
+  /** The work order a work visit belongs to; null on inspection stops. */
+  workOrder: z
+    .object({ id, number: z.number().int(), label: z.string(), title: z.string(), category: z.enum(WORK_CATEGORIES), workTypeName: z.string(), visitNumber: z.number().int() })
+    .nullable()
+    .optional(),
   /** What the site's reporting authority adds to the inspection. Only on the technician's route. */
   requirements: inspectionRequirements.nullable().optional(),
 });

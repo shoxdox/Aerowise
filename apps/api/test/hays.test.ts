@@ -9,7 +9,7 @@ import { completeValues, JPEG, photoUrl, uploadRequiredPhotos, type Setup } from
 
 // W6.C3 and W12.C2: Hays County's draft profile (packages/compliance/rulesets/tx-hays-county).
 // v2 counts visits from the contract's start (Hays County Regulations 10.V.2).
-const ctx = setupTestApp();
+const ctx = setupTestApp({ features: ["work_orders"] });
 const mail = new FakeMail();
 const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now: () => c.now, mail });
 const KEY = "tx-hays-county";
@@ -224,6 +224,21 @@ describe("Hays County corrective reports (10.V.4)", () => {
     // The retest's report keeps the usual 14 days; the regular visits stay where they were.
     expect((await filingsOf(s)).find((f) => (f.inspection as { id: string } | null)?.id === fixed.json().id)).toMatchObject({ deadlineOn: "2026-10-26" });
     expect((await visitsOf(s, s.contract.id)).slice(1)).toEqual(before.slice(1));
+  });
+
+  it("does not read a work visit at the site as a booked retest, and keeps the retest's link to its inspection", async () => {
+    const { s, complete } = await haysVisit(ctx);
+    const done = (await complete({ ...completeValues(), air_pressure: 4.5, chlorine_level: 0 })).json();
+    await runWorker(ctx);
+    const pumping = ((await s.api.get("/work-types")).json().items as { id: string; key: string }[]).find((t) => t.key === "pumping")!;
+    const wo = (await s.api.post("/work-orders", { siteId: s.site.id, workTypeId: pumping.id })).json();
+    expect((await s.api.post(`/work-orders/${wo.id}/schedule`, { technicianId: s.tech.id, scheduledDate: "2026-10-10" })).statusCode).toBe(201);
+    expect((await correctiveItems(s))[0]!.detail).not.toContain("Retest booked");
+
+    const retest = (await s.api.post("/jobs", { retestOfInspectionId: done.id, technicianId: s.tech.id, scheduledDate: "2026-10-12" })).json();
+    expect((await correctiveItems(s))[0]!.detail).toContain("Retest booked for 2026-10-12");
+    const row = await ctx.db.selectFrom("jobs").select(["type", "retestOfInspectionId", "obligationId"]).where("id", "=", retest.jobId).executeTakeFirstOrThrow();
+    expect(row).toEqual({ type: "inspection", retestOfInspectionId: done.id, obligationId: null });
   });
 
   it("is not raised for a report with everything working", async () => {

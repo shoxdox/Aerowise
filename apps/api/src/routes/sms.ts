@@ -225,6 +225,8 @@ export const smsRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; s
         .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "j.siteId").onRef("s.organizationId", "=", "j.organizationId"))
         .select(["j.id", "j.status", "j.siteId", "j.technicianUserId", "j.onTheWayAt", "s.customerId"])
         .where("j.organizationId", "=", organizationId)
+        // "On the way" is the same text for an inspection or a work visit.
+        .where("j.type", "in", ["inspection", "work"])
         .where("j.id", "=", req.params.id)
         .executeTakeFirst();
       if (!job || (role === "technician" && job.technicianUserId !== userId)) throw notFound("Job");

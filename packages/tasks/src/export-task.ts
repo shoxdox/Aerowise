@@ -28,6 +28,11 @@ export const EXPORT_TABLES: { file: string; table: string; omit?: string[] }[] =
   { file: "invoices.csv", table: "invoices", omit: ["public_token"] },
   { file: "invoice_lines.csv", table: "invoice_lines" },
   { file: "payments.csv", table: "payments" },
+  { file: "work_types.csv", table: "work_types" },
+  { file: "work_orders.csv", table: "work_orders" },
+  { file: "work_order_lines.csv", table: "work_order_lines" },
+  { file: "work_order_events.csv", table: "work_order_events" },
+  { file: "work_order_notes.csv", table: "work_order_notes" },
 ];
 
 /** The stored documents of a full export: where each table keeps its file, and the folder it goes in. */
@@ -121,7 +126,7 @@ export async function buildExport(db: Database, store: ObjectStore, organization
       "",
       "Each CSV file holds one kind of record, one row per record, with every column Aerowise keeps.",
       "Records refer to each other by id (a site's customer_id is a row in customers.csv).",
-      "Dates are YYYY-MM-DD and times are UTC. Amounts ending in _cents are in cents.",
+      "Dates are YYYY-MM-DD and times are UTC. Amounts ending in _cents are in cents; quantities ending in _milli are in thousandths (1500 is 1.5).",
       "Documents (inspection reports, signed reports, invoices, signed agreements, uploaded contracts) are in folders named by the record's id.",
       ...(missing.length ? ["", "These documents are on record but their files could not be found:", ...missing] : []),
       "",

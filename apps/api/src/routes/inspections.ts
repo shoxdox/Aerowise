@@ -226,6 +226,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
       .selectFrom("jobs")
       .select(["id", "status", "obligationId", "siteId"])
       .where("organizationId", "=", organizationId)
+      .where("type", "=", "inspection")
       .where("id", "=", jobId)
       .executeTakeFirstOrThrow();
     let status = job.status as JobStatus;
@@ -365,6 +366,8 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
           .selectFrom("jobs")
           .select(["id", "siteId", "status", "technicianUserId"])
           .where("organizationId", "=", organizationId)
+          // A work visit is never inspected (the database refuses it too: inspections.job_type).
+          .where("type", "=", "inspection")
           .where("id", "=", body.jobId)
           .forUpdate()
           .executeTakeFirst();

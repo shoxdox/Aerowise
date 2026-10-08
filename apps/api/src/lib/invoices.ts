@@ -42,6 +42,8 @@ export async function checkDraftRefs(db: Database | Transaction<DB>, organizatio
       .innerJoin("sites as s", (k) => k.onRef("s.id", "=", "j.siteId").onRef("s.organizationId", "=", "j.organizationId"))
       .select(["j.id", "s.customerId"])
       .where("j.organizationId", "=", organizationId)
+      // Inspection and work visits can both be billed.
+      .where("j.type", "in", ["inspection", "work"])
       .where("j.id", "in", jobIds)
       .execute();
     if (jobs.length !== jobIds.length) throw notFound("Job");

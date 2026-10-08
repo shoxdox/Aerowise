@@ -102,7 +102,7 @@ describe("visitor demos", () => {
     expect(me.legalDue).toEqual([]);
     const filings = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", organizationId).where("inspectionId", "is not", null).execute();
     expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
-    expect((await a.inject({ method: "GET", url: "/app-info", headers: { cookie } })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: true });
+    expect((await a.inject({ method: "GET", url: "/app-info", headers: { cookie } })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: true, features: [] });
 
     // A second visitor gets a different company and cannot see the first.
     const other = await start(a, "198.51.100.9");

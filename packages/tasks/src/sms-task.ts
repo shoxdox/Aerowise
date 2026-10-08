@@ -58,6 +58,7 @@ export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Da
           .innerJoin("users as u", "u.id", "j.technicianUserId")
           .select(["j.status", "j.siteId", "u.name"])
           .where("j.organizationId", "=", organizationId)
+          .where("j.type", "in", ["inspection", "work"])
           .where("j.id", "=", req.relatedId)
           .executeTakeFirst();
         if (!job || job.status === "cancelled" || job.status === "completed") return null;

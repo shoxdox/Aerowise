@@ -40,6 +40,9 @@ export default function SchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<"due" | "nearby">("due");
   const [previews, setPreviews] = useState<Record<string, OptimizeResult>>({});
+  // Which kinds of visit the day's columns list; the route and numbering always cover every stop.
+  const [show, setShow] = useState<"all" | "inspection" | "work">("all");
+  const hasWork = useMemo(() => (week.data?.items ?? []).some((s) => s.kind === "work"), [week.data]);
 
   const technicianId = assignTo || techs.data?.items[0]?.id || "";
   const nearby = useLoad<NearbyResult>(sort === "nearby" && technicianId && selected ? `/routing/nearby?technicianId=${technicianId}&date=${selected}` : null);
@@ -200,6 +203,16 @@ export default function SchedulePage() {
           <div className="row small">
             {routes.data && !routes.data.start && <span className="muted">Routes start at their first stop.</span>}
             <span className="spacer" />
+            {hasWork && (
+              <label className="row">
+                Show
+                <select value={show} onChange={(e) => setShow(e.target.value as typeof show)} aria-label="Kinds of visit shown">
+                  <option value="all">All visits</option>
+                  <option value="inspection">Inspections</option>
+                  <option value="work">Work orders</option>
+                </select>
+              </label>
+            )}
             <Link href="/settings/routing">Route settings</Link>
           </div>
           <div className="columns">
@@ -265,9 +278,9 @@ export default function SchedulePage() {
                     </div>
                   )}
                   {stops.length === 0 && <p className="muted small">No stops.</p>}
-                  {stops.map((s, i) => (
+                  {stops.map((s, i) => (show !== "all" && (s.kind ?? "inspection") !== show ? null :
                     <Fragment key={s.jobId}>
-                      {legTo.get(s.jobId) && (
+                      {show === "all" && legTo.get(s.jobId) && (
                         <div className="leg muted small">
                           ↓ est. {legTo.get(s.jobId)!.miles} mi · {duration(legTo.get(s.jobId)!.minutes)}
                           {legTo.get(s.jobId)!.fromJobId === null ? " from the start" : ""}
@@ -292,8 +305,18 @@ export default function SchedulePage() {
                           )}
                         </div>
                         <div className="muted small">
+                          {s.workOrder ? (
+                            <Link href={`/work/${s.workOrder.id}`} className="badge work" data-testid="stop-kind">
+                              {s.workOrder.workTypeName} · {s.workOrder.label}
+                            </Link>
+                          ) : (
+                            <span className="badge" data-testid="stop-kind">
+                              Inspection
+                            </span>
+                          )}{" "}
                           {s.customer.displayName}
                           {s.obligation && <> · visit #{s.obligation.sequence} · due {day(s.obligation.dueOn, { month: "short", day: "numeric" })}</>}
+                          {s.workOrder && <> · {s.workOrder.title}{s.workOrder.visitNumber > 1 ? ` · visit ${s.workOrder.visitNumber}` : ""}</>}
                         </div>
                         <SafetyBadges flags={s.site.safetyFlags} />
                         {s.site.schedulingNotes && <div className="small restriction">⚠ {s.site.schedulingNotes}</div>}
