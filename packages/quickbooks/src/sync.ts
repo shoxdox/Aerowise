@@ -380,7 +380,7 @@ class SyncRun {
       .selectFrom("invoiceLines as l")
       .leftJoin("contracts as c", (j) => j.onRef("c.id", "=", "l.contractId").onRef("c.organizationId", "=", "l.organizationId"))
       .leftJoin("plans as p", (j) => j.onRef("p.id", "=", "c.planId").onRef("p.organizationId", "=", "c.organizationId"))
-      .select(["l.description", "l.quantity", "l.unitPriceCents", "l.amountCents", "c.planId", "p.name as planName"])
+      .select(["l.description", "l.quantity", "l.quantityMilli", "l.unitPriceCents", "l.amountCents", "c.planId", "p.name as planName"])
       .where("l.organizationId", "=", this.org)
       .where("l.invoiceId", "=", inv.id)
       .orderBy("l.position")
@@ -428,7 +428,7 @@ class SyncRun {
         docNumber,
         txnDate: inv.issuedOn!,
         dueDate: inv.dueOn!,
-        lines: mapped.map((l) => ({ itemId: l.itemId!, description: l.description, quantity: l.quantity, unitPriceCents: l.unitPriceCents, amountCents: l.amountCents })),
+        lines: mapped.map((l) => ({ itemId: l.itemId!, description: l.description, quantity: l.quantityMilli === null ? l.quantity : l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, amountCents: l.amountCents })),
         discountCents: inv.discountCents,
         memo: inv.memo,
         privateNote: `Aerowise invoice ${docNumber}`,

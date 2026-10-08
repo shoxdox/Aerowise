@@ -23,6 +23,8 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //   - With work orders switched on (AEROWISE_FEATURES): the inspections noted a repair and a
 //     pump-out; the pump-out became a work order done yesterday and invoiced, the repair one
 //     scheduled for tomorrow, and a homeowner's portal request became a third, ready to schedule.
+//     With service items switched on too, the company has a small catalog and the pump-out is
+//     priced by the gallon and the hour and invoiced straight from its work order.
 //
 // Today's and tomorrow's route is left alone for the visitor to work through.
 
@@ -41,6 +43,7 @@ function as(app: App, cookie: string) {
     get: (url: string) => call("GET", url).then((r) => r.json()),
     post: (url: string, body: object = {}) => call("POST", url, body).then((r) => r.json()),
     put: (url: string, body: object) => call("PUT", url, body).then((r) => r.json()),
+    patch: (url: string, body: object) => call("PATCH", url, body).then((r) => r.json()),
     photo: (url: string, body: Buffer, headers: Record<string, string>) =>
       app.inject({ method: "PUT", url, payload: body, headers: { cookie, "content-type": "image/jpeg", ...headers } }).then((r) => {
         if (r.statusCode >= 300) throw new Error(`demo story: photo ${url} answered ${r.statusCode} ${r.body}`);
@@ -66,6 +69,7 @@ const afternoon = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00Z`
 export async function playDemoStory(opts: { db: Database; store: ObjectStore; organizationId?: string; now?: () => Date; log?: (msg: string) => void; features?: ReadonlySet<Feature> }): Promise<boolean> {
   const { db, store, now = () => new Date(), log = () => {}, features = parseFeatures(process.env.AEROWISE_FEATURES) } = opts;
   const work = features.has("work_orders");
+  const catalog = work && features.has("service_items");
   const found = db.selectFrom("organizations").select(["id", "demo"]);
   const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
@@ -210,12 +214,29 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       const pumpOut = issues.find((i) => i.type === "pump_out");
       if (pumpOut) {
         const wo = await office.post(`/issues/${pumpOut.id}/work-order`);
+        if (catalog) {
+          // Fictional prices for the demo company's catalog.
+          const pumping = await office.post("/service-items", { name: "Pumping", unit: "gallon", unitPriceCents: 35, category: "pumping" });
+          const labor = await office.post("/service-items", { name: "Labor", unit: "hour", unitPriceCents: 9500, category: "repair" });
+          await office.post("/service-items", { name: "Float switch", unit: "each", unitPriceCents: 6800, taxable: true, category: "repair" });
+          await office.patch(`/work-orders/${wo.id}`, {
+            lines: [
+              { description: "Pumping: pretreatment and aerobic tanks", quantity: 1000, unitPriceCents: 35, serviceItemId: pumping.id },
+              { description: "Labor", quantity: 1.5, unitPriceCents: 9500, serviceItemId: labor.id },
+            ],
+          });
+        }
         const visit = await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: yesterday, notes: "Pump the pretreatment and aerobic tanks." });
         const jobId = visit.visits[0].jobId as string;
         await office.post(`/work-orders/${wo.id}/complete`, { reason: "Fictional: pumped yesterday; the technician's phone records arrive with the next phone update." });
-        const site = await db.selectFrom("sites").select("customerId").where("id", "=", pumpOut.siteId).executeTakeFirstOrThrow();
-        const draft = await office.post("/invoices", { customerId: site.customerId, siteId: pumpOut.siteId, lines: [{ description: "Pumping: pretreatment and aerobic tanks", quantity: 1, unitPriceCents: 42500, jobId }] });
-        await office.post(`/invoices/${draft.id}/issue`, { send: false });
+        let invoiceId: string;
+        if (catalog) {
+          invoiceId = (await office.post(`/work-orders/${wo.id}/invoice`)).invoiceId;
+        } else {
+          const site = await db.selectFrom("sites").select("customerId").where("id", "=", pumpOut.siteId).executeTakeFirstOrThrow();
+          invoiceId = (await office.post("/invoices", { customerId: site.customerId, siteId: pumpOut.siteId, lines: [{ description: "Pumping: pretreatment and aerobic tanks", quantity: 1, unitPriceCents: 42500, jobId }] })).id;
+        }
+        await office.post(`/invoices/${invoiceId}/issue`, { send: false });
         workOrders++;
       }
       const repair = issues.find((i) => i.type === "repair_needed");

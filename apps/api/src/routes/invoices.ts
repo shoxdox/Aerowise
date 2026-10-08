@@ -13,6 +13,8 @@ import {
   manualPaymentInput,
   PAYMENT_METHOD_LABELS,
   refundInput,
+  type Feature,
+  type InvoiceLineInput,
 } from "@aerowise/domain";
 import { dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
 import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
@@ -23,7 +25,21 @@ import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
-import { applyView, checkDraftRefs, invoiceBase, invoiceDetail, issueDraft, overdueFirst, queueSend, toListItem, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
+import {
+  applyView,
+  checkDraftRefs,
+  invoiceBase,
+  invoiceDetail,
+  isFractional,
+  issueDraft,
+  overdueFirst,
+  queueSend,
+  shownQuantity,
+  toListItem,
+  writeDraftLines,
+  type PaymentsConfig,
+} from "../lib/invoices.ts";
+import { afterWorkOrderInvoiceEnded, lockInvoiceWorkOrder } from "../lib/work-orders.ts";
 import { dateInZone, organizationToday } from "../lib/today.ts";
 import { readForDownload } from "../lib/demo.ts";
 
@@ -74,7 +90,17 @@ async function filingFeeLines(trx: Transaction<DB>, organizationId: string, site
   }));
 }
 
-export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig }> = async (app, { db, now, store, payments }) => {
+export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; features: ReadonlySet<Feature> }> = async (
+  app,
+  { db, now, store, payments, features },
+) => {
+  /** Fractional quantities come with service items (SW-3); with them off, lines stay whole. */
+  const checkQuantities = (lines: InvoiceLineInput[] | undefined) => {
+    if (!features.has("service_items") && lines?.some((l) => isFractional(l.quantity))) {
+      throw new HttpError(409, "feature_off", "Fractional quantities are not switched on for this deployment; use whole numbers");
+    }
+  };
+
   const detail = async (organizationId: string, invoiceId: string) =>
     invoiceDetail(db, organizationId, invoiceId, await organizationToday(db, organizationId, now()), payments.appUrl);
 
@@ -123,6 +149,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     async (req, reply) => {
       const { organizationId, userId } = req.requireAuth();
       const b = req.body;
+      checkQuantities(b.lines);
       await checkDraftRefs(db, organizationId, b.customerId, b.siteId, b.lines);
       const org = await db.selectFrom("organizations").select(["invoiceTermsDays", "defaultTaxRateBps"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
       const invoiceId = await db.transaction().execute(async (trx) => {
@@ -289,6 +316,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
+      checkQuantities(req.body.lines);
       await db.transaction().execute(async (trx) => {
         const at = now();
         const inv = await lockDraft(trx, organizationId, req.params.id);
@@ -302,7 +330,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .execute();
         const lines =
           b.lines ??
-          (await trx.selectFrom("invoiceLines").selectAll().where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).orderBy("position").execute());
+          (await trx.selectFrom("invoiceLines").selectAll().where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).orderBy("position").execute()).map((l) => ({
+            ...l,
+            quantity: shownQuantity(l),
+          }));
         await writeDraftLines(trx, organizationId, inv.id, lines, { discountCents: b.discountCents ?? inv.discountCents, taxRateBps: b.taxRateBps ?? inv.taxRateBps }, at);
         await audit(trx, req, { action: "invoice.updated", entityType: "invoice", entityId: inv.id, changes: { ...b, lines: b.lines?.length } });
       });
@@ -319,8 +350,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
       await db.transaction().execute(async (trx) => {
+        const wo = await lockInvoiceWorkOrder(trx, organizationId, req.params.id);
         const inv = await lockDraft(trx, organizationId, req.params.id);
         await trx.deleteFrom("invoices").where("id", "=", inv.id).execute();
+        if (wo) await afterWorkOrderInvoiceEnded(trx, req, wo, { organizationId, summary: "Draft invoice discarded", at: now() });
         await audit(trx, req, { action: "invoice.discarded", entityType: "invoice", entityId: inv.id });
       });
       return reply.status(204).send(null);
@@ -408,9 +441,11 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId, userId } = req.requireAuth();
       const openSessions = await db.transaction().execute(async (trx) => {
         const at = now();
+        // The work order it was made from first, then the invoice, as every change to the pair.
+        const wo = await lockInvoiceWorkOrder(trx, organizationId, req.params.id);
         const inv = await trx
           .selectFrom("invoices")
-          .select(["id", "status", "paidCents", "pendingCents"])
+          .select(["id", "number", "status", "paidCents", "pendingCents"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .forUpdate()
@@ -421,6 +456,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await trx.updateTable("invoices").set({ status: "void", voidedAt: at, voidReason: req.body.reason, updatedAt: at }).where("id", "=", inv.id).execute();
         await recalcInvoice(trx, organizationId, inv.id, at);
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "voided", summary: `Voided: ${req.body.reason}`, actorUserId: userId, at });
+        if (wo) await afterWorkOrderInvoiceEnded(trx, req, wo, { organizationId, summary: `Invoice ${invoiceNumberLabel(inv.number)} voided: ${req.body.reason}`, at });
         await audit(trx, req, { action: "invoice.voided", entityType: "invoice", entityId: inv.id, changes: { reason: req.body.reason } });
         await queueQuickBooksSync(trx, organizationId, at);
         return trx

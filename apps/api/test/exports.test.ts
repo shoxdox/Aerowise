@@ -47,6 +47,7 @@ describe("full data export", () => {
         "payments.csv",
         "sites.csv",
         "systems.csv",
+        "service_items.csv",
         "visits.csv",
         "work_order_events.csv",
         "work_order_lines.csv",

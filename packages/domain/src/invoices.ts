@@ -43,6 +43,8 @@ export interface TotalsLine {
   quantity: number;
   unitPriceCents: number;
   taxable: boolean;
+  /** Set on a fractional line (SW-3), whose amount is not quantity × price in whole units. */
+  amountCents?: number;
 }
 
 export interface InvoiceTotals {
@@ -54,7 +56,7 @@ export interface InvoiceTotals {
   totalCents: number;
 }
 
-export const lineAmount = (l: Pick<TotalsLine, "quantity" | "unitPriceCents">) => l.quantity * l.unitPriceCents;
+export const lineAmount = (l: Pick<TotalsLine, "quantity" | "unitPriceCents" | "amountCents">) => l.amountCents ?? l.quantity * l.unitPriceCents;
 
 /**
  * The discount comes off the subtotal before tax, spread over taxable and untaxed lines
@@ -142,10 +144,18 @@ export const invoiceLineInput = z.object({
   /** An existing line of the same draft: keeps what it bills for (a contract installment). */
   id: id.optional(),
   description: z.string().trim().min(1).max(500),
-  quantity: z.number().int().min(1).max(10_000).default(1),
+  /** Whole units, or up to three decimals (hours, gallons) where service items are switched on. */
+  quantity: z
+    .number()
+    .min(0.001)
+    .max(10_000)
+    .refine((q) => Math.abs(q * 1000 - Math.round(q * 1000)) < 1e-6, { message: "Use at most three decimals" })
+    .default(1),
   unitPriceCents: cents,
   taxable: z.boolean().default(false),
   jobId: id.nullish(),
+  /** The catalog item the line started from; the line keeps its own description and price. */
+  serviceItemId: id.nullish(),
 });
 export type InvoiceLineInput = z.input<typeof invoiceLineInput>;
 
@@ -228,11 +238,14 @@ export const invoiceLine = z.object({
   id,
   position: z.number().int(),
   description: z.string(),
-  quantity: z.number().int(),
+  /** Whole units, or a fraction where `quantityMilli` is set. */
+  quantity: z.number(),
+  quantityMilli: z.number().int().nullable(),
   unitPriceCents: z.number().int(),
   amountCents: z.number().int(),
   taxable: z.boolean(),
   jobId: id.nullable(),
+  serviceItemId: id.nullable(),
   contractId: id.nullable(),
   installment: z.number().int().nullable(),
   periodStart: date.nullable(),
@@ -303,7 +316,7 @@ export const publicInvoice = z.object({
   customerName: z.string(),
   serviceAddress: z.string().nullable(),
   memo: z.string().nullable(),
-  lines: z.array(z.object({ description: z.string(), quantity: z.number().int(), unitPriceCents: z.number().int(), amountCents: z.number().int() })),
+  lines: z.array(z.object({ description: z.string(), quantity: z.number(), unitPriceCents: z.number().int(), amountCents: z.number().int() })),
   subtotalCents: z.number().int(),
   discountCents: z.number().int(),
   taxCents: z.number().int(),
@@ -336,7 +349,7 @@ export const invoiceSnapshot = z.object({
   billTo: z.object({ name: z.string(), address: z.string().nullable(), email: z.string().nullable() }),
   serviceAddress: z.string().nullable(),
   memo: z.string().nullable(),
-  lines: z.array(z.object({ description: z.string(), quantity: z.number().int(), unitPriceCents: z.number().int(), amountCents: z.number().int(), taxable: z.boolean() })),
+  lines: z.array(z.object({ description: z.string(), quantity: z.number(), unitPriceCents: z.number().int(), amountCents: z.number().int(), taxable: z.boolean() })),
   subtotalCents: z.number().int(),
   discountCents: z.number().int(),
   taxRateBps: z.number().int(),

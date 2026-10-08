@@ -125,6 +125,8 @@ export const workOrderLineInput = z.object({
   quantity,
   unitPriceCents: z.number().int().min(0).max(100_000_000),
   taxable: z.boolean().default(false),
+  /** The catalog item the line started from (service items, SW-3). */
+  serviceItemId: id.nullish(),
 });
 export const workOrderLine = z.object({
   id,
@@ -136,6 +138,7 @@ export const workOrderLine = z.object({
   taxable: z.boolean(),
   source: z.enum(["planned", "added_in_field"]),
   amountCents: z.number().int(),
+  serviceItemId: id.nullable(),
 });
 
 // ---- Work orders ----
