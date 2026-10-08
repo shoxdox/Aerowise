@@ -832,6 +832,8 @@ export interface InvoicesTable {
   voidReason: string | null;
   createdBy: string | null;
   workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
+  /** Deposit money applied to this final invoice (SW-5b); comes off its total. */
+  depositAppliedCents: Generated<number>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -908,8 +910,65 @@ export interface RefundsTable {
   reason: string | null;
   failureReason: string | null;
   createdBy: string | null;
+  /** A refund Aerowise reserves before calling the provider (SW-5b deposits). */
+  idempotencyKey: ColumnType<string | null, string | null | undefined, string | null>;
+  reservation: ColumnType<DepositReservation | null, DepositReservation | null | undefined, DepositReservation | null>;
+  finalInvoiceId: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export type DepositReservation = "deposit_free" | "deposit_applied";
+export type DepositLedgerKind =
+  | "received"
+  | "refunded"
+  | "refunded_external"
+  | "applied"
+  | "unapplied"
+  | "retained"
+  | "retain_reversed"
+  | "shortfall"
+  | "shortfall_released"
+  | "deposit_reversal";
+
+export interface EstimateInvoicesTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  invoiceId: string;
+  role: "deposit" | "final";
+  replacesInvoiceId: string | null;
+  voidedAt: Timestamp | null;
+  createdAt: CreatedAt;
+}
+
+export interface DepositLedgerTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  depositInvoiceId: string;
+  estimateId: string;
+  kind: DepositLedgerKind;
+  amountCents: number;
+  causeKey: string;
+  paymentId: string | null;
+  refundId: string | null;
+  finalInvoiceId: string | null;
+  actorUserId: string | null;
+  reason: string | null;
+  createdAt: CreatedAt;
+}
+
+export interface DepositShortfallResolutionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  depositInvoiceId: string;
+  amountCents: number;
+  kind: "supplemental_invoice" | "write_off";
+  invoiceId: string | null;
+  reason: string;
+  createdBy: string | null;
+  createdAt: CreatedAt;
 }
 
 export interface CheckoutSessionsTable {
@@ -1366,6 +1425,7 @@ export interface EstimatesTable {
   expiresOn: Nullable<string>;
   sourceKind: Generated<EstimateSourceKind>;
   sourceId: Nullable<string>;
+  depositCents: Nullable<number>;
   sentAt: Nullable<Date>;
   viewedAt: Nullable<Date>;
   acceptedVersion: Nullable<number>;
@@ -1413,6 +1473,7 @@ export interface EstimateVersionsTable {
   totals: ColumnType<unknown, string, never>;
   termsText: string;
   expiresOn: string | null;
+  depositCents: ColumnType<number | null, number | null | undefined, never>;
   contentSha256: string;
   sentAt: Date;
   sentBy: string | null;
@@ -1561,6 +1622,9 @@ export interface DB {
   estimateVersions: EstimateVersionsTable;
   estimateEvents: EstimateEventsTable;
   estimateLinks: EstimateLinksTable;
+  estimateInvoices: EstimateInvoicesTable;
+  depositLedger: DepositLedgerTable;
+  depositShortfallResolutions: DepositShortfallResolutionsTable;
   portalLinks: PortalLinksTable;
   serviceRequests: ServiceRequestsTable;
   smsMessages: SmsMessagesTable;
