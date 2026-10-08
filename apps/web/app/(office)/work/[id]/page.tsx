@@ -10,7 +10,6 @@ import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
 import { WorkCoverage } from "@/components/WorkCoverage";
 import { day, money } from "@/lib/format";
-import { useFeature } from "@/lib/features";
 import { canEdit, useSession } from "@/lib/session";
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
