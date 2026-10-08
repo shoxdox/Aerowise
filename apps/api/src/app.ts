@@ -53,6 +53,7 @@ import { demoVisitRoutes } from "./routes/demo-visits.ts";
 import { legalRoutes } from "./routes/legal.ts";
 import { serviceItemRoutes } from "./routes/service-items.ts";
 import { workOrderRoutes } from "./routes/work-orders.ts";
+import { estimateRoutes } from "./routes/estimates.ts";
 import { formRoutes } from "./routes/forms.ts";
 import { workSyncRoutes } from "./routes/work-sync.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
@@ -295,6 +296,7 @@ export async function buildApp({
   await app.register(serviceItemRoutes, { db, now, features });
   await app.register(formRoutes, { db, features });
   await app.register(workSyncRoutes, { db, now, store, signer, features });
+  await app.register(estimateRoutes, { db, now, features, appUrl });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });

@@ -760,6 +760,17 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **An outbox op of an unknown kind holds back later ops of the same record** (`inspectionClientId`), so a record's changes never send out of order after a rollback. Other records keep sending. Failed ops still don't block, as before.
 - **Contract for SW-2:** the work DB name (`aerowise-tech-work:<org>:<user>`) and its `outbox` store name are fixed by SW-2a, and SW-2 must never raise the inspection DB's version.
 
+## 2026-10-08 · SW-5a Estimates
+
+- **Behind `estimates`, off by default.** The flag needs `work_orders` (an accepted estimate becomes a work order); `AEROWISE_FEATURES=estimates` alone is a startup error. With it off, the office can still read and finish existing estimates and the homeowner's link still works; nothing new can be drafted, and the office cannot record an acceptance or cancel accepted work.
+- **What is sent never changes.** Sending freezes the draft into an immutable `estimate_versions` row (lines, totals, terms, last day, sha256 of the canonical content). Revising starts the next version as a draft; the homeowner's link shows "being updated" until it is sent, and acceptance names the version, so a stale page is refused (`estimate_revised`) instead of accepting a price the homeowner never saw.
+- **Links are hash-only**, like portal links. Each email makes its own link when the email is sent, so no token sits in the task queue; the office can make another to share by hand.
+- **Accepting is one transaction and happens once.** The homeowner's signature becomes a `signed_documents` row (`estimate_acceptance`, version hash, chosen options, totals, IP and browser), then the work order is created with the chosen lines. A replay of the same version answers "already accepted"; a second concurrent accept is refused by the estimate's row lock and the one-live-work-order-per-source index.
+- **Office-recorded acceptance is not a signature.** A paper or phone approval is recorded with the office's typed note and user, kind `office_recorded`, with no signed document; it is never shown to anyone as the customer's e-signature.
+- **Expiry uses the company's day.** An estimate good until a date expires at the first hour that date has passed in the company's timezone (a queued task per sent version, and a check when the link is opened or used). Expiring is its own transaction, so a refused late acceptance still leaves the estimate expired.
+- **Cancel after acceptance only before work.** Cancelling an accepted estimate cancels its work order and open visit, and is refused once a visit is completed or a non-void invoice bills the work. A wider rule (discarding draft invoices) waits for SW-5b's deposits.
+- **Rollback floor:** SW-5a once any estimate exists. With the flag off and no estimates, rolling back below SW-5a is safe.
+
 ## 2026-10-08 · SW-11 Authority CSV export framework
 
 - **The CSV is a package document.** A filing by `csv_export` gets the authority's CSV in its submission package, after the filed report, hashed like every other document. Packages never change, so the bytes the office uploads are the bytes on record.
