@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import pg from "pg";
+import { bannerHistory, holdOutbox, releaseOutbox, watchBanner } from "./sync-banner-steps.ts";
 
 // SW-6: a pumping visit recorded on the technician's phone with no signal, its pump-out sent once,
 // then a disposal record with its manifest photo, and the office's disposal records and log. The
@@ -241,6 +242,42 @@ test("a manifest photo answered with only an acknowledgment (the office mixed th
     await page.reload();
     await page.getByTestId("open-disposal").click();
     await expect(page.getByTestId("record-disposal").locator(".card", { hasText: "500.0 gallons" })).toContainText("with the office");
+  } finally {
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [wo.jobId]);
+    await db.end();
+  }
+});
+
+test("a disposal record saved while another tab holds the outbox is not shown as sent until the office has it", async ({ page, browser }) => {
+  const api = await office(browser);
+  const title = `Pump-out (held send ${Date.now()})`;
+  const wo = await pumpingForTess(api, title);
+  await techPhone(page);
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  try {
+    const group = await pumpOutWithSignal(page, db, wo, title);
+    await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
+    const loads = async () => (await db.query("select count(*)::int as n from disposal_load_items where pumping_group_id = $1", [group])).rows[0].n as number;
+    await page.reload();
+    await page.getByTestId("open-disposal").click();
+    const screen = page.getByTestId("record-disposal");
+    await screen.locator("label", { hasText: "500.0 gallons" }).getByRole("checkbox").check();
+    await screen.getByLabel("Facility").selectOption({ label: wo.facility.name });
+    await screen.getByLabel("Total delivered").fill("500");
+    await screen.getByLabel("Manifest/reference number").fill("E2E-HELD-1");
+    await watchBanner(page);
+    await holdOutbox(page);
+    await screen.getByRole("button", { name: "Save disposal record" }).click();
+    await expect(page.getByTestId("work-stops")).toBeVisible();
+    // Saved on the phone, not at the office, and not claimed sent.
+    await expect(page.getByTestId("sync-status")).toHaveText("Checking for changes to send…");
+    expect(await loads()).toBe(0);
+    expect((await bannerHistory(page)).slice(1)).not.toContain("All changes sent");
+
+    await releaseOutbox(page);
+    await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
+    expect(await loads()).toBe(1);
   } finally {
     await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [wo.jobId]);
     await db.end();

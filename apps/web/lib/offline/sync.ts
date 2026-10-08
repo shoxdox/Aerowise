@@ -294,7 +294,8 @@ async function drainOnce() {
     if (!next && !nextWork) {
       // Nothing left that sending could clear: a full phone may try again (the next save that does not fit says so again).
       if (counts.pending === 0) storageMayHaveRoom();
-      emit({ kind: "idle", ...counts });
+      // A save during this pass asked for another one: these counts may predate it, so they claim nothing sent.
+      emit({ kind: again ? "syncing" : "idle", ...counts });
       return;
     }
     emit({ kind: "syncing", ...counts });
@@ -345,7 +346,8 @@ export async function retryFailed(): Promise<void> {
 export function syncNow(): Promise<void> {
   // Something may have just been saved: until a pass has counted the queues again, the banner
   // must not keep saying everything was sent (a pass already running counts them on its next turn).
-  emit({ ...state, kind: "syncing" });
+  // With changes already waiting it says so already, and keeps saying it as it was.
+  if (state.pending === 0 && state.kind !== "syncing") emit({ ...state, kind: "syncing" });
   if (running) {
     again = true;
     return running;
