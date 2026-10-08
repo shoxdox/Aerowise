@@ -1,5 +1,16 @@
 # Aerowise — current demo and pilot handoff
 
+## Current checkpoint — October 8, 2026, 2:11 PM
+
+Staging is on application `81048d33fd88bca93456b89b1c4a4e80edcfa18b`, migrations through 0057, with `work_orders,service_items,field_work,estimates,plan_builder,deposits`. #106/#107/#108/#109/#111/#112 were independently reviewed, fixed, serialized and merged; final application tree equals the reviewed candidate. #110 remains evidence-only and was never merged. Hooks lint follow-up #113 is merged on main (`f523d07`), pending the next staging build.
+
+Validation: 815 API / 153 domain tests plus the other packages passed on the frozen candidate. Browser evidence is the original 68/69 run (one fixture collision), reproduced collision, test-only cleanup and corrected 40/40 affected/later cases; collectively covers all 69, not a new full 69/69 run. Independent clean Docker image smoke, upgrade preserving legacy invoice/plan values, flag-off then flag-on staging deployment, health/worker/demo isolation and public reseed passed. Staging synthetic estimate acceptance, test deposit receive/apply/$50 refund and custom plan option/intake signing passed. Scratch restore `db-20261008T190929Z.dump` passed: 95 tables, 3,661 rows, migration 0057, 79 files. That backup preceded the last synthetic work sign-off. See RUNBOOK for exact evidence and remaining bounded checks.
+
+Expansion remains incomplete: SW-6/SW-10 are underway; SW-7/SW-9 wait on prerequisites; SW-12 final validation/floor drills/walkthrough remains. Hosted Actions jobs still do not start under the billing/spending restriction. Physical-phone, real-provider/Intuit, legal/coverage and authority-acceptance gates remain open. DEMO_MODE=true, no live overrides/Twilio/Resend; production container identity/start time unchanged. No new account, key or DNS action is needed for the fictional staging demo.
+
+Earlier dated checkpoints below are historical.
+
+
 ## Continuation checkpoint — October 8, 2026
 
 Staging remains c004148; no application redeploy during this checkpoint. Both #107 estimate fixes are now pushed and await independent Codex rereview. Claude reports the full combined #110 run passed (763 API / 151 domain / 67 browser tests); Codex verified its later delta changes only four test files. #111 adds office options, signing intake and fictional demo tiers, with targeted checks reported; it is not in that combined run. Three Claude threads wait for Codex review, and deposits are still being tested. None of #106–111 is merged or deployed. A new Codex chat is taking over using the [complete handoff](engineering/CODEX-CLAUDE-HANDOFF-2026-10-08.md); the earlier morning release record below remains valid for staging.
