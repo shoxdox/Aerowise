@@ -1,8 +1,8 @@
-import type { Database } from "@aerowise/db";
+import type { Database, DB } from "@aerowise/db";
 import { amountDue, invoiceSnapshot, platformFeeCents } from "@aerowise/domain";
 import type { PaymentProvider } from "@aerowise/payments";
 import { billingEmail, payUrlFor } from "@aerowise/tasks";
-import { sql } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { HttpError, unprocessable } from "./errors.ts";
 
 /** Reuse an open checkout page only if it stays payable for at least this long. */
@@ -10,9 +10,9 @@ const REUSE_MIN_REMAINING_MS = 60 * 60 * 1000;
 
 export const notFoundLink = () => new HttpError(404, "not_found", "This payment link is not valid. Contact your service provider for a new one.");
 
-/** An open invoice by its pay-link token, with what checkout needs. */
-export async function invoiceByToken(db: Database, token: string) {
-  const inv = await db
+/** An invoice and its company, with what checkout needs. */
+const payable = (ex: Database | Transaction<DB>) =>
+  ex
     .selectFrom("invoices as i")
     .innerJoin("organizations as o", "o.id", "i.organizationId")
     .select([
@@ -30,14 +30,35 @@ export async function invoiceByToken(db: Database, token: string) {
       "o.stripeAccountId",
       "o.stripeChargesEnabled",
       "o.platformFeeBps",
-    ])
-    .where("i.publicToken", "=", token)
-    .executeTakeFirst();
+    ]);
+
+/** An open invoice by its pay-link token, with what checkout needs. */
+export async function invoiceByToken(db: Database, token: string) {
+  const inv = await payable(db).where("i.publicToken", "=", token).executeTakeFirst();
   // A void invoice's link stops working.
   if (!inv || inv.status !== "open") throw notFoundLink();
   return inv;
 }
 export type PayableInvoice = Awaited<ReturnType<typeof invoiceByToken>>;
+
+/**
+ * Why a deposit invoice no longer takes payment: its estimate was cancelled (or the deposit
+ * link voided). Money already paid, and a provider payment that still settles, are kept for
+ * the office to refund or keep; only new checkout pages are refused.
+ */
+export async function depositClosedReason(db: Database | Transaction<DB>, organizationId: string, invoiceId: string): Promise<string | null> {
+  const d = await db
+    .selectFrom("estimateInvoices as ei")
+    .innerJoin("estimates as e", (j) => j.onRef("e.id", "=", "ei.estimateId").onRef("e.organizationId", "=", "ei.organizationId"))
+    .select(["e.status", "ei.voidedAt"])
+    .where("ei.organizationId", "=", organizationId)
+    .where("ei.invoiceId", "=", invoiceId)
+    .where("ei.role", "=", "deposit")
+    .orderBy("ei.createdAt", "desc")
+    .executeTakeFirst();
+  if (!d || (d.status !== "cancelled" && d.voidedAt === null)) return null;
+  return "This estimate was cancelled, so its deposit is no longer collected.";
+}
 
 export const canPayOnline = (provider: PaymentProvider | null, inv: PayableInvoice) => !!provider && !!inv.stripeAccountId && inv.stripeChargesEnabled && amountDue(inv) > 0;
 
@@ -49,14 +70,21 @@ export async function openCheckout(
   db: Database,
   opts: { provider: PaymentProvider | null; appUrl: string; token: string; inv: PayableInvoice; now: Date; successUrl?: string },
 ): Promise<{ url: string }> {
-  const { provider, inv } = opts;
-  if (!canPayOnline(provider, inv) || !provider) throw unprocessable(amountDue(inv) === 0 ? "Nothing is due on this invoice" : "Online payment is not available. Contact your service provider.");
-  const due = amountDue(inv);
-  const fee = platformFeeCents(due, inv.platformFeeBps);
+  const { provider } = opts;
   const at = opts.now;
   return db.transaction().execute(async (trx) => {
-    // One checkout at a time per invoice.
-    await trx.selectFrom("invoices").select("id").where("id", "=", inv.id).forUpdate().executeTakeFirstOrThrow();
+    // One checkout at a time per invoice. Everything is read again under the lock: the caller's
+    // copy was read before it, and a payment, void or cancellation may have landed in between
+    // (each takes this lock), so what is due and whether it can be paid come from now.
+    await trx.selectFrom("invoices").select("id").where("id", "=", opts.inv.id).forUpdate().executeTakeFirstOrThrow();
+    const inv = await payable(trx).where("i.id", "=", opts.inv.id).where("i.organizationId", "=", opts.inv.organizationId).executeTakeFirst();
+    if (!inv || inv.status !== "open") throw notFoundLink();
+    if (!canPayOnline(provider, inv) || !provider) throw unprocessable(amountDue(inv) === 0 ? "Nothing is due on this invoice" : "Online payment is not available. Contact your service provider.");
+    const due = amountDue(inv);
+    const fee = platformFeeCents(due, inv.platformFeeBps);
+    // Under the invoice's lock, which cancelling the estimate also takes: no new page after it.
+    const closed = await depositClosedReason(trx, inv.organizationId, inv.id);
+    if (closed) throw new HttpError(409, "payment_closed", `${closed} Contact your service provider.`);
     const open = await trx
       .selectFrom("checkoutSessions")
       .select(["url", "expiresAt"])

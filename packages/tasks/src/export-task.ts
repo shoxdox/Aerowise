@@ -36,7 +36,18 @@ export const EXPORT_TABLES: { file: string; table: string; omit?: string[] }[] =
   { file: "work_order_lines.csv", table: "work_order_lines" },
   { file: "work_order_events.csv", table: "work_order_events" },
   { file: "work_order_notes.csv", table: "work_order_notes" },
+  { file: "work_records.csv", table: "work_records" },
+  { file: "work_photos.csv", table: "work_attachments" },
+  { file: "work_held_records.csv", table: "work_sync_conflicts" },
+  { file: "work_assignments.csv", table: "job_assignments" },
+  { file: "estimates.csv", table: "estimates" },
+  { file: "estimate_lines.csv", table: "estimate_lines" },
+  { file: "estimate_versions.csv", table: "estimate_versions" },
+  { file: "estimate_events.csv", table: "estimate_events" },
   { file: "coverage_uses.csv", table: "coverage_uses" },
+  { file: "estimate_invoices.csv", table: "estimate_invoices" },
+  { file: "deposit_ledger.csv", table: "deposit_ledger" },
+  { file: "deposit_shortfall_resolutions.csv", table: "deposit_shortfall_resolutions" },
 ];
 
 /** The stored documents of a full export: where each table keeps its file, and the folder it goes in. */

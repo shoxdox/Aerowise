@@ -293,6 +293,44 @@ describe("demo reseed", () => {
     }
   });
 
+  it("adds the estimate story when estimates are switched on: one waiting, one signed and made a work order", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "estimates"]) })).toBe(true);
+    const estimates = await ctx.db.selectFrom("estimates").select(["organizationId", "status", "acceptanceKind", "workOrderId"]).orderBy("number").execute();
+    expect(estimates.map((e) => [e.status, e.acceptanceKind])).toEqual([
+      ["sent", null],
+      ["accepted", "signature"],
+    ]);
+    const wo = await ctx.db.selectFrom("workOrders").select(["sourceKind"]).where("id", "=", estimates[1]!.workOrderId!).executeTakeFirstOrThrow();
+    expect(wo.sourceKind).toBe("estimate");
+    const doc = await ctx.db.selectFrom("signedDocuments").select(["kind", "signerName"]).where("estimateId", "is not", null).executeTakeFirstOrThrow();
+    expect(doc).toEqual({ kind: "estimate_acceptance", signerName: "Fictional Homeowner" });
+
+    const organizationId = estimates[0]!.organizationId;
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["estimates", "estimateVersions", "estimateEvents", "estimateLinks", "estimateLines"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", organizationId).execute()).toEqual([]);
+    }
+  });
+
+  it("asks for a deposit on the signed estimate when deposits are on, paid by card on the test checkout, and reseeds clean", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "estimates", "deposits"]) })).toBe(true);
+    const link = await ctx.db.selectFrom("estimateInvoices as ei").innerJoin("invoices as i", "i.id", "ei.invoiceId").select(["ei.organizationId", "ei.role", "i.totalCents", "i.paymentStatus"]).executeTakeFirstOrThrow();
+    expect(link).toMatchObject({ role: "deposit", totalCents: 10000, paymentStatus: "paid" });
+    const ledger = await ctx.db.selectFrom("depositLedger").select(["kind", "amountCents"]).execute();
+    expect(ledger).toEqual([{ kind: "received", amountCents: 10000 }]);
+
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["estimateInvoices", "depositLedger", "depositShortfallResolutions"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", link.organizationId).execute()).toEqual([]);
+    }
+  });
+
   it("prices and invoices the pump-out from the catalog when service items are switched on too", async () => {
     const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
     await reseedDemo(ctx.db, { filesDir: files });

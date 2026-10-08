@@ -1,3 +1,4 @@
+import type { PaymentProvider } from "@aerowise/payments";
 import { OutboxTransport, prepareFiling, SUBMIT_FILING, submitFiling, type ComplianceContext, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
@@ -18,6 +19,8 @@ import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionConfig } from "@aerowise/
 import { BILLING_RUN } from "./billing-task.ts";
 import { buildExport, EXPORT_DATA, failExport } from "./export-task.ts";
 import { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
+import { ESTIMATE_EMAIL, ESTIMATE_EXPIRY, expireEstimate, sendEstimateEmail } from "./estimate-task.ts";
+import { RECONCILE_REFUNDS, reconcileRefunds } from "./refund-task.ts";
 
 export * from "./queue.ts";
 export * from "./heartbeat.ts";
@@ -46,6 +49,19 @@ export { cancelOpenVisits, serviceEndForVisit } from "./contract-end.ts";
 export { CONTRACT_FILINGS, prepareContractFilingsFor, runContractFilings, scheduleContractFilingSweeps, SEND_CUSTOMER_REPORT, sendCustomerReport } from "./filing-task.ts";
 export { BILLING_RUN, scheduleBillingRuns } from "./billing-task.ts";
 export { buildExport, DEMO_CSV_COLUMN, EXPORT_DATA, EXPORT_TABLES, queueExport } from "./export-task.ts";
+export {
+  createEstimateLink,
+  ESTIMATE_EMAIL,
+  ESTIMATE_EXPIRY,
+  estimateExpired,
+  estimateUrlFor,
+  expireEstimate,
+  expiryRunAt,
+  hashEstimateToken,
+  queueEstimateEmail,
+  queueEstimateExpiry,
+  sendEstimateEmail,
+} from "./estimate-task.ts";
 export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
@@ -70,6 +86,8 @@ export interface TaskContext {
   geocoder?: Geocoder | null;
   /** What companies pay Aerowise: Stripe Billing (or its stand-in) and the prices. Without a provider, months are counted but not invoiced. */
   billing?: { provider: BillingProvider | null; config: SubscriptionConfig } | null;
+  /** Homeowner payments (Stripe Connect or its stand-in); without it, reserved refunds wait. */
+  payments?: PaymentProvider | null;
 }
 
 export const DEFAULT_APP_URL = "http://localhost:3000";
@@ -172,6 +190,20 @@ async function run(ctx: TaskContext, task: Task) {
     case SUBMIT_FILING:
       await submitFiling(complianceContext(ctx), task.organizationId!, payload.filingId!);
       return;
+    case ESTIMATE_EMAIL:
+      await sendEstimateEmail(
+        { db: ctx.db, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), appUrl: ctx.appUrl ?? DEFAULT_APP_URL, from: ctx.invoiceMailFrom },
+        task.organizationId!,
+        task.id,
+        task.payload as unknown as { estimateId: string; version: number; createdBy: string | null },
+      );
+      return;
+    case RECONCILE_REFUNDS:
+      await reconcileRefunds(ctx.db, ctx.payments ?? null, ctx.now);
+      return;
+    case ESTIMATE_EXPIRY:
+      await expireEstimate(ctx.db, task.organizationId!, payload.estimateId!, Number((task.payload as { version: number }).version), ctx.now());
+      return;
     case BILLING_RUN: {
       const provider = ctx.billing?.provider ?? null;
       const config = ctx.billing?.config ?? DEFAULT_SUBSCRIPTION_CONFIG;
@@ -230,3 +262,4 @@ export async function drainTasks(ctx: TaskContext, workerId = "inline", organiza
   while (await runNextTask(ctx, workerId, {}, organizationId)) n++;
   return n;
 }
+export { RECONCILE_AFTER_MS, RECONCILE_REFUNDS, reconcileRefunds, scheduleRefundReconcile } from "./refund-task.ts";

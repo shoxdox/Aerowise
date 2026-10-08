@@ -29,3 +29,12 @@ describe("work order permissions", () => {
     for (const role of ["office", "read_only"] as const) expect(roleHasPermission(role, "work:complete")).toBe(false);
   });
 });
+
+describe("estimate permissions", () => {
+  it("lets the owner and office write estimates, read-only users read them, and keeps prices from technicians", () => {
+    for (const role of ["owner", "office", "read_only"] as const) expect(roleHasPermission(role, "estimates:read")).toBe(true);
+    for (const role of ["owner", "office"] as const) expect(roleHasPermission(role, "estimates:write")).toBe(true);
+    expect(roleHasPermission("read_only", "estimates:write")).toBe(false);
+    for (const p of ["estimates:read", "estimates:write"] as const) expect(roleHasPermission("technician", p)).toBe(false);
+  });
+});

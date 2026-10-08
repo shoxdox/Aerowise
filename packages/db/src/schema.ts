@@ -21,6 +21,9 @@ import type {
   WorkCategory,
   WorkOrderStatus,
   WorkSourceKind,
+  EstimateStatus,
+  EstimateSourceKind,
+  EstimateAcceptanceKind,
 } from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
@@ -53,6 +56,7 @@ export interface OrganizationsTable {
   nextInvoiceNumber: Generated<number>;
   /** Next work order number (WO-1001 onward), gapless per company. */
   nextWorkOrderNumber: Generated<number>;
+  nextEstimateNumber: Generated<number>;
   stripeAccountId: string | null;
   stripeChargesEnabled: Generated<boolean>;
   stripeDetailsSubmitted: Generated<boolean>;
@@ -885,6 +889,8 @@ export interface InvoicesTable {
   voidReason: string | null;
   createdBy: string | null;
   workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
+  /** Deposit money applied to this final invoice (SW-5b); comes off its total. */
+  depositAppliedCents: Generated<number>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -961,8 +967,76 @@ export interface RefundsTable {
   reason: string | null;
   failureReason: string | null;
   createdBy: string | null;
+  /** A refund Aerowise reserves before calling the provider (SW-5b deposits). */
+  idempotencyKey: ColumnType<string | null, string | null | undefined, string | null>;
+  reservation: ColumnType<DepositReservation | null, DepositReservation | null | undefined, DepositReservation | null>;
+  finalInvoiceId: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export type DepositReservation = "deposit_free" | "deposit_applied";
+export type DepositLedgerKind =
+  | "received"
+  | "refunded"
+  | "refunded_external"
+  | "applied"
+  | "unapplied"
+  | "retained"
+  | "retain_reversed"
+  | "shortfall"
+  | "shortfall_released"
+  | "deposit_reversal";
+
+export interface EstimateInvoicesTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  invoiceId: string;
+  role: "deposit" | "final";
+  replacesInvoiceId: string | null;
+  voidedAt: Timestamp | null;
+  createdAt: CreatedAt;
+}
+
+export interface DepositLedgerTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  depositInvoiceId: string;
+  estimateId: string;
+  kind: DepositLedgerKind;
+  amountCents: number;
+  causeKey: string;
+  paymentId: string | null;
+  refundId: string | null;
+  finalInvoiceId: string | null;
+  actorUserId: string | null;
+  reason: string | null;
+  createdAt: CreatedAt;
+}
+
+export interface DepositShortfallResolutionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  depositInvoiceId: string;
+  amountCents: number;
+  kind: "supplemental_invoice" | "write_off";
+  invoiceId: string | null;
+  reason: string;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
+export interface DepositRequestsTable {
+  organizationId: string;
+  requestId: string;
+  action: "refund" | "retain" | "retain_reverse" | "shortfall" | "refund_job";
+  invoiceId: string;
+  bodySha256: string;
+  result: ColumnType<unknown, string | undefined, string>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
 }
 
 export interface CheckoutSessionsTable {
@@ -1154,6 +1228,13 @@ export interface SignedDocumentsTable {
   pdfStorageKey: string | null;
   pdfSha256: string | null;
   pdfByteSize: number | null;
+  // SW-2 (0055): a work-completion signature's own phone client id, its record's client id
+  // and the form's signature requirement it fulfils.
+  offlineClientId: ColumnType<string | null, string | null | undefined, never>;
+  recordClientId: ColumnType<string | null, string | null | undefined, never>;
+  requirementKey: ColumnType<string | null, string | null | undefined, never>;
+  /** Set on an estimate acceptance (SW-5). */
+  estimateId: ColumnType<string | null, string | null | undefined, never>;
   createdAt: CreatedAt;
 }
 
@@ -1401,6 +1482,101 @@ export interface WorkTypesTable {
   updatedAt: Timestamp;
 }
 
+type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>;
+
+export interface EstimatesTable {
+  id: Generated<string>;
+  organizationId: string;
+  number: number;
+  customerId: string;
+  siteId: string;
+  workTypeId: Nullable<string>;
+  title: string;
+  status: Generated<EstimateStatus>;
+  currentVersion: Generated<number>;
+  taxRateBps: Generated<number>;
+  discountCents: Generated<number>;
+  termsText: Generated<string>;
+  expiresOn: Nullable<string>;
+  sourceKind: Generated<EstimateSourceKind>;
+  sourceId: Nullable<string>;
+  depositCents: Nullable<number>;
+  sentAt: Nullable<Date>;
+  viewedAt: Nullable<Date>;
+  acceptedVersion: Nullable<number>;
+  acceptedAt: Nullable<Date>;
+  acceptanceKind: Nullable<EstimateAcceptanceKind>;
+  acceptedDocumentId: Nullable<string>;
+  officeEvidence: Nullable<string>;
+  acceptedBy: Nullable<string>;
+  acceptedSelection: ColumnType<unknown, string | null | undefined, string | null>;
+  workOrderId: Nullable<string>;
+  declinedAt: Nullable<Date>;
+  declinedReason: Nullable<string>;
+  expiredAt: Nullable<Date>;
+  voidedAt: Nullable<Date>;
+  voidReason: Nullable<string>;
+  cancelledAt: Nullable<Date>;
+  cancelReason: Nullable<string>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface EstimateLinesTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  position: number;
+  description: string;
+  quantityMilli: number;
+  unitPriceCents: number;
+  taxable: Generated<boolean>;
+  optional: Generated<boolean>;
+  selectedByDefault: Generated<boolean>;
+  createdAt: CreatedAt;
+}
+
+export interface EstimateVersionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  version: number;
+  lines: ColumnType<unknown, string, never>;
+  taxRateBps: number;
+  discountCents: number;
+  totals: ColumnType<unknown, string, never>;
+  termsText: string;
+  expiresOn: string | null;
+  depositCents: ColumnType<number | null, number | null | undefined, never>;
+  contentSha256: string;
+  sentAt: Date;
+  sentBy: string | null;
+}
+
+export interface EstimateEventsTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  eventType: string;
+  summary: string;
+  actorUserId: string | null;
+  details: ColumnType<unknown, string | undefined, never>;
+  occurredAt: Timestamp;
+}
+
+export interface EstimateLinksTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  tokenHash: Buffer;
+  source: "email" | "office";
+  sentTo: string | null;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
 export interface WorkOrdersTable {
   id: Generated<string>;
   organizationId: string;
@@ -1519,6 +1695,15 @@ export interface DB {
   renewalAddons: RenewalAddonsTable;
   renewals: RenewalsTable;
   signedDocuments: SignedDocumentsTable;
+  estimates: EstimatesTable;
+  estimateLines: EstimateLinesTable;
+  estimateVersions: EstimateVersionsTable;
+  estimateEvents: EstimateEventsTable;
+  estimateLinks: EstimateLinksTable;
+  estimateInvoices: EstimateInvoicesTable;
+  depositLedger: DepositLedgerTable;
+  depositShortfallResolutions: DepositShortfallResolutionsTable;
+  depositRequests: DepositRequestsTable;
   portalLinks: PortalLinksTable;
   serviceRequests: ServiceRequestsTable;
   smsMessages: SmsMessagesTable;
@@ -1550,4 +1735,91 @@ export interface DB {
   workOrderLines: WorkOrderLinesTable;
   workOrderEvents: WorkOrderEventsTable;
   workOrderNotes: WorkOrderNotesTable;
+  jobAssignments: JobAssignmentsTable;
+  workRecords: WorkRecordsTable;
+  workSyncConflicts: WorkSyncConflictsTable;
+  workAttachments: WorkAttachmentsTable;
+}
+
+// ---- SW-2: field records for work visits (0055) ----
+
+export type AssignmentEndReason = "reassigned" | "unassigned" | "cancelled" | "office_completed";
+export type WorkConflictReason = "reassigned" | "cancelled" | "office_completed";
+
+/** Written by the jobs trigger; append-only apart from ending a row once. */
+export interface JobAssignmentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  jobId: string;
+  jobType: Generated<"work">;
+  technicianUserId: string;
+  assignedAt: Generated<Date>;
+  endedAt: Date | null;
+  endReason: AssignmentEndReason | null;
+}
+
+export interface WorkRecordsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  jobId: string;
+  jobType: Generated<"work">;
+  workOrderId: string;
+  siteId: string;
+  technicianUserId: string;
+  templateId: string;
+  status: Generated<"draft" | "completed">;
+  validationStatus: Generated<"pending" | "valid" | "invalid">;
+  validationProblems: ColumnType<unknown, string | undefined, string>;
+  answers: ColumnType<unknown, string | undefined, string>;
+  summary: ColumnType<unknown, string | null | undefined, string | null>;
+  summarySha256: string | null;
+  finalVisit: Generated<boolean>;
+  phoneRevision: Generated<number>;
+  arrivedAt: Timestamp;
+  completedAt: Timestamp | null;
+  arrivalLat: number | null;
+  arrivalLng: number | null;
+  completionLat: number | null;
+  completionLng: number | null;
+  attachedBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkSyncConflictsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  jobId: string;
+  jobType: Generated<"work">;
+  workOrderId: string;
+  technicianUserId: string;
+  reason: WorkConflictReason;
+  status: Generated<"held" | "attached" | "dismissed">;
+  payload: ColumnType<unknown, string | null | undefined, string | null>;
+  phoneRevision: Generated<number>;
+  resolutionNote: string | null;
+  resolvedAt: Timestamp | null;
+  resolvedBy: string | null;
+  attachedJobId: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface WorkAttachmentsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  recordClientId: string;
+  photoKey: string;
+  storageKey: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  capturedAt: Timestamp | null;
+  lat: number | null;
+  lng: number | null;
+  uploadedBy: string;
+  createdAt: CreatedAt;
 }

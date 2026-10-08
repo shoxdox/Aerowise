@@ -166,7 +166,28 @@ async function refundEvent(trx: Transaction<DB>, organizationId: string, r: Obj,
   await trx.selectFrom("invoices").select("id").where("id", "=", payment.invoiceId).forUpdate().executeTakeFirstOrThrow();
 
   const status = refundStatusOf(str(r.status));
-  const existing = await trx.selectFrom("refunds").select(["id", "status"]).where("providerRefundId", "=", refundId).forUpdate().executeTakeFirst();
+  let existing = await trx.selectFrom("refunds").select(["id", "status"]).where("providerRefundId", "=", refundId).forUpdate().executeTakeFirst();
+  // A refund Aerowise reserved before asking Stripe carries the reservation's id. Its webhook
+  // can arrive before the route stores Stripe's id; it settles that reservation and is never
+  // booked again as a refund made in the dashboard. The metadata is ours but only trusted
+  // when the company, payment and amount all agree with the reservation.
+  const reservedId = str(((r.metadata ?? {}) as Obj).refundId);
+  if (!existing && reservedId && /^[0-9a-f-]{36}$/i.test(reservedId)) {
+    const reserved = await trx
+      .selectFrom("refunds")
+      .select(["id", "status", "paymentId", "amountCents", "providerRefundId"])
+      .where("organizationId", "=", organizationId)
+      .where("id", "=", reservedId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (reserved) {
+      if (reserved.paymentId !== payment.id || reserved.amountCents !== amount || (reserved.providerRefundId !== null && reserved.providerRefundId !== refundId)) {
+        return "ignored: refund does not match the reservation it names";
+      }
+      await trx.updateTable("refunds").set({ providerRefundId: refundId, updatedAt: now }).where("id", "=", reserved.id).execute();
+      existing = { id: reserved.id, status: reserved.status };
+    }
+  }
   if (existing && (existing.status !== "pending" || existing.status === status)) return `unchanged: refund already ${existing.status}`;
   if (existing) {
     await trx.updateTable("refunds").set({ status, failureReason: str(r.failure_reason), updatedAt: now }).where("id", "=", existing.id).execute();

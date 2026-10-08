@@ -22,10 +22,12 @@ export default function InvoicePage() {
   const { data: inv, error, reload } = useLoad<InvoiceDetail>(`/invoices/${id}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"payment" | "void" | null>(null);
+  const [panel, setPanel] = useState<"payment" | "void" | "refundJob" | null>(null);
   const [refunding, setRefunding] = useState<Payment | null>(null);
   const [copied, setCopied] = useState(false);
   const [texted, setTexted] = useState<string | null>(null);
+  // One id per opened "Refund the job": a retry or a second click sends the same one, so the money moves once.
+  const [refundJobRequestId, setRefundJobRequestId] = useState("");
 
   if (error) return <p className="error">{error}</p>;
   if (!inv) return <p className="muted">Loading…</p>;
@@ -92,6 +94,12 @@ export default function InvoicePage() {
       <div className="row">
         <h1>{label}</h1>
         <InvoiceStatusBadge invoice={inv} />
+        {inv.estimate && (
+          <span className="muted small">
+            {inv.estimate.role === "deposit" ? "Deposit for" : "Final invoice for"} <Link href={`/estimates/${inv.estimate.id}`}>{inv.estimate.label}</Link>
+            {inv.estimate.role === "deposit" && ": refund or keep it from the estimate"}
+          </span>
+        )}
         <span className="spacer" />
         {inv.pdfReady && (
           <a className="button secondary" href={`/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer">
@@ -209,6 +217,12 @@ export default function InvoicePage() {
                 <dd>{money(inv.taxCents)}</dd>
               </>
             )}
+            {inv.depositAppliedCents > 0 && (
+              <>
+                <dt>Deposit applied</dt>
+                <dd>−{money(inv.depositAppliedCents)}</dd>
+              </>
+            )}
             <dt>
               <strong>Total</strong>
             </dt>
@@ -248,6 +262,17 @@ export default function InvoicePage() {
                 Record a payment
               </button>
             )}
+            {owner && inv.estimate?.role === "final" && inv.depositAppliedCents > 0 && (
+              <button
+                className="secondary"
+                onClick={() => {
+                  setRefundJobRequestId(crypto.randomUUID());
+                  setPanel(panel === "refundJob" ? null : "refundJob");
+                }}
+              >
+                Refund the job
+              </button>
+            )}
             <span className="spacer" />
             {inv.paidCents === 0 && inv.pendingCents === 0 && (
               <button className="link" onClick={() => setPanel(panel === "void" ? null : "void")}>
@@ -257,6 +282,35 @@ export default function InvoicePage() {
           </div>
 
           {texted && <p className="muted">{texted}</p>}
+          {panel === "refundJob" && (
+            <form
+              className="card stack"
+              aria-label="Refund the job"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                const v = formValues(ev.currentTarget);
+                void run("refund-job", { requestId: refundJobRequestId, amountCents: Math.round(Number(v.amount) * 100), reason: v.reason });
+              }}
+            >
+              <p className="muted small">
+                Gives the customer money back for this job: this invoice&apos;s own payments first, then the deposit money applied to it. The deposit part stays pending until Stripe says it went through,
+                and this invoice is never owed again for it.
+              </p>
+              <label>
+                Amount ($)
+                <input name="amount" type="number" min="0.01" step="0.01" required />
+              </label>
+              <label>
+                Reason
+                <input name="reason" required maxLength={2000} />
+              </label>
+              <div>
+                <button type="submit" disabled={busy}>
+                  Refund
+                </button>
+              </div>
+            </form>
+          )}
           {panel === "payment" && (
             <form className="card grid" onSubmit={recordPayment}>
               <label>
@@ -345,7 +399,7 @@ export default function InvoicePage() {
                     {p.failureReason && <div className="error small">{p.failureReason}</div>}
                   </td>
                   <td>
-                    {owner && p.status === "succeeded" && p.refundedCents < p.amountCents && (
+                    {owner && p.status === "succeeded" && p.refundedCents < p.amountCents && inv.estimate?.role !== "deposit" && (
                       <button className="link" disabled={busy} onClick={() => setRefunding(p)}>
                         Refund
                       </button>

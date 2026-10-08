@@ -33,6 +33,7 @@ export const QUICKBOOKS_CONFLICT_KINDS = [
   "payment_mismatch",
   "duplicate_number",
   "tax_total_mismatch",
+  "deposit_mapping_missing",
 ] as const;
 export type QuickBooksConflictKind = (typeof QUICKBOOKS_CONFLICT_KINDS)[number];
 
@@ -77,6 +78,12 @@ export const QUICKBOOKS_CONFLICT_GUIDE: Record<QuickBooksConflictKind | "failed"
   tax_mapping_missing: {
     title: "Sales tax not mapped",
     explanation: "This invoice charges sales tax, and Aerowise does not send tax to QuickBooks yet, so the totals would not agree. Enter this invoice in QuickBooks yourself and stop syncing it.",
+    actions: ["ignore"],
+  },
+  deposit_mapping_missing: {
+    title: "Deposit not mapped",
+    explanation:
+      "This invoice is an estimate deposit, or has deposit money applied to it. How deposits go to QuickBooks is not settled yet, so it stays out of QuickBooks. Enter it in QuickBooks yourself and stop syncing it.",
     actions: ["ignore"],
   },
   payment_mismatch: {
