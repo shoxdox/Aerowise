@@ -32,6 +32,8 @@ export interface AuthorityExportFacts {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** The sources whose values are calendar dates. */
+const DATE_SOURCES: ReadonlySet<Column["source"]> = new Set(["inspection_date", "submission_date"]);
 
 function formatDate(value: string, format: AuthorityExportRule["dateFormat"]) {
   if (!ISO_DATE.test(value) || format === "YYYY-MM-DD") return value;
@@ -112,9 +114,11 @@ const filenamePart = (v: string | null) => (v ?? "").replace(/[^A-Za-z0-9-]/g, "
 /** The authority CSV for one filing: its file name and bytes. */
 export function authorityCsv(layout: AuthorityExportRule, facts: AuthorityExportFacts, opts: { demo: boolean }): { filename: string; content: Buffer } {
   const headers = layout.columns.map((c) => c.header);
+  // Only the date sources take the layout's date format; every other value (a permit
+  // number or answer that happens to look like a date) goes out as recorded.
   const row = layout.columns.map((c) => {
     const v = columnValue(c, facts);
-    return v === null ? null : formatDate(v, layout.dateFormat);
+    return v !== null && DATE_SOURCES.has(c.source) ? formatDate(v, layout.dateFormat) : v;
   });
   const lead = opts.demo ? [AUTHORITY_CSV_DEMO_COLUMN] : [];
   const notice = opts.demo ? [DEMO_WATERMARK] : [];

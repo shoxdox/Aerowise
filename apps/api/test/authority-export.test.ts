@@ -306,4 +306,35 @@ describe("the export framework's rules", () => {
     expect(csv.filename).toBe("example-county-AB7-2026-03-01.csv");
     expect(csv.content.toString("utf8")).toBe(`Owner,Done,Pumped\r\n"'=1+1",03/01/2026,No\r\n`);
   });
+
+  it("formats only the date sources: date-looking permits, identifiers, constants and answers stay as written", () => {
+    const layout = {
+      ...EXAMPLE_V2.export,
+      dateFormat: "MM/DD/YYYY" as const,
+      columns: [
+        { header: "Permit", source: "site_permit_number", required: true },
+        { header: "Parcel", source: "identifier", identifier: "parcel_id", required: false },
+        { header: "Code", source: "constant", value: "2026-01-02", required: true },
+        { header: "Note", source: "field", field: "notes", required: false },
+        { header: "Inspected", source: "inspection_date", required: true },
+        { header: "Submitted", source: "submission_date", required: true },
+      ],
+    };
+    const facts = {
+      filingId: "00000000-0000-4000-8000-000000000001",
+      submissionNo: 1,
+      submissionDate: "2026-03-02",
+      inspectionDate: "2026-03-01",
+      technicianName: null,
+      technicianLicense: null,
+      values: { notes: "2025-12-31" },
+      ownerName: "Pat",
+      site: { addressLine1: "1 Main", city: "X", state: "TX", postalCode: null, county: null, permitNumber: "2026-03-01" },
+      identifiers: { parcel_id: "2024-07-04" },
+      providerName: "P",
+      responsibleProviderName: null,
+      responsibleProviderMpNumber: null,
+    };
+    expect(authorityCsv(layout, facts, { demo: false }).content.toString("utf8")).toBe("Permit,Parcel,Code,Note,Inspected,Submitted\r\n2026-03-01,2024-07-04,2026-01-02,2025-12-31,03/01/2026,03/02/2026\r\n");
+  });
 });
