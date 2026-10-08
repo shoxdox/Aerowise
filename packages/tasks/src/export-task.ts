@@ -36,6 +36,10 @@ export const EXPORT_TABLES: { file: string; table: string; omit?: string[] }[] =
   { file: "work_order_lines.csv", table: "work_order_lines" },
   { file: "work_order_events.csv", table: "work_order_events" },
   { file: "work_order_notes.csv", table: "work_order_notes" },
+  { file: "estimates.csv", table: "estimates" },
+  { file: "estimate_lines.csv", table: "estimate_lines" },
+  { file: "estimate_versions.csv", table: "estimate_versions" },
+  { file: "estimate_events.csv", table: "estimate_events" },
   { file: "coverage_uses.csv", table: "coverage_uses" },
 ];
 

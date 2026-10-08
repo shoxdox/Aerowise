@@ -121,6 +121,33 @@ function WorkOrderAction({ e, canCreate }: { e: InboxException; canCreate: boole
   );
 }
 
+/** Draft an estimate for an issue or request, or open the one already drafted for it. */
+function EstimateAction({ e }: { e: InboxException }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function draft() {
+    setBusy(true);
+    setError(null);
+    try {
+      const path = e.target.type === "issue" ? `/issues/${e.target.id}/estimate` : `/service-requests/${e.target.id}/estimate`;
+      const est = await api<{ id: string }>(path, { method: "POST", body: {} });
+      router.push(`/estimates/${est.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not draft the estimate");
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button className="secondary" disabled={busy} onClick={() => void draft()}>
+        Estimate
+      </button>
+      {error && <span className="error">{error}</span>}
+    </>
+  );
+}
+
 /** Book the extra retest visit a corrective report needs; it uses none of the contract's visits. */
 function RetestAction({ e, today, onDone }: { e: InboxException; today: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
@@ -212,6 +239,7 @@ export default function InboxPage() {
   const checklist = useLoad<OnboardingChecklistData>(setup ? "/onboarding" : null);
   const editable = canEdit(me);
   const workOrders = useFeature("work_orders");
+  const estimates = useFeature("estimates");
 
   if (technician) return null;
   if (error) return <p className="error">{error}</p>;
@@ -273,6 +301,7 @@ export default function InboxPage() {
                     {e.dueOn && <span className="muted small">{day(e.dueOn)}</span>}
                     <span className="spacer" />
                     {(e.kind === "issue_open" || e.kind === "service_request") && (e.workOrder || editable) && <WorkOrderAction e={e} canCreate={editable && workOrders} />}
+                    {(e.kind === "issue_open" || e.kind === "service_request") && !e.workOrder && editable && estimates && <EstimateAction e={e} />}
                     {inline && <InlineAction e={e} onDone={() => void reload()} />}
                     {retest && <RetestAction e={e} today={data.today} onDone={() => void reload()} />}
                     {editable && e.target.type === "sms_message" && <HandledButton e={e} onDone={() => void reload()} />}
