@@ -111,8 +111,7 @@ test("a repair done and signed with no signal reaches the office exactly once, w
     });
     await context.setOffline(false);
     await expect.poll(() => dropped, { timeout: 30_000 }).toBe(1);
-    await page.getByRole("button", { name: "Try now" }).click({ timeout: 30_000 }).catch(() => {});
-    await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
+      await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
     await expect(card).toContainText("Done");
     await expect(card).not.toContainText("not sent");
 
@@ -170,7 +169,6 @@ test("a visit the office completed while the phone was offline is held for the o
 
   // Back in signal, the record reaches the office and is held there, which the phone shows.
   await context.setOffline(false);
-  await page.getByRole("button", { name: "Try now" }).click({ timeout: 30_000 }).catch(() => {});
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
   await expect(card).toContainText("Held for the office");
   await card.click();
@@ -191,4 +189,28 @@ test("a visit the office completed while the phone was offline is held for the o
   await expect(held).toContainText("accepted");
   await expect(officePage.getByTestId("field-record").first()).toContainText("accepted by the office from a held record");
   await expect(officePage.getByTestId("work-timeline")).toContainText("Held field record accepted by the office");
+});
+
+test("a record for a visit the office cancelled stays visible on the phone as held, after the visit leaves the route", async ({ page, context, browser }) => {
+  const api = await office(browser);
+  const wo = await repairForTess(api, "Float switch (cancelled)");
+  await techPhone(page);
+
+  const card = page.locator(".work-card", { hasText: "Float switch (cancelled)" });
+  await card.click();
+  await page.getByRole("button", { name: "Arrive and start work" }).click();
+  await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 30_000 });
+  await context.setOffline(true);
+  await fillRepair(page);
+  await page.getByRole("button", { name: "Review and sign" }).click();
+  await page.getByRole("button", { name: "Finish without a signature" }).click();
+  expect((await api.post(`/api/work-orders/${wo.id}/cancel`, { data: { reason: "Customer fixed it themselves" } })).ok()).toBe(true);
+
+  await context.setOffline(false);
+  await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(card).toHaveCount(0);
+  const kept = page.getByTestId("off-route-work").locator("li", { hasText: "Float switch (cancelled)" });
+  await expect(kept).toContainText("Held for the office");
+  await expect(kept).toContainText("The visit or work order was cancelled while this phone was offline");
 });
