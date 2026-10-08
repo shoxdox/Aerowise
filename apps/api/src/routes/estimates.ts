@@ -42,6 +42,7 @@ import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import {
   acceptAndConvert,
   cancellationBlocker,
+  checkSelection,
   draftLines,
   estimateEvent,
   estimatesOff,
@@ -806,9 +807,8 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           trx.selectFrom("customers").select(["displayName"]).where("organizationId", "=", organizationId).where("id", "=", e.customerId).executeTakeFirstOrThrow(),
           trx.selectFrom("sites").select(["addressLine1", "city", "state", "postalCode"]).where("organizationId", "=", organizationId).where("id", "=", e.siteId).executeTakeFirstOrThrow(),
         ]);
-        const optional = new Set(v.lines.filter((l) => l.optional).map((l) => l.id));
-        const chosen = [...new Set(b.selectedOptionalLineIds)];
-        if (chosen.some((x) => !optional.has(x))) throw unprocessable("A chosen option is not on this estimate. Reload the page.");
+        // Checked before anything is written, so a refused selection leaves no signature behind.
+        const chosen = checkSelection(v.lines, b.selectedOptionalLineIds);
         const totals = estimateTotals(v.lines, v.discountCents, v.taxRateBps, chosen);
         const content = {
           format: 1,

@@ -15,7 +15,7 @@ class FakeMail implements EmailTransport {
 }
 const mail = new FakeMail();
 const APP_URL = "https://app.example.test";
-const ctx = setupTestApp({ features: ["work_orders", "estimates"] });
+const ctx = setupTestApp({ features: ["work_orders", "service_items", "estimates"] });
 const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now: () => c.now, mail, appUrl: APP_URL });
 const anon = () => client(ctx.app);
 const tokenOf = (url: string) => url.split("/estimate/")[1]!.split(/\s/)[0]!;
@@ -236,6 +236,38 @@ describe("estimates", () => {
     expect(blocked.json().error).toBe("work_started");
   });
 
+  it("refuses to cancel while the work order's own invoice is live, draft or issued, and allows it once discarded or voided", async () => {
+    const t = await tenant(ctx);
+    const acceptedOrder = async () => {
+      const a = await sent(t);
+      expect((await anon().post(`/estimate/${a.token}/accept`, acceptBody(1))).statusCode).toBe(200);
+      return { estimateId: a.estimate.id as string, woId: (await t.api.get(`/estimates/${a.estimate.id}`)).json().workOrder.id as string };
+    };
+
+    // An open work order invoiced before any visit (SW-3 links it by invoices.work_order_id, with no job lines).
+    const a = await acceptedOrder();
+    const draftInvoice = await t.api.post(`/work-orders/${a.woId}/invoice`, {});
+    expect(draftInvoice.statusCode, draftInvoice.body).toBe(201);
+    const blockedDraft = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed their mind" });
+    expect(blockedDraft.statusCode, blockedDraft.body).toBe(409);
+    expect(blockedDraft.json().error).toBe("work_started");
+    expect((await t.api.get(`/work-orders/${a.woId}`)).json().status).toBe("open");
+    const discarded = await t.api.post(`/invoices/${draftInvoice.json().invoiceId}/discard`, {});
+    expect(discarded.statusCode, discarded.body).toBe(204);
+    const allowed = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed their mind" });
+    expect(allowed.statusCode, allowed.body).toBe(200);
+    expect(allowed.json()).toMatchObject({ status: "cancelled", workOrder: { status: "cancelled" } });
+
+    // The same with the invoice issued, then voided.
+    const b = await acceptedOrder();
+    const inv = { id: (await t.api.post(`/work-orders/${b.woId}/invoice`, {})).json().invoiceId as string };
+    const issued = await t.api.post(`/invoices/${inv.id}/issue`, { send: false });
+    expect(issued.statusCode, issued.body).toBe(200);
+    expect((await t.api.post(`/estimates/${b.estimateId}/cancel`, { reason: "Changed their mind" })).statusCode).toBe(409);
+    expect((await t.api.post(`/invoices/${inv.id}/void`, { reason: "Billed in error" })).statusCode).toBe(200);
+    expect((await t.api.post(`/estimates/${b.estimateId}/cancel`, { reason: "Changed their mind" })).statusCode).toBe(200);
+  });
+
   it("drafts one estimate per inspection issue or request however often it is asked", async () => {
     const t = await tenant(ctx);
     const sr = await ctx.db
@@ -284,5 +316,44 @@ describe("estimates", () => {
     } finally {
       await off.close();
     }
+  });
+  it("refuses accepting nothing when every line is optional, on the homeowner's link and the office's record, leaving nothing behind", async () => {
+    const t = await tenant(ctx);
+    const allOptional = LINES.map((l) => ({ ...l, optional: true, selectedByDefault: false }));
+    const { estimate, token } = await sent(t, { lines: allOptional });
+    const before = { docs: await count(ctx, "signed_documents", t.org.id), orders: await count(ctx, "work_orders", t.org.id) };
+
+    const signed = await anon().post(`/estimate/${token}/accept`, acceptBody(1, []));
+    expect(signed.statusCode, signed.body).toBe(422);
+    expect(signed.json()).toMatchObject({ error: "nothing_chosen", message: "Choose at least one item to accept this estimate." });
+    const recorded = await t.api.post(`/estimates/${estimate.id}/record-acceptance`, { selectedOptionalLineIds: [], evidence: "Phoned in, nothing chosen" });
+    expect(recorded.statusCode, recorded.body).toBe(422);
+    expect(recorded.json().error).toBe("nothing_chosen");
+
+    // No signature, work order or acceptance was kept.
+    expect(await count(ctx, "signed_documents", t.org.id)).toBe(before.docs);
+    expect(await count(ctx, "work_orders", t.org.id)).toBe(before.orders);
+    const after = (await t.api.get(`/estimates/${estimate.id}`)).json();
+    expect(after).toMatchObject({ status: "sent", acceptance: null, workOrder: null });
+
+    // Choosing one option still works, exactly once.
+    const one = estimate.versions[0].lines[1].id as string;
+    const [a, b] = await Promise.all([anon().post(`/estimate/${token}/accept`, acceptBody(1, [one])), anon().post(`/estimate/${token}/accept`, acceptBody(1, [one]))]);
+    expect([a.statusCode, b.statusCode], a.body + b.body).toEqual([200, 200]);
+    expect([a.json().alreadyAccepted, b.json().alreadyAccepted].sort()).toEqual([false, true]);
+    const done = (await t.api.get(`/estimates/${estimate.id}`)).json();
+    const lines = await ctx.db.selectFrom("workOrderLines").select("description").where("workOrderId", "=", done.workOrder.id).execute();
+    expect(lines).toEqual([{ description: "Labor" }]);
+    expect(await count(ctx, "work_orders", t.org.id)).toBe(before.orders + 1);
+  });
+
+  it("refuses an office-recorded acceptance of nothing on a draft too, without freezing a version", async () => {
+    const t = await tenant(ctx);
+    const e = await draft(t, { lines: [{ description: "Optional pump-out", quantity: 1, unitPriceCents: 30000, optional: true }] });
+    const r = await t.api.post(`/estimates/${e.id}/record-acceptance`, { selectedOptionalLineIds: [], evidence: "Phoned in" });
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.json().error).toBe("nothing_chosen");
+    expect((await t.api.get(`/estimates/${e.id}`)).json()).toMatchObject({ status: "draft", versions: [], acceptance: null, workOrder: null });
+    expect(await count(ctx, "work_orders", t.org.id)).toBe(0);
   });
 });

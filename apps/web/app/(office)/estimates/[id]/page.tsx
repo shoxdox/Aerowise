@@ -371,12 +371,15 @@ export default function EstimatePage() {
           <p>
             Total accepted: <strong>{money(recordTotals.totalCents)}</strong>
           </p>
+          {selectedLines(recordLines, chosenForRecord).length === 0 && <p className="error">Choose at least one item: the customer has to accept something.</p>}
           <label>
             How did they accept? (who, when, how)
             <textarea name="evidence" required rows={3} maxLength={4000} />
           </label>
           <div>
-            <button type="submit">Record acceptance and make the work order</button>
+            <button type="submit" disabled={selectedLines(recordLines, chosenForRecord).length === 0}>
+              Record acceptance and make the work order
+            </button>
           </div>
         </form>
       )}

@@ -79,6 +79,8 @@ function EstimatePage() {
   const optional = v?.lines.filter((l) => l.optional) ?? [];
   const picked = chosen ?? optional.filter((l) => l.selectedByDefault).map((l) => l.id);
   const totals = v ? estimateTotals(v.lines, v.discountCents, v.taxRateBps, picked) : null;
+  // When every line is an option, at least one has to be chosen (the server refuses an empty one too).
+  const nothingChosen = v ? selectedLines(v.lines, picked).length === 0 : false;
   const acceptable = (r.status === "sent" || r.status === "viewed") && v !== null;
   const reachUs = contact ? ` at ${contact}` : "";
 
@@ -268,8 +270,9 @@ function EstimatePage() {
             <input type="checkbox" name="agree" required />
             {r.consentText}
           </label>
+          {nothingChosen && <p className="error">Choose at least one item to accept this estimate.</p>}
           {formError && <p className="error">{formError}</p>}
-          <button type="submit" className="big" disabled={busy}>
+          <button type="submit" className="big" disabled={busy || nothingChosen}>
             Accept for {totals ? money(totals.totalCents) : ""}
           </button>
         </div>

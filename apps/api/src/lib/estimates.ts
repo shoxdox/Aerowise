@@ -130,11 +130,15 @@ export async function versionOf(trx: Trx, estimateId: string, version: number) {
   return { ...v, lines: v.lines as EstimateLine[], totals: v.totals as ReturnType<typeof estimateTotals> };
 }
 
-/** The selection checked against the version: only its optional lines can be chosen. */
+export const NOTHING_CHOSEN = "Choose at least one item to accept this estimate.";
+
+/** The optional lines chosen, checked against the version: each must be one of its options, and something must be chosen. */
 export function checkSelection(lines: readonly EstimateLine[], selected: readonly string[]) {
   const optional = new Set(lines.filter((l) => l.optional).map((l) => l.id));
   const chosen = [...new Set(selected)];
   if (chosen.some((id) => !optional.has(id))) throw unprocessable("A chosen option is not on this estimate. Reload the page.");
+  // Every line can be optional: accepting none of them would make an empty work order.
+  if (selectedLines(lines, chosen).length === 0) throw new HttpError(422, "nothing_chosen", NOTHING_CHOSEN);
   return chosen;
 }
 
@@ -276,8 +280,13 @@ export async function cancellationBlocker(trx: Trx, organizationId: string, work
   const invoiced = await sql<{ n: number }>`
     select count(*)::int as n from invoices i
     where i.organization_id = ${organizationId} and i.status <> 'void'
-      and exists (select 1 from invoice_lines l join jobs j on j.id = l.job_id and j.organization_id = l.organization_id
-                  where l.invoice_id = i.id and l.organization_id = i.organization_id and j.type = 'work' and j.work_order_id = ${workOrderId})`.execute(trx);
+      and (
+        -- The work order's own invoice (SW-3), draft or issued, made before or after its visits.
+        i.work_order_id = ${workOrderId}
+        -- Or any invoice billing one of its visits.
+        or exists (select 1 from invoice_lines l join jobs j on j.id = l.job_id and j.organization_id = l.organization_id
+                   where l.invoice_id = i.id and l.organization_id = i.organization_id and j.type = 'work' and j.work_order_id = ${workOrderId})
+      )`.execute(trx);
   if (invoiced.rows[0]!.n > 0) return "Its work order has an invoice. Void or delete the invoice first.";
   return null;
 }
