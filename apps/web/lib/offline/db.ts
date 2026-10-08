@@ -326,15 +326,62 @@ async function txOn<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransaction
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();
-    trx.onerror = () => reject(trx.error);
+    // The failed request's error (a full phone's QuotaExceededError): the transaction's own is set only once it aborts.
+    trx.onerror = (e) => reject((e.target as IDBRequest | null)?.error ?? trx.error);
     trx.onabort = () => reject(trx.error ?? new Error("transaction aborted"));
   });
-  const result = await fn(trx);
+  let result: T;
+  try {
+    result = await fn(trx);
+  } catch (err) {
+    // Nothing of a save that failed partway is kept: the whole transaction is undone.
+    committed.catch(() => {});
+    try {
+      trx.abort();
+    } catch {
+      // Already finished or aborted.
+    }
+    throw err;
+  }
   await committed;
   return result;
 }
 
 export type QueuedOp = OutboxOp & { seq: number };
+
+/**
+ * Photos of an inspection the server has as completed that the phone still lists as not sent,
+ * with nothing queued for them. The phone completes an inspection only once its photos have gone,
+ * so the server's completion is their delivery receipt; a photo still queued, or turned down,
+ * keeps its own op and stays not sent.
+ */
+function deliveredUnmarked(insp: LocalInspection, ops: StoredOp[]): Set<string> {
+  if (insp.server?.status !== "completed") return new Set();
+  const queued = new Set(ops.map((o) => (o as { photoClientId?: unknown }).photoClientId).filter((x): x is string => typeof x === "string"));
+  return new Set(insp.photos.filter((p) => !p.uploaded && !queued.has(p.clientId)).map((p) => p.clientId));
+}
+
+/**
+ * The form's copy of an inspection with what sending has since recorded on the phone's copy: the
+ * photos that reached the server and the server's answer. The form only edits the inspection, so
+ * its older copy of these must never undo them.
+ */
+export function withSentState(form: LocalInspection, stored: LocalInspection | undefined): LocalInspection {
+  if (!stored) return form;
+  const sent = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
+  return { ...form, server: stored.server, photos: form.photos.map((p) => (sent.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)) };
+}
+
+/** Clears the failed mark on every op in an outbox, keeping each op and its place in the queue. */
+export async function unfail(outbox: IDBObjectStore): Promise<number> {
+  const failed = ((await done(outbox.getAll())) as StoredOp[]).filter((o) => o.failed);
+  for (const op of failed) {
+    const again = { ...op };
+    delete again.failed;
+    outbox.put(again);
+  }
+  return failed.length;
+}
 
 /**
  * One sign-in's offline data. The outbox binds itself to the store it read from, so a
@@ -360,7 +407,7 @@ export function storeFor(t: KnownTenant) {
     saveInspection: (insp: LocalInspection, photo?: PhotoBlob) =>
       run(["inspections", "photos", "outbox"], "readwrite", async (trx) => {
         const existing = await done(trx.objectStore("inspections").get(insp.jobId)) as LocalInspection | undefined;
-        trx.objectStore("inspections").put({ ...insp, revision: (existing?.revision ?? 0) + 1 });
+        trx.objectStore("inspections").put({ ...withSentState(insp, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         const ops = (await done(outbox.getAll())) as StoredOp[];
         const mine = ops.filter((o) => o.inspectionClientId === insp.clientId && !o.failed);
@@ -374,8 +421,35 @@ export function storeFor(t: KnownTenant) {
         if (photo || !last || last.kind !== "sync") outbox.add({ kind: "sync", inspectionClientId: insp.clientId } satisfies OutboxOp);
       }),
 
+    /**
+     * Marks as sent the photos the server's completion shows were delivered but the phone still
+     * lists as not sent (an earlier version could save a form's older copy over the sent marks).
+     * Returns how many it marked; changes nothing else, and never touches the outbox.
+     */
+    reconcileSent: async () => {
+      const [inspections, ops] = await run(["inspections", "outbox"], "readonly", async (trx) => [
+        (await done(trx.objectStore("inspections").getAll())) as LocalInspection[],
+        (await done(trx.objectStore("outbox").getAll())) as StoredOp[],
+      ] as const);
+      if (!inspections.some((i) => deliveredUnmarked(i, ops).size > 0)) return 0;
+      return run(["inspections", "outbox"], "readwrite", async (trx) => {
+        const store = trx.objectStore("inspections");
+        const queued = (await done(trx.objectStore("outbox").getAll())) as StoredOp[];
+        let marked = 0;
+        for (const insp of (await done(store.getAll())) as LocalInspection[]) {
+          const sent = deliveredUnmarked(insp, queued);
+          if (sent.size === 0) continue;
+          marked += sent.size;
+          store.put({ ...insp, photos: insp.photos.map((p) => (sent.has(p.clientId) ? { ...p, uploaded: true } : p)) });
+        }
+        return marked;
+      });
+    },
+
     removeOp: (seq: number) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").delete(seq)).then(() => undefined)),
     failOp: (op: QueuedOp, reason: string) => run(["outbox"], "readwrite", (trx) => done(trx.objectStore("outbox").put({ ...op, failed: reason })).then(() => undefined)),
+    /** Puts changes the server turned down back in line to send, in their places; nothing is deleted. */
+    retryFailed: () => run(["outbox"], "readwrite", (trx) => unfail(trx.objectStore("outbox"))),
     putInspection: (insp: LocalInspection) => run(["inspections"], "readwrite", (trx) => done(trx.objectStore("inspections").put(insp)).then(() => undefined)),
 
     acknowledgeSync: (op: QueuedOp, sent: LocalInspection, server: NonNullable<LocalInspection["server"]>, completedSent: boolean) =>

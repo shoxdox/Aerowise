@@ -15,8 +15,9 @@ import {
 } from "@aerowise/domain";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { TemplateSections } from "@/components/forms/TemplateFields";
-import { saveInspection, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
+import { saveInspection, withSentState, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
 import { currentPosition, preparePhoto, templateById } from "@/lib/offline/data";
+import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 
 export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: Stop; initial: LocalInspection; onSaved: () => void; onFinished: () => void }) {
   const [insp, setInsp] = useState(initial);
@@ -25,9 +26,20 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     initial.server?.validationStatus === "invalid" ? (initial.server.problems as ValidationProblem[]) : [],
   );
   const [photoError, setPhotoError] = useState<string | null>(null);
+  // No room for another photo until waiting items are sent; everything already taken is kept.
+  const storageFull = useStorageFull();
+  useEffect(() => {
+    if (!storageFull) setPhotoError((e) => (e === STORAGE_FULL_MESSAGE ? null : e));
+  }, [storageFull]);
   const [finishing, setFinishing] = useState(false);
   const latest = useRef(insp);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // What sending has recorded since the form opened (photos sent, the server's answer) shows here too.
+  useEffect(() => {
+    latest.current = withSentState(latest.current, initial);
+    setInsp(latest.current);
+  }, [initial]);
 
   useEffect(() => {
     templateById(initial.templateId).then((t) => setTemplate(t ?? null));
@@ -37,19 +49,24 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   const persist = async (next: LocalInspection, photo?: PhotoBlob) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    await saveInspection(next, photo);
+    await saveOrReport(() => saveInspection(next, photo));
     onSaved();
   };
   const update = (next: LocalInspection) => {
     latest.current = next;
     setInsp(next);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void persist(latest.current), 400);
+    // A save that does not fit is reported on screen; the edit stays there for the next save.
+    timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
   };
   useEffect(
     () => () => {
       // Leaving the form flushes anything not yet saved.
-      if (timer.current) void saveInspection(latest.current);
+      if (!timer.current) return;
+      // The pending save runs now and its timer never fires against the closed form; a full phone is reported on screen.
+      clearTimeout(timer.current);
+      timer.current = null;
+      void saveOrReport(() => saveInspection(latest.current)).catch(() => {});
     },
     [],
   );
@@ -81,10 +98,11 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     e.target.value = "";
     setPhotoError(null);
     for (const file of files) {
+      let clientId: string | null = null;
       try {
         const { blob, contentType } = await preparePhoto(file);
         const gps = await currentPosition(3000);
-        const clientId = crypto.randomUUID();
+        clientId = crypto.randomUUID();
         const next: LocalInspection = {
           ...latest.current,
           photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: gps?.lat ?? null, lng: gps?.lng ?? null, uploaded: false }],
@@ -94,7 +112,14 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         await persist(next, { clientId, inspectionClientId: next.clientId, blob, contentType });
         setProblems((ps) => ps.filter((p) => p.key !== photoKey));
       } catch (err) {
+        // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
+        if (clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
+          const without = { ...latest.current, photos: latest.current.photos.filter((p) => p.clientId !== clientId) };
+          latest.current = without;
+          setInsp(without);
+        }
         setPhotoError((err as Error).message);
+        if (isStorageFull()) break;
       }
     }
   }
@@ -110,8 +135,16 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     }
     setFinishing(true);
     const done: LocalInspection = { ...latest.current, status: "completed", completedAt: new Date().toISOString(), completionGps: await currentPosition(5000) };
+    const before = latest.current;
     latest.current = done;
-    await persist(done);
+    try {
+      await persist(done);
+    } catch {
+      // Not saved (the phone is full): still a draft here, so finishing can be tried again.
+      latest.current = before;
+      setFinishing(false);
+      return;
+    }
     onFinished();
   }
 
@@ -152,13 +185,19 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
                 {counts[p.key] ?? 0} taken{p.minCount > 0 ? `, ${p.minCount} needed` : ""}
                 {insp.photos.some((x) => x.photoKey === p.key && !x.uploaded) ? " · some not sent yet" : ""}
               </span>
-              <label className="button secondary photo-button">
+              <label className={`button secondary photo-button${storageFull ? " disabled" : ""}`} aria-disabled={storageFull}>
                 Add photo
-                <input type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => void addPhoto(p.key, e)} aria-label={`Add photo: ${p.label}`} />
+                <input type="file" accept="image/*" capture="environment" multiple hidden disabled={storageFull} onChange={(e) => void addPhoto(p.key, e)} aria-label={`Add photo: ${p.label}`} />
               </label>
             </div>
           ))}
-          {photoError && <p className="error small">{photoError}</p>}
+          {storageFull ? (
+            <p className="error small" role="alert" data-testid="storage-full">
+              {STORAGE_FULL_MESSAGE}
+            </p>
+          ) : (
+            photoError && <p className="error small">{photoError}</p>
+          )}
         </section>
 
         <section className="card stack">
@@ -207,6 +246,11 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         </section>
       </fieldset>
 
+      {!readOnly && storageFull && (
+        <p className="error small" role="alert">
+          {STORAGE_FULL_MESSAGE}
+        </p>
+      )}
       {!readOnly && (
         <button className="big" onClick={() => void finish()} disabled={finishing}>
           {finishing ? "Saving…" : "Finish inspection"}
