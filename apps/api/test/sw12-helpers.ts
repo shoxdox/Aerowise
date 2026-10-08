@@ -2,7 +2,7 @@ import { snapshotSha256 } from "@aerowise/domain";
 import { sql } from "kysely";
 import { expect } from "vitest";
 import type { App } from "../src/app.ts";
-import { createUser, type TestContext } from "./helpers.ts";
+import { client, createUser, type TestContext } from "./helpers.ts";
 import { completeValues, JPEG, payload, setup, uploadRequiredPhotos } from "./inspection-helpers.ts";
 
 // Shared by the SW-12 route sweeps (plan §12 rows 17 and 18): the service-workflow routes from the
@@ -107,25 +107,9 @@ export async function richTenant(c: TestContext) {
   // manifest photo, all on the technician's phone.
   const truck = (await s.api.post("/vehicles", { name: "Truck 1", capacityGallons: 3000 })).json();
   const facility = (await s.api.post("/disposal-facilities", { name: "Example Water Reclamation", kind: "wastewater_treatment_plant", city: "Austin" })).json();
-  const pumpingType = (await s.api.get("/work-types")).json().items.find((t: { key: string }) => t.key === "pumping");
-  const pumpingForm = (await s.techApi.get("/form-templates/work-pumping")).json();
-  const pwo = (await s.api.post("/work-orders", { siteId: s.site.id, workTypeId: pumpingType.id })).json();
-  const pjob = (await s.api.post(`/work-orders/${pwo.id}/schedule`, { technicianId: s.tech.id, scheduledDate: "2026-03-01" })).json().visits[0].jobId;
-  const pclient = crypto.randomUUID();
-  const pumpBody = (status: string, revision: number) => ({
-    clientId: pclient,
-    jobId: pjob,
-    templateId: pumpingForm.id,
-    status,
-    revision,
-    arrivedAt: "2026-03-01T15:00:00Z",
-    completedAt: status === "completed" ? "2026-03-01T16:00:00Z" : null,
-    values: { tank_count: 1, lid_condition: "good" },
-    pumpOut: { clientId: crypto.randomUUID(), volume: 1000, unit: "gallons", wasteType: "septage", tanks: [{ label: "Tank 1", volume: 1000 }], vehicleId: truck.id },
-  });
-  await s.techApi.put("/work/sync", pumpBody("draft", 1));
-  expect((await s.techApi.put("/work/sync", pumpBody("completed", 2))).json().status).toBe("completed");
-  const pumpingGroup = (await s.api.get(`/pumping-records?workOrderId=${pwo.id}`)).json().items[0].groupId as string;
+  const pumpingGroup = await pumpOut(s.api, s.techApi, { techId: s.tech.id, siteId: s.site.id, truckId: truck.id });
+  // A second pump-out kept out of every load, for the disposal item probes.
+  const unloadedGroup = await pumpOut(s.api, s.techApi, { techId: s.tech.id, siteId: s.site.id, truckId: truck.id });
   const loadClient = crypto.randomUUID();
   const loaded = await s.techApi.put("/disposal/loads/sync", { clientId: loadClient, vehicleId: truck.id, facilityId: facility.id, deliveredOn: "2026-03-01", manifestReference: "M-1001", total: 1000, unit: "gallons", pumpingGroupIds: [pumpingGroup] });
   expect(loaded.statusCode, loaded.body).toBe(201);
@@ -153,11 +137,40 @@ export async function richTenant(c: TestContext) {
     vehicles: truck.id,
     "disposal-facilities": facility.id,
     "pumping-records": pumpingGroup,
+    "pumping-records:unloaded": unloadedGroup,
     "disposal/loads": loaded.json().groupId,
     // Keyed by parameter name where one path prefix takes two kinds of id.
     "disposal/loads:clientId": loadClient,
   };
   return { ...s, ids, formSaved: form.statusCode };
+}
+
+type Api = ReturnType<typeof client>;
+
+/** A pumping visit scheduled for the technician and completed on their phone with a pump-out on
+ * `truckId`; returns the pump-out's group id. */
+export async function pumpOut(office: Api, phone: Api, o: { techId: string; siteId: string; truckId: string }) {
+  const pumpingType = (await office.get("/work-types")).json().items.find((t: { key: string }) => t.key === "pumping");
+  const pumpingForm = (await phone.get("/form-templates/work-pumping")).json();
+  const wo = (await office.post("/work-orders", { siteId: o.siteId, workTypeId: pumpingType.id })).json();
+  const scheduled = await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: o.techId, scheduledDate: "2026-03-01" });
+  expect(scheduled.statusCode, scheduled.body).toBe(201);
+  const clientId = crypto.randomUUID();
+  const pumpOutId = crypto.randomUUID();
+  const body = (status: string, revision: number) => ({
+    clientId,
+    jobId: scheduled.json().visits[0].jobId,
+    templateId: pumpingForm.id,
+    status,
+    revision,
+    arrivedAt: "2026-03-01T15:00:00Z",
+    completedAt: status === "completed" ? "2026-03-01T16:00:00Z" : null,
+    values: { tank_count: 1, lid_condition: "good" },
+    pumpOut: { clientId: pumpOutId, volume: 1000, unit: "gallons", wasteType: "septage", tanks: [{ label: "Tank 1", volume: 1000 }], vehicleId: o.truckId },
+  });
+  await phone.put("/work/sync", body("draft", 1));
+  expect((await phone.put("/work/sync", body("completed", 2))).json().status).toBe("completed");
+  return (await office.get(`/pumping-records?workOrderId=${wo.id}`)).json().items[0].groupId as string;
 }
 
 /** A hash of every row company B owns, table by table. */
@@ -189,7 +202,7 @@ export function urlFor(path: string, ids: Record<string, string | undefined>, ta
 
 /** Valid bodies for each swept write. `a` holds company A's own ids, so only company B's id in the
  * URL (or named in the body) can be what is refused. */
-export type Own = { workTypeId: string; techId: string; siteId: string; truckId: string; facilityId: string; b: Record<string, string | undefined> };
+export type Own = { workTypeId: string; techId: string; siteId: string; truckId: string; facilityId: string; pumpOut: string; b: Record<string, string | undefined> };
 const req = () => ({ requestId: crypto.randomUUID(), amountCents: 100, reason: "Sweep" });
 const summary = { workDone: "Reset alarm", parts: [], notes: "" };
 export const BODIES: Record<string, (a: Own) => object> = {
@@ -244,14 +257,25 @@ export const BODIES: Record<string, (a: Own) => object> = {
   "PATCH /disposal-facilities/:id": () => ({ name: "Sweep" }),
   "POST /pumping-records/:groupId/correct": (a) => ({ volume: 900, unit: "gallons", wasteType: "septage", vehicleId: a.truckId, serviceDate: "2026-03-01", reason: "Sweep" }),
   "POST /disposal/loads/:groupId/correct": (a) => ({ vehicleId: a.truckId, facilityId: a.facilityId, deliveredOn: "2026-03-02", manifestReference: "M-9", total: 900, unit: "gallons", reason: "Sweep" }),
-  "POST /disposal/loads/:groupId/items": () => ({ pumpingGroupId: crypto.randomUUID() }),
-  "POST /disposal/loads/:groupId/items/remove": () => ({ pumpingGroupId: crypto.randomUUID(), reason: "Sweep" }),
+  // Real pump-outs: the caller's own, not in any load (the one the office would add).
+  "POST /disposal/loads/:groupId/items": (a) => ({ pumpingGroupId: a.pumpOut }),
+  // Real pump-outs: the one actually in company B's load (what a missing guard would remove).
+  "POST /disposal/loads/:groupId/items/remove": (a) => ({ pumpingGroupId: a.b["pumping-records"], reason: "Sweep" }),
   // Writes with no id in the URL that name company B's records in the body.
   "POST /work-orders": (a) => ({ siteId: a.b.sites, workTypeId: a.workTypeId }),
   "POST /estimates": (a) => ({ siteId: a.b.sites, lines: [{ description: "Sweep", quantity: 1, unitPriceCents: 100 }] }),
   "PUT /disposal/loads/sync": (a) => ({ clientId: crypto.randomUUID(), vehicleId: a.truckId, facilityId: a.facilityId, deliveredOn: "2026-03-01", manifestReference: "M-9", total: 1000, unit: "gallons", pumpingGroupIds: [a.b["pumping-records"]] }),
   "PUT /work/sync": (a) => ({ clientId: crypto.randomUUID(), jobId: a.b.jobs, templateId: crypto.randomUUID(), status: "draft", revision: 1, arrivedAt: "2026-03-01T15:00:00Z", completedAt: null, values: {}, summary }),
 };
+/** More probes for routes where one body cannot show every way a missing tenant guard would act:
+ * each must be refused like the main body. */
+export const EXTRA_PROBES: Record<string, ((a: Own) => object)[]> = {
+  // Company B's pump-out that is in no load, added to company B's load.
+  "POST /disposal/loads/:groupId/items": [(a) => ({ pumpingGroupId: a.b["pumping-records:unloaded"] })],
+  // The caller's own pump-out, "removed" from company B's load.
+  "POST /disposal/loads/:groupId/items/remove": [(a) => ({ pumpingGroupId: a.pumpOut, reason: "Sweep" })],
+};
+
 /** Writes whose body names no record at all: nothing of another company to reach. */
 export const NO_FOREIGN_IDS: Record<string, string> = {
   "POST /service-items": "creates the caller's own item from plain fields",

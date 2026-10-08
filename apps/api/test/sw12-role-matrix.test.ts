@@ -54,7 +54,7 @@ describe("SW-12 row 18: role matrix over the service-workflow routes", () => {
     };
 
     const repair = (await b.api.get("/work-types")).json().items.find((x: { key: string }) => x.key === "repair");
-    const own: Own = { workTypeId: repair.id, techId: b.tech.id, siteId: b.site.id, truckId: b.ids.vehicles!, facilityId: b.ids["disposal-facilities"]!, b: b.ids };
+    const own: Own = { workTypeId: repair.id, techId: b.tech.id, siteId: b.site.id, truckId: b.ids.vehicles!, facilityId: b.ids["disposal-facilities"]!, pumpOut: b.ids["pumping-records:unloaded"]!, b: b.ids };
     const form = (await b.api.get("/form-templates/work-repair")).json();
 
     const routes = (await registeredRoutes(ctx.app)).filter(([, p]) => SCOPE.some((r) => r.test(p)));
