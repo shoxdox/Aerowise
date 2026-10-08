@@ -268,6 +268,21 @@ describe("estimates", () => {
     expect((await t.api.post(`/estimates/${b.estimateId}/cancel`, { reason: "Changed their mind" })).statusCode).toBe(200);
   });
 
+  it("never leaves a cancelled work order with a live invoice when invoicing and cancelling race", async () => {
+    const t = await tenant(ctx);
+    for (let i = 0; i < 3; i++) {
+      const a = await sent(t);
+      expect((await anon().post(`/estimate/${a.token}/accept`, acceptBody(1))).statusCode).toBe(200);
+      const woId = (await t.api.get(`/estimates/${a.estimate.id}`)).json().workOrder.id as string;
+      const [inv, cancel] = await Promise.all([t.api.post(`/work-orders/${woId}/invoice`, {}), t.api.post(`/estimates/${a.estimate.id}/cancel`, { reason: "Race" })]);
+      // Exactly one wins: either the invoice exists and the cancel was refused, or the cancel went through and invoicing was refused.
+      expect([inv.statusCode, cancel.statusCode].sort(), inv.body + cancel.body).toEqual(inv.statusCode === 201 ? [201, 409] : [200, 409]);
+      const wo = await ctx.db.selectFrom("workOrders").select("status").where("id", "=", woId).executeTakeFirstOrThrow();
+      const live = await ctx.db.selectFrom("invoices").select("id").where("workOrderId", "=", woId).where("status", "<>", "void").execute();
+      expect(wo.status === "cancelled" && live.length > 0).toBe(false);
+    }
+  });
+
   it("drafts one estimate per inspection issue or request however often it is asked", async () => {
     const t = await tenant(ctx);
     const sr = await ctx.db
