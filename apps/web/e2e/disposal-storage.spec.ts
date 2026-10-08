@@ -120,7 +120,9 @@ test("a disposal record that does not fit is not saved, says so, keeps what was 
     expect((await onPhone(page)).loads).toEqual([...before.loads, { manifest: "E2E-FULL-1", photos: 1 }]);
     expect(errors).toEqual([]);
   } finally {
-    await db.end();
     await api.post(`/api/work-orders/${wo.id}/cancel`, { data: { reason: "e2e cleanup" } });
+    // Later specs count today's work visits on the route and map: this one moves to yesterday.
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where work_order_id = $1", [wo.id]);
+    await db.end();
   }
 });
