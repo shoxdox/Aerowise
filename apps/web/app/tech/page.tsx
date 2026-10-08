@@ -1,21 +1,24 @@
 "use client";
 
-import type { InspectionTemplate, Stop } from "@aerowise/domain";
-import { useCallback, useEffect, useState } from "react";
+import type { InspectionTemplate, Stop, WorkStop } from "@aerowise/domain";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { IntroCard } from "@/components/Intro";
 import { InspectionForm } from "@/components/tech/InspectionForm";
 import { StopDetail } from "@/components/tech/StopDetail";
 import { StopList, type RouteView } from "@/components/tech/StopList";
 import { SyncBanner } from "@/components/tech/SyncBanner";
+import { WorkStopList } from "@/components/tech/WorkStops";
+import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
-import { currentPosition, loadActiveTemplate, loadRoute } from "@/lib/offline/data";
-import { runnableOps, startBackgroundSync, subscribe, syncNow, type SyncState } from "@/lib/offline/sync";
+import { currentPosition, loadActiveTemplate, loadRoute, loadWorkRoute } from "@/lib/offline/data";
+import { startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
+import { workStoreFor, type LocalWork } from "@/lib/offline/work";
 import type { Me } from "@/lib/session";
 
-type View = { name: "list" } | { name: "stop"; jobId: string } | { name: "inspect"; jobId: string };
+type View = { name: "list" } | { name: "stop"; jobId: string } | { name: "inspect"; jobId: string } | { name: "work"; jobId: string };
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -37,6 +40,10 @@ export default function TechApp() {
   const [template, setTemplate] = useState<InspectionTemplate | undefined>();
   const [inspections, setInspections] = useState<Map<string, LocalInspection>>(new Map());
   const [failures, setFailures] = useState<string[]>([]);
+  // Work visits (SW-2): empty unless field work is switched on and the office scheduled some.
+  const [workStops, setWorkStops] = useState<WorkStop[]>([]);
+  const [works, setWorks] = useState<Map<string, LocalWork>>(new Map());
+  const [failedWork, setFailedWork] = useState<Set<string>>(new Set());
   const [sync, setSync] = useState<SyncState>({ kind: "idle", pending: 0, failed: 0 });
   const [view, setView] = useState<View>({ name: "list" });
   // List or map of the route; kept while a stop is open, so Back returns to the same one.
@@ -49,9 +56,15 @@ export default function TechApp() {
   const [others, setOthers] = useState<{ tenant: KnownTenant; pending: number }[]>([]);
 
   const refreshLocal = useCallback(async () => {
-    if (!activeTenant()) return;
-    setInspections(new Map((await allInspections()).map((i) => [i.jobId, i])));
-    setFailures((await allOps()).filter((o) => o.failed).map((o) => o.failed!));
+    const tenant = activeTenant();
+    if (!tenant) return;
+    const work = workStoreFor(tenant);
+    const [insp, ops, recs, workOps] = await Promise.all([allInspections(), allOps(), work.allRecords(), work.allOps()]);
+    setInspections(new Map(insp.map((i) => [i.jobId, i])));
+    setWorks(new Map(recs.map((r) => [r.jobId, r])));
+    const failedOps = workOps.filter((o) => o.failed);
+    setFailedWork(new Set(failedOps.map((o) => o.recordClientId!)));
+    setFailures([...ops, ...failedOps].filter((o) => o.failed).map((o) => o.failed!));
   }, []);
 
   const showEnded = useCallback((e: EndedAccess) => {
@@ -61,6 +74,8 @@ export default function TechApp() {
     setTemplate(undefined);
     setInspections(new Map());
     setFailures([]);
+    setWorkStops([]);
+    setWorks(new Map());
     setView({ name: "list" });
   }, []);
 
@@ -88,8 +103,9 @@ export default function TechApp() {
     setDisplayTimeZone(m.organization.timezone);
     setMe(m);
     const store = activeStore();
-    const [r, t] = await Promise.all([loadRoute(store), loadActiveTemplate(store)]);
+    const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(workStoreFor(store.tenant))]);
     setRoute(r.route ?? null);
+    setWorkStops(w?.items ?? []);
     setFetchedAt(r.fetchedAt);
     setTemplate(t);
     await refreshLocal();
@@ -142,14 +158,49 @@ export default function TechApp() {
     setView({ name: "inspect", jobId: stop.jobId });
   }
 
+  async function startWork(stop: WorkStop) {
+    const tenant = activeTenant();
+    if (!tenant || !stop.templateId) return;
+    if (!works.has(stop.jobId)) {
+      const rec: LocalWork = {
+        clientId: crypto.randomUUID(),
+        jobId: stop.jobId,
+        templateId: stop.templateId,
+        label: { title: `${stop.workOrderLabel} · ${stop.title}`, customerName: stop.customerName, address: stop.address },
+        status: "draft",
+        revision: 0,
+        arrivedAt: new Date().toISOString(),
+        completedAt: null,
+        arrivalGps: await currentPosition(),
+        completionGps: null,
+        values: {},
+        finalVisit: true,
+        summary: null,
+        photos: [],
+        signatures: [],
+        draftAckedAt: null,
+        server: null,
+        held: null,
+        resolved: null,
+      };
+      await workStoreFor(tenant).saveWork(rec);
+      await refreshLocal();
+      void syncNow();
+    }
+  }
+
   async function signOut() {
-    const { runnable, waiting } = runnableOps(await allOps());
-    const later = waiting + (await activeStore().pendingWork());
+    const tenant = activeTenant();
+    const { unsent: runnable, later } = tenant ? await unsentFor(tenant) : { unsent: 0, later: 0 };
     const unsent = `Some changes have not reached the office yet.${later > 0 ? ` ${later} of them will send only after the app updates.` : ""}`;
-    if (runnable.length + later > 0 && !window.confirm(`${unsent} Sign out anyway? They stay on this phone.`)) return;
+    if (runnable + later > 0 && !window.confirm(`${unsent} Sign out anyway? They stay on this phone.`)) return;
     await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
     window.location.href = "/login?next=/tech";
   }
+
+  // One store object per sign-in, so the work form does not reload on every render.
+  const tenant = activeTenant();
+  const workStore = useMemo(() => (tenant ? workStoreFor(tenant) : null), [tenant]);
 
   if (loading) return <p className="muted pad">Loading your route…</p>;
 
@@ -176,7 +227,8 @@ export default function TechApp() {
     );
   }
 
-  const stop = view.name !== "list" ? route?.items.find((s) => s.jobId === view.jobId) : undefined;
+  const stop = view.name === "stop" || view.name === "inspect" ? route?.items.find((s) => s.jobId === view.jobId) : undefined;
+  const workStop = view.name === "work" ? workStops.find((s) => s.jobId === view.jobId) : undefined;
 
   return (
     <>
@@ -225,6 +277,25 @@ export default function TechApp() {
             onView={setRouteView}
           />
         )}
+        {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} onOpen={(jobId) => setView({ name: "work", jobId })} />}
+        {view.name === "work" && workStop && workStore && (
+          <WorkVisit
+            stop={workStop}
+            store={workStore}
+            record={works.get(workStop.jobId)}
+            failed={!!works.get(workStop.jobId) && failedWork.has(works.get(workStop.jobId)!.clientId)}
+            onStart={() => void startWork(workStop)}
+            onSaved={() => {
+              void refreshLocal();
+              void syncNow();
+            }}
+            onFinished={() => {
+              void refreshLocal();
+              void syncNow();
+              setView({ name: "list" });
+            }}
+          />
+        )}
         {view.name === "stop" && stop && (
           <StopDetail stop={stop} inspection={inspections.get(stop.jobId)} canStart={!!template} onStart={() => void start(stop)} />
         )}
@@ -243,7 +314,7 @@ export default function TechApp() {
             }}
           />
         )}
-        {view.name !== "list" && !stop && <p className="muted">This stop is no longer on your route.</p>}
+        {view.name !== "list" && !stop && !workStop && <p className="muted">This stop is no longer on your route.</p>}
       </main>
     </>
   );

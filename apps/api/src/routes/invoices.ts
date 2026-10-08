@@ -39,6 +39,7 @@ import {
   writeDraftLines,
   type PaymentsConfig,
 } from "../lib/invoices.ts";
+import { afterCoveredInvoiceVoided, consumeCoverage } from "../lib/coverage.ts";
 import { lockDepositForWorkOrder, unapplyAtVoid } from "../lib/deposits.ts";
 import { afterWorkOrderInvoiceEnded, lockInvoiceWorkOrder } from "../lib/work-orders.ts";
 import { dateInZone, organizationToday } from "../lib/today.ts";
@@ -399,6 +400,8 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           now: at,
           deposit: dep ? { lock: dep, requestedCents: req.body.depositCents, actorUserId: userId } : undefined,
         });
+        // Billing the work spends the plan coverage it was priced under (SW-8).
+        if (wo) await consumeCoverage(trx, req, organizationId, wo.id, req.params.id, at);
         await invoiceEvent(trx, {
           organizationId,
           invoiceId: req.params.id,
@@ -483,6 +486,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await recalcInvoice(trx, organizationId, inv.id, at);
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "voided", summary: `Voided: ${req.body.reason}`, actorUserId: userId, at });
         if (wo) await afterWorkOrderInvoiceEnded(trx, req, wo, { organizationId, summary: `Invoice ${invoiceNumberLabel(inv.number)} voided: ${req.body.reason}`, at });
+        if (wo) await afterCoveredInvoiceVoided(trx, req, organizationId, wo, inv.id, at);
         await audit(trx, req, { action: "invoice.voided", entityType: "invoice", entityId: inv.id, changes: { reason: req.body.reason } });
         await queueQuickBooksSync(trx, organizationId, at);
         return trx

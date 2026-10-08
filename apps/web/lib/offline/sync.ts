@@ -1,6 +1,7 @@
 "use client";
 
 import { activeTenant, isKnownOp, sameTenant, storeFor, type LocalInspection, type QueuedOp, type StoredOp, type Tenant, type TenantStore } from "./db";
+import { workStoreFor, type LocalWork, type QueuedWorkOp, type WorkStore } from "./work";
 
 // Sends the outbox to the server, oldest first. Every request is idempotent on the
 // server (keyed by ids the phone created), so sending something twice — after a timeout,
@@ -78,7 +79,7 @@ class RetryLater extends Error {
 
 const errorCode = async (res: Response) => ((await res.clone().json().catch(() => ({}))) as { error?: string }).error;
 
-async function send(store: TenantStore, url: string, init: RequestInit & { headers?: Record<string, string> }): Promise<Response> {
+async function send(store: { tenant: Tenant }, url: string, init: RequestInit & { headers?: Record<string, string> }): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(url, { ...init, headers: { ...init.headers, ...tenantHeader(store.tenant) }, credentials: "same-origin", cache: "no-store" });
@@ -145,6 +146,88 @@ async function runOp(store: TenantStore, op: QueuedOp, ops: QueuedOp[], inspecti
   await acknowledgeSync(op, insp, { id: server.id, status: server.status, validationStatus: server.validationStatus, problems: server.validationProblems }, insp.status === "completed" && !photosQueued);
 }
 
+// ---- Work visits (SW-2), from the separate work database ----
+
+function workPayload(rec: LocalWork, othersQueued: boolean) {
+  return {
+    clientId: rec.clientId,
+    jobId: rec.jobId,
+    templateId: rec.templateId,
+    revision: rec.revision,
+    // Completing waits until the record's photos and signatures are up, so the server's checks see them.
+    status: rec.status === "completed" && !othersQueued ? "completed" : "draft",
+    arrivedAt: rec.arrivedAt,
+    completedAt: rec.completedAt,
+    arrivalGps: rec.arrivalGps,
+    completionGps: rec.completionGps,
+    values: rec.values,
+    summary: rec.summary,
+    finalVisit: rec.finalVisit,
+  };
+}
+
+type Resolved = { outcome: "resolved"; conflictId: string; resolution: "attached" | "dismissed" };
+type Held = { outcome: "held_for_review"; conflictId: string; reason: "reassigned" | "cancelled" | "office_completed" };
+
+/** As send; field work switched off on the server for now is not the record's fault, so it waits on the phone. */
+async function sendWork(store: WorkStore, url: string, init: RequestInit & { headers?: Record<string, string> }) {
+  const res = await send(store, url, init);
+  if (res.status === 409 && (await errorCode(res)) === "feature_off") throw new RetryLater("server");
+  return res;
+}
+
+async function runWorkOp(store: WorkStore, op: QueuedWorkOp, ops: QueuedWorkOp[], records: Map<string, LocalWork>) {
+  const rec = records.get(op.recordClientId);
+  if (!rec) return store.removeOp(op.seq);
+
+  if (op.kind === "work-sync") {
+    const othersQueued = ops.some((o) => o.recordClientId === rec.clientId && o.seq !== op.seq);
+    const body = workPayload(rec, othersQueued);
+    const res = await sendWork(store, "/api/work/sync", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) return store.failOp(op, await message(res));
+    const out = (await res.json()) as Held | Resolved | { id: string; status: "draft" | "completed"; validationStatus: string; validationProblems: { key: string; message: string }[] };
+    if ("outcome" in out && out.outcome === "held_for_review") return store.acknowledgeSync(op, rec, { kind: "held", held: { conflictId: out.conflictId, reason: out.reason } });
+    if ("outcome" in out) return store.acknowledgeSync(op, rec, { kind: "resolved", resolved: { conflictId: out.conflictId, resolution: out.resolution } });
+    return store.acknowledgeSync(op, rec, {
+      kind: "record",
+      server: { id: out.id, status: out.status, validationStatus: out.validationStatus, problems: out.validationProblems },
+      completedSent: body.status === "completed",
+    });
+  }
+
+  let res: Response;
+  if (op.kind === "work-photo") {
+    const photo = rec.photos.find((p) => p.clientId === op.photoClientId);
+    const blob = await store.getBlob(op.photoClientId);
+    if (!photo || !blob) return store.removeOp(op.seq);
+    const headers: Record<string, string> = { "content-type": blob.contentType, "x-photo-key": photo.photoKey, "x-captured-at": photo.capturedAt };
+    if (photo.lat !== null && photo.lng !== null) Object.assign(headers, { "x-lat": String(photo.lat), "x-lng": String(photo.lng) });
+    res = await sendWork(store, `/api/work/${rec.clientId}/photos/${photo.clientId}`, { method: "PUT", headers, body: blob.blob });
+  } else {
+    const sig = rec.signatures.find((s) => s.clientId === op.signatureClientId);
+    if (!sig || !rec.summary) return store.removeOp(op.seq);
+    res = await sendWork(store, `/api/work/${rec.clientId}/signatures/${sig.clientId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requirementKey: sig.requirementKey,
+        signerName: sig.signerName,
+        capture: sig.capture,
+        summary: rec.summary,
+        summarySha256: sig.summarySha256,
+        consentText: sig.consentText,
+        signedAt: sig.signedAt,
+      }),
+    });
+  }
+  // 202 (held for the office) and an office decision both mean the server has it.
+  if (!res.ok) return store.failOp(op, await message(res));
+  const out = (await res.json()) as Partial<Resolved>;
+  const resolved = out.outcome === "resolved" ? { conflictId: out.conflictId!, resolution: out.resolution! } : undefined;
+  await store.uploaded(rec.clientId, op.kind === "work-photo" ? { photoClientId: op.photoClientId } : { signatureClientId: op.signatureClientId }, resolved);
+  return store.removeOp(op.seq);
+}
+
 async function drainOnce() {
   const tenant = activeTenant();
   if (!tenant) {
@@ -152,21 +235,27 @@ async function drainOnce() {
     return;
   }
   const store = storeFor(tenant);
-  const work = await store.pendingWork();
+  const work = workStoreFor(tenant);
   for (;;) {
     // Signed in as someone else since this pass began: the next pass sends theirs.
     if (!sameTenant(activeTenant(), tenant)) return;
-    const { runnable: live, waiting, failed } = runnableOps(await store.allOps());
-    const counts = { pending: live.length, failed, waiting: waiting + work };
-    const next = live[0];
-    if (!next) {
+    const inspections = runnableOps(await store.allOps());
+    const visits = await work.queue();
+    const counts = {
+      pending: inspections.runnable.length + visits.runnable.length,
+      failed: inspections.failed + visits.failed,
+      waiting: inspections.waiting + visits.waiting,
+    };
+    const next = inspections.runnable[0];
+    const nextWork = visits.runnable[0];
+    if (!next && !nextWork) {
       emit({ kind: "idle", ...counts });
       return;
     }
     emit({ kind: "syncing", ...counts });
-    const inspections = new Map((await store.allInspections()).map((i) => [i.clientId, i]));
     try {
-      await runOp(store, next, live, inspections);
+      if (next) await runOp(store, next, inspections.runnable, new Map((await store.allInspections()).map((i) => [i.clientId, i])));
+      else await runWorkOp(work, nextWork!, visits.runnable, new Map((await work.allRecords()).map((r) => [r.clientId, r])));
     } catch (err) {
       if (err instanceof RetryLater) {
         const kind = err.reason === "server" ? "idle" : err.reason;
@@ -176,6 +265,13 @@ async function drainOnce() {
       throw err;
     }
   }
+}
+
+/** What is still to send for the active sign-in: `unsent` this version sends; `later` waits for an update. */
+export async function unsentFor(t: Parameters<typeof storeFor>[0]) {
+  const inspections = runnableOps(await storeFor(t).allOps());
+  const visits = await workStoreFor(t).queue();
+  return { unsent: inspections.runnable.length + visits.runnable.length, later: inspections.waiting + visits.waiting };
 }
 
 /** Starts sending queued changes; safe to call as often as you like. */
