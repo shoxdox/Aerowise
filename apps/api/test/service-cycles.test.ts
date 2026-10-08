@@ -641,6 +641,36 @@ describe("offers and imports never turn cycles into inspections", () => {
     expect(await ctx.db.selectFrom("filings").select("id").where("contractId", "=", next.id).execute()).toEqual([]);
   });
 
+  it("a pumping-only version on a conventional site in a county that adds visits asks no aerobic confirmation and gets no inspection terms", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const j = ((await t.api.get("/jurisdictions")).json().items as { id: string; key: string }[]).find((x) => x.key === "tx-hays-county")!;
+    expect((await t.api.patch(`/sites/${t.site.id}`, { county: "Hays", state: "TX" })).statusCode).toBe(200);
+    expect((await t.api.put(`/sites/${t.site.id}/jurisdiction`, { jurisdictionId: j.id, evidenceKind: "authority_determination", evidenceReference: "Unincorporated; confirmed by phone 2026-10-06" })).statusCode).toBe(200);
+    expect((await t.api.patch(`/systems/${t.system.id}`, { systemCategory: "conventional" })).statusCode).toBe(200);
+    const pumpType = await workTypeId(t.api, "pumping");
+    const pumpOnly = await cyclePlan(t.api, [pumpingCycle(pumpType)], false);
+    const mixed = await cyclePlan(t.api, [pumpingCycle(pumpType)]);
+
+    // The plan's scalar terms still say aerobic inspections; the pinned version does not.
+    expect((await ctx.db.selectFrom("plans").select("serviceType").where("id", "=", pumpOnly.id).executeTakeFirstOrThrow()).serviceType).toBe("aerobic_inspection");
+    const preview = await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${pumpOnly.id}&startOn=2026-11-01`);
+    expect(preview.json()).toEqual({ planVisits: 2, visitsPerTerm: 2, warning: null, scheduleNotice: null, systemWarning: null });
+    // With inspections, the conventional system is still a warning to confirm.
+    expect((await t.api.get(`/sites/${t.site.id}/contract-terms?planId=${mixed.id}&startOn=2026-11-01`)).json().systemWarning).toEqual(expect.any(String));
+    expect((await t.api.post(`/sites/${t.site.id}/contracts`, { planId: mixed.id, startOn: "2026-11-01" })).json()).toMatchObject({ error: "system_not_aerobic" });
+
+    const c = await contractOn(t, pumpOnly.id, "2026-11-01");
+    expect(c.serviceType).toBe("pumping");
+    expect(visitsOf(c, "pumping")).toEqual([
+      ["pumping", 1, "2027-03-31", "2027-05-30", "2027-04-30"],
+      ["pumping", 2, "2027-10-01", "2027-10-31", "2027-10-31"],
+    ]);
+    expect(c.obligations.filter((o) => o.serviceType === "aerobic_inspection")).toEqual([]);
+    const row = await ctx.db.selectFrom("contracts").select(["serviceType", "visitsPerTerm"]).where("id", "=", c.id).executeTakeFirstOrThrow();
+    expect(row.serviceType).toBe("pumping");
+    expect(await ctx.db.selectFrom("filings").select("id").where("contractId", "=", c.id).execute()).toEqual([]);
+  });
+
   it("an import names plans with pumping or maintenance and creates no contract from them", async () => {
     const t = await createTenant(ctx, "Org A");
     const pumpType = await workTypeId(t.api, "pumping");

@@ -11,6 +11,7 @@ import {
   contractTermsPreview,
   contractState,
   coverageSummary,
+  buildIntervalSchedule,
   cycleSummary,
   cycleWithoutVisit,
   DEFAULT_RENEWAL_TERMS,
@@ -639,6 +640,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       const site = await db.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
       if (!site) throw notFound("Site");
       const terms = await activePlanTerms(organizationId, req.query.planId);
+      // A pumping or maintenance only version (SW-9) gets its own cycles' visits: no authority
+      // inspections are added and no aerobic system confirmation is asked.
+      const cycles = await planCycles(db, organizationId, terms.planVersionId);
+      if (cycles && !cycles.aerobic) {
+        const visits = cycles.serviceCycles.reduce((n, c) => n + buildIntervalSchedule(req.query.startOn, terms.termMonths, c.schedule).length, 0);
+        return { planVisits: visits, visitsPerTerm: visits, warning: null, scheduleNotice: null, systemWarning: null };
+      }
       const { terms: t, added, scheduleNotice } = await siteVisitTerms(db, organizationId, site.id, req.query.startOn, terms);
       const systemWarning = await siteSystemWarning(db, organizationId, site.id, terms.serviceType);
       return { planVisits: terms.visitsPerTerm, visitsPerTerm: t.visitsPerTerm, warning: added ? new MoreVisitsRequired(added).message : null, scheduleNotice, systemWarning };
@@ -669,15 +677,18 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       if (!site.active) throw unprocessable("This site is inactive");
       const terms = await activePlanTerms(organizationId, req.body.planId, req.body.priceCents);
       const contractId = await db.transaction().execute(async (trx) => {
-        // SW-7: a warning the office confirms, never a hard refusal.
-        await requireSystemConfirmation(trx, organizationId, site.id, terms.serviceType, req.body.confirmSystemCategory);
+        const content = await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys);
+        // SW-7: a warning the office confirms, never a hard refusal. Asked only for a contract
+        // with aerobic inspections: a pumping or maintenance only version (SW-9) is not one.
+        const effectiveType = content.cycles && !content.cycles.aerobic ? content.cycles.serviceCycles[0]!.serviceType : terms.serviceType;
+        await requireSystemConfirmation(trx, organizationId, site.id, effectiveType, req.body.confirmSystemCategory);
         const created = await insertContract(trx, organizationId, {
           siteId: site.id,
           startOn: req.body.startOn,
           terms,
           autoRenew: req.body.autoRenew,
           notes: req.body.notes,
-          ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
+          ...content,
         }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
         await audit(trx, req, { action: "contract.created", entityType: "contract", entityId: created, changes: req.body });
         // Opens a filing with the site's authority when it requires contracts on file.
