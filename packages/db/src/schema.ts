@@ -24,6 +24,7 @@ import type {
   EstimateStatus,
   EstimateSourceKind,
   EstimateAcceptanceKind,
+  ServiceType,
 } from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
@@ -306,7 +307,7 @@ export interface ContractsTable {
   visitsPerTerm: number;
   priceCents: number;
   billingFrequency: "annual" | "semiannual" | "quarterly" | "monthly";
-  serviceType: "aerobic_inspection";
+  serviceType: ServiceType;
   autoRenew: Generated<boolean>;
   status: Generated<"active" | "cancelled">;
   renewalStatus: Generated<string>;
@@ -337,7 +338,9 @@ export interface ServiceObligationsTable {
   organizationId: string;
   contractId: string;
   siteId: string;
-  serviceType: "aerobic_inspection";
+  serviceType: ServiceType;
+  /** The contract cycle (SW-9, migration 0060). Filled by the database for an aerobic visit inserted without one. */
+  cycleId: ColumnType<string, string | undefined, never>;
   sequence: number;
   windowStart: string;
   windowEnd: string;
@@ -1183,7 +1186,7 @@ export interface RenewalsTable {
   visitsPerTerm: number;
   priceCents: number;
   billingFrequency: "annual" | "semiannual" | "quarterly" | "monthly";
-  serviceType: "aerobic_inspection";
+  serviceType: ServiceType;
   autoRenew: Generated<boolean>;
   startOn: string;
   endOn: string;
@@ -1602,8 +1605,26 @@ export interface WorkOrdersTable {
   sourceKind: Generated<WorkSourceKind>;
   sourceId: ColumnType<string | null, string | null | undefined, string | null>;
   coverageSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
+  /** The pumping or maintenance visit this order is done for (SW-9, migration 0060); never changes. */
+  obligationId: ColumnType<string | null, string | null | undefined, never>;
+  /** The visit's kind, derived from it by the database (work_orders_derive_obligation_kind). */
+  obligationServiceType: ColumnType<string | null, string | null | undefined, never>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
+}
+
+/** A contract's frozen service cycles (SW-9, migration 0060). Written once; never updated. */
+export interface ContractServiceCyclesTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractId: string;
+  cycleKey: string;
+  serviceType: ServiceType;
+  workTypeId: string | null;
+  schedule: ColumnType<unknown, string, never>;
+  snapshot: ColumnType<unknown, string, never>;
+  planVersionId: string | null;
+  createdAt: CreatedAt;
 }
 
 export interface WorkOrderLinesTable {
@@ -1665,6 +1686,7 @@ export interface DB {
   plans: PlansTable;
   planVersions: PlanVersionsTable;
   contractCoverageRules: ContractCoverageRulesTable;
+  contractServiceCycles: ContractServiceCyclesTable;
   coverageUses: CoverageUsesTable;
   contracts: ContractsTable;
   serviceObligations: ServiceObligationsTable;
