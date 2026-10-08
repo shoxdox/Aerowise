@@ -52,16 +52,35 @@ export const photoRequirement = z.object({
 });
 export type PhotoRequirement = z.infer<typeof photoRequirement>;
 
+/**
+ * A signature the form asks for, such as the customer signing off a summary of the work. It is a
+ * plain sign-off on what was done, never a regulatory or MP signature: those stay office-side.
+ */
+export const signatureRequirement = z.object({
+  key: fieldKey,
+  label: z.string().min(1).max(200),
+  signer: z.enum(["customer", "technician"]),
+  required: z.boolean().default(false),
+});
+export type SignatureRequirement = z.infer<typeof signatureRequirement>;
+
 export const templateDefinition = z
   .object({
     fields: z.array(templateField).min(1).max(200),
     photos: z.array(photoRequirement).max(50),
+    /** Optional, so every definition saved before signatures existed reads unchanged. */
+    signatures: z.array(signatureRequirement).max(5).optional(),
   })
   .superRefine((def, ctx) => {
     const keys = new Set<string>();
     for (const f of def.fields) {
       if (keys.has(f.key)) ctx.addIssue({ code: "custom", message: `Duplicate field key ${f.key}` });
       keys.add(f.key);
+    }
+    const signatureKeys = new Set<string>();
+    for (const sig of def.signatures ?? []) {
+      if (keys.has(sig.key) || signatureKeys.has(sig.key)) ctx.addIssue({ code: "custom", message: `Duplicate signature key ${sig.key}` });
+      signatureKeys.add(sig.key);
     }
     for (const item of [...def.fields, ...def.photos]) {
       if (item.showWhen && !keys.has(item.showWhen.field)) {
