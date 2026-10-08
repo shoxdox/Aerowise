@@ -280,8 +280,13 @@ export async function cancellationBlocker(trx: Trx, organizationId: string, work
   const invoiced = await sql<{ n: number }>`
     select count(*)::int as n from invoices i
     where i.organization_id = ${organizationId} and i.status <> 'void'
-      and exists (select 1 from invoice_lines l join jobs j on j.id = l.job_id and j.organization_id = l.organization_id
-                  where l.invoice_id = i.id and l.organization_id = i.organization_id and j.type = 'work' and j.work_order_id = ${workOrderId})`.execute(trx);
+      and (
+        -- The work order's own invoice (SW-3), draft or issued, made before or after its visits.
+        i.work_order_id = ${workOrderId}
+        -- Or any invoice billing one of its visits.
+        or exists (select 1 from invoice_lines l join jobs j on j.id = l.job_id and j.organization_id = l.organization_id
+                   where l.invoice_id = i.id and l.organization_id = i.organization_id and j.type = 'work' and j.work_order_id = ${workOrderId})
+      )`.execute(trx);
   if (invoiced.rows[0]!.n > 0) return "Its work order has an invoice. Void or delete the invoice first.";
   return null;
 }

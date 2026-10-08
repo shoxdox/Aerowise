@@ -15,7 +15,7 @@ class FakeMail implements EmailTransport {
 }
 const mail = new FakeMail();
 const APP_URL = "https://app.example.test";
-const ctx = setupTestApp({ features: ["work_orders", "estimates"] });
+const ctx = setupTestApp({ features: ["work_orders", "service_items", "estimates"] });
 const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now: () => c.now, mail, appUrl: APP_URL });
 const anon = () => client(ctx.app);
 const tokenOf = (url: string) => url.split("/estimate/")[1]!.split(/\s/)[0]!;
@@ -234,6 +234,38 @@ describe("estimates", () => {
     const blocked = await t.api.post(`/estimates/${b.estimate.id}/cancel`, { reason: "Too late" });
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().error).toBe("work_started");
+  });
+
+  it("refuses to cancel while the work order's own invoice is live, draft or issued, and allows it once discarded or voided", async () => {
+    const t = await tenant(ctx);
+    const acceptedOrder = async () => {
+      const a = await sent(t);
+      expect((await anon().post(`/estimate/${a.token}/accept`, acceptBody(1))).statusCode).toBe(200);
+      return { estimateId: a.estimate.id as string, woId: (await t.api.get(`/estimates/${a.estimate.id}`)).json().workOrder.id as string };
+    };
+
+    // An open work order invoiced before any visit (SW-3 links it by invoices.work_order_id, with no job lines).
+    const a = await acceptedOrder();
+    const draftInvoice = await t.api.post(`/work-orders/${a.woId}/invoice`, {});
+    expect(draftInvoice.statusCode, draftInvoice.body).toBe(201);
+    const blockedDraft = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed their mind" });
+    expect(blockedDraft.statusCode, blockedDraft.body).toBe(409);
+    expect(blockedDraft.json().error).toBe("work_started");
+    expect((await t.api.get(`/work-orders/${a.woId}`)).json().status).toBe("open");
+    const discarded = await t.api.post(`/invoices/${draftInvoice.json().invoiceId}/discard`, {});
+    expect(discarded.statusCode, discarded.body).toBe(204);
+    const allowed = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed their mind" });
+    expect(allowed.statusCode, allowed.body).toBe(200);
+    expect(allowed.json()).toMatchObject({ status: "cancelled", workOrder: { status: "cancelled" } });
+
+    // The same with the invoice issued, then voided.
+    const b = await acceptedOrder();
+    const inv = { id: (await t.api.post(`/work-orders/${b.woId}/invoice`, {})).json().invoiceId as string };
+    const issued = await t.api.post(`/invoices/${inv.id}/issue`, { send: false });
+    expect(issued.statusCode, issued.body).toBe(200);
+    expect((await t.api.post(`/estimates/${b.estimateId}/cancel`, { reason: "Changed their mind" })).statusCode).toBe(409);
+    expect((await t.api.post(`/invoices/${inv.id}/void`, { reason: "Billed in error" })).statusCode).toBe(200);
+    expect((await t.api.post(`/estimates/${b.estimateId}/cancel`, { reason: "Changed their mind" })).statusCode).toBe(200);
   });
 
   it("drafts one estimate per inspection issue or request however often it is asked", async () => {
