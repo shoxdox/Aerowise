@@ -107,6 +107,9 @@ async function removeCompanies(trx: Transaction<DB>, ids: string[], log: (msg: s
       select distinct c.relname as name from pg_trigger g join pg_class c on c.oid = g.tgrelid
       where not g.tgisinternal and c.relname = any(${tables}::text[]) order by 1`.execute(trx)
   ).rows.map((r) => r.name);
+  // Deferred checks queued earlier in this transaction (a new plan's first version) must
+  // run before a table's triggers can be switched off.
+  await sql`set constraints all immediate`.execute(trx);
   for (const t of guarded) await sql`alter table ${sql.table(t)} disable trigger user`.execute(trx);
 
   // The company row points at its responsible credential; that link goes first.
