@@ -95,7 +95,7 @@ describe("estimates", () => {
   it("accepts with a signature and chosen options exactly once, creating one work order with the accepted lines", async () => {
     const t = await tenant(ctx);
     const { estimate, token } = await sent(t);
-    const [, , riser, alarm] = estimate.versions[0].lines as { id: string }[];
+    const [, , riser] = estimate.versions[0].lines as { id: string }[];
     await anon().post(`/estimate/${token}/view`, {});
     expect((await t.api.get(`/estimates/${estimate.id}`)).json().status).toBe("viewed");
 
