@@ -33,6 +33,7 @@ import {
 } from "@aerowise/domain";
 import { canonicalJson, sha256Hex, systemAudit } from "@aerowise/renewals";
 import { createEstimateLink, payUrlFor, estimateExpired, estimateUrlFor, hashEstimateToken, queueEstimateEmail, queueEstimateExpiry } from "@aerowise/tasks";
+import { dollars } from "@aerowise/payments";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
@@ -53,7 +54,8 @@ import {
   versionOf,
   type LockedEstimate,
 } from "../lib/estimates.ts";
-import { depositCancellationBlocker, depositViewFor, lockDepositForWorkOrder } from "../lib/deposits.ts";
+import { depositViewFor, lockDepositForWorkOrder, settleDepositAtCancel } from "../lib/deposits.ts";
+import type { PaymentsConfig } from "../lib/invoices.ts";
 import { lockWorkOrder, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
 
 // Estimates (SW-5 part 1, service workflows plan §3.3–§3.5): the office's list and editor,
@@ -85,7 +87,7 @@ const clientMeta = (req: FastifyRequest) => {
   return { ipAddress: (chain ? `${chain} (via ${req.ip})` : req.ip).slice(0, 300), userAgent: (req.headers["user-agent"] ?? "").slice(0, 500) || null };
 };
 
-export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; features: ReadonlySet<Feature>; appUrl: string }> = async (app, { db, now, features, appUrl }) => {
+export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; features: ReadonlySet<Feature>; appUrl: string; payments: PaymentsConfig }> = async (app, { db, now, features, appUrl, payments }) => {
   const enabled = features.has("estimates");
   const requireFeature = () => {
     if (!enabled) throw estimatesOff();
@@ -232,7 +234,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   const acceptedDeposit = (selection: unknown) => (selection as { depositCents?: number | null } | null)?.depositCents ?? null;
 
   /** What the homeowner sees of the deposit: how much, and where to pay it while it is owed. */
-  async function publicDeposit(organizationId: string, estimateId: string): Promise<PublicEstimate["deposit"]> {
+  async function publicDeposit(organizationId: string, estimateId: string, cancelled: boolean): Promise<PublicEstimate["deposit"]> {
     const d = await db
       .selectFrom("estimateInvoices as ei")
       .innerJoin("invoices as i", (k) => k.onRef("i.id", "=", "ei.invoiceId").onRef("i.organizationId", "=", "ei.organizationId"))
@@ -243,7 +245,8 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       .where("ei.voidedAt", "is", null)
       .executeTakeFirst();
     if (!d) return null;
-    const owed = d.status === "open" && (d.paymentStatus === "unpaid" || d.paymentStatus === "partial");
+    // A cancelled estimate asks for no more deposit money.
+    const owed = !cancelled && d.status === "open" && (d.paymentStatus === "unpaid" || d.paymentStatus === "partial");
     return { amountCents: d.totalCents, paymentStatus: d.paymentStatus, payUrl: owed && d.publicToken ? payUrlFor(appUrl, d.publicToken) : null };
   }
 
@@ -571,6 +574,8 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       schema: {
         tags: ["estimates"],
         summary: "Cancel an accepted estimate and its work order, before any work is done or invoiced",
+        description:
+          "An unpaid deposit invoice is voided. A deposit with money received is left as it is and shows in the inbox as \"Deposit disposition needed\" until the office refunds or keeps it; nothing is refunded or kept automatically.",
         params,
         body: estimateReasonInput,
         response: { 200: estimateDetail },
@@ -579,14 +584,15 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       const at = now();
-      await db.transaction().execute(async (trx) => {
+      const openSessions = await db.transaction().execute(async (trx) => {
         const e = await lockEstimate(trx, organizationId, req.params.id);
         if (e.status !== "accepted" || !e.workOrderId) throw new HttpError(409, "invalid_transition", "Only an accepted estimate is cancelled; withdraw a draft or sent one instead");
         const wo = await lockWorkOrder(trx, organizationId, e.workOrderId);
         const dep = await lockDepositForWorkOrder(trx, organizationId, wo.id);
-        const blocker = (await cancellationBlocker(trx, organizationId, wo.id)) ?? (dep ? await depositCancellationBlocker(trx, organizationId, dep.depositInvoiceId) : null);
+        const blocker = await cancellationBlocker(trx, organizationId, wo.id);
         if (blocker) throw new HttpError(409, "work_started", blocker);
         const reason = `Estimate ${estimateLabel(e.number)} cancelled: ${req.body.reason}`;
+        const deposit = dep ? await settleDepositAtCancel(trx, organizationId, dep, { actorUserId: userId, reason, at }) : null;
         const open = await trx
           .selectFrom("jobs")
           .select("id")
@@ -606,8 +612,19 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         }
         await setEstimateStatus(trx, e, "cancelled", at, { cancelledAt: at, cancelReason: req.body.reason });
         await estimateEvent(trx, { organizationId, estimateId: e.id, eventType: "cancelled", summary: `Cancelled after acceptance: ${req.body.reason}`, actorUserId: userId, details: { reason: req.body.reason, workOrderId: wo.id }, at });
-        await audit(trx, req, { action: "estimate.cancelled", entityType: "estimate", entityId: e.id, changes: { ...req.body, workOrderId: wo.id } });
+        if (deposit?.voided) await estimateEvent(trx, { organizationId, estimateId: e.id, eventType: "deposit_voided", summary: "Unpaid deposit invoice voided", actorUserId: userId, details: { invoiceId: dep!.depositInvoiceId }, at });
+        if (deposit && deposit.held > 0)
+          await estimateEvent(trx, { organizationId, estimateId: e.id, eventType: "deposit_disposition_needed", summary: `Deposit disposition needed: ${dollars(deposit.held)} held. Refund it or keep it with a reason.`, actorUserId: userId, details: { invoiceId: dep!.depositInvoiceId, heldCents: deposit.held }, at });
+        await audit(trx, req, { action: "estimate.cancelled", entityType: "estimate", entityId: e.id, changes: { ...req.body, workOrderId: wo.id, depositVoided: deposit?.voided ?? false, depositHeldCents: deposit?.held ?? 0 } });
+        return deposit?.openSessions ?? [];
       });
+      // Close any deposit checkout page the customer still has open, as voiding an invoice does.
+      const org = await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
+      if (payments.provider && org.stripeAccountId) {
+        for (const s of openSessions) {
+          await payments.provider.expireCheckout({ organizationId, accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => req.log.warn({ err }, "could not expire checkout"));
+        }
+      }
       return loadDetail(organizationId, req.params.id);
     },
   );
@@ -782,7 +799,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           e.acceptedVersion && e.acceptedAt && e.acceptanceKind && accepted
             ? { version: e.acceptedVersion, at: e.acceptedAt.toISOString(), kind: e.acceptanceKind, signerName: doc?.signerName ?? null, selectedOptionalLineIds: accepted.selectedOptionalLineIds, totals: accepted.totals }
             : null,
-        deposit: await publicDeposit(organizationId, e.id),
+        deposit: await publicDeposit(organizationId, e.id, e.status === "cancelled"),
       };
     },
   );

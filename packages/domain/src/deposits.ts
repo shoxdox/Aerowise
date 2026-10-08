@@ -10,6 +10,12 @@ import { MAX_CENTS } from "./invoices.ts";
 const amount = z.number().int().min(1).max(MAX_CENTS);
 const reason = z.string().trim().min(1).max(2000);
 const datetime = z.iso.datetime({ offset: true });
+/**
+ * Made by the office's screen once per action it opens, and sent again on a retry or a double
+ * click. The same id with the same body returns the first result and moves no more money; the
+ * same id with a different body is refused (409 `request_reused`). A new action needs a new id.
+ */
+const requestId = id;
 
 export const DEPOSIT_LEDGER_KINDS = [
   "received",
@@ -38,16 +44,16 @@ export const DEPOSIT_LEDGER_LABELS: Record<DepositLedgerKindName, string> = {
 };
 
 /** Refund free deposit money to the customer. */
-export const depositRefundInput = z.object({ amountCents: amount, reason });
+export const depositRefundInput = z.object({ requestId, amountCents: amount, reason });
 /** Keep free deposit money under the estimate's terms, or put kept money back. */
-export const depositRetainInput = z.object({ amountCents: amount, reason });
+export const depositRetainInput = z.object({ requestId, amountCents: amount, reason });
 /** Record how a shortfall was dealt with. */
 export const depositShortfallInput = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("supplemental_invoice"), amountCents: amount, invoiceId: id, reason }),
-  z.object({ kind: z.literal("write_off"), amountCents: amount, reason }),
+  z.object({ requestId, kind: z.literal("supplemental_invoice"), amountCents: amount, invoiceId: id, reason }),
+  z.object({ requestId, kind: z.literal("write_off"), amountCents: amount, reason }),
 ]);
 /** "Refund the job": the final invoice's own payments first, then the deposit money applied to it. */
-export const refundJobInput = z.object({ amountCents: amount, reason });
+export const refundJobInput = z.object({ requestId, amountCents: amount, reason });
 
 export const depositBalancesView = z.object({
   received: z.number().int(),

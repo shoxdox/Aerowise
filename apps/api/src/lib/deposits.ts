@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { estimateLabel, invoiceNumberLabel, type DepositView } from "@aerowise/domain";
+import { canonicalJson, estimateLabel, invoiceNumberLabel, type DepositView } from "@aerowise/domain";
 import { appliedTo, depositBalances, dollars, invoiceEvent, recalcInvoice, reversedOn, settleShortfall, writeEntry } from "@aerowise/payments";
 import { sql, type Transaction } from "kysely";
 import { HttpError, unprocessable } from "./errors.ts";
@@ -263,19 +263,32 @@ export async function refundableOn(ex: Database | Trx, organizationId: string, i
 }
 
 /**
- * Whether the estimate can be cancelled with its deposit as it is: an unpaid deposit invoice
- * is voided first, and deposit money is refunded or kept first, so a cancelled estimate never
- * leaves a payable deposit or free money behind.
+ * The deposit when its estimate is cancelled (service workflows plan §3.4). Never blocks the
+ * cancellation and never moves money: a deposit invoice with nothing paid or clearing is
+ * voided (its pay link stops working); anything received stays on the ledger, and its free part
+ * shows in the inbox as "Deposit disposition needed" until the office refunds or keeps it. A
+ * payment still clearing lands there too once it clears. Returns the checkout sessions to close.
  */
-export async function depositCancellationBlocker(trx: Trx, organizationId: string, depositInvoiceId: string): Promise<string | null> {
-  const d = await trx.selectFrom("invoices").select(["status", "paidCents", "pendingCents"]).where("id", "=", depositInvoiceId).executeTakeFirstOrThrow();
-  if (d.status === "void") return null;
-  if (d.pendingCents > 0) return "A deposit payment is still clearing. Cancel once it has cleared or failed.";
-  const b = await depositBalances(trx, organizationId, depositInvoiceId);
-  if (b.reserved > 0) return "A refund of the deposit is still pending. Cancel once it has settled.";
-  if (b.free > 0) return `${dollars(b.free)} of the deposit is still held. Refund or keep it first.`;
-  if (d.status === "open" && d.paidCents === 0 && b.received === 0) return "Its deposit invoice is still payable. Void the deposit invoice first.";
-  return null;
+export async function settleDepositAtCancel(trx: Trx, organizationId: string, dep: LockedDeposit, a: { actorUserId: string; reason: string; at: Date }) {
+  const d = await trx.selectFrom("invoices").select(["status", "paidCents", "pendingCents"]).where("organizationId", "=", organizationId).where("id", "=", dep.depositInvoiceId).executeTakeFirstOrThrow();
+  const b = await depositBalances(trx, organizationId, dep.depositInvoiceId);
+  if (d.status === "void") return { voided: false, held: 0, openSessions: [] as { providerSessionId: string }[] };
+  if (d.status === "open" && d.paidCents === 0 && d.pendingCents === 0 && b.received === 0) {
+    await trx.updateTable("estimateInvoices").set({ voidedAt: a.at }).where("organizationId", "=", organizationId).where("invoiceId", "=", dep.depositInvoiceId).where("voidedAt", "is", null).execute();
+    await trx.updateTable("invoices").set({ status: "void", voidedAt: a.at, voidReason: a.reason, updatedAt: a.at }).where("organizationId", "=", organizationId).where("id", "=", dep.depositInvoiceId).execute();
+    await recalcInvoice(trx, organizationId, dep.depositInvoiceId, a.at);
+    await invoiceEvent(trx, { organizationId, invoiceId: dep.depositInvoiceId, eventType: "voided", summary: `Voided: ${a.reason}`, actorUserId: a.actorUserId, at: a.at });
+    const openSessions = await trx
+      .updateTable("checkoutSessions")
+      .set({ status: "expired" })
+      .where("organizationId", "=", organizationId)
+      .where("invoiceId", "=", dep.depositInvoiceId)
+      .where("status", "=", "open")
+      .returning("providerSessionId")
+      .execute();
+    return { voided: true, held: 0, openSessions };
+  }
+  return { voided: false, held: Math.max(0, b.free), openSessions: [] as { providerSessionId: string }[] };
 }
 
 /** The estimate's deposit, for the office. */
@@ -333,4 +346,44 @@ export async function depositViewFor(db: Database, organizationId: string, estim
     refunds: refunds.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() })),
     refundableCents: refundable,
   };
+}
+
+export type DepositAction = "refund" | "retain" | "retain_reverse" | "shortfall" | "refund_job";
+
+/**
+ * Claims the office's request id for one deposit action, under the deposit's lock. The first
+ * call gets `null` and goes ahead; the same id again with the same action, invoice and body
+ * gets the first call's result, so a retry or a double click moves no more money. The same id
+ * with anything different is refused. Two calls at once take turns on the row's key: the second
+ * waits for the first to commit, then finds its row (or, if it rolled back, goes ahead itself).
+ */
+export async function claimDepositRequest(
+  trx: Trx,
+  r: { organizationId: string; requestId: string; action: DepositAction; invoiceId: string; body: Record<string, unknown>; actorUserId: string },
+): Promise<{ refundIds: string[] } | null> {
+  const { requestId, ...rest } = r.body;
+  void requestId;
+  const bodySha256 = createHash("sha256").update(canonicalJson(rest)).digest("hex");
+  const claimed = await trx
+    .insertInto("depositRequests")
+    .values({ organizationId: r.organizationId, requestId: r.requestId, action: r.action, invoiceId: r.invoiceId, bodySha256, createdBy: r.actorUserId })
+    .onConflict((oc) => oc.columns(["organizationId", "requestId"]).doNothing())
+    .returning("requestId")
+    .executeTakeFirst();
+  if (claimed) return null;
+  const prior = await trx
+    .selectFrom("depositRequests")
+    .select(["action", "invoiceId", "bodySha256", "result"])
+    .where("organizationId", "=", r.organizationId)
+    .where("requestId", "=", r.requestId)
+    .executeTakeFirstOrThrow();
+  if (prior.action !== r.action || prior.invoiceId !== r.invoiceId || prior.bodySha256 !== bodySha256)
+    throw new HttpError(409, "request_reused", "This request was already sent with different details. Start the action again to make a new one.");
+  const result = prior.result as { refundIds?: string[] } | null;
+  return { refundIds: result?.refundIds ?? [] };
+}
+
+/** What the claimed action did, written in its transaction so a retry can return it. */
+export async function recordDepositRequest(trx: Trx, organizationId: string, requestId: string, result: { refundIds: string[] }) {
+  await trx.updateTable("depositRequests").set({ result: JSON.stringify(result) }).where("organizationId", "=", organizationId).where("requestId", "=", requestId).execute();
 }

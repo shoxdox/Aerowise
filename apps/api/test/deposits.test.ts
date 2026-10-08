@@ -1,6 +1,7 @@
 import { depositBalances, reversedOn, TestPaymentProvider } from "@aerowise/payments";
 import { reconcileRefunds } from "@aerowise/tasks";
 import { sql } from "kysely";
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTenant, setupTestApp, type TestContext } from "./helpers.ts";
 
@@ -191,8 +192,8 @@ describe("deposits", () => {
     expect(f.res.json()).toMatchObject({ depositAppliedCents: 8000, totalCents: 0, paymentStatus: "paid", amountDueCents: 0 });
     await expectEquality(t, a.estimateId);
     // More than was applied: refused.
-    expect((await t.api.post(`/invoices/${f.id}/refund-job`, { amountCents: 8001, reason: "Job cancelled" })).statusCode).toBe(409);
-    const r = await t.api.post(`/invoices/${f.id}/refund-job`, { amountCents: 8000, reason: "Job cancelled" });
+    expect((await t.api.post(`/invoices/${f.id}/refund-job`, { requestId: randomUUID(), amountCents: 8001, reason: "Job cancelled" })).statusCode).toBe(409);
+    const r = await t.api.post(`/invoices/${f.id}/refund-job`, { requestId: randomUUID(), amountCents: 8000, reason: "Job cancelled" });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().deposit.balances).toMatchObject({ returned: 8000, applied: 0, free: 0, shortfall: 0 });
     expect(await reversedOn(ctx.db, t.org.id, f.id)).toBe(8000);
@@ -208,7 +209,7 @@ describe("deposits", () => {
     const f = await issueFinal(t, a.workOrderId);
     await payByCard(ctx, t, f.id, 4000, "f");
     expect((await t.api.get(`/invoices/${f.id}`)).json().paymentStatus).toBe("paid");
-    const r = await t.api.post(`/invoices/${f.id}/refund-job`, { amountCents: 10000, reason: "Customer unhappy" });
+    const r = await t.api.post(`/invoices/${f.id}/refund-job`, { requestId: randomUUID(), amountCents: 10000, reason: "Customer unhappy" });
     expect(r.statusCode, r.body).toBe(200);
     expect((await t.api.get(`/invoices/${f.id}`)).json()).toMatchObject({ paidCents: 0, creditedCents: 4000, amountDueCents: 0, paymentStatus: "refunded" });
     expect(await ledger(a.depositId)).toEqual([
@@ -251,8 +252,8 @@ describe("deposits", () => {
     expect(await balances(t, a.depositId)).toMatchObject({ shortfall: 5000, free: 0 });
 
     // One more cent cannot be taken from D, by refund or by keeping it.
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 1, reason: "x" })).json()).toMatchObject({ error: "deposit_not_available" });
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { amountCents: 1, reason: "x" })).statusCode).toBe(409);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 1, reason: "x" })).json()).toMatchObject({ error: "deposit_not_available" });
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { requestId: randomUUID(), amountCents: 1, reason: "x" })).statusCode).toBe(409);
     expect((await inbox(t)).map((i: { kind: string }) => i.kind)).toEqual(["deposit_shortfall"]);
 
     // Void F: everything applied comes back and the shortfall it no longer needs is released.
@@ -295,8 +296,8 @@ describe("deposits", () => {
     await webhook(ctx, t, "refund.updated", refundObject({ id: "re_ext_part", pi, amount: 5000, status: "succeeded" }));
     expect(await expectEquality(t, a.estimateId)).toMatchObject({ returned: 5000, applied: 6000, shortfall: 1000, free: 0 });
     expect((await inbox(t)).map((i: { kind: string; detail: string }) => [i.kind, i.detail.includes("$10.00")])).toEqual([["deposit_shortfall", true]]);
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/shortfall`, { kind: "write_off", amountCents: 1001, reason: "Goodwill" })).statusCode).toBe(409);
-    const w = await t.api.post(`/invoices/${a.depositId}/deposit/shortfall`, { kind: "write_off", amountCents: 1000, reason: "Goodwill" });
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/shortfall`, { requestId: randomUUID(), kind: "write_off", amountCents: 1001, reason: "Goodwill" })).statusCode).toBe(409);
+    const w = await t.api.post(`/invoices/${a.depositId}/deposit/shortfall`, { requestId: randomUUID(), kind: "write_off", amountCents: 1000, reason: "Goodwill" });
     expect(w.statusCode, w.body).toBe(200);
     expect(w.json().deposit.balances).toMatchObject({ shortfall: 1000, shortfallOutstanding: 0, overResolved: 0 });
     expect(await inbox(t)).toEqual([]);
@@ -309,9 +310,9 @@ describe("deposits", () => {
     await reprice(a.workOrderId, 6000);
     const f = await issueFinal(t, a.workOrderId);
     expect(await balances(t, a.depositId)).toMatchObject({ applied: 6000, free: 4000 });
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { amountCents: 4001, reason: "Cancellation fee" })).statusCode).toBe(409);
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { amountCents: 4000, reason: "Cancellation fee" })).statusCode).toBe(200);
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 1, reason: "x" })).statusCode).toBe(409);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { requestId: randomUUID(), amountCents: 4001, reason: "Cancellation fee" })).statusCode).toBe(409);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { requestId: randomUUID(), amountCents: 4000, reason: "Cancellation fee" })).statusCode).toBe(200);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 1, reason: "x" })).statusCode).toBe(409);
 
     // Voiding F frees what was applied, never what was kept.
     await t.api.post(`/invoices/${f.id}/void`, { reason: "Redo" });
@@ -320,10 +321,10 @@ describe("deposits", () => {
     await reprice(a.workOrderId, 10000);
     const draft = (await t.api.post(`/work-orders/${a.workOrderId}/invoice`, {})).json().invoiceId;
     expect((await t.api.post(`/invoices/${draft}/issue`, { send: false, depositCents: 6001 })).json()).toMatchObject({ error: "deposit_not_available" });
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain-reverse`, { amountCents: 4001, reason: "x" })).statusCode).toBe(409);
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain-reverse`, { amountCents: 1000, reason: "Fee waived in part" })).statusCode).toBe(200);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain-reverse`, { requestId: randomUUID(), amountCents: 4001, reason: "x" })).statusCode).toBe(409);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain-reverse`, { requestId: randomUUID(), amountCents: 1000, reason: "Fee waived in part" })).statusCode).toBe(200);
     expect((await t.api.post(`/invoices/${draft}/issue`, { send: false, depositCents: 6000 })).statusCode).toBe(200);
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 1000, reason: "Rest of the deposit" })).statusCode).toBe(200);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 1000, reason: "Rest of the deposit" })).statusCode).toBe(200);
     expect(await expectEquality(t, a.estimateId)).toMatchObject({ applied: 6000, retained: 3000, returned: 1000, free: 0 });
   });
 
@@ -348,8 +349,8 @@ describe("deposits", () => {
     const a2 = await accepted(t2, 20000, 10000);
     await payByCard(ctx, t2, a2.depositId, 10000, "race2");
     const both = await Promise.all([
-      t2.api.post(`/invoices/${a2.depositId}/deposit/refund`, { amountCents: 6000, reason: "one" }),
-      t2.api.post(`/invoices/${a2.depositId}/deposit/refund`, { amountCents: 6000, reason: "two" }),
+      t2.api.post(`/invoices/${a2.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 6000, reason: "one" }),
+      t2.api.post(`/invoices/${a2.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 6000, reason: "two" }),
     ]);
     expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409]);
     expect(await expectEquality(t2, a2.estimateId)).toMatchObject({ returned: 6000, free: 4000 });
@@ -360,12 +361,12 @@ describe("deposits", () => {
     const a = await accepted(t, 20000, 10000);
     const pi = await payByCard(ctx, t, a.depositId, 10000, "pend");
     payments.refundOutcome = "pending";
-    const r = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 3000, reason: "Smaller job" });
+    const r = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 3000, reason: "Smaller job" });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().deposit.balances).toMatchObject({ reserved: 3000, free: 7000, returned: 0 });
     expect(await ledger(a.depositId)).toEqual([["received", 10000]]);
     await expectEquality(t, a.estimateId);
-    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 7001, reason: "x" })).json()).toMatchObject({ error: "deposit_not_available" });
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 7001, reason: "x" })).json()).toMatchObject({ error: "deposit_not_available" });
 
     const [row] = await refundRows(a.depositId);
     expect(row).toMatchObject({ status: "pending", reservation: "deposit_free" });
@@ -384,7 +385,7 @@ describe("deposits", () => {
     const a = await accepted(t, 20000, 10000);
     const pi = await payByCard(ctx, t, a.depositId, 10000, "fail");
     payments.refundOutcome = "pending";
-    await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 3000, reason: "Smaller job" });
+    await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 3000, reason: "Smaller job" });
     const [row] = await refundRows(a.depositId);
     expect(await balances(t, a.depositId)).toMatchObject({ reserved: 3000, free: 7000 });
     for (let i = 0; i < 2; i++) await webhook(ctx, t, "refund.updated", refundObject({ id: row!.providerRefundId!, pi, amount: 3000, status: "failed", refundId: row!.id }));
@@ -401,11 +402,11 @@ describe("deposits", () => {
     const pi = await payByCard(ctx, t, a.depositId, 6000, "rj");
     const f = await issueFinal(t, a.workOrderId);
     payments.refundOutcome = "pending";
-    const r = await t.api.post(`/invoices/${f.id}/refund-job`, { amountCents: 6000, reason: "Not needed" });
+    const r = await t.api.post(`/invoices/${f.id}/refund-job`, { requestId: randomUUID(), amountCents: 6000, reason: "Not needed" });
     expect(r.statusCode, r.body).toBe(200);
     // Pending: nothing is booked and F is unchanged; the same applied money cannot be reserved twice.
     expect(await reversedOn(ctx.db, t.org.id, f.id)).toBe(0);
-    expect((await t.api.post(`/invoices/${f.id}/refund-job`, { amountCents: 1, reason: "x" })).json()).toMatchObject({ error: "deposit_not_available" });
+    expect((await t.api.post(`/invoices/${f.id}/refund-job`, { requestId: randomUUID(), amountCents: 1, reason: "x" })).json()).toMatchObject({ error: "deposit_not_available" });
     // Nor can F be voided under the pending reversal.
     expect((await t.api.post(`/invoices/${f.id}/void`, { reason: "x" })).json()).toMatchObject({ error: "refund_pending" });
     await expectEquality(t, a.estimateId);
@@ -426,7 +427,7 @@ describe("deposits", () => {
     const f = await issueFinal(t, a.workOrderId);
     const before = (await t.api.get(`/invoices/${f.id}`)).json();
     payments.refundOutcome = "pending";
-    expect((await t.api.post(`/invoices/${f.id}/refund-job`, { amountCents: 8000, reason: "Not needed" })).statusCode).toBe(200);
+    expect((await t.api.post(`/invoices/${f.id}/refund-job`, { requestId: randomUUID(), amountCents: 8000, reason: "Not needed" })).statusCode).toBe(200);
     const [row] = await refundRows(a.depositId);
     for (let i = 0; i < 2; i++) await webhook(ctx, t, "refund.updated", refundObject({ id: row!.providerRefundId!, pi, amount: 8000, status: "failed", refundId: row!.id }));
     expect(await reversedOn(ctx.db, t.org.id, f.id)).toBe(0);
@@ -441,7 +442,7 @@ describe("deposits", () => {
     const a = await accepted(t, 20000, 10000);
     await payByCard(ctx, t, a.depositId, 10000, "lost");
     payments.dropRefundResponses = 1;
-    const r = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 2000, reason: "Lost answer" });
+    const r = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 2000, reason: "Lost answer" });
     expect(r.statusCode, r.body).toBe(200);
     const [row] = await refundRows(a.depositId);
     expect(row).toMatchObject({ status: "pending", providerRefundId: null });
@@ -468,7 +469,7 @@ describe("deposits", () => {
     const a = await accepted(t, 20000, 10000);
     const pi = await payByCard(ctx, t, a.depositId, 10000, "early");
     payments.dropRefundResponses = 1;
-    await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 2500, reason: "Early webhook" });
+    await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 2500, reason: "Early webhook" });
     const [row] = await refundRows(a.depositId);
     const providerId = payments.refundIdFor(row!.idempotencyKey!)!;
     expect(row!.providerRefundId).toBeNull();
@@ -489,17 +490,132 @@ describe("deposits", () => {
     expect(await expectEquality(t, a.estimateId)).toMatchObject({ returned: 2500, reserved: 0, free: 7500 });
   });
 
-  it("refuses to cancel the estimate while its deposit is payable or held, and allows it once settled", async () => {
+  it("cancels an accepted estimate with an unpaid deposit by voiding the deposit invoice", async () => {
     const t = await tenant(ctx);
     const a = await accepted(t, 20000, 10000);
-    expect((await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed mind" })).json()).toMatchObject({ error: "work_started", message: expect.stringContaining("Void the deposit invoice") });
-    await payByCard(ctx, t, a.depositId, 10000, "cancel");
-    expect((await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed mind" })).json().message).toContain("Refund or keep it first");
-    await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { amountCents: 2000, reason: "Cancellation fee" });
-    await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { amountCents: 8000, reason: "Cancelled" });
     const c = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed mind" });
     expect(c.statusCode, c.body).toBe(200);
-    expect(c.json().deposit.balances).toMatchObject({ retained: 2000, returned: 8000, free: 0 });
+    expect(c.json()).toMatchObject({ status: "cancelled", workOrder: { status: "cancelled" }, deposit: { invoice: { voided: true } } });
+    expect(await ctx.db.selectFrom("invoices").select(["status", "voidReason"]).where("id", "=", a.depositId).executeTakeFirstOrThrow()).toMatchObject({ status: "void", voidReason: expect.stringContaining("Changed mind") });
+    expect(await ctx.db.selectFrom("estimateInvoices").select("voidedAt").where("invoiceId", "=", a.depositId).executeTakeFirstOrThrow()).toMatchObject({ voidedAt: expect.any(Date) });
+    expect(await inbox(t)).toEqual([]);
+  });
+
+  it("cancels an accepted estimate with a paid deposit, leaving the money for the office to refund or keep from the inbox", async () => {
+    const t = await tenant(ctx);
+    const a = await accepted(t, 20000, 10000);
+    await payByCard(ctx, t, a.depositId, 10000, "cancel");
+    const c = await t.api.post(`/estimates/${a.estimateId}/cancel`, { reason: "Changed mind" });
+    expect(c.statusCode, c.body).toBe(200);
+    expect(c.json()).toMatchObject({ status: "cancelled", workOrder: { status: "cancelled" }, deposit: { invoice: { status: "open" }, balances: { received: 10000, free: 10000, returned: 0, retained: 0 } } });
+    // Nothing moved on its own.
+    expect(await refundRows(a.depositId)).toEqual([]);
+    expect(await ledger(a.depositId)).toEqual([["received", 10000]]);
+    const events = await ctx.db.selectFrom("estimateEvents").select("eventType").where("estimateId", "=", a.estimateId).execute();
+    expect(events.map((e) => e.eventType)).toContain("deposit_disposition_needed");
+    expect(await inbox(t)).toMatchObject([{ kind: "deposit_disposition", title: "Deposit disposition needed", severity: "high", target: { type: "invoice", id: a.depositId } }]);
+
+    // The office decides: keep a fee, refund the rest. The item goes away and the ledger balances.
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, { requestId: randomUUID(), amountCents: 2000, reason: "Cancellation fee" })).statusCode).toBe(200);
+    expect((await inbox(t)).map((i: { kind: string }) => i.kind)).toEqual(["deposit_disposition"]);
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 8000, reason: "Cancelled" })).statusCode).toBe(200);
+    expect(await inbox(t)).toEqual([]);
+    expect(await expectEquality(t, a.estimateId)).toMatchObject({ retained: 2000, returned: 8000, free: 0 });
+  });
+
+  it("returns the first result for a repeated deposit refund request, sequential or at once, and refuses the id with other details", async () => {
+    const t = await tenant(ctx);
+    const a = await accepted(t, 20000, 10000);
+    await payByCard(ctx, t, a.depositId, 10000, "retry");
+    const body = { requestId: randomUUID(), amountCents: 2000, reason: "Same customer request" };
+    const first = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, body);
+    const again = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, body);
+    expect([first.statusCode, again.statusCode], again.body).toEqual([200, 200]);
+    expect(again.json().deposit.balances).toMatchObject({ returned: 2000, free: 8000 });
+    expect(await refundRows(a.depositId)).toHaveLength(1);
+    const [only] = await refundRows(a.depositId);
+    expect(payments.refunds.filter((r) => r.idempotencyKey === only!.idempotencyKey)).toHaveLength(1);
+    // The same id with a different amount or reason is someone else's request.
+    for (const changed of [{ ...body, amountCents: 3000 }, { ...body, reason: "Another reason" }]) {
+      const r = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, changed);
+      expect(r.statusCode, r.body).toBe(409);
+      expect(r.json().error).toBe("request_reused");
+    }
+    // Two clicks at once.
+    const twice = { requestId: randomUUID(), amountCents: 1500, reason: "Double click" };
+    const both = await Promise.all([t.api.post(`/invoices/${a.depositId}/deposit/refund`, twice), t.api.post(`/invoices/${a.depositId}/deposit/refund`, twice)]);
+    expect(both.map((r) => r.statusCode), both.map((r) => r.body).join()).toEqual([200, 200]);
+    // A new request is a new refund.
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 2000, reason: "Same customer request" })).statusCode).toBe(200);
+    expect((await refundRows(a.depositId)).map((r) => r.amountCents)).toEqual([2000, 1500, 2000]);
+    expect(await expectEquality(t, a.estimateId)).toMatchObject({ returned: 5500, free: 4500 });
+  });
+
+  it("finishes a refund whose response was lost when the office retries the same request: one refund, sent again with the same key", async () => {
+    const t = await tenant(ctx);
+    const a = await accepted(t, 20000, 10000);
+    await payByCard(ctx, t, a.depositId, 10000, "lostretry");
+    payments.dropRefundResponses = 1;
+    const body = { requestId: randomUUID(), amountCents: 2000, reason: "Lost answer" };
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/refund`, body)).statusCode).toBe(200);
+    const [row] = await refundRows(a.depositId);
+    expect(row).toMatchObject({ status: "pending", providerRefundId: null });
+    const retry = await t.api.post(`/invoices/${a.depositId}/deposit/refund`, body);
+    expect(retry.statusCode, retry.body).toBe(200);
+    expect(await refundRows(a.depositId)).toMatchObject([{ id: row!.id, status: "succeeded", providerRefundId: payments.refundIdFor(row!.idempotencyKey!) }]);
+    expect(payments.refunds.filter((c) => c.idempotencyKey === row!.idempotencyKey)).toHaveLength(2);
+    expect(await expectEquality(t, a.estimateId)).toMatchObject({ returned: 2000, reserved: 0, free: 8000 });
+  });
+
+  it("keeps a repeated keep, put-back, shortfall or job refund request to one effect", async () => {
+    const t = await tenant(ctx);
+    const a = await accepted(t, 10000, 10000);
+    const pi = await payByCard(ctx, t, a.depositId, 10000, "once");
+    await reprice(a.workOrderId, 6000);
+    const f = await issueFinal(t, a.workOrderId);
+    expect(await balances(t, a.depositId)).toMatchObject({ applied: 6000, free: 4000 });
+
+    const retain = { requestId: randomUUID(), amountCents: 1000, reason: "Fee" };
+    for (let i = 0; i < 2; i++) expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain`, retain)).statusCode).toBe(200);
+    expect(await balances(t, a.depositId)).toMatchObject({ retained: 1000, free: 3000 });
+    const reverse = { requestId: randomUUID(), amountCents: 500, reason: "Half the fee waived" };
+    for (let i = 0; i < 2; i++) expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain-reverse`, reverse)).statusCode).toBe(200);
+    expect(await balances(t, a.depositId)).toMatchObject({ retained: 500, free: 3500 });
+    // One id is one action: reusing the keep's id to put money back is refused.
+    expect((await t.api.post(`/invoices/${a.depositId}/deposit/retain-reverse`, { ...retain, amountCents: 500 })).json().error).toBe("request_reused");
+
+    // Refund the job twice with one id: one set of refunds.
+    const job = { requestId: randomUUID(), amountCents: 1000, reason: "Part of the job not done" };
+    const both = await Promise.all([t.api.post(`/invoices/${f.id}/refund-job`, job), t.api.post(`/invoices/${f.id}/refund-job`, job)]);
+    expect(both.map((r) => r.statusCode), both.map((r) => r.body).join()).toEqual([200, 200]);
+    expect((await t.api.post(`/invoices/${f.id}/refund-job`, job)).statusCode).toBe(200);
+    expect((await refundRows(a.depositId)).filter((r) => r.reservation === "deposit_applied")).toHaveLength(1);
+    expect(await reversedOn(ctx.db, t.org.id, f.id)).toBe(1000);
+
+    // An outside refund leaves a shortfall; writing it off twice with one id records it once.
+    await webhook(ctx, t, "refund.updated", refundObject({ id: "re_ext_once", pi, amount: 4000, status: "succeeded" }));
+    const short = await balances(t, a.depositId);
+    expect(short.shortfall).toBeGreaterThan(0);
+    const writeOff = { requestId: randomUUID(), kind: "write_off", amountCents: short.shortfall, reason: "Goodwill" };
+    for (let i = 0; i < 2; i++) expect((await t.api.post(`/invoices/${a.depositId}/deposit/shortfall`, writeOff)).statusCode).toBe(200);
+    expect(await ctx.db.selectFrom("depositShortfallResolutions").select("amountCents").where("depositInvoiceId", "=", a.depositId).execute()).toEqual([{ amountCents: short.shortfall }]);
+    await expectEquality(t, a.estimateId);
+  });
+
+  it("keeps request ids per company: another company's same id is its own request", async () => {
+    const t = await tenant(ctx);
+    const b = await tenant(ctx, "Org B");
+    const a1 = await accepted(t, 20000, 10000);
+    const b1 = await accepted(b, 20000, 10000);
+    await payByCard(ctx, t, a1.depositId, 10000, "orga");
+    await payByCard(ctx, b, b1.depositId, 10000, "orgb");
+    const requestId = randomUUID();
+    expect((await t.api.post(`/invoices/${a1.depositId}/deposit/refund`, { requestId, amountCents: 1000, reason: "A" })).statusCode).toBe(200);
+    const other = await b.api.post(`/invoices/${b1.depositId}/deposit/refund`, { requestId, amountCents: 3000, reason: "B" });
+    expect(other.statusCode, other.body).toBe(200);
+    expect(other.json().deposit.balances).toMatchObject({ returned: 3000 });
+    // Org A's id cannot reach Org B's deposit.
+    expect((await t.api.post(`/invoices/${b1.depositId}/deposit/refund`, { requestId: randomUUID(), amountCents: 1, reason: "x" })).statusCode).toBe(404);
   });
 
   it("keeps the ledger append-only and rejects an unreconciled write at commit", async () => {

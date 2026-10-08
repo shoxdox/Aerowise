@@ -295,7 +295,7 @@ export async function buildApp({
   await app.register(workOrderRoutes, { db, now, features });
   await app.register(serviceItemRoutes, { db, now, features });
   await app.register(formRoutes, { db, features });
-  await app.register(estimateRoutes, { db, now, features, appUrl });
+  await app.register(estimateRoutes, { db, now, features, appUrl, payments: { provider: payments, appUrl } });
   await app.register(inspectionRoutes, { db, now, store, signer });
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });

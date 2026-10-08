@@ -19,7 +19,13 @@ const cents = (dollars: string | undefined) => Math.round(Number(dollars || "0")
 export function DepositPanel({ deposit, onChange }: { deposit: DepositView; onChange: () => Promise<void> }) {
   const me = useSession();
   const manage = canEdit(me) && roleHasPermission(me.role, "billing:manage");
-  const [panel, setPanel] = useState<Action | null>(null);
+  const [panel, setPanelState] = useState<Action | null>(null);
+  // One id per opened action: a retry or a second click sends the same one, so the server moves the money once.
+  const [requestId, setRequestId] = useState<string>("");
+  const setPanel = (next: Action | null) => {
+    setPanelState(next);
+    setRequestId(next ? crypto.randomUUID() : "");
+  };
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const b = deposit.balances;
@@ -28,7 +34,7 @@ export function DepositPanel({ deposit, onChange }: { deposit: DepositView; onCh
   async function submit(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault();
     const v = formValues(ev.currentTarget);
-    const body = panel === "shortfall" ? { kind: "write_off", amountCents: cents(v.amount), reason: v.reason } : { amountCents: cents(v.amount), reason: v.reason };
+    const body = panel === "shortfall" ? { requestId, kind: "write_off", amountCents: cents(v.amount), reason: v.reason } : { requestId, amountCents: cents(v.amount), reason: v.reason };
     setBusy(true);
     setProblem(null);
     try {

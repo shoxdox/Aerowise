@@ -30,6 +30,9 @@ export default function InvoicePage() {
   if (error) return <p className="error">{error}</p>;
   if (!inv) return <p className="muted">Loading…</p>;
 
+  // One id per opened "Refund the job": a retry or a second click sends the same one, so the money moves once.
+  const [refundJobRequestId, setRefundJobRequestId] = useState("");
+
   async function run(path: string, body: object = {}, after?: () => void) {
     setBusy(true);
     setActionError(null);
@@ -261,7 +264,13 @@ export default function InvoicePage() {
               </button>
             )}
             {owner && inv.estimate?.role === "final" && inv.depositAppliedCents > 0 && (
-              <button className="secondary" onClick={() => setPanel(panel === "refundJob" ? null : "refundJob")}>
+              <button
+                className="secondary"
+                onClick={() => {
+                  setRefundJobRequestId(crypto.randomUUID());
+                  setPanel(panel === "refundJob" ? null : "refundJob");
+                }}
+              >
                 Refund the job
               </button>
             )}
@@ -281,7 +290,7 @@ export default function InvoicePage() {
               onSubmit={(ev) => {
                 ev.preventDefault();
                 const v = formValues(ev.currentTarget);
-                void run("refund-job", { amountCents: Math.round(Number(v.amount) * 100), reason: v.reason });
+                void run("refund-job", { requestId: refundJobRequestId, amountCents: Math.round(Number(v.amount) * 100), reason: v.reason });
               }}
             >
               <p className="muted small">
