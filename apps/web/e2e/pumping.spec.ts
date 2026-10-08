@@ -158,6 +158,14 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
     await expect(officePage.getByRole("img", { name: "Manifest photo" })).toHaveCount(1);
     await officePage.goto(`/work/${wo.id}`);
     await expect(officePage.getByTestId("pumping-history")).toContainText("Recorded");
+
+    // The owner sets the company's disposal reminder; put back afterwards for the tests that follow.
+    await officePage.goto("/settings/trucks");
+    const grace = officePage.getByTestId("disposal-grace");
+    await grace.getByLabel(/Days after a pump-out/).fill("5");
+    await grace.getByRole("button", { name: "Save" }).click();
+    await expect.poll(async () => (await (await api.get("/api/pumping/settings")).json()).disposalOverdueDays).toBe(5);
+    expect((await api.patch("/api/pumping/settings", { data: { disposalOverdueDays: 2 } })).ok()).toBe(true);
   } finally {
     // Leaves no visit on Tess's route today, so the route and map tests that follow count only
     // their own stops (since SW-10 her work visits share the route with her inspections).

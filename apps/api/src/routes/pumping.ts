@@ -18,6 +18,7 @@ import {
   pumpingFieldData,
   pumpingRecord,
   pumpingRecordDetail,
+  pumpingSettings,
   roleHasPermission,
   toMilligallons,
   vehicle,
@@ -232,6 +233,33 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
         await audit(trx, req, { action: "disposal_facility.updated", entityType: "disposal_facility", entityId: row.id, changes: req.body });
         return row;
       });
+    },
+  );
+
+  // ---- The company's grace days for a disposal record ----
+
+  const settings = (organizationId: string) => db.selectFrom("organizations").select("disposalOverdueDays").where("id", "=", organizationId).executeTakeFirstOrThrow();
+
+  app.get(
+    "/pumping/settings",
+    { config: { permission: "work:read" }, schema: { tags: ["pumping"], summary: "Days after a pump-out before the inbox raises a missing disposal record", response: { 200: pumpingSettings } } },
+    async (req) => settings(req.requireAuth().organizationId),
+  );
+
+  app.patch(
+    "/pumping/settings",
+    {
+      config: { permission: "org:manage" },
+      schema: { tags: ["pumping"], summary: "Change the days after a pump-out before the inbox raises a missing disposal record (1 to 60)", body: pumpingSettings, response: { 200: pumpingSettings } },
+    },
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      if (!enabled) throw pumpingOff();
+      await db.transaction().execute(async (trx) => {
+        await trx.updateTable("organizations").set({ disposalOverdueDays: req.body.disposalOverdueDays }).where("id", "=", organizationId).execute();
+        await audit(trx, req, { action: "organization.updated", entityType: "organization", entityId: organizationId, changes: req.body });
+      });
+      return settings(organizationId);
     },
   );
 

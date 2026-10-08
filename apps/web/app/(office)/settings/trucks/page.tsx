@@ -1,6 +1,6 @@
 "use client";
 
-import { FACILITY_KIND_LABELS, FACILITY_KINDS, roleHasPermission, type DisposalFacility, type Vehicle } from "@aerowise/domain";
+import { FACILITY_KIND_LABELS, FACILITY_KINDS, roleHasPermission, type DisposalFacility, type PumpingSettings, type Vehicle } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -14,13 +14,16 @@ export default function TrucksPage() {
   const editable = canEdit(me) && roleHasPermission(me.role, "work:write");
   const vehicles = useLoad<{ items: Vehicle[] }>("/vehicles");
   const facilities = useLoad<{ items: DisposalFacility[] }>("/disposal-facilities");
+  const grace = useLoad<PumpingSettings>("/pumping/settings");
+  // Only the owner sets the company's grace days, as with the other company settings.
+  const owner = canEdit(me) && roleHasPermission(me.role, "org:manage");
   const [problem, setProblem] = useState<string | null>(null);
 
   async function save(path: string, method: "POST" | "PATCH", body: object) {
     setProblem(null);
     try {
       await api(path, { method, body });
-      await Promise.all([vehicles.reload(), facilities.reload()]);
+      await Promise.all([vehicles.reload(), facilities.reload(), grace.reload()]);
       return true;
     } catch (err) {
       setProblem(err instanceof ApiError ? err.message : "Could not save");
@@ -58,6 +61,12 @@ export default function TrucksPage() {
     if (ok) form.reset();
   }
 
+  async function setGrace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const v = formValues(event.currentTarget);
+    await save("/pumping/settings", "PATCH", { disposalOverdueDays: Number(v.days) });
+  }
+
   const error = vehicles.error ?? facilities.error;
   if (error) return <p className="error">{error}</p>;
   return (
@@ -65,6 +74,28 @@ export default function TrucksPage() {
       <h1>Trucks and facilities</h1>
       {problem && <p className="error">{problem}</p>}
       {!on && <p className="muted small">Pumping is not switched on for this deployment; existing trucks and facilities stay readable.</p>}
+
+      {grace.data && (
+        <section className="stack" data-testid="disposal-grace">
+          <h2>Disposal reminder</h2>
+          {owner && on ? (
+            <form className="row" onSubmit={(e) => void setGrace(e)} key={grace.data.disposalOverdueDays}>
+              <label>
+                Days after a pump-out before the inbox shows &quot;Disposal not recorded&quot;
+                <input name="days" type="number" min={1} max={60} step={1} required defaultValue={grace.data.disposalOverdueDays} />
+              </label>
+              <button type="submit" className="secondary">
+                Save
+              </button>
+            </form>
+          ) : (
+            <p className="muted">
+              The inbox shows &quot;Disposal not recorded&quot; {grace.data.disposalOverdueDays} day{grace.data.disposalOverdueDays === 1 ? "" : "s"} after a pump-out with no disposal
+              record.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="stack">
         <h2>Trucks</h2>

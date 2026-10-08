@@ -277,6 +277,10 @@ export const disposalAck = z.object({ outcome: z.literal("recorded"), groupId: i
 /** One page of a list; `nextOffset` is null on the last page. */
 export const pageQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(100), offset: z.coerce.number().int().min(0).default(0) });
 
+/** How many days after a pump-out without a disposal record the inbox raises it (owner's setting). */
+export const pumpingSettings = z.object({ disposalOverdueDays: z.number().int().min(1).max(60) });
+export type PumpingSettings = z.infer<typeof pumpingSettings>;
+
 /** What the phone caches for recording disposal offline. */
 export const pumpingFieldData = z.object({
   vehicles: z.array(vehicle),

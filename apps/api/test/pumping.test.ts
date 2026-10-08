@@ -471,6 +471,42 @@ describe("what a technician reads", () => {
   });
 });
 
+describe("the company's disposal grace days", () => {
+  it("the owner sets them (1 to 60, default 2), and the overdue item follows them; nobody else can", async () => {
+    const s = await company(ctx);
+    const other = await company(ctx, "Org B");
+    expect((await s.api.get("/pumping/settings")).json()).toEqual({ disposalOverdueDays: 2 });
+    for (const days of [0, 61, 2.5]) expect((await s.api.patch("/pumping/settings", { disposalOverdueDays: days })).statusCode).toBe(400);
+    const office = client(ctx.app, await login(ctx.app, (await createUser(ctx.db, s.org.id, "office")).email));
+    for (const api of [office, s.aApi]) expect((await api.patch("/pumping/settings", { disposalOverdueDays: 5 })).statusCode).toBe(403);
+    const set = await s.api.patch("/pumping/settings", { disposalOverdueDays: 5 });
+    expect([set.statusCode, set.json()]).toEqual([200, { disposalOverdueDays: 5 }]);
+    expect((await office.get("/pumping/settings")).json()).toEqual({ disposalOverdueDays: 5 });
+    expect((await ctx.db.selectFrom("auditEvents").select("changes").where("action", "=", "organization.updated").where("organizationId", "=", s.org.id).executeTakeFirstOrThrow()).changes).toEqual({ disposalOverdueDays: 5 });
+    expect((await other.api.get("/pumping/settings")).json()).toEqual({ disposalOverdueDays: 2 });
+
+    const p = await pumped(s);
+    const q = await pumped(other);
+    const overdue = async (c: Company) => ((await c.api.get("/inbox")).json().items as { kind: string; key: string; dueOn: string }[]).filter((i) => i.kind === "disposal_overdue");
+    // Pumped 2026-03-01: the other company's 2 days are past on the 4th; these 5 only on the 7th.
+    ctx.now = new Date("2026-03-04T18:00:00Z");
+    expect(await overdue(s)).toEqual([]);
+    expect(await overdue(other)).toEqual([expect.objectContaining({ key: `disposal_overdue:${q.groupId}` })]);
+    ctx.now = new Date("2026-03-06T18:00:00Z");
+    expect(await overdue(s)).toEqual([]);
+    ctx.now = new Date("2026-03-07T18:00:00Z");
+    expect(await overdue(s)).toEqual([expect.objectContaining({ key: `disposal_overdue:${p.groupId}`, dueOn: "2026-03-06" })]);
+  });
+
+  it("a read-only company keeps reading them and cannot change them", async () => {
+    const s = await company(ctx);
+    await sql`update organizations set subscription_state = 'read_only' where id = ${s.org.id}`.execute(ctx.db);
+    const refused = await s.api.patch("/pumping/settings", { disposalOverdueDays: 5 });
+    expect([refused.statusCode, refused.json().error]).toEqual([403, "organization_read_only"]);
+    expect((await s.api.get("/pumping/settings")).json()).toEqual({ disposalOverdueDays: 2 });
+  });
+});
+
 describe("an ended demo", () => {
   it("takes its trucks, pump-outs, disposal records and manifest photos with it; another company keeps its own", async () => {
     const demo = await company(ctx, "Ending demo", true);

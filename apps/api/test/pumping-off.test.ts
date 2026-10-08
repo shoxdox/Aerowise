@@ -23,5 +23,8 @@ describe("pumping switched off", () => {
     expect([load.statusCode, load.json().error]).toEqual([409, "feature_off"]);
     expect((await t.api.get("/vehicles")).json().items).toEqual([]);
     expect((await t.api.get("/disposal/loads")).statusCode).toBe(200);
+    const days = await t.api.patch("/pumping/settings", { disposalOverdueDays: 5 });
+    expect([days.statusCode, days.json().error]).toEqual([409, "feature_off"]);
+    expect((await t.api.get("/pumping/settings")).json()).toEqual({ disposalOverdueDays: 2 });
   });
 });
