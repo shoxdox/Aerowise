@@ -135,7 +135,7 @@ export default function DisposalPage() {
             </table>
           </div>
         )}
-        {unloaded.data?.nextOffset !== null && unloaded.data?.nextOffset !== undefined && <p className="muted small">Showing the oldest 200.</p>}
+        {unloaded.data?.nextOffset !== null && unloaded.data?.nextOffset !== undefined && <p className="muted small">Showing the newest 200.</p>}
       </section>
 
       {office && on && (

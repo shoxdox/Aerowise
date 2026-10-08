@@ -45,6 +45,40 @@ async function techPhone(page: Page) {
   await page.waitForFunction(async () => (await (await caches.open("aerowise-shell-v1")).keys()).length > 5);
 }
 
+/** The loads the phone keeps for the signed-in technician (kv "disposal-loads" in the work database). */
+function phoneLoads(page: Page) {
+  return page.evaluate(async () => {
+    const name = (await indexedDB.databases()).map((d) => d.name ?? "").find((n) => n.startsWith("aerowise-tech-work:"));
+    if (!name) return [];
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(name);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const req = db.transaction(["kv"], "readonly").objectStore("kv").get("disposal-loads");
+    const loads = await new Promise<unknown>((r) => (req.onsuccess = () => r(req.result)));
+    db.close();
+    return ((loads ?? []) as { clientId: string; groupId: string | null; photos: { uploaded: boolean }[] }[]).map((l) => ({ clientId: l.clientId, groupId: l.groupId, photosSent: l.photos.map((p) => p.uploaded) }));
+  });
+}
+
+/** Tess records the pump-out for a pumping visit with signal; returns its group. */
+async function pumpOutWithSignal(page: Page, db: pg.Client, wo: Awaited<ReturnType<typeof pumpingForTess>>, title: string) {
+  const card = page.locator(".work-card", { hasText: title });
+  await card.click();
+  await page.getByRole("button", { name: "Arrive and start work" }).click();
+  await page.getByLabel("Tanks pumped").fill("1");
+  await page.getByRole("group", { name: "Lid condition" }).getByRole("button", { name: "Good" }).click();
+  await page.getByLabel("Volume pumped").fill("500");
+  await page.getByLabel("Truck").selectOption({ label: wo.truck.name });
+  await page.getByRole("button", { name: "Review and sign" }).click();
+  await page.getByRole("button", { name: "Finish without a signature" }).click();
+  const query = () => db.query("select p.group_id from pumping_records p join work_records r on r.id = p.work_record_id where r.job_id = $1", [wo.jobId]);
+  await expect.poll(async () => (await query()).rows.length, { timeout: 60_000 }).toBe(1);
+  const rows = (await query()).rows;
+  return rows[0].group_id as string;
+}
+
 test("a pump-out done with no signal reaches the office once, then its disposal record and manifest photo", async ({ page, context, browser }) => {
   const api = await office(browser);
   const wo = await pumpingForTess(api, "Pump-out (phone)");
@@ -100,6 +134,9 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
       )
     ).rows;
     expect(load).toEqual([{ manifest_reference: "E2E-M-1", items: 1, photos: 1 }]);
+    // The ordinary photo answer names no group: the phone keeps the one its load was given.
+    const loadGroup = (await db.query("select load_group_id from disposal_load_items where pumping_group_id = $1", [pumped[0].group_id])).rows[0].load_group_id as string;
+    expect(await phoneLoads(page)).toEqual([{ clientId: expect.any(String), groupId: loadGroup, photosSent: [true] }]);
     // The phone keeps the load's group once its photo is delivered, and says it is with the office.
     await page.reload();
     await page.getByTestId("open-disposal").click();
@@ -124,6 +161,48 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
   } finally {
     // Leaves no visit on Tess's route today, so the route and map tests that follow count only
     // their own stops (since SW-10 her work visits share the route with her inspections).
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [wo.jobId]);
+    await db.end();
+  }
+});
+
+test("a manifest photo answered with only an acknowledgment (the office mixed the load) keeps the phone's load as sent", async ({ page, browser }) => {
+  const api = await office(browser);
+  const title = "Pump-out (acknowledged)";
+  const wo = await pumpingForTess(api, title);
+  await techPhone(page);
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  try {
+    const pumpOut = await pumpOutWithSignal(page, db, wo, title);
+    // Once another technician's pump-out is in the load, the server answers a replayed or late
+    // photo with {outcome, groupId, clientId} only (covered against the API in pumping.test.ts);
+    // here the real upload is made and its answer replaced by that acknowledgment.
+    let acked = 0;
+    await page.route("**/api/disposal/loads/*/photos/*", async (route) => {
+      const res = await route.fetch();
+      const loadClientId = new URL(route.request().url()).pathname.split("/")[4]!;
+      const groupId = (await db.query("select group_id from disposal_loads where offline_client_id = $1", [loadClientId])).rows[0].group_id as string;
+      acked++;
+      await route.fulfill({ response: res, json: { outcome: "recorded", groupId, clientId: loadClientId } });
+    });
+    await page.reload();
+    await page.getByTestId("open-disposal").click();
+    const screen = page.getByTestId("record-disposal");
+    await screen.locator("label", { hasText: "500.0 gallons" }).getByRole("checkbox").check();
+    await screen.getByLabel("Facility").selectOption({ label: wo.facility.name });
+    await screen.getByLabel("Total delivered").fill("500");
+    await screen.getByLabel("Add manifest photo").setInputFiles({ name: "manifest.png", mimeType: "image/png", buffer: PNG });
+    await screen.getByRole("button", { name: "Save disposal record" }).click();
+    await expect.poll(() => acked, { timeout: 60_000 }).toBe(1);
+    await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
+    const loadGroup = (await db.query("select load_group_id from disposal_load_items where pumping_group_id = $1", [pumpOut])).rows[0].load_group_id as string;
+    const mine = (await phoneLoads(page)).find((l) => l.groupId === loadGroup);
+    expect(mine).toEqual({ clientId: expect.any(String), groupId: loadGroup, photosSent: [true] });
+    await page.reload();
+    await page.getByTestId("open-disposal").click();
+    await expect(page.getByTestId("record-disposal").locator(".card", { hasText: "500.0 gallons" })).toContainText("with the office");
+  } finally {
     await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [wo.jobId]);
     await db.end();
   }
