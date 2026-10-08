@@ -54,6 +54,14 @@ async function tomorrow(page: Page) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Tess Tech's day tomorrow: four seeded inspections, and with work orders on, the demo story's
+ * repair visit as a fifth stop.
+ */
+const tessColumn = (page: Page) => page.locator(".column", { has: page.getByRole("heading", { name: "Tess Tech" }) });
+const tessStopCount = async (page: Page, date: string) =>
+  ((await (await page.request.get(`/api/routing/day?date=${date}`)).json()).technicians as { technicianName: string; stops: unknown[] }[]).find((t) => t.technicianName === "Tess Tech")!.stops.length;
+
 async function openDay(page: Page, date: string) {
   await page.goto("/schedule");
   await page.locator('input[type="date"]').fill(date);
@@ -76,19 +84,19 @@ test.describe("office schedule map", () => {
     await expect(page.getByText("they are straight lines, not roads")).toBeVisible();
     await expect(page.locator(".map-start")).toHaveCount(day.start ? 1 : 0);
 
-    const column = page.locator(".column", { hasText: "4 stops" });
+    const column = tessColumn(page);
     const legend = await column.locator(".route-legend").evaluate((el) => getComputedStyle(el).backgroundColor);
     const listed = await column
       .locator(".card.tight")
       .evaluateAll((cards) => cards.map((c) => ({ n: c.querySelector(".stop-number")?.textContent, address: c.querySelector("strong")?.textContent })));
-    const route = day.technicians.find((t: { stops: unknown[] }) => t.stops.length === 4);
+    const route = day.technicians.find((t: { technicianName: string }) => t.technicianName === "Tess Tech");
     const markers = page.locator(`.map-stop[data-route="${route.technicianId}"]`);
-    await expect(markers).toHaveCount(4);
+    await expect(markers).toHaveCount(route.stops.length);
     // Numbers, order, colors and done state match the list and the route.
     for (const [i, s] of (route.stops as { jobId: string; status: string }[]).entries()) {
       const marker = page.locator(`.map-stop[data-stop="${s.jobId}"]`);
       await expect(marker).toHaveText(listed[i]!.n!);
-      await expect(marker).toHaveAttribute("aria-label", new RegExp(`stop ${i + 1}: ${listed[i]!.address}`));
+      await expect(marker).toHaveAttribute("aria-label", new RegExp(`stop ${i + 1}(, [A-Za-z ]+)?: ${listed[i]!.address}`));
       expect(await marker.evaluate((el) => getComputedStyle(el).getPropertyValue("--route").trim())).not.toBe("");
       const fill = await marker.evaluate((el) => getComputedStyle(el).backgroundColor);
       if (s.status === "completed") await expect(marker).toHaveClass(/done/);
@@ -114,7 +122,7 @@ test.describe("office schedule map", () => {
     await signIn(page, "owner@example.com", "/inbox");
     const date = await tomorrow(page);
     const day = await (await page.request.get(`/api/routing/day?date=${date}`)).json();
-    const route = day.technicians.find((t: { stops: unknown[] }) => t.stops.length === 4);
+    const route = day.technicians.find((t: { technicianName: string }) => t.technicianName === "Tess Tech");
     const [first, second, third] = route.stops as { jobId: string; lat: number; lng: number; status: string }[];
     const site = async (jobId: string) => (await db.query("select site_id from jobs where id = $1", [jobId])).rows[0].site_id;
     const firstSite = await site(first!.jobId);
@@ -130,11 +138,11 @@ test.describe("office schedule map", () => {
       await expect(page.locator(`.map-stop[data-stop="${third!.jobId}"]`)).toHaveAttribute("aria-label", /stop 3: .*, done$/);
       await expect(page.getByTestId("map-unlocated")).toContainText("stop 1");
       await expect(page.getByTestId("map-outside")).toContainText("stop 2");
-      await expect(page.locator(`.map-stop[data-route="${route.technicianId}"]`)).toHaveCount(3);
+      await expect(page.locator(`.map-stop[data-route="${route.technicianId}"]`)).toHaveCount(route.stops.length - 1);
       await expect(page.locator(`.map-stop[data-stop="${second!.jobId}"]`)).toHaveAttribute("aria-label", /outside the street map/);
       // The list still has every stop, and says which one is not on the map.
-      const column = page.locator(".column", { hasText: "4 stops" });
-      await expect(column.locator(".card.tight")).toHaveCount(4);
+      const column = tessColumn(page);
+      await expect(column.locator(".card.tight")).toHaveCount(route.stops.length);
       await expect(column.getByText("Not on the map yet")).toHaveCount(1);
     } finally {
       await db.query("update jobs set status = $2 where id = $1", [third!.jobId, third!.status]);
@@ -150,8 +158,8 @@ test.describe("office schedule map", () => {
     await page.goto("/schedule");
     await page.locator('input[type="date"]').fill(date);
     await expect(page.getByTestId("map-unavailable")).toHaveText("The street map is not available right now. Every stop is still in the list.");
-    const column = page.locator(".column", { hasText: "4 stops" });
-    await expect(column.locator(".card.tight")).toHaveCount(4);
+    const column = tessColumn(page);
+    await expect(column.locator(".card.tight")).toHaveCount(await tessStopCount(page, date));
     await expect(column.getByRole("button", { name: "Optimize route" })).toBeEnabled();
   });
 
@@ -168,8 +176,8 @@ test.describe("office schedule map", () => {
     await expect(page.getByTestId("map-unavailable")).toBeVisible({ timeout: 25_000 });
     await expect(page.getByText("Loading map…")).toHaveCount(0);
     await expect(page.locator(".maplibregl-map")).toHaveCount(0);
-    const column = page.locator(".column", { hasText: "4 stops" });
-    await expect(column.locator(".card.tight")).toHaveCount(4);
+    const column = tessColumn(page);
+    await expect(column.locator(".card.tight")).toHaveCount(await tessStopCount(page, date));
     await expect(column.getByRole("button", { name: "Optimize route" })).toBeEnabled();
 
     // The answer arriving late changes nothing.
@@ -195,7 +203,7 @@ test.describe("office schedule map", () => {
     await signIn(page, "owner@example.com", "/inbox");
     const date = await tomorrow(page);
     await openDay(page, date);
-    const column = page.locator(".column", { hasText: "4 stops" });
+    const column = tessColumn(page);
     const markers = page.locator(".map-stop");
     const count = await markers.count();
     expect(count).toBeGreaterThanOrEqual(4);
@@ -209,7 +217,7 @@ test.describe("office schedule map", () => {
     await expect(page.getByTestId("map-empty")).toHaveText("None of these stops has a map location yet, so there is no map. Use the list.");
     await expect(page.getByTestId("street-map")).toHaveCount(0);
     await expect(page.locator(".maplibregl-map")).toHaveCount(0);
-    await expect(column.locator(".card.tight")).toHaveCount(4);
+    await expect(column.locator(".card.tight")).toHaveCount(await tessStopCount(page, date));
 
     // Located again: a fresh map, drawn and with every marker.
     hide = false;
