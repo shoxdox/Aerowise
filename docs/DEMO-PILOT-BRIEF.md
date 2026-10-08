@@ -1,5 +1,15 @@
 # Aerowise — current demo and pilot handoff
 
+## Catalog release live — October 8, 2026, morning
+
+**Staging https://staging.deshain.com is on `c004148e9b23f3c2d01cbc9f79f7a57c7827c303`**, with merged #101/#102/#104/#105 and staging flags `work_orders,service_items`. Enter through **Try the demo → Start my demo**, then Owner / Office / Technician; no password. DEMO_MODE=true, live overrides empty, Twilio/Resend absent. Production identity/start time is unchanged.
+
+Passed: #105's exact-head full local check (719 API, 145 domain, 61 browser tests, build and upgrade), Codex rereview of both requested corrections, manual Docker build/deploy, migrations 0049–0052, API/queue/worker health, public demo reseed preserving seven other organizations, and a bounded live catalog → fractional work order → scheduled visit → office completion → edited/saved invoice → issue → void → replacement check. Backup restored into scratch Postgres: 79 tables, 3,283 rows, migration 0052, 71 stored files. [Repeatable steps and screenshots](engineering/RUNBOOK.md#catalog-review-deploy-and-claude-handoffs--october-8-2026-morning).
+
+**Expansion remains incomplete.** #106/#109 offline work, #107 estimates and #108 plans are unmerged and not deployed. Four Claude workers were resumed with integration and follow-up assignments; [draft #110](https://github.com/shoxdox/Aerowise/pull/110) now collects the combined candidate and is not approved for merge. Codex found two P2 estimate bugs: empty optional selection crashes acceptance; cancellation misses invoices linked directly to work orders. Both are assigned back for fixes/regressions before merge. Deposits, office contract options/intake/demo tiers, later pumping/install/cycle/map work, combined review and the final full walkthrough remain open. QuickBooks mapping has local stand-in tests; no new live browser mapping or real Intuit round trip was performed in this bounded check.
+
+**P1 operations:** [Actions run 37796390295](https://github.com/shoxdox/Aerowise/actions/runs/37796390295) did not start its checks due to the account billing/spending restriction; manual deployment works. Existing P2 county-demo/ruleset behavior gaps, physical-phone/provider/authority validation and moderate dependency advisories remain; P3 wording/offline banner/tombstone issues remain in the walkthrough. Justin needs no new DNS, accounts or keys for this release. Guided fictional demos remain the supported prospect use; do not claim the whole Fieldbase expansion or a real field pilot is ready.
+
 ## Four-worker review — October 7, 2026, late evening
 
 **Staging remains https://staging.deshain.com on application `79b3c12`**, with password-free **Try the demo → Start my demo** and Owner / Office / Technician switching. Read-only runtime verification confirms healthy API, DEMO_MODE=true, only work_orders enabled, no live-service overrides and no Twilio/Resend credentials. No new application was deployed during this review.
