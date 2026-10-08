@@ -129,7 +129,39 @@ export const GENERIC_SERVICE_CALL_TEMPLATE: StarterTemplate = {
   },
 };
 
-export const STARTER_WORK_TEMPLATES: readonly StarterTemplate[] = [GENERIC_REPAIR_TEMPLATE, GENERIC_SERVICE_CALL_TEMPLATE];
+/**
+ * A pumping visit (SW-6): what was seen at the tank. The pump-out itself (volume, waste type,
+ * tanks, truck) is a structured record the phone adds beside these answers, not a form value.
+ */
+export const GENERIC_PUMPING_TEMPLATE: StarterTemplate = {
+  key: "work-pumping",
+  version: 1,
+  name: "Pumping",
+  purpose: "work",
+  definition: {
+    fields: [
+      { key: "tank_count", label: "Tanks pumped", section: "Pumping", type: "number", required: true, min: 1, max: 20 },
+      text("sludge_scum", "Sludge and scum observed", "Pumping"),
+      {
+        key: "lid_condition",
+        label: "Lid condition",
+        section: "Pumping",
+        type: "select",
+        required: true,
+        options: [
+          { value: "good", label: "Good" },
+          { value: "damaged", label: "Damaged" },
+          { value: "missing", label: "Missing" },
+        ],
+      },
+      text("notes", "Notes", "Pumping"),
+    ],
+    photos: [{ key: "site", label: "Site photos", minCount: 0 }],
+    signatures: [{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: false }],
+  },
+};
+
+export const STARTER_WORK_TEMPLATES: readonly StarterTemplate[] = [GENERIC_REPAIR_TEMPLATE, GENERIC_SERVICE_CALL_TEMPLATE, GENERIC_PUMPING_TEMPLATE];
 
 /** Every built-in form, one row each in inspection_templates (organization_id null). */
 export const BUILT_IN_FORMS: readonly StarterTemplate[] = [{ ...DEFAULT_TEMPLATE, purpose: "inspection" }, ...STARTER_WORK_TEMPLATES];

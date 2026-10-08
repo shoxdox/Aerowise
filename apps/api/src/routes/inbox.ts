@@ -21,6 +21,7 @@ import {
   type ValidationProblem,
   RENEWAL_STATUS_LABELS,
   SERVICE_REQUEST_LABELS,
+  formatGallons,
   formatPhone,
   workOrderLabel,
   type WorkOrderStatus,
@@ -33,6 +34,7 @@ import { HttpError, notFound } from "../lib/errors.ts";
 import { dollars } from "@aerowise/payments";
 import { listQuickBooksRecords } from "../lib/quickbooks.ts";
 import { organizationToday } from "../lib/today.ts";
+import { readPumpingRecords } from "../lib/pumping.ts";
 
 const params = z.object({ id });
 
@@ -698,6 +700,41 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   }
 
   /**
+   * Pump-outs not yet in any disposal record after the company's grace period (SW-6): one item
+   * each, opening the site's pumping history.
+   */
+  async function disposalExceptions(organizationId: string, today: string): Promise<InboxException[]> {
+    const org = await db.selectFrom("organizations").select("disposalOverdueDays").where("id", "=", organizationId).executeTakeFirstOrThrow();
+    const late = await readPumpingRecords(db, organizationId, { unloaded: true, olderThan: addDays(today, -org.disposalOverdueDays) });
+    if (!late.length) return [];
+    const sites = new Map(
+      (
+        await db
+          .selectFrom("sites as s")
+          .innerJoin("customers as c", (k) => k.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"))
+          .select(["s.id", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+          .where("s.organizationId", "=", organizationId)
+          .where("s.id", "in", [...new Set(late.map((p) => p.siteId))])
+          .execute()
+      ).map((s) => [s.id, s]),
+    );
+    return late.slice(0, PER_KIND).map((p) => {
+      const s = sites.get(p.siteId)!;
+      return {
+        key: `disposal_overdue:${p.groupId}`,
+        kind: "disposal_overdue" as const,
+        severity: "medium" as const,
+        title: "Disposal not recorded",
+        detail: `${p.workOrderLabel}: ${formatGallons(p.volumeMilligallons)} pumped on ${p.serviceDate} by ${p.technicianName}${p.vehicleName ? ` (${p.vehicleName})` : ""} is in no disposal record yet.`,
+        dueOn: addDays(p.serviceDate, org.disposalOverdueDays),
+        site: { id: s.id, addressLine1: s.addressLine1 ?? "", city: s.city ?? "" },
+        customer: { id: s.customerId, displayName: s.displayName },
+        target: { type: "site" as const, id: s.id },
+      };
+    });
+  }
+
+  /**
    * Estimate deposits that need a person (SW-5b): a refund Aerowise started that failed, a
    * refund made at Stripe still pending, free deposit money once the job is invoiced or the
    * estimate is cancelled, and a shortfall not yet dealt with (or dealt with beyond what is
@@ -880,6 +917,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),
           depositExceptions(organizationId),
+          disposalExceptions(organizationId, today),
         ]),
         db
           .selectFrom("serviceObligations")
