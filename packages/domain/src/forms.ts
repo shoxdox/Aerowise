@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_TEMPLATE_KEY, type SignatureRequirement, type TemplateDefinition, type ValidationProblem } from "./inspections.ts";
+import { DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_KEY, inspectionTemplate, templateInput, type SignatureRequirement, type TemplateDefinition, type ValidationProblem } from "./inspections.ts";
 
 // The shared form foundation (SW-F). Inspections, work orders and agreement intake all use the
 // same versioned template definition. What sets them apart is the template's purpose and its key:
@@ -130,3 +130,16 @@ export const GENERIC_SERVICE_CALL_TEMPLATE: StarterTemplate = {
 };
 
 export const STARTER_WORK_TEMPLATES: readonly StarterTemplate[] = [GENERIC_REPAIR_TEMPLATE, GENERIC_SERVICE_CALL_TEMPLATE];
+
+/** Every built-in form, one row each in inspection_templates (organization_id null). */
+export const BUILT_IN_FORMS: readonly StarterTemplate[] = [{ ...DEFAULT_TEMPLATE, purpose: "inspection" }, ...STARTER_WORK_TEMPLATES];
+
+/** A form key: lower-case words joined by hyphens, as the built-in keys are. */
+export const formKey = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, "Use lower-case letters, digits and hyphens");
+
+/** A form version as the API returns it: an inspection template with its purpose. */
+export const formTemplate = inspectionTemplate.extend({ purpose: templatePurpose });
+export type FormTemplate = z.infer<typeof formTemplate>;
+
+/** A new version of an existing work or intake form. */
+export const formVersionInput = templateInput;

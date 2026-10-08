@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BUILT_IN_FORMS,
   canonicalJson,
   GENERIC_REPAIR_TEMPLATE,
   GENERIC_SERVICE_CALL_TEMPLATE,
@@ -57,6 +58,15 @@ describe("starter work templates", () => {
       expect(keyAllowedForPurpose(t.key, t.purpose)).toBe(true);
     }
     expect(new Set(STARTER_WORK_TEMPLATES.map((t) => t.key)).size).toBe(STARTER_WORK_TEMPLATES.length);
+  });
+
+  it("are built in beside the inspection form, each key once and with its own purpose", () => {
+    expect(BUILT_IN_FORMS.map((f) => [f.key, f.purpose])).toEqual([
+      [DEFAULT_TEMPLATE_KEY, "inspection"],
+      ["work-repair", "work"],
+      ["work-service-call", "work"],
+    ]);
+    expect(BUILT_IN_FORMS[0]).toMatchObject({ version: DEFAULT_TEMPLATE.version, definition: DEFAULT_TEMPLATE.definition });
   });
 
   it("never lets a work or intake form take the inspection form's key", () => {
