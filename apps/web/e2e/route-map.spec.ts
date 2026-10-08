@@ -253,9 +253,20 @@ test.describe("technician route map", () => {
       const cards = await page
         .locator(".stop-card")
         .evaluateAll((els) =>
-          els.map((e) => ({ n: e.querySelector(".stop-num")?.textContent, customer: e.querySelector("strong")?.textContent, status: e.querySelector(".badge")?.textContent })),
+          els.map((e) => ({
+            n: e.querySelector(".stop-num")?.textContent,
+            customer: e.querySelector("strong")?.textContent,
+            // The visit status is the card's own badge; safety flags are badges too, inside the body.
+            status: e.querySelector(":scope > .badge")?.textContent,
+            safety: [...e.querySelectorAll(".stop-body .badge")].map((b) => b.textContent),
+          })),
         );
-      const mine = (await (await page.request.get("/api/route")).json()).items as { jobId: string; site: { lat: number | null } }[];
+      const mine = (await (await page.request.get("/api/route")).json()).items as { jobId: string; status: string; site: { lat: number | null; safetyFlags: string[] } }[];
+      // Each card says Done exactly when the visit is done, flagged sites included.
+      for (const [i, s] of mine.entries()) {
+        expect(cards[i]!.status!.startsWith("Done"), `${cards[i]!.customer}: ${cards[i]!.status}`).toBe(s.status === "completed");
+        expect(cards[i]!.safety).toHaveLength(s.site.safetyFlags.length);
+      }
 
       await page.getByRole("button", { name: "Map" }).click();
       await expect(page.getByRole("button", { name: "Map" })).toHaveAttribute("aria-pressed", "true");
