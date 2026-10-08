@@ -120,6 +120,8 @@ test("a company that went read-only while the phone was offline keeps the techni
     expect(row).toEqual([{ status: "completed", validation_status: "valid", photos: 2, signatures: 1, completions: 1 }]);
   } finally {
     await db.query(`update organizations set subscription_state = $1 where id = ${TESS_ORG}`, [original]);
+    // Later specs count today's work visits on the route and map: this one's moves to yesterday.
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = $1", [wo.jobId]);
     await db.end();
   }
 });

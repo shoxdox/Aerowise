@@ -1,10 +1,13 @@
-// SW-12 Drill A, phone part (plan §12 row 4): one phone profile kept across a rollback of the
-// servers to the SW-2a phone floor and a roll forward again. Run only from
-// scripts/sw12/drill-phone-floor.sh, which swaps the servers between phases. Scratch only: it
-// talks to http://localhost:3000 and the scratch database it is given, never to staging.
+// SW-12 Drill A, phone part (plan §12 row 4, §9.1): one phone profile kept across a rollback of
+// the web app to the SW-2a phone floor and a roll forward again, while the API stays on an
+// approved server. Run only from scripts/sw12/drill-phone-floor.sh, which swaps the servers
+// between phases. Scratch only: it talks to http://localhost:3000 and the scratch database it is
+// given, never to staging.
 //
 //   node drills/phone-floor.mjs <phase> <profileDir> <stateFile>
-//   phase: before (final SHA), floor (a39e875), after (final SHA again)
+//   phase: before (final SHA), floor (a39e875 web, approved API), after (final SHA again)
+//
+// Its last line is "PHASE <phase> END checks=<n> fails=<m>"; the script's verdict needs it.
 import { chromium, devices } from "@playwright/test";
 import fs from "node:fs";
 import pg from "pg";
@@ -26,7 +29,11 @@ const save = () => fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
 const db = new pg.Client({ connectionString: databaseUrl });
 await db.connect();
 const one = async (q, p = []) => (await db.query(q, p)).rows[0];
+let checks = 0;
+let fails = 0;
 const check = (ok, what) => {
+  checks++;
+  if (!ok) fails++;
   console.log(`${ok ? "PASS" : "FAIL"} [${phase}] ${what}`);
   if (!ok) process.exitCode = 1;
 };
@@ -163,7 +170,7 @@ try {
   }
 
   if (phase === "floor") {
-    // Signal back, while the servers run the floor release.
+    // Signal back, while the phone loads the floor web app from an approved API.
     await ctx.setOffline(false);
     check(await waitForBuild(false), "the phone now runs the floor build (no work list)");
     const route = await page.request.get("/api/route");
@@ -212,10 +219,12 @@ try {
     check(!pageErrors.some((e) => /VersionError/.test(e)), "no VersionError after the roll forward");
   }
 } catch (e) {
+  fails++;
   console.log(`FAIL [${phase}] ${e?.stack ?? e}`);
   await page.screenshot({ path: `${stateFile}.${phase}-failure.png`, fullPage: true }).catch(() => {});
   process.exitCode = 1;
 } finally {
-  await ctx.close();
-  await db.end();
+  await ctx.close().catch(() => {});
+  await db.end().catch(() => {});
+  console.log(`PHASE ${phase} END checks=${checks} fails=${fails}`);
 }

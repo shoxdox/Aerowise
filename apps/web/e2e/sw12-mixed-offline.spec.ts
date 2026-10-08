@@ -215,6 +215,8 @@ test("two work visits and an inspection done with no signal reach the office exa
 
     for (const wo of [a, b]) expect((await (await api.get(`/api/work-orders/${wo.id}`)).json()).status).toBe("completed");
   } finally {
+    // Later specs count today's work visits on the route and map: these move to yesterday.
+    await db.query("update jobs set scheduled_date = scheduled_date - 1 where id = any($1)", [[a.jobId, b.jobId]]);
     await db.end();
   }
 });
