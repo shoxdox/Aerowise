@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BILLING_FREQUENCIES, plan, SERVICE_TYPES } from "./contracts.ts";
+import { serviceCycle } from "./cycles.ts";
 import { CUSTOMER_TYPES, id } from "./crm.ts";
 import { formKey } from "./forms.ts";
 import { templateDefinition, validateInspection, visibleFields, type InspectionValues, type TemplateDefinition, type ValidationProblem } from "./inspections.ts";
@@ -90,6 +91,17 @@ export const planVersionInput = z.object({
   coverage: z.array(coverageRule).max(30).superRefine(uniqueKeys((r) => r.ruleKey, "coverage rules")),
   /** One version of an intake form the customer answers when signing online; null asks nothing. */
   intakeTemplateId: id.nullable().default(null),
+  /**
+   * Pumping or maintenance cycles (SW-9, needs `service_cycles`). Each numbers its own visits
+   * and is done as work orders, never as inspections. Left out, the current version's are kept.
+   */
+  serviceCycles: z.array(serviceCycle).max(6).superRefine(uniqueKeys((c) => c.cycleKey, "cycles")).optional(),
+  /**
+   * Whether the plan includes its aerobic inspections. False makes a pumping or maintenance
+   * service plan with no inspections (SW-9, needs `service_cycles` and at least one cycle).
+   * Left out, the current version's choice is kept.
+   */
+  aerobic: z.boolean().optional(),
 });
 export type PlanVersionInput = z.input<typeof planVersionInput>;
 
@@ -112,6 +124,10 @@ export const planVersion = z.object({
   options: z.array(planOption),
   coverage: z.array(coverageRule),
   intake: intakeFormRef.nullable(),
+  /** Whether the version includes aerobic inspections (SW-9). */
+  aerobic: z.boolean(),
+  /** Its pumping or maintenance cycles (SW-9). */
+  serviceCycles: z.array(serviceCycle),
   createdAt: z.iso.datetime({ offset: true }),
   /** Contracts and renewals made from this version. */
   contracts: z.number().int(),
@@ -127,6 +143,8 @@ export const agreementPreview = z.object({
   coverage: z.array(z.object({ ruleKey: z.string(), label: z.string(), summary: z.string() })),
   /** The intake questions asked at signing, as labels; null when the version asks none. */
   intake: z.object({ name: z.string(), questions: z.array(z.string()) }).nullable(),
+  /** Pumping or maintenance included, one line each (SW-9); empty for an inspection-only plan. */
+  cycles: z.array(z.object({ cycleKey: z.string(), label: z.string(), summary: z.string() })),
 });
 export type AgreementPreview = z.infer<typeof agreementPreview>;
 

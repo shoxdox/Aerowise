@@ -91,10 +91,31 @@ export const portalSite = z.object({
       chlorinationMethod: z.string().nullable(),
     })
     .nullable(),
-  contract: z.object({ planName: z.string(), startOn: date, endOn: date, state: z.enum(CONTRACT_STATES), visitsPerTerm: z.number().int(), visitsDone: z.number().int() }).nullable(),
+  contract: z
+    .object({
+      planName: z.string(),
+      startOn: date,
+      endOn: date,
+      state: z.enum(CONTRACT_STATES),
+      visitsPerTerm: z.number().int(),
+      visitsDone: z.number().int(),
+      /**
+       * SW-9: with pumping or maintenance visits, each kind's own count this term (inspections
+       * included, labelled). Empty for an inspection-only contract, which shows visitsDone of
+       * visitsPerTerm as before.
+       */
+      visitProgress: z.array(z.object({ label: z.string(), done: z.number().int(), total: z.number().int() })).default([]),
+    })
+    .nullable(),
   /** A renewal the homeowner can act on, or the latest one. */
   renewal: z.object({ status: z.enum(RENEWAL_STATUSES), startOn: date, url: z.string().nullable() }).nullable(),
-  nextVisit: z.object({ dueOn: date, windowStart: date, windowEnd: date, scheduledDate: date.nullable() }).nullable(),
+  /**
+   * The next inspection; with none due, the next pumping or maintenance visit (SW-9), named by
+   * `label` (null for an inspection).
+   */
+  nextVisit: z.object({ dueOn: date, windowStart: date, windowEnd: date, scheduledDate: date.nullable(), label: z.string().nullable().default(null) }).nullable(),
+  /** SW-9: false for a site with only pumping or maintenance service, which has no inspection reports to show. */
+  inspections: z.boolean().default(true),
   /** Customer copies of inspection reports, newest first. */
   reports: z.array(z.object({ id, inspectedOn: date, url: z.string() })),
   /** SW-7: finished work with its completion summary, newest first. */

@@ -24,6 +24,7 @@ import {
   formatGallons,
   formatPhone,
   workOrderLabel,
+  SERVICE_TYPE_LABELS,
   type WorkOrderStatus,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -66,6 +67,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .leftJoin("jobs as j", (k) => k.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.type", "=", "inspection").on("j.status", "<>", "cancelled"))
       .leftJoin("users as u", "u.id", "j.technicianUserId")
       .select(["o.id", "o.dueOn", "o.sequence", "j.scheduledDate", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      // Inspections only (SW-9): pumping and maintenance visits are work, not compliance.
+      .where("o.serviceType", "=", "aerobic_inspection")
       .where("o.status", "=", "open")
       .where("o.dueOn", "<", today)
       .orderBy("o.dueOn")
@@ -236,7 +239,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         select o.id, o.window_start, j.scheduled_date
         from service_obligations o
         left join jobs j on j.obligation_id = o.id and j.organization_id = o.organization_id and j.type = 'inspection' and j.status <> 'cancelled'
-        where o.organization_id = ${organizationId} and o.site_id = s.id and o.status = 'open'
+        where o.organization_id = ${organizationId} and o.site_id = s.id and o.status = 'open' and o.service_type = 'aerobic_inspection'
         order by o.due_on limit 1
       ) nv on true
       where s.active and (
@@ -611,6 +614,58 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
+  /**
+   * Pumping or maintenance visits (SW-9): overdue ones not yet booked as work, and booked ones
+   * whose contract has ended. The latter keep their work order, its money and its field record
+   * until the office finishes or cancels it, so nothing is dropped behind its back.
+   */
+  async function serviceCycleVisits(organizationId: string, today: string): Promise<InboxException[]> {
+    const rows = await sites(organizationId)
+      .innerJoin("serviceObligations as o", (j) => j.onRef("o.siteId", "=", "s.id").onRef("o.organizationId", "=", "s.organizationId"))
+      .innerJoin("contracts as k", (j) => j.onRef("k.id", "=", "o.contractId").onRef("k.organizationId", "=", "o.organizationId"))
+      .leftJoin("workOrders as w", (j) => j.onRef("w.obligationId", "=", "o.id").onRef("w.organizationId", "=", "o.organizationId").on("w.status", "<>", "cancelled"))
+      .select(["o.id", "o.dueOn", "o.serviceType", "o.contractId", "k.status as contractStatus", "k.serviceEndsOn", "w.id as woId", "w.number as woNumber", "w.status as woStatus", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("o.serviceType", "<>", "aerobic_inspection")
+      .where("o.status", "=", "open")
+      .where((eb) =>
+        eb.or([
+          eb.and([eb("w.id", "is", null), eb("o.dueOn", "<", today), eb("k.status", "=", "active")]),
+          eb.and([eb("w.id", "is not", null), eb.or([eb("k.status", "=", "cancelled"), eb("k.serviceEndsOn", "<", today)])]),
+        ]),
+      )
+      .orderBy("o.dueOn")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => {
+      const what = SERVICE_TYPE_LABELS[r.serviceType];
+      if (!r.woId) {
+        return {
+          key: `service_visit_overdue:${r.id}`,
+          kind: "service_visit_overdue" as const,
+          severity: "medium" as const,
+          title: `${what} visit overdue`,
+          detail: "Not booked yet: create its work order from the contract",
+          dueOn: r.dueOn,
+          site: site(r),
+          customer: customer(r),
+          target: { type: "contract" as const, id: r.contractId },
+        };
+      }
+      return {
+        key: `cycle_work_contract_ended:${r.id}`,
+        kind: "cycle_work_contract_ended" as const,
+        severity: "high" as const,
+        title: `${what} work booked after the contract ended`,
+        detail: "Finish it or cancel the work order; its visit, invoice and deposit are kept until you do",
+        dueOn: r.serviceEndsOn ?? r.dueOn,
+        site: site(r),
+        customer: customer(r),
+        target: { type: "contract" as const, id: r.contractId },
+        workOrder: woLink(r),
+      };
+    });
+  }
+
   /** Texts from customers that are not STOP or START and nobody has dealt with yet. */
   async function smsReplies(organizationId: string): Promise<InboxException[]> {
     const rows = await db
@@ -901,6 +956,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       const [groups, due, routes, unpaid] = await Promise.all([
         Promise.all([
           overdueVisits(organizationId, today),
+          serviceCycleVisits(organizationId, today),
           incompleteInspections(organizationId),
           filingExceptions(organizationId, today),
           lateNextVisits(organizationId, today),
@@ -926,6 +982,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
             sql<number>`count(*) filter (where due_on < ${today}::date)::int`.as("overdue"),
           ])
           .where("organizationId", "=", organizationId)
+          .where("serviceType", "=", "aerobic_inspection")
           .where("status", "=", "open")
           .executeTakeFirstOrThrow(),
         db

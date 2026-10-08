@@ -4,6 +4,7 @@ import type { FastifyRequest } from "fastify";
 import type { Transaction } from "kysely";
 import { coverageOnClose } from "./coverage.ts";
 import { HttpError, notFound } from "./errors.ts";
+import { cycleVisitOnClose } from "./service-cycles.ts";
 
 // Work order lifecycle helpers shared by the work order routes and the schedule routes.
 // Every change runs in the caller's transaction with the work order row locked, so the
@@ -68,7 +69,11 @@ export async function setWorkOrderStatus(
     .where("id", "=", wo.id)
     .execute();
   // Coverage follows the order however it closed (SW-8); `req` credits the change on the timeline.
-  if (to === "cancelled" || to === "completed") await coverageOnClose(trx, req, organizationId, wo.id, to, at);
+  if (to === "cancelled" || to === "completed") {
+    await coverageOnClose(trx, req, organizationId, wo.id, to, at);
+    // A pumping or maintenance visit follows the order it was booked as (SW-9).
+    await cycleVisitOnClose(trx, organizationId, wo.id, to, at);
+  }
 }
 
 /** The next gapless number for the company (a rolled-back insert gives its number back). */

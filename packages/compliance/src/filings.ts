@@ -442,11 +442,12 @@ export async function openContractFiling(trx: Executor, args: { organizationId: 
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
     .innerJoin("organizations as o", "o.id", "c.organizationId")
     .leftJoin("contracts as p", (j) => j.onRef("p.id", "=", "c.previousContractId").onRef("p.organizationId", "=", "c.organizationId"))
-    .select(["c.id", "c.siteId", "c.status", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
+    .select(["c.id", "c.siteId", "c.status", "c.serviceType", "c.signedDocumentId", "c.startOn", "c.endOn", "c.planName", "c.filingBasis", "c.filingBasisOn", "p.endOn as previousEndOn", "s.county", "s.state", "s.jurisdictionId", "o.timezone"])
     .where("c.organizationId", "=", args.organizationId)
     .where("c.id", "=", args.contractId)
     .executeTakeFirst();
-  if (!c || c.status !== "active") return null;
+  // A pumping or maintenance contract with no inspections is not an aerobic maintenance contract (SW-9).
+  if (!c || c.status !== "active" || c.serviceType !== "aerobic_inspection") return null;
   const exists = await trx.selectFrom("filings").select("id").where("organizationId", "=", args.organizationId).where("contractId", "=", c.id).executeTakeFirst();
   if (exists) return null;
   const today = dateInZone(args.at, c.timezone);

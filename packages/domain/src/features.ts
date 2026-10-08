@@ -7,7 +7,7 @@
  * readable and can be finished, so turning it off strands nothing. See the service
  * workflows plan, §9.1.
  */
-export const FEATURES = ["work_orders", "service_items", "field_work", "estimates", "deposits", "plan_builder", "pumping"] as const;
+export const FEATURES = ["work_orders", "service_items", "field_work", "estimates", "deposits", "plan_builder", "pumping", "service_cycles"] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** Reads `AEROWISE_FEATURES`. An unknown name is an error, so a typo never silently leaves a feature off. */
@@ -26,5 +26,7 @@ export function parseFeatures(value: string | undefined): Set<Feature> {
   if (set.has("deposits") && !set.has("estimates")) throw new Error("AEROWISE_FEATURES: deposits needs estimates switched on too");
   // A pump-out is recorded on a field record from the phone.
   if (set.has("pumping") && !set.has("field_work")) throw new Error("AEROWISE_FEATURES: pumping needs field_work switched on too");
+  // Cycles are saved in the plan builder and done as work orders.
+  if (set.has("service_cycles") && !(set.has("plan_builder") && set.has("work_orders"))) throw new Error("AEROWISE_FEATURES: service_cycles needs plan_builder and work_orders switched on too");
   return set;
 }

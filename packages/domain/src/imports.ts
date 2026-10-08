@@ -357,7 +357,8 @@ export interface ExistingRecords {
   customers: { id: string; displayName: string; phones: string[]; emails: string[] }[];
   sites: { id: string; addressLine1: string; city: string; permitNumber: string | null }[];
   /** Active plans, matched by name without regard to case. */
-  plans: { name: string; termMonths: number; visitsPerTerm: number }[];
+  /** `notImported`: why this plan's contracts are not created by an import (SW-9: it has pumping or maintenance). */
+  plans: { name: string; termMonths: number; visitsPerTerm: number; notImported?: string }[];
   /** Today in the organization's time zone. */
   today: string;
 }
@@ -530,9 +531,10 @@ function contractTerms(record: ImportRecord, plans: Map<string, ExistingRecords[
   if (!record.planName) {
     if (dated) messages.push("Contract dates given without a plan; no contract will be created");
   } else if (!plan) messages.push(`No active plan named "${record.planName}"; no contract will be created`);
+  else if (plan.notImported) messages.push(plan.notImported);
   else if (!dated) messages.push("No contract start or end date; no contract will be created");
 
-  if (!plan || !dated) {
+  if (!plan || plan.notImported || !dated) {
     if (record.lastInspection) messages.push("Last inspection is only used with a contract; no visits are scheduled from it");
     return;
   }
