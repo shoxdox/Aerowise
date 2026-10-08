@@ -154,6 +154,7 @@ export class EmailManualAdapter implements JurisdictionAdapter {
     if (unasked.length) problems.push(`${this.resolved.authorityName} requires ${unasked.map(fieldName).join(", ")}, which this inspection's form does not ask for`);
     if (this.rules.inspection.technicianLicenseRequired && !insp.technicianLicense) problems.push("The technician's license number is missing");
     if (this.rules.submission.method === "email" && !this.rules.submission.email) problems.push("The ruleset has no email destination");
+    if (this.rules.submission.method === "csv_export" && !this.rules.export) problems.push("The ruleset has no CSV layout");
     return { ok: problems.length === 0, problems };
   }
 
