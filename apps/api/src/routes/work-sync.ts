@@ -305,7 +305,10 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           return { kind: "held" as const, c };
         }
 
-        // The current technician on a live visit.
+        // The current technician on a live visit. An older revision arriving late (a retried
+        // request, a second tab) never overwrites a newer one, and never completes it; the same
+        // revision may (the phone sends its draft, then its uploads, then completion).
+        if (record && body.revision < record.phoneRevision) return { kind: "record" as const, id: record.id };
         const template = await workTemplate(trx, organizationId, body.templateId);
         if (!template) throw unprocessable("templateId does not match a work form available to this organization");
         if (record && record.templateId !== body.templateId) throw conflict("template_changed", "A record keeps the form it started with");
@@ -323,7 +326,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           summary: body.summary ? JSON.stringify(body.summary) : null,
           summarySha256,
           finalVisit: body.finalVisit,
-          phoneRevision: Math.max(body.revision, record?.phoneRevision ?? 0),
+          phoneRevision: body.revision,
           arrivedAt: body.arrivedAt,
           arrivalLat: body.arrivalGps?.lat ?? null,
           arrivalLng: body.arrivalGps?.lng ?? null,
