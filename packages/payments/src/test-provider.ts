@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import Stripe from "stripe";
+import type { RefundStatus } from "@aerowise/domain";
 import { WebhookSignatureError, type CheckoutInput, type PaymentProvider, type RefundInput, type WebhookEvent } from "./provider.ts";
 
 const TEST_WEBHOOK_SECRET = "whsec_aerowise_test_provider";
@@ -44,8 +45,32 @@ export class TestPaymentProvider implements PaymentProvider {
 
   async expireCheckout() {}
 
-  async createRefund(_input: RefundInput) {
-    return { refundId: rid("re"), status: "succeeded" as const, failureReason: null };
+  /** Every refund asked for, retries included. */
+  readonly refunds: RefundInput[] = [];
+  /** What a new refund does: Stripe's answer for card refunds is usually `succeeded`. */
+  refundOutcome: RefundStatus = "succeeded";
+  /** The next this many refund calls are made, but their answer is lost on the way back. */
+  dropRefundResponses = 0;
+  private readonly refundByKey = new Map<string, { refundId: string; status: RefundStatus }>();
+
+  /** As Stripe does, a repeated idempotency key returns the refund the first call made. */
+  async createRefund(input: RefundInput) {
+    this.refunds.push(input);
+    let made = this.refundByKey.get(input.idempotencyKey);
+    if (!made) {
+      made = { refundId: rid("re"), status: this.refundOutcome };
+      this.refundByKey.set(input.idempotencyKey, made);
+    }
+    if (this.dropRefundResponses > 0) {
+      this.dropRefundResponses--;
+      throw new Error("test payment provider: the refund was made but its answer was lost");
+    }
+    return { refundId: made.refundId, status: made.status, failureReason: made.status === "failed" ? "Declined by the test provider" : null };
+  }
+
+  /** The refund a key made, as Stripe would have it. */
+  refundIdFor(idempotencyKey: string) {
+    return this.refundByKey.get(idempotencyKey)?.refundId ?? null;
   }
 
   parseWebhook(rawBody: Buffer | string, signature: string): WebhookEvent {

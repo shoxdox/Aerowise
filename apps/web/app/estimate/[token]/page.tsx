@@ -18,7 +18,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Totals({ totals }: { totals: Version["totals"] }) {
+function Totals({ totals, depositCents }: { totals: Version["totals"]; depositCents?: number | null }) {
   return (
     <dl className="details totals" style={{ marginLeft: 0 }}>
       <dt>Subtotal</dt>
@@ -41,6 +41,12 @@ function Totals({ totals }: { totals: Version["totals"] }) {
       <dd>
         <strong data-testid="estimate-total">{money(totals.totalCents)}</strong>
       </dd>
+      {depositCents ? (
+        <>
+          <dt>Deposit due on acceptance</dt>
+          <dd data-testid="estimate-deposit">{money(Math.min(depositCents, totals.totalCents))}</dd>
+        </>
+      ) : null}
     </dl>
   );
 }
@@ -150,6 +156,24 @@ function EstimatePage() {
                 Thank you{r.accepted.signerName ? `, ${r.accepted.signerName}` : ""}. You accepted {r.title} for {money(r.accepted.totals.totalCents)} on {when(r.accepted.at)}. {r.provider.name} will be in
                 touch to schedule the work.
               </p>
+              {r.deposit && (
+                <p data-testid="estimate-deposit-status">
+                  {r.deposit.payUrl ? (
+                    <>
+                      A deposit of {money(r.deposit.amountCents)} is due now; it comes off the final invoice.{" "}
+                      <a className="button" href={r.deposit.payUrl}>
+                        Pay the deposit
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      {r.deposit.paymentStatus === "refunded"
+                        ? `Your deposit of ${money(r.deposit.amountCents)} was refunded.`
+                        : `Your deposit of ${money(r.deposit.amountCents)} is ${r.deposit.paymentStatus === "processing" ? "on its way" : "received"}. It comes off the final invoice.`}
+                    </>
+                  )}
+                </p>
+              )}
               <ul>
                 {shown.map((l) => (
                   <li key={l.id}>
@@ -241,7 +265,7 @@ function EstimatePage() {
 
         <div className="card stack">
           <h2>Total</h2>
-          {totals && <Totals totals={totals} />}
+          {totals && <Totals totals={totals} depositCents={v?.depositCents} />}
         </div>
 
         <div className="card stack">

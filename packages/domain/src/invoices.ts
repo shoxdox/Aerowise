@@ -176,7 +176,11 @@ export type InvoiceInput = z.input<typeof invoiceInput>;
 /** Drafts only; lines, when given, replace all lines. */
 export const invoicePatch = invoiceFields.partial();
 
-export const invoiceIssueInput = z.object({ send: z.boolean().default(true) });
+export const invoiceIssueInput = z.object({
+  send: z.boolean().default(true),
+  /** A final invoice for an estimate with a deposit: how much free deposit money to apply. All of it, up to the invoice's total, when left out. */
+  depositCents: cents.optional(),
+});
 export const invoiceVoidInput = z.object({ reason: z.string().trim().min(1).max(2000) });
 
 export const manualPaymentInput = z.object({
@@ -292,6 +296,10 @@ export const invoiceDetail = invoiceListItem.extend({
   discountCents: z.number().int(),
   taxableCents: z.number().int(),
   taxCents: z.number().int(),
+  /** Estimate deposit money applied to this final invoice; it comes off the total. */
+  depositAppliedCents: z.number().int(),
+  /** The estimate this is the deposit or final invoice of (SW-5b): its deposit is managed there. */
+  estimate: z.object({ id, label: z.string(), role: z.enum(["deposit", "final"]) }).nullable(),
   voidedAt: datetime.nullable(),
   voidReason: z.string().nullable(),
   billToEmail: z.string().nullable(),
@@ -354,6 +362,8 @@ export const invoiceSnapshot = z.object({
   discountCents: z.number().int(),
   taxRateBps: z.number().int(),
   taxCents: z.number().int(),
+  /** Deposit money applied (SW-5b); absent on every invoice issued before it. */
+  depositAppliedCents: z.number().int().optional(),
   totalCents: z.number().int(),
 });
 export type InvoiceSnapshot = z.infer<typeof invoiceSnapshot>;

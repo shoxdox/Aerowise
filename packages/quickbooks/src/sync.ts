@@ -439,6 +439,18 @@ class SyncRun {
     if (customer?.status === "ignored") return this.write.ignored(link, "The customer is set not to sync to QuickBooks");
     if (customer?.status !== "synced" || !customer.externalId) return this.write.waiting(link, "Waiting for the customer to reach QuickBooks");
 
+    // An estimate deposit, or a final invoice with deposit money applied, stays out until the
+    // deposit mapping is decided (plan §3.6, gate G-QBO-DEPOSIT).
+    const deposit = await db
+      .selectFrom("estimateInvoices as ei")
+      .innerJoin("invoices as i", "i.id", "ei.invoiceId")
+      .select(["ei.role", "i.depositAppliedCents"])
+      .where("ei.organizationId", "=", this.org)
+      .where("ei.invoiceId", "=", inv.id)
+      .executeTakeFirst();
+    if (deposit && (deposit.role === "deposit" || deposit.depositAppliedCents > 0)) {
+      return this.write.conflict(link, "deposit_mapping_missing", { role: deposit.role, depositAppliedCents: deposit.depositAppliedCents });
+    }
     // Tax mode off: a taxed invoice stays out of QuickBooks, as it always has.
     const taxOn = this.tax.mode === "taxcode";
     if (!taxOn && inv.taxCents > 0) return this.write.conflict(link, "tax_mapping_missing", { taxCents: inv.taxCents });

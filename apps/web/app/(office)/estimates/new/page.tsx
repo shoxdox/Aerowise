@@ -7,6 +7,7 @@ import { Suspense, useState, type FormEvent } from "react";
 import { blankLine, EstimateLineEditor, toInput, type DraftLine } from "@/components/EstimateLineEditor";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
+import { useFeature } from "@/lib/features";
 
 interface SiteOption {
   id: string;
@@ -26,6 +27,7 @@ function NewEstimate() {
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const deposits = useFeature("deposits");
   const siteOptions: SiteOption[] = fixedSite
     ? one.data
       ? [{ id: one.data.id, addressLine1: one.data.addressLine1, city: one.data.city, customerName: one.data.customer.displayName }]
@@ -52,6 +54,7 @@ function NewEstimate() {
           lines: parsed.lines,
           discountCents: v.discount ? Math.round(Number(v.discount) * 100) : 0,
           expiresOn: v.expiresOn || null,
+          ...(deposits && Number(v.deposit) > 0 ? { depositCents: Math.round(Number(v.deposit) * 100) } : {}),
         },
       });
       router.push(`/estimates/${e.id}`);
@@ -114,6 +117,12 @@ function NewEstimate() {
           Good until
           <input name="expiresOn" type="date" />
         </label>
+        {deposits && (
+          <label>
+            Deposit ($) <span className="muted small">(paid on acceptance; blank for none)</span>
+            <input name="deposit" type="number" min="0" step="0.01" />
+          </label>
+        )}
       </div>
       <p className="muted small">The company&apos;s sales tax rate and estimate terms apply; you can change them on the draft before sending.</p>
       {error && <p className="error">{error}</p>}

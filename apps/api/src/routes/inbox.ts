@@ -2,6 +2,7 @@ import type { Database } from "@aerowise/db";
 import { AWAITING_SIGNATURE, labTestStatuses } from "@aerowise/compliance";
 import {
   addDays,
+  estimateLabel,
   CONTRACT_EXPIRED_WINDOW_DAYS,
   CONTRACT_EXPIRING_DAYS,
   FILING_OPEN_STATUSES,
@@ -696,6 +697,126 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     ];
   }
 
+  /**
+   * Estimate deposits that need a person (SW-5b): a refund Aerowise started that failed, a
+   * refund made at Stripe still pending, free deposit money once the job is invoiced or the
+   * estimate is cancelled, and a shortfall not yet dealt with (or dealt with beyond what is
+   * now owed).
+   */
+  async function depositExceptions(organizationId: string): Promise<InboxException[]> {
+    const failedSince = new Date(now().getTime() - PAYMENT_FAILED_WINDOW_DAYS * 86_400_000);
+    // Each deposit's balances in one pass (the same sums as depositBalances), and only those
+    // that need someone: free money once invoiced or cancelled, a shortfall, or a refund to see.
+    const rows = await sql<{
+      id: string;
+      number: number | null;
+      estimateNumber: number;
+      siteId: string | null;
+      addressLine1: string | null;
+      city: string | null;
+      customerId: string;
+      displayName: string;
+      free: number;
+      shortfall: number;
+      resolved: number;
+      unappliedMatters: boolean;
+    }>`
+      with b as (
+        select ei.invoice_id, ei.estimate_id,
+          coalesce(sum(l.amount_cents) filter (where l.kind = 'received'), 0) as r,
+          coalesce(sum(l.amount_cents) filter (where l.kind in ('refunded', 'refunded_external', 'deposit_reversal')), 0) as x,
+          coalesce(sum(case l.kind when 'applied' then l.amount_cents when 'unapplied' then -l.amount_cents when 'deposit_reversal' then -l.amount_cents else 0 end), 0) as a,
+          coalesce(sum(case l.kind when 'retained' then l.amount_cents when 'retain_reversed' then -l.amount_cents else 0 end), 0) as t,
+          coalesce(sum(case l.kind when 'shortfall' then l.amount_cents when 'shortfall_released' then -l.amount_cents else 0 end), 0) as s
+        from estimate_invoices ei
+        join deposit_ledger l on l.deposit_invoice_id = ei.invoice_id
+        where ei.organization_id = ${organizationId} and ei.role = 'deposit'
+        group by ei.invoice_id, ei.estimate_id
+      ), q as (
+        select p.invoice_id, sum(f.amount_cents) as q
+        from refunds f join payments p on p.id = f.payment_id
+        where p.organization_id = ${organizationId} and f.status = 'pending' and f.reservation = 'deposit_free'
+        group by p.invoice_id
+      ), res as (
+        select deposit_invoice_id, sum(amount_cents) as n from deposit_shortfall_resolutions where organization_id = ${organizationId} group by deposit_invoice_id
+      )
+      select i.id, i.number, e.number as "estimateNumber", s.id as "siteId", s.address_line1 as "addressLine1", s.city, c.id as "customerId", c.display_name as "displayName",
+        (b.r - b.x - coalesce(q.q, 0) - b.a - b.t + b.s)::int as free, b.s::int as shortfall, coalesce(res.n, 0)::int as resolved,
+        (e.status = 'cancelled' or exists (select 1 from estimate_invoices f where f.estimate_id = b.estimate_id and f.role = 'final' and f.voided_at is null)) as "unappliedMatters"
+      from b
+      join invoices i on i.id = b.invoice_id
+      join estimates e on e.id = b.estimate_id
+      join customers c on c.id = i.customer_id and c.organization_id = i.organization_id
+      left join sites s on s.id = i.site_id and s.organization_id = i.organization_id
+      left join q on q.invoice_id = b.invoice_id
+      left join res on res.deposit_invoice_id = b.invoice_id
+      where b.s > 0 or coalesce(res.n, 0) > 0 or (b.r - b.x - coalesce(q.q, 0) - b.a - b.t + b.s) > 0
+      order by i.created_at
+      limit ${PER_KIND}`.execute(db);
+    const refunds = await db
+      .selectFrom("refunds as f")
+      .innerJoin("payments as p", "p.id", "f.paymentId")
+      .innerJoin("estimateInvoices as ei", (j) => j.onRef("ei.invoiceId", "=", "p.invoiceId").on("ei.role", "=", "deposit"))
+      .innerJoin("estimates as e", "e.id", "ei.estimateId")
+      .innerJoin("invoices as i", "i.id", "p.invoiceId")
+      .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "i.customerId").onRef("c.organizationId", "=", "i.organizationId"))
+      .leftJoin("sites as s", (j) => j.onRef("s.id", "=", "i.siteId").onRef("s.organizationId", "=", "i.organizationId"))
+      .select(["f.id", "f.amountCents", "f.status", "f.finalInvoiceId", "f.failureReason", "i.id as invoiceId", "i.number", "e.number as estimateNumber", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .where("p.organizationId", "=", organizationId)
+      .where((eb) => eb.or([eb("f.status", "=", "pending").and("f.reservation", "is", null), eb("f.status", "=", "failed").and("f.reservation", "is not", null).and("f.updatedAt", ">=", failedSince)]))
+      .orderBy("f.createdAt")
+      .limit(PER_KIND)
+      .execute();
+    type Place = { siteId: string | null; addressLine1: string | null; city: string | null; customerId: string; displayName: string; number: number | null; estimateNumber: number };
+    const where = (r: Place, invoiceId: string) => ({
+      site: r.siteId && r.addressLine1 && r.city ? { id: r.siteId, addressLine1: r.addressLine1, city: r.city } : null,
+      customer: customer(r),
+      target: { type: "invoice" as const, id: invoiceId },
+    });
+    const label = (r: Place) => `${estimateLabel(r.estimateNumber)} deposit (${invoiceNumberLabel(r.number)})`;
+    const out: InboxException[] = refunds.map((f) =>
+      f.status === "failed"
+        ? {
+            ...where(f, f.finalInvoiceId ?? f.invoiceId),
+            key: `deposit_refund_failed:${f.id}`,
+            kind: "deposit_refund_failed",
+            severity: "high",
+            title: "Refund failed",
+            detail: `${label(f)}: ${dollars(f.amountCents)} did not go back to the customer${f.failureReason ? ` (${f.failureReason})` : ""}. The money is held again; refund it another way or try again.`,
+            dueOn: null,
+          }
+        : {
+            ...where(f, f.invoiceId),
+            key: `deposit_refund_pending:${f.id}`,
+            kind: "deposit_refund_pending",
+            severity: "low",
+            title: "Refund pending at Stripe",
+            detail: `${label(f)}: a refund of ${dollars(f.amountCents)} made outside Aerowise is pending. It is booked when Stripe says it went through.`,
+            dueOn: null,
+          },
+    );
+    for (const d of rows.rows) {
+      if (d.free > 0 && d.unappliedMatters) {
+        out.push({ ...where(d, d.id), key: `deposit_unapplied:${d.id}`, kind: "deposit_unapplied", severity: "medium", title: "Unapplied deposit", detail: `${label(d)}: ${dollars(d.free)} is held and not applied. Refund it or keep it.`, dueOn: null });
+      }
+      const outstanding = Math.max(0, d.shortfall - d.resolved);
+      if (outstanding > 0) {
+        out.push({ ...where(d, d.id), key: `deposit_shortfall:${d.id}`, kind: "deposit_shortfall", severity: "high", title: "Deposit shortfall", detail: `${label(d)}: ${dollars(outstanding)} more went back to the customer than the deposit had free. Bill it or write it off.`, dueOn: null });
+      } else if (d.resolved > d.shortfall) {
+        out.push({
+          ...where(d, d.id),
+          key: `deposit_shortfall:${d.id}`,
+          kind: "deposit_shortfall",
+          severity: "medium",
+          title: "Shortfall resolved more than is now owed",
+          detail: `${label(d)}: ${dollars(d.resolved - d.shortfall)} was billed or written off beyond the current shortfall. Credit the customer.`,
+          dueOn: null,
+        });
+      }
+    }
+    return out;
+  }
+
   /** QuickBooks records waiting on a person, per customer. */
   async function quickbooksExceptions(organizationId: string): Promise<InboxException[]> {
     const records = await listQuickBooksRecords(db, organizationId, { attention: true, limit: PER_KIND });
@@ -745,6 +866,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           smsReplies(organizationId),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),
+          depositExceptions(organizationId),
         ]),
         db
           .selectFrom("serviceObligations")

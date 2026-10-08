@@ -17,7 +17,7 @@ import {
   type InvoiceLineInput,
   parseSnapshotOptions,
 } from "@aerowise/domain";
-import { dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
+import { depositLink, dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
 import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import { activatePaidRenewals } from "@aerowise/renewals";
@@ -41,6 +41,7 @@ import {
   type PaymentsConfig,
 } from "../lib/invoices.ts";
 import { afterCoveredInvoiceVoided, consumeCoverage } from "../lib/coverage.ts";
+import { lockDepositForWorkOrder, unapplyAtVoid } from "../lib/deposits.ts";
 import { afterWorkOrderInvoiceEnded, lockInvoiceWorkOrder } from "../lib/work-orders.ts";
 import { dateInZone, organizationToday } from "../lib/today.ts";
 import { readForDownload } from "../lib/demo.ts";
@@ -404,9 +405,15 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId, userId } = req.requireAuth();
       await db.transaction().execute(async (trx) => {
         const at = now();
-        // The work order it was made from first, then the invoice, as every change to the pair.
+        // The work order first, then its estimate's deposit, then the invoice.
         const wo = await lockInvoiceWorkOrder(trx, organizationId, req.params.id);
-        const issued = await issueDraft(trx, organizationId, req.params.id, { send: req.body.send, now: at });
+        const dep = wo ? await lockDepositForWorkOrder(trx, organizationId, wo.id) : null;
+        if (req.body.depositCents !== undefined && !dep) throw unprocessable("This invoice has no deposit to apply");
+        const issued = await issueDraft(trx, organizationId, req.params.id, {
+          send: req.body.send,
+          now: at,
+          deposit: dep ? { lock: dep, requestedCents: req.body.depositCents, actorUserId: userId } : undefined,
+        });
         // Billing the work spends the plan coverage it was priced under (SW-8).
         if (wo) await consumeCoverage(trx, req, organizationId, wo.id, req.params.id, at);
         await invoiceEvent(trx, {
@@ -474,6 +481,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const at = now();
         // The work order it was made from first, then the invoice, as every change to the pair.
         const wo = await lockInvoiceWorkOrder(trx, organizationId, req.params.id);
+        const dep = wo ? await lockDepositForWorkOrder(trx, organizationId, wo.id) : null;
         const inv = await trx
           .selectFrom("invoices")
           .select(["id", "number", "status", "paidCents", "pendingCents"])
@@ -484,6 +492,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (!inv) throw notFound("Invoice");
         if (inv.status !== "open") throw unprocessable(inv.status === "draft" ? "Discard a draft instead of voiding it" : "This invoice is already void");
         if (inv.paidCents > 0 || inv.pendingCents > 0) throw unprocessable("This invoice has payments. Refund them before voiding it.");
+        // A deposit invoice with nothing paid: the estimate no longer asks for it.
+        await trx.updateTable("estimateInvoices").set({ voidedAt: at }).where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).where("role", "=", "deposit").where("voidedAt", "is", null).execute();
+        // A final invoice gives back the deposit money applied to it (I5).
+        if (dep) await unapplyAtVoid(trx, organizationId, dep, inv.id, { actorUserId: userId, at });
         await trx.updateTable("invoices").set({ status: "void", voidedAt: at, voidReason: req.body.reason, updatedAt: at }).where("id", "=", inv.id).execute();
         await recalcInvoice(trx, organizationId, inv.id, at);
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "voided", summary: `Voided: ${req.body.reason}`, actorUserId: userId, at });
@@ -617,6 +629,8 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         // Lock the invoice, as every payment change does, so refunds cannot race each other.
         await trx.selectFrom("invoices").select("id").where("id", "=", p.invoiceId).forUpdate().executeTakeFirstOrThrow();
         if (p.status !== "succeeded") throw unprocessable("Only a payment that has cleared can be refunded");
+        // Deposit money is refunded through its own ledger, which reserves it first.
+        if (await depositLink(trx, organizationId, p.invoiceId)) throw new HttpError(409, "deposit_payment", "This is a deposit payment. Refund it from the estimate's deposit.");
         const prior = await trx
           .selectFrom("refunds")
           .select([sql<number>`count(*)::int`.as("n"), sql<number>`coalesce(sum(amount_cents) filter (where status <> 'failed'), 0)::int`.as("committed")])

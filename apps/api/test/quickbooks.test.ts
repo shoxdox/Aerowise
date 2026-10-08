@@ -594,6 +594,35 @@ describe("conflicts and retries", () => {
     expect(await link("invoice", inv.id)).toMatchObject({ status: "synced" });
     expect(await link("customer", cs.dana.id)).toMatchObject({ status: "synced" });
   });
+  it("keeps an estimate deposit, and a final invoice with deposit money applied, out of QuickBooks", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const { cs } = await synced(t);
+    const site = (await t.api.post(`/customers/${cs.nora.id}/sites`, { addressLine1: "9 Oak St", city: "Austin" })).json();
+    const est = await ctx.db.insertInto("estimates").values({ organizationId: t.org.id, number: 1, customerId: cs.nora.id, siteId: site.id, title: "Estimate" }).returning("id").executeTakeFirstOrThrow();
+    const deposit = await issue(t, cs.nora.id);
+    // Deposit money comes off a final invoice as it is issued.
+    const draft = (await t.api.post("/invoices", { customerId: cs.nora.id, lines: [{ description: "Aerator repair", quantity: 1, unitPriceCents: 30000 }] })).json();
+    await ctx.db.updateTable("invoices").set({ depositAppliedCents: 5000, totalCents: 25000 }).where("id", "=", draft.id).execute();
+    expect((await t.api.post(`/invoices/${draft.id}/issue`, { send: false })).statusCode).toBe(200);
+    const applied = { id: draft.id as string };
+    const none = await issue(t, cs.nora.id);
+    // Linked the way acceptance and the final invoice link them (plan §3.6).
+    await ctx.db
+      .insertInto("estimateInvoices")
+      .values([
+        { organizationId: t.org.id, estimateId: est.id, invoiceId: deposit.id, role: "deposit", replacesInvoiceId: null, voidedAt: null },
+        { organizationId: t.org.id, estimateId: est.id, invoiceId: applied.id, role: "final", replacesInvoiceId: null, voidedAt: new Date() },
+        { organizationId: t.org.id, estimateId: est.id, invoiceId: none.id, role: "final", replacesInvoiceId: applied.id, voidedAt: null },
+      ])
+      .execute();
+    await runWorker(ctx);
+    expect(await link("invoice", deposit.id)).toMatchObject({ status: "conflict", conflictKind: "deposit_mapping_missing" });
+    expect(await link("invoice", applied.id)).toMatchObject({ status: "conflict", conflictKind: "deposit_mapping_missing" });
+    // A final invoice with nothing applied is an ordinary invoice.
+    expect(await link("invoice", none.id)).toMatchObject({ status: "synced" });
+    const recs = (await t.api.get("/quickbooks/records")).json() as { conflictKind: string; actions: string[] }[];
+    expect(recs.filter((r) => r.conflictKind === "deposit_mapping_missing").map((r) => r.actions)).toEqual([["ignore"], ["ignore"]]);
+  });
 });
 
 describe("sales tax", () => {

@@ -315,6 +315,22 @@ describe("demo reseed", () => {
     }
   });
 
+  it("asks for a deposit on the signed estimate when deposits are on, paid by card on the test checkout, and reseeds clean", async () => {
+    const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
+    await reseedDemo(ctx.db, { filesDir: files });
+    const store = new LocalDiskStore(files);
+    expect(await playDemoStory({ db: ctx.db, store, features: new Set(["work_orders", "estimates", "deposits"]) })).toBe(true);
+    const link = await ctx.db.selectFrom("estimateInvoices as ei").innerJoin("invoices as i", "i.id", "ei.invoiceId").select(["ei.organizationId", "ei.role", "i.totalCents", "i.paymentStatus"]).executeTakeFirstOrThrow();
+    expect(link).toMatchObject({ role: "deposit", totalCents: 10000, paymentStatus: "paid" });
+    const ledger = await ctx.db.selectFrom("depositLedger").select(["kind", "amountCents"]).execute();
+    expect(ledger).toEqual([{ kind: "received", amountCents: 10000 }]);
+
+    await reseedDemo(ctx.db, { filesDir: files });
+    for (const table of ["estimateInvoices", "depositLedger", "depositShortfallResolutions"] as const) {
+      expect(await ctx.db.selectFrom(table).select("id").where("organizationId", "=", link.organizationId).execute()).toEqual([]);
+    }
+  });
+
   it("prices and invoices the pump-out from the catalog when service items are switched on too", async () => {
     const files = mkdtempSync(join(tmpdir(), "aerowise-story-"));
     await reseedDemo(ctx.db, { filesDir: files });

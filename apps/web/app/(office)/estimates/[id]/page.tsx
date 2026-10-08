@@ -4,10 +4,12 @@ import { ESTIMATE_STATUS_LABELS, estimateTotals, isEstimateOpen, selectedLines, 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { DepositPanel } from "@/components/DepositPanel";
 import { blankLine, estimateBadge, EstimateLineEditor, fromSaved, toInput, type DraftLine } from "@/components/EstimateLineEditor";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
+import { useFeature } from "@/lib/features";
 import { canEdit, useSession } from "@/lib/session";
 
 type Totals = EstimateDetail["draft"]["totals"];
@@ -21,7 +23,7 @@ function sourceHref(e: EstimateDetail) {
 const qty = (l: EstimateLine) => String(l.quantityMilli / 1000);
 
 /** A sent version's lines and totals, read-only. */
-function LinesTable({ lines, totals, chosen }: { lines: EstimateLine[]; totals: Totals; chosen?: string[] | null }) {
+function LinesTable({ lines, totals, chosen, depositCents }: { lines: EstimateLine[]; totals: Totals; chosen?: string[] | null; depositCents?: number | null }) {
   const included = new Set(selectedLines(lines, chosen).map((l) => l.id));
   return (
     <div className="table-scroll">
@@ -69,6 +71,12 @@ function LinesTable({ lines, totals, chosen }: { lines: EstimateLine[]; totals: 
               <strong data-testid="estimate-total">{money(totals.totalCents)}</strong>
             </td>
           </tr>
+          {depositCents ? (
+            <tr>
+              <td colSpan={3}>Deposit on acceptance</td>
+              <td className="num">{money(Math.min(depositCents, totals.totalCents))}</td>
+            </tr>
+          ) : null}
         </tfoot>
       </table>
     </div>
@@ -78,6 +86,8 @@ function LinesTable({ lines, totals, chosen }: { lines: EstimateLine[]; totals: 
 function DraftEditor({ e, onSaved, onError }: { e: EstimateDetail; onSaved: () => Promise<void>; onError: (m: string | null) => void }) {
   const [lines, setLines] = useState<DraftLine[]>(() => (e.draft.lines.length ? e.draft.lines.map(fromSaved) : [blankLine()]));
   const [busy, setBusy] = useState(false);
+  // An existing deposit stays editable (and clearable) with the feature off.
+  const deposits = useFeature("deposits") || e.draft.depositCents !== null;
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const v = formValues(event.currentTarget);
@@ -95,6 +105,7 @@ function DraftEditor({ e, onSaved, onError }: { e: EstimateDetail; onSaved: () =
           taxRateBps: Math.round(Number(v.taxRate || "0") * 100),
           termsText: v.terms ?? "",
           expiresOn: v.expiresOn || null,
+          ...(deposits ? { depositCents: Number(v.deposit) > 0 ? Math.round(Number(v.deposit) * 100) : null } : {}),
         },
       });
       await onSaved();
@@ -125,6 +136,12 @@ function DraftEditor({ e, onSaved, onError }: { e: EstimateDetail; onSaved: () =
           Good until
           <input name="expiresOn" type="date" defaultValue={e.draft.expiresOn ?? ""} />
         </label>
+        {deposits && (
+          <label>
+            Deposit ($) <span className="muted small">(paid on acceptance; blank for none)</span>
+            <input name="deposit" type="number" min="0" step="0.01" defaultValue={e.draft.depositCents ? (e.draft.depositCents / 100).toFixed(2) : ""} />
+          </label>
+        )}
       </div>
       <label>
         Terms the customer agrees to
@@ -275,6 +292,8 @@ export default function EstimatePage() {
         </div>
       )}
 
+      {e.deposit && <DepositPanel deposit={e.deposit} onChange={reload} />}
+
       {e.status === "draft" && editable && <DraftEditor key={JSON.stringify(e.draft)} e={e} onSaved={reload} onError={setProblem} />}
       {e.status === "draft" && !editable && <LinesTable lines={e.draft.lines} totals={e.draft.totals} />}
 
@@ -283,7 +302,7 @@ export default function EstimatePage() {
           <h2>
             Version {latest.version}, sent {when(latest.sentAt)}
           </h2>
-          <LinesTable lines={latest.lines} totals={latest.totals} />
+          <LinesTable lines={latest.lines} totals={latest.totals} depositCents={latest.depositCents} />
         </div>
       )}
 

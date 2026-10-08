@@ -32,7 +32,7 @@ import {
   type PublicEstimate,
 } from "@aerowise/domain";
 import { canonicalJson, sha256Hex, systemAudit } from "@aerowise/renewals";
-import { createEstimateLink, estimateExpired, estimateUrlFor, hashEstimateToken, queueEstimateEmail, queueEstimateExpiry } from "@aerowise/tasks";
+import { createEstimateLink, payUrlFor, estimateExpired, estimateUrlFor, hashEstimateToken, queueEstimateEmail, queueEstimateExpiry } from "@aerowise/tasks";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
@@ -53,6 +53,7 @@ import {
   versionOf,
   type LockedEstimate,
 } from "../lib/estimates.ts";
+import { depositCancellationBlocker, depositViewFor, lockDepositForWorkOrder } from "../lib/deposits.ts";
 import { lockWorkOrder, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
 
 // Estimates (SW-5 part 1, service workflows plan §3.3–§3.5): the office's list and editor,
@@ -89,6 +90,10 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   const requireFeature = () => {
     if (!enabled) throw estimatesOff();
   };
+  /** Asking for a deposit needs the deposits feature; clearing one never does. */
+  const requireDeposits = (depositCents: number | null | undefined) => {
+    if (depositCents && !features.has("deposits")) throw new HttpError(409, "feature_off", "Deposits are not switched on for this deployment");
+  };
 
   async function writeDraftLines(trx: Trx, organizationId: string, estimateId: string, lines: EstimateLineInput[]) {
     await trx.deleteFrom("estimateLines").where("organizationId", "=", organizationId).where("estimateId", "=", estimateId).execute();
@@ -122,7 +127,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   async function insertDraft(
     trx: Trx,
     req: FastifyRequest,
-    o: { siteId: string; customerId: string; workTypeId: string | null; title: string; lines: EstimateLineInput[]; taxRateBps?: number; discountCents?: number; termsText?: string; expiresOn?: string | null; sourceKind: EstimateSourceKind; sourceId: string | null; summary: string },
+    o: { siteId: string; customerId: string; workTypeId: string | null; title: string; lines: EstimateLineInput[]; taxRateBps?: number; discountCents?: number; termsText?: string; expiresOn?: string | null; depositCents?: number | null; sourceKind: EstimateSourceKind; sourceId: string | null; summary: string },
   ) {
     const { organizationId, userId } = req.requireAuth();
     const at = now();
@@ -141,6 +146,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         discountCents: o.discountCents ?? 0,
         termsText: o.termsText ?? DEFAULT_ESTIMATE_TERMS,
         expiresOn: o.expiresOn ?? null,
+        depositCents: o.depositCents ?? null,
         sourceKind: o.sourceKind,
         sourceId: o.sourceId,
         createdBy: userId,
@@ -222,6 +228,25 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     return "Created by the office";
   }
 
+  /** The deposit asked for when the estimate was accepted. */
+  const acceptedDeposit = (selection: unknown) => (selection as { depositCents?: number | null } | null)?.depositCents ?? null;
+
+  /** What the homeowner sees of the deposit: how much, and where to pay it while it is owed. */
+  async function publicDeposit(organizationId: string, estimateId: string): Promise<PublicEstimate["deposit"]> {
+    const d = await db
+      .selectFrom("estimateInvoices as ei")
+      .innerJoin("invoices as i", (k) => k.onRef("i.id", "=", "ei.invoiceId").onRef("i.organizationId", "=", "ei.organizationId"))
+      .select(["i.totalCents", "i.paymentStatus", "i.status", "i.publicToken"])
+      .where("ei.organizationId", "=", organizationId)
+      .where("ei.estimateId", "=", estimateId)
+      .where("ei.role", "=", "deposit")
+      .where("ei.voidedAt", "is", null)
+      .executeTakeFirst();
+    if (!d) return null;
+    const owed = d.status === "open" && (d.paymentStatus === "unpaid" || d.paymentStatus === "partial");
+    return { amountCents: d.totalCents, paymentStatus: d.paymentStatus, payUrl: owed && d.publicToken ? payUrlFor(appUrl, d.publicToken) : null };
+  }
+
   async function loadDetail(organizationId: string, estimateId: string): Promise<EstimateDetail> {
     const row = await summaryQuery(organizationId)
       .leftJoin("workTypes as t", (k) => k.onRef("t.id", "=", "e.workTypeId").onRef("t.organizationId", "=", "e.organizationId"))
@@ -232,6 +257,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "e.sourceKind",
         "e.sourceId",
         "e.termsText",
+        "e.depositCents",
         "e.acceptedVersion",
         "e.acceptanceKind",
         "e.officeEvidence",
@@ -268,7 +294,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       ...toSummary(row),
       workType: row.workTypeId ? { id: row.workTypeId, name: row.workTypeName ?? "" } : null,
       source: { kind: row.sourceKind, id: row.sourceId, label: await sourceLabel(organizationId, row.sourceKind, row.sourceId) },
-      draft: { lines, taxRateBps: row.taxRateBps, discountCents: row.discountCents, totals: estimateTotals(lines, row.discountCents, row.taxRateBps), termsText: row.termsText, expiresOn: row.expiresOn },
+      draft: { lines, taxRateBps: row.taxRateBps, discountCents: row.discountCents, totals: estimateTotals(lines, row.discountCents, row.taxRateBps), termsText: row.termsText, expiresOn: row.expiresOn, depositCents: row.depositCents },
       versions: versions.map((v) => ({
         version: v.version,
         lines: v.lines as EstimateDetail["draft"]["lines"],
@@ -277,6 +303,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         totals: v.totals as EstimateDetail["draft"]["totals"],
         termsText: v.termsText,
         expiresOn: v.expiresOn,
+        depositCents: v.depositCents,
         contentSha256: v.contentSha256,
         sentAt: v.sentAt.toISOString(),
       })),
@@ -301,6 +328,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       cancelReason: row.cancelReason,
       events: events.map((e) => ({ id: e.id, eventType: e.eventType, summary: e.summary, occurredAt: e.occurredAt.toISOString(), actorName: e.name })),
       canEmail: !!email,
+      deposit: await depositViewFor(db, organizationId, row.id, accepted ? acceptedDeposit(row.acceptedSelection) : null),
     };
   }
 
@@ -341,6 +369,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       requireFeature();
       const { organizationId } = req.requireAuth();
       const b = req.body;
+      requireDeposits(b.depositCents);
       const site = await db.selectFrom("sites").select(["id", "customerId"]).where("organizationId", "=", organizationId).where("id", "=", b.siteId).executeTakeFirst();
       if (!site) throw notFound("Site");
       const estimateId = await db.transaction().execute(async (trx) => {
@@ -355,6 +384,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           discountCents: b.discountCents,
           termsText: b.termsText,
           expiresOn: b.expiresOn,
+          depositCents: b.depositCents,
           sourceKind: "office",
           sourceId: null,
           summary: "Drafted by the office",
@@ -370,6 +400,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       const b = req.body;
+      requireDeposits(b.depositCents);
       const at = now();
       await db.transaction().execute(async (trx) => {
         const e = await lockEstimate(trx, organizationId, req.params.id);
@@ -384,6 +415,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             ...(b.discountCents !== undefined ? { discountCents: b.discountCents } : {}),
             ...(b.termsText !== undefined ? { termsText: b.termsText } : {}),
             ...(b.expiresOn !== undefined ? { expiresOn: b.expiresOn } : {}),
+            ...(b.depositCents !== undefined ? { depositCents: b.depositCents } : {}),
             updatedAt: at,
           })
           .where("id", "=", e.id)
@@ -551,7 +583,8 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         const e = await lockEstimate(trx, organizationId, req.params.id);
         if (e.status !== "accepted" || !e.workOrderId) throw new HttpError(409, "invalid_transition", "Only an accepted estimate is cancelled; withdraw a draft or sent one instead");
         const wo = await lockWorkOrder(trx, organizationId, e.workOrderId);
-        const blocker = await cancellationBlocker(trx, organizationId, wo.id);
+        const dep = await lockDepositForWorkOrder(trx, organizationId, wo.id);
+        const blocker = (await cancellationBlocker(trx, organizationId, wo.id)) ?? (dep ? await depositCancellationBlocker(trx, organizationId, dep.depositInvoiceId) : null);
         if (blocker) throw new HttpError(409, "work_started", blocker);
         const reason = `Estimate ${estimateLabel(e.number)} cancelled: ${req.body.reason}`;
         const open = await trx
@@ -679,7 +712,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     const link = await ex.selectFrom("estimateLinks").select(["organizationId", "estimateId"]).where("tokenHash", "=", hashEstimateToken(t)).executeTakeFirst();
     if (!link) throw notFoundLink();
     let q = ex.selectFrom("estimates").select(ESTIMATE_COLUMNS_PUBLIC).where("organizationId", "=", link.organizationId).where("id", "=", link.estimateId);
-    if (lock) q = q.forUpdate();
+    if (lock) q = q.forNoKeyUpdate();
     const e = await q.executeTakeFirst();
     if (!e) throw notFoundLink();
     return e;
@@ -739,6 +772,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
               totals: sent.totals as NonNullable<PublicEstimate["version"]>["totals"],
               termsText: sent.termsText,
               expiresOn: sent.expiresOn,
+              depositCents: sent.depositCents,
               sentAt: sent.sentAt.toISOString(),
             }
           : null,
@@ -748,6 +782,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           e.acceptedVersion && e.acceptedAt && e.acceptanceKind && accepted
             ? { version: e.acceptedVersion, at: e.acceptedAt.toISOString(), kind: e.acceptanceKind, signerName: doc?.signerName ?? null, selectedOptionalLineIds: accepted.selectedOptionalLineIds, totals: accepted.totals }
             : null,
+        deposit: await publicDeposit(organizationId, e.id),
       };
     },
   );
@@ -825,6 +860,8 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           totals,
           terms: v.termsText,
           expiresOn: v.expiresOn,
+          // The deposit asked for, as the homeowner accepted it.
+          ...(v.depositCents ? { depositCents: Math.min(v.depositCents, totals.totalCents) } : {}),
         };
         const doc = await trx
           .insertInto("signedDocuments")
