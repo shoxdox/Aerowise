@@ -11,77 +11,12 @@ import {
   type InspectionTemplate,
   type InspectionValue,
   type Stop,
-  type TemplateField,
   type ValidationProblem,
 } from "@aerowise/domain";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { TemplateSections } from "@/components/forms/TemplateFields";
 import { saveInspection, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
 import { currentPosition, preparePhoto, templateById } from "@/lib/offline/data";
-
-function Choice({ label, options, value, onChange }: { label: string; options: { value: string | boolean; label: string }[]; value: InspectionValue | undefined; onChange: (v: InspectionValue) => void }) {
-  return (
-    <div className="choice" role="group" aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={String(o.value)}
-          type="button"
-          className={value === o.value ? "chosen" : "secondary"}
-          aria-pressed={value === o.value}
-          onClick={() => onChange(value === o.value ? null : o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Field({ field, value, problem, onChange }: { field: TemplateField; value: InspectionValue | undefined; problem?: ValidationProblem; onChange: (v: InspectionValue) => void }) {
-  const title = (
-    <span className="field-title">
-      {field.label}
-      {field.type === "number" && field.unit ? ` (${field.unit})` : ""}
-      {field.required && <span className="req" aria-label="required"> *</span>}
-    </span>
-  );
-  let control;
-  switch (field.type) {
-    case "pass_fail":
-      control = <Choice label={field.label} value={value} onChange={onChange} options={[{ value: "pass", label: "Pass" }, { value: "fail", label: "Fail" }]} />;
-      break;
-    case "boolean":
-      control = <Choice label={field.label} value={value} onChange={onChange} options={[{ value: true, label: "Yes" }, { value: false, label: "No" }]} />;
-      break;
-    case "select":
-      control = <Choice label={field.label} value={value} onChange={onChange} options={field.options} />;
-      break;
-    case "number":
-      control = (
-        <input
-          aria-label={field.label}
-          type="number"
-          inputMode="decimal"
-          step="any"
-          min={field.min}
-          max={field.max}
-          value={typeof value === "number" ? value : ""}
-          onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        />
-      );
-      break;
-    case "text":
-      control = <textarea aria-label={field.label} rows={3} maxLength={field.maxLength} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
-      break;
-  }
-  return (
-    <div className={`field ${problem ? "has-problem" : ""}`} data-field={field.key}>
-      {title}
-      {control}
-      {field.help && <span className="muted small">{field.help}</span>}
-      {problem && <span className="error small">{problem.message}</span>}
-    </div>
-  );
-}
 
 export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: Stop; initial: LocalInspection; onSaved: () => void; onFinished: () => void }) {
   const [insp, setInsp] = useState(initial);
@@ -132,7 +67,6 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   // An answer out of range (a negative chlorine reading) is flagged as it is typed, not only at Finish.
   const invalidNow = readOnly ? [] : validateInspection(def, insp.values, counts).filter((p) => p.problem === "invalid");
   const problemFor = (key: string) => problems.find((p) => p.key === key) ?? invalidNow.find((p) => p.key === key);
-  const sections = [...new Set(fields.map((f) => f.section))];
 
   const setValue = (key: string, v: InspectionValue) => {
     const values = { ...latest.current.values };
@@ -204,16 +138,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
       )}
 
       <fieldset disabled={readOnly} className="stack plain">
-        {sections.map((section) => (
-          <section key={section} className="card stack">
-            <h2>{section}</h2>
-            {fields
-              .filter((f) => f.section === section)
-              .map((f) => (
-                <Field key={f.key} field={f} value={insp.values[f.key]} problem={problemFor(f.key)} onChange={(v) => setValue(f.key, v)} />
-              ))}
-          </section>
-        ))}
+        <TemplateSections fields={fields} values={insp.values} problemFor={problemFor} onChange={setValue} />
 
         <section className="card stack">
           <h2>Photos</h2>
