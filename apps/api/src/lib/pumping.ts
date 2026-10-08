@@ -93,13 +93,31 @@ export function volumeText(entered: number, unit: VolumeUnit, milligallons: numb
 
 // ---- Reading ----
 
-/** Current pump-outs, with what the office and the phone show beside them. */
+/** A page of a list: rows are never dropped silently, the caller asks for the next page. */
+export interface Page {
+  limit: number;
+  offset: number;
+}
+/** Exact reads by id go in chunks this size, so no list of ids is ever cut short. */
+const CHUNK = 1000;
+const chunked = async <T>(ids: string[], read: (part: string[]) => Promise<T[]>) => {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await read(ids.slice(i, i + CHUNK))));
+  return out;
+};
+
+/**
+ * Current pump-outs, with what the office and the phone show beside them. Every matching row,
+ * unless `page` asks for one page of them.
+ */
 export async function readPumpingRecords(
   ex: Executor,
   organizationId: string,
-  where: { groupIds?: string[]; siteId?: string; workOrderId?: string; technicianUserId?: string; unloaded?: boolean; from?: string; to?: string; olderThan?: string },
+  where: { groupIds?: string[]; siteId?: string; workOrderId?: string; technicianUserId?: string; unloaded?: boolean; from?: string; to?: string; olderThan?: string; newestFirst?: boolean },
+  page?: Page,
 ): Promise<PumpingRecord[]> {
   if (where.groupIds && !where.groupIds.length) return [];
+  if (where.groupIds && where.groupIds.length > CHUNK) return chunked(where.groupIds, (groupIds) => readPumpingRecords(ex, organizationId, { ...where, groupIds }));
   let q = ex
     .selectFrom("currentPumpingRecords as p")
     .innerJoin("workOrders as w", (k) => k.onRef("w.id", "=", "p.workOrderId").onRef("w.organizationId", "=", "p.organizationId"))
@@ -143,7 +161,10 @@ export async function readPumpingRecords(
   if (where.from) q = q.where("p.serviceDate", ">=", where.from);
   if (where.to) q = q.where("p.serviceDate", "<=", where.to);
   if (where.olderThan) q = q.where("p.serviceDate", "<", where.olderThan);
-  const rows = await q.orderBy("p.serviceDate").orderBy("p.createdAt").limit(1000).execute();
+  const dir = where.newestFirst ? "desc" : "asc";
+  q = q.orderBy("p.serviceDate", dir).orderBy("p.createdAt", dir).orderBy("p.groupId");
+  if (page) q = q.limit(page.limit).offset(page.offset);
+  const rows = await q.execute();
   return rows.map((r) => ({
     groupId: r.groupId,
     revision: r.revision,
@@ -171,14 +192,23 @@ export async function readPumpingRecords(
   }));
 }
 
-/** Current loads with their pump-outs (each at its current revision) and manifest photos. */
+/**
+ * Current loads with their pump-outs (each at its current revision) and manifest photos. Every
+ * matching load, unless `page` asks for one page of them; each load always has all its items.
+ *
+ * With `technicianUserId`, only that technician's own work: a load made entirely of their
+ * pump-outs (or, with none left in it, one they recorded). A load mixing technicians is the
+ * office's, so another technician's customers and sites never show.
+ */
 export async function readLoads(
   ex: Executor,
   organizationId: string,
-  where: { groupIds?: string[]; from?: string; to?: string },
+  where: { groupIds?: string[]; from?: string; to?: string; technicianUserId?: string },
   photoUrl: (photoId: string) => string,
+  page?: Page,
 ): Promise<DisposalLoad[]> {
   if (where.groupIds && !where.groupIds.length) return [];
+  if (where.groupIds && where.groupIds.length > CHUNK) return chunked(where.groupIds, (groupIds) => readLoads(ex, organizationId, { ...where, groupIds }, photoUrl));
   let q = ex
     .selectFrom("currentDisposalLoads as l")
     .innerJoin("disposalFacilities as f", (k) => k.onRef("f.id", "=", "l.disposalFacilityId").onRef("f.organizationId", "=", "l.organizationId"))
@@ -187,6 +217,7 @@ export async function readLoads(
     .select([
       "l.groupId",
       "l.revision",
+      "l.recordedBy",
       "l.vehicleId",
       "v.name as vehicleName",
       "l.disposalFacilityId",
@@ -205,23 +236,47 @@ export async function readLoads(
   if (where.groupIds) q = q.where("l.groupId", "in", where.groupIds);
   if (where.from) q = q.where("l.deliveredOn", ">=", where.from);
   if (where.to) q = q.where("l.deliveredOn", "<=", where.to);
-  const loads = await q.orderBy("l.deliveredOn", "desc").orderBy("l.createdAt", "desc").limit(1000).execute();
+  const tech = where.technicianUserId;
+  if (tech) {
+    q = q.where((eb) =>
+      eb.and([
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("disposalLoadItems as i")
+              .innerJoin("currentPumpingRecords as p", (k) => k.onRef("p.groupId", "=", "i.pumpingGroupId").onRef("p.organizationId", "=", "i.organizationId"))
+              .select("i.id")
+              .whereRef("i.loadGroupId", "=", "l.groupId")
+              .whereRef("i.organizationId", "=", "l.organizationId")
+              .where("p.technicianUserId", "<>", tech),
+          ),
+        ),
+        eb.or([eb("l.recordedBy", "=", tech), eb.exists(eb.selectFrom("disposalLoadItems as j").select("j.id").whereRef("j.loadGroupId", "=", "l.groupId").whereRef("j.organizationId", "=", "l.organizationId"))]),
+      ]),
+    );
+  }
+  q = q.orderBy("l.deliveredOn", "desc").orderBy("l.createdAt", "desc").orderBy("l.groupId");
+  if (page) q = q.limit(page.limit).offset(page.offset);
+  const loads = await q.execute();
   if (!loads.length) return [];
   const groupIds = loads.map((l) => l.groupId);
   // The offline id lives on the first revision.
-  const firsts = await ex.selectFrom("disposalLoads").select(["id", "offlineClientId"]).where("organizationId", "=", organizationId).where("id", "in", groupIds).execute();
+  const firsts = await chunked(groupIds, (ids) => ex.selectFrom("disposalLoads").select(["id", "offlineClientId"]).where("organizationId", "=", organizationId).where("id", "in", ids).execute());
   const clientIds = new Map(firsts.map((f) => [f.id, f.offlineClientId]));
-  const items = await ex.selectFrom("disposalLoadItems").select(["loadGroupId", "pumpingGroupId"]).where("organizationId", "=", organizationId).where("loadGroupId", "in", groupIds).execute();
+  const items = await chunked(groupIds, (ids) => ex.selectFrom("disposalLoadItems").select(["loadGroupId", "pumpingGroupId"]).where("organizationId", "=", organizationId).where("loadGroupId", "in", ids).execute());
   const pumpOuts = new Map((await readPumpingRecords(ex, organizationId, { groupIds: items.map((i) => i.pumpingGroupId) })).map((p) => [p.groupId, p]));
-  const photos = await ex
-    .selectFrom("workAttachments")
-    .select(["id", "offlineClientId", "disposalLoadGroupId", "contentType", "byteSize", "capturedAt"])
-    .where("organizationId", "=", organizationId)
-    .where("disposalLoadGroupId", "in", groupIds)
-    .orderBy("createdAt")
-    .execute();
+  const photos = await chunked(groupIds, (ids) =>
+    ex
+      .selectFrom("workAttachments")
+      .select(["id", "offlineClientId", "disposalLoadGroupId", "contentType", "byteSize", "capturedAt"])
+      .where("organizationId", "=", organizationId)
+      .where("disposalLoadGroupId", "in", ids)
+      .orderBy("createdAt")
+      .execute(),
+  );
+  const itemsOf = (groupId: string) => items.filter((i) => i.loadGroupId === groupId).map((i) => pumpOuts.get(i.pumpingGroupId)!).filter(Boolean);
   return loads.map((l) => {
-    const mine = items.filter((i) => i.loadGroupId === l.groupId).map((i) => pumpOuts.get(i.pumpingGroupId)!).filter(Boolean);
+    const mine = itemsOf(l.groupId);
     const itemsMilligallons = mine.reduce((n, p) => n + p.volumeMilligallons, 0);
     const totalMilligallons = Number(l.totalMilligallons);
     return {

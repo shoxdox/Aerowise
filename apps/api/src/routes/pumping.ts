@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import {
   disposalFacility,
+  disposalAck,
   disposalLoad,
   disposalLoadCorrectionInput,
   disposalLoadDetail,
@@ -12,6 +13,7 @@ import {
   loadItemAddInput,
   loadItemRemoveInput,
   manifestPhoto,
+  pageQuery,
   pumpingCorrectionInput,
   pumpingFieldData,
   pumpingRecord,
@@ -82,6 +84,8 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
 
   const photoUrl = (organizationId: string) => (photoId: string) => signer.url(organizationId, photoId, now().getTime(), "work-files");
   const may = (role: Role, p: "work:write" | "work:complete") => roleHasPermission(role, p);
+  /** A technician reads only their own work, as with field records. */
+  const ownWork = (role: Role, userId: string) => (role === "technician" ? { technicianUserId: userId } : {});
   /** One load client id at a time: its sync and its photo uploads queue behind each other. */
   const clientLock = (trx: Trx, organizationId: string, clientId: string) =>
     sql`select pg_advisory_xact_lock(hashtext(${`disposal-client:${organizationId}:${clientId}`}))`.execute(trx);
@@ -103,6 +107,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
     { config: { permission: "work:write" }, schema: { tags: ["pumping"], summary: "Add a truck", body: vehicleInput, response: { 201: vehicle } } },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
+      if (!enabled) throw pumpingOff();
       const b = req.body;
       const v = await db.transaction().execute(async (trx) => {
         const row = await trx
@@ -179,6 +184,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
     },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
+      if (!enabled) throw pumpingOff();
       const b = req.body;
       const f = await db.transaction().execute(async (trx) => {
         const row = await trx
@@ -258,23 +264,20 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
       schema: {
         tags: ["pumping"],
         summary: "Pump-outs at their current revision: a site's pumping history, a work order's, or those in no load",
-        querystring: z.object({ siteId: z.uuid().optional(), workOrderId: z.uuid().optional(), unloaded: z.stringbool().optional(), ...range.shape }),
-        response: { 200: z.object({ items: z.array(pumpingRecord) }) },
+        querystring: z.object({ siteId: z.uuid().optional(), workOrderId: z.uuid().optional(), unloaded: z.stringbool().optional(), ...range.shape, ...pageQuery.shape }),
+        response: { 200: z.object({ items: z.array(pumpingRecord), nextOffset: z.number().int().nullable() }) },
       },
     },
     async (req) => {
       const { organizationId, role, userId } = req.requireAuth();
       const q = req.query;
-      const items = await readPumpingRecords(db, organizationId, {
-        siteId: q.siteId,
-        workOrderId: q.workOrderId,
-        unloaded: q.unloaded,
-        from: q.from,
-        to: q.to,
-        // A technician sees their own, as with field records.
-        ...(role === "technician" ? { technicianUserId: userId } : {}),
-      });
-      return { items: items.reverse() };
+      const rows = await readPumpingRecords(
+        db,
+        organizationId,
+        { siteId: q.siteId, workOrderId: q.workOrderId, unloaded: q.unloaded, from: q.from, to: q.to, newestFirst: true, ...ownWork(role, userId) },
+        { limit: q.limit + 1, offset: q.offset },
+      );
+      return { items: rows.slice(0, q.limit), nextOffset: rows.length > q.limit ? q.offset + q.limit : null };
     },
   );
 
@@ -384,19 +387,26 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
     "/disposal/loads",
     {
       config: { permission: "work:read" },
-      schema: { tags: ["pumping"], summary: "Disposal records (loads) by delivery date, newest first", querystring: range, response: { 200: z.object({ items: z.array(disposalLoad) }) } },
+      schema: {
+        tags: ["pumping"],
+        summary: "Disposal records (loads) by delivery date, newest first, a page at a time",
+        querystring: range.extend(pageQuery.shape),
+        response: { 200: z.object({ items: z.array(disposalLoad), nextOffset: z.number().int().nullable() }) },
+      },
     },
     async (req) => {
-      const { organizationId } = req.requireAuth();
-      return { items: await readLoads(db, organizationId, { from: req.query.from, to: req.query.to }, photoUrl(organizationId)) };
+      const { organizationId, role, userId } = req.requireAuth();
+      const q = req.query;
+      const rows = await readLoads(db, organizationId, { from: q.from, to: q.to, ...ownWork(role, userId) }, photoUrl(organizationId), { limit: q.limit + 1, offset: q.offset });
+      return { items: rows.slice(0, q.limit), nextOffset: rows.length > q.limit ? q.offset + q.limit : null };
     },
   );
 
   const loadSummary = (r: { enteredTotal: string; enteredUnit: "gallons" | "liters"; totalMilligallons: string; deliveredOn: string; manifestReference: string | null }) =>
     `${volumeText(Number(r.enteredTotal), r.enteredUnit, Number(r.totalMilligallons))} delivered on ${r.deliveredOn}${r.manifestReference ? `, reference ${r.manifestReference}` : ""}`;
 
-  async function loadDetail(organizationId: string, groupId: string) {
-    const [current] = await readLoads(db, organizationId, { groupIds: [groupId] }, photoUrl(organizationId));
+  async function loadDetail(organizationId: string, groupId: string, who: { technicianUserId?: string } = {}) {
+    const [current] = await readLoads(db, organizationId, { groupIds: [groupId], ...who }, photoUrl(organizationId));
     if (!current) throw notFound("Disposal record");
     const revisions = await db
       .selectFrom("disposalLoads as l")
@@ -415,7 +425,10 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
   app.get(
     "/disposal/loads/:groupId",
     { config: { permission: "work:read" }, schema: { tags: ["pumping"], summary: "A disposal record with its pump-outs, manifest photos and every revision", params: groupParams, response: { 200: disposalLoadDetail } } },
-    async (req) => loadDetail(req.requireAuth().organizationId, req.params.groupId),
+    async (req) => {
+      const { organizationId, role, userId } = req.requireAuth();
+      return loadDetail(organizationId, req.params.groupId, ownWork(role, userId));
+    },
   );
 
   /**
@@ -497,14 +510,17 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
           "A technician records their own pump-outs (work:complete); the office records anyone's (work:write). A replay returns " +
           "the record as first stored. 409 already_in_load when a pump-out is in another load; 409 vehicle_mismatch when it was on another truck.",
         body: disposalLoadSync,
-        response: { 200: disposalLoad, 201: disposalLoad },
+        response: { 200: z.union([disposalLoad, disposalAck]), 201: disposalLoad },
       },
     },
     async (req, reply) => {
-      const { organizationId } = req.requireAuth();
+      const { organizationId, role, userId } = req.requireAuth();
       const out = await db.transaction().execute((trx) => recordLoad(trx, req, req.body));
-      const [load] = await readLoads(db, organizationId, { groupIds: [out.groupId] }, photoUrl(organizationId));
-      return reply.status(out.created ? 201 : 200).send(load!);
+      // A technician sees the load only while it is all their own work; after the office mixed
+      // another technician's pump-outs in, a replay still learns it was recorded, and no more.
+      const [load] = await readLoads(db, organizationId, { groupIds: [out.groupId], ...ownWork(role, userId) }, photoUrl(organizationId));
+      if (!load) return reply.status(200).send({ outcome: "recorded", groupId: out.groupId, clientId: req.body.clientId });
+      return reply.status(out.created ? 201 : 200).send(load);
     },
   );
 
@@ -630,7 +646,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
         summary: "Upload a manifest or facility receipt photo for a disposal record, as the raw image body (idempotent by photoClientId)",
         description: "The record is named by its clientId. 409 record_not_synced until the record itself has arrived. Headers: optional x-captured-at, x-lat, x-lng, x-sha256.",
         params: z.object({ clientId: z.uuid(), photoClientId: z.uuid() }),
-        response: { 200: manifestPhoto, 201: manifestPhoto },
+        response: { 200: z.union([manifestPhoto, disposalAck]), 201: z.union([manifestPhoto, disposalAck]) },
       },
     },
     async (req, reply) => {
@@ -653,7 +669,11 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
         const existing = await trx.selectFrom("workAttachments").select(COLUMNS).where("organizationId", "=", organizationId).where("offlineClientId", "=", photoClientId).executeTakeFirst();
         if (existing && existing.disposalLoadGroupId !== load.groupId) throw conflict("client_id_reused", "This photo id belongs to another record");
         const toPhoto = (p: NonNullable<typeof existing>) => ({ id: p.id, clientId: p.offlineClientId, contentType: p.contentType, byteSize: p.byteSize, capturedAt: p.capturedAt?.toISOString() ?? null, url: photoUrl(organizationId)(p.id) });
-        if (existing) return { status: 200, body: toPhoto(existing) };
+        // The same rule as reading the load: after another technician's work joined it, the
+        // technician's upload is acknowledged without the record's details.
+        const shown = office || (await readLoads(trx, organizationId, { groupIds: [load.groupId], technicianUserId: userId }, () => "")).length > 0;
+        const answer = (p: NonNullable<typeof existing>) => (shown ? toPhoto(p) : { outcome: "recorded" as const, groupId: load.groupId, clientId });
+        if (existing) return { status: 200, body: answer(existing) };
         const sha256 = createHash("sha256").update(body).digest("hex");
         if (h["x-sha256"] && h["x-sha256"] !== sha256) throw unprocessable("The photo was corrupted in transit; upload it again");
         // Under the company's folder, by the load group, so it stays put through load corrections.
@@ -679,7 +699,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
           .returning(COLUMNS)
           .executeTakeFirstOrThrow();
         await audit(trx, req, { action: "disposal_load.photo_added", entityType: "disposal_load", entityId: load.groupId, changes: { photoId: inserted.id } });
-        return { status: 201, body: toPhoto(inserted) };
+        return { status: 201, body: answer(inserted) };
       });
       return reply.status(out.status as 200 | 201).send(out.body);
     },
@@ -697,7 +717,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
   app.get(
     "/disposal/log.csv",
     {
-      config: { permission: "work:read" },
+      config: { permission: "work:write" },
       schema: { tags: ["pumping"], summary: "Disposal log for a date range, one row per pump-out in each load (for the provider's own records)", querystring: logRange },
     },
     async (req, reply) => {
@@ -732,7 +752,7 @@ export const pumpingRoutes: FastifyPluginAsyncZod<{
 
   app.get(
     "/disposal/log.pdf",
-    { config: { permission: "work:read" }, schema: { tags: ["pumping"], summary: "Disposal log for a date range as a PDF (for the provider's own records)", querystring: logRange } },
+    { config: { permission: "work:write" }, schema: { tags: ["pumping"], summary: "Disposal log for a date range as a PDF (for the provider's own records)", querystring: logRange } },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
       const org = await db.selectFrom("organizations").select(["name", "demo"]).where("id", "=", organizationId).executeTakeFirstOrThrow();

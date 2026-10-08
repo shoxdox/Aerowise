@@ -705,7 +705,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
    */
   async function disposalExceptions(organizationId: string, today: string): Promise<InboxException[]> {
     const org = await db.selectFrom("organizations").select("disposalOverdueDays").where("id", "=", organizationId).executeTakeFirstOrThrow();
-    const late = await readPumpingRecords(db, organizationId, { unloaded: true, olderThan: addDays(today, -org.disposalOverdueDays) });
+    const late = await readPumpingRecords(db, organizationId, { unloaded: true, olderThan: addDays(today, -org.disposalOverdueDays) }, { limit: PER_KIND, offset: 0 });
     if (!late.length) return [];
     const sites = new Map(
       (
@@ -718,7 +718,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           .execute()
       ).map((s) => [s.id, s]),
     );
-    return late.slice(0, PER_KIND).map((p) => {
+    return late.map((p) => {
       const s = sites.get(p.siteId)!;
       return {
         key: `disposal_overdue:${p.groupId}`,

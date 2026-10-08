@@ -401,3 +401,71 @@ describe("overdue disposal, billing and the log", () => {
     expect(demo[1]).toMatch(/^DEMO - FICTIONAL DATA - NOT FILED,2026-03-01,/);
   });
 });
+
+describe("what a technician reads", () => {
+  it("sees only disposal records made entirely of their own pump-outs; mixed and others' records are office-only", async () => {
+    const s = await company(ctx);
+    const mine = await pumped(s);
+    const theirs = await pumped(s, { clientId: uuid() }, s.b, s.bApi);
+    const a = (await s.aApi.put("/disposal/loads/sync", load(s, [mine.groupId]))).json();
+    const b2 = await pumped(s, { clientId: uuid() }, s.b, s.bApi);
+    // The office loads A's and B's pump-outs together.
+    const a2 = await pumped(s, { clientId: uuid() });
+    const mixed = (await s.api.put("/disposal/loads/sync", load(s, [a2.groupId, b2.groupId]))).json();
+    expect((await s.bApi.get("/disposal/loads")).json().items).toEqual([]);
+    expect((await s.bApi.get(`/disposal/loads/${a.groupId}`)).statusCode).toBe(404);
+    expect((await s.bApi.get(`/disposal/loads/${mixed.groupId}`)).statusCode).toBe(404);
+    expect((await s.aApi.get("/disposal/loads")).json().items.map((l: { groupId: string }) => l.groupId)).toEqual([a.groupId]);
+    expect((await s.aApi.get(`/disposal/loads/${mixed.groupId}`)).statusCode).toBe(404);
+    expect((await s.bApi.get(`/pumping-records/${mine.groupId}`)).statusCode).toBe(404);
+    expect((await s.bApi.get(`/pumping-records?siteId=${s.site.id}`)).json().items.map((p: { groupId: string }) => p.groupId).sort()).toEqual([theirs.groupId, b2.groupId].sort());
+    // The disposal log is the office's.
+    expect((await s.bApi.get("/disposal/log.csv?from=2026-03-01&to=2026-03-31")).statusCode).toBe(403);
+    expect((await s.bApi.get("/disposal/log.pdf?from=2026-03-01&to=2026-03-31")).statusCode).toBe(403);
+    expect((await s.api.get("/disposal/loads")).json().items).toHaveLength(2);
+  });
+
+  it("a replay or photo upload after the office mixes in another technician's pump-out is acknowledged without the other work", async () => {
+    const s = await company(ctx);
+    const mine = await pumped(s);
+    const body = load(s, [mine.groupId]);
+    const photoId = uuid();
+    const photo = () => s.aApi.putImage(`/disposal/loads/${body.clientId}/photos/${photoId}`, JPEG, { "x-photo-key": "manifest" });
+    const l = (await s.aApi.put("/disposal/loads/sync", body)).json();
+    const theirs = await pumped(s, { clientId: uuid(), volume: 750 }, s.b, s.bApi);
+    expect((await s.api.post(`/disposal/loads/${l.groupId}/items`, { pumpingGroupId: theirs.groupId })).statusCode).toBe(200);
+    // A's phone lost both answers and retries; the load and photo are kept, B's work is not shown.
+    const replay = await s.aApi.put("/disposal/loads/sync", body);
+    expect(replay.statusCode, replay.body).toBe(200);
+    expect(replay.json()).toEqual({ outcome: "recorded", groupId: l.groupId, clientId: body.clientId });
+    const up = await photo();
+    expect(up.statusCode, up.body).toBe(201);
+    expect(up.json()).toEqual({ outcome: "recorded", groupId: l.groupId, clientId: body.clientId });
+    const again = await photo();
+    expect([again.statusCode, again.json()]).toEqual([200, { outcome: "recorded", groupId: l.groupId, clientId: body.clientId }]);
+    for (const r of [replay, up, again]) expect(r.body).not.toContain(theirs.groupId);
+    expect([await count("disposal_loads", s.org.id), await count("work_attachments", s.org.id)]).toEqual([1, 1]);
+    // The office still sees everything.
+    expect((await s.api.get(`/disposal/loads/${l.groupId}`)).json()).toMatchObject({ items: [expect.anything(), expect.anything()], photos: [expect.anything()] });
+  });
+
+  it("lists page explicitly; nothing is silently cut off", async () => {
+    const s = await company(ctx);
+    const groups = [];
+    for (let i = 0; i < 3; i++) {
+      const p = await pumped(s, { clientId: uuid() });
+      groups.push(p.groupId);
+      expect((await s.aApi.put("/disposal/loads/sync", load(s, [p.groupId]))).statusCode).toBe(201);
+    }
+    const first = (await s.api.get("/disposal/loads?limit=2")).json();
+    expect([first.items.length, first.nextOffset]).toEqual([2, 2]);
+    const rest = (await s.api.get("/disposal/loads?limit=2&offset=2")).json();
+    expect([rest.items.length, rest.nextOffset]).toEqual([1, null]);
+    const seen = [...first.items, ...rest.items].map((l: { items: { groupId: string }[] }) => l.items[0]!.groupId).sort();
+    expect(seen).toEqual([...groups].sort());
+    const pr = (await s.api.get(`/pumping-records?siteId=${s.site.id}&limit=1`)).json();
+    expect([pr.items.length, pr.nextOffset]).toEqual([1, 1]);
+    expect((await s.api.get(`/pumping-records?siteId=${s.site.id}&limit=1&offset=2`)).json().nextOffset).toBeNull();
+    expect((await s.api.get("/disposal/loads?limit=201")).statusCode).toBe(400);
+  });
+});
