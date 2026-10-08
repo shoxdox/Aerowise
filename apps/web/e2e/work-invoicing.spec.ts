@@ -13,8 +13,9 @@ async function signIn(page: Page) {
 
 test("the office adds a service item, bills a work order by the hour from it, and gets one invoice", async ({ page }) => {
   await signIn(page);
-  await page.getByRole("link", { name: "Service items" }).first().click();
-  await page.waitForURL("**/settings/service-items");
+  // The office menu links the catalog once the deployment says service items are on.
+  await expect(page.locator('#office-nav a[href="/settings/service-items"]')).toHaveCount(1);
+  await page.goto("/settings/service-items");
   await expect(page.getByTestId("service-items")).toContainText("Labor");
   await page.getByLabel("Name").fill("Diagnostic hour");
   await page.getByLabel("Price ($)").fill("110");
@@ -38,6 +39,7 @@ test("the office adds a service item, bills a work order by the hour from it, an
   const { today } = await (await page.request.get("/api/obligations/due?limit=1")).json();
   await page.getByLabel("Visit date").fill(today);
   await page.getByRole("button", { name: "Schedule visit" }).click();
+  await expect(page.getByTestId("work-status")).toHaveText("Scheduled");
   await page.getByRole("button", { name: "Complete without a field record" }).click();
   await page.getByLabel(/How was it done/).fill("TEST paper ticket");
   await page.getByRole("button", { name: "Complete", exact: true }).click();
