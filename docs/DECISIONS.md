@@ -759,3 +759,14 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 
 - **An outbox op of an unknown kind holds back later ops of the same record** (`inspectionClientId`), so a record's changes never send out of order after a rollback. Other records keep sending. Failed ops still don't block, as before.
 - **Contract for SW-2:** the work DB name (`aerowise-tech-work:<org>:<user>`) and its `outbox` store name are fixed by SW-2a, and SW-2 must never raise the inspection DB's version.
+
+## 2026-10-08 · SW-11 Authority CSV export framework
+
+- **The CSV is a package document.** A filing by `csv_export` gets the authority's CSV in its submission package, after the filed report, hashed like every other document. Packages never change, so the bytes the office uploads are the bytes on record.
+- **Making the CSV files nothing.** The filing stays `ready` with a `filing_exported` event on the site's ledger. The office records the upload with the existing mark-sent route (attempt method `csv_export`, proof `manual_submission`); only `confirm`, with the authority's acknowledgment, makes it confirmed.
+- **Switching an email filing to CSV is a new submission.** The CSV cannot be added to an existing package, so "Export CSV instead" (ready or failed filings, rules with a layout) moves the filing to the next submission number and prepares it again. The email package stays on record as never sent, and a waiting email retry no longer sends it.
+- **A required column with no value holds the filing for review**, naming the column, instead of exporting a gap.
+- **Only fictional rules may carry an export block.** Bundling refuses an `export` block on any non-fictional ruleset until gate G-AUTH-CSV (the authority's accepted specification and an accepted sample, recorded as evidence) is met and a reviewed change lifts the check. Real authorities keep their email or manual channel.
+- **Example County v2** adds a made-up layout (EC-CSV-1) with the same `effectiveFrom` as v1, so new Example County filings, including the demo's, use v2. Its primary method stays email; CSV export is an office choice. v1 is unchanged.
+- **Demo CSVs say they are fictional by themselves**, like the data export (STG-07): a leading `aerowise_demo_notice` column reading `DEMO - FICTIONAL DATA - NOT FILED`, and a `DEMO-` file name.
+- **Cells a spreadsheet would run as formulas** (starting with = + - @, a tab or a return, other than plain numbers) get a leading quote.

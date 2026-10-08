@@ -23,6 +23,9 @@ export function bundledRulesets(dir = RULESET_DIR): RulesetRules[] {
       // example may go without one.
       if (!rules.profile && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} has no profile`);
       if (rules.profile?.status === "fictional" && !rules.sourceReference.startsWith("FICTIONAL")) throw new Error(`ruleset ${key}/${file} is fictional but does not say so`);
+      // A real authority's CSV layout needs its accepted specification and an accepted sample
+      // on record first (gate G-AUTH-CSV), and a reviewed change to lift this check.
+      if (rules.export && profileStatus(rules) !== "fictional") throw new Error(`ruleset ${key}/${file} has a CSV export layout, but only the fictional example may until gate G-AUTH-CSV is met for that authority`);
       // An authority's own layout must show every answer the authority requires.
       const laidOut = new Set(rules.report?.sections.flatMap((x) => x.fields.map((f) => f.key)) ?? []);
       const required = [...rules.inspection.requiredFields, ...(rules.inspection.scopedRequiredFields ?? []).flatMap((x) => x.fields)];

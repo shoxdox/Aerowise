@@ -50,7 +50,7 @@ describe("filing with the county", () => {
 
     // Opened at completion, waiting for the report.
     const opened = await filingOf(s);
-    expect(opened).toMatchObject({ status: "pending", deadlineOn: "2026-03-15", nextDueOn: "2026-07-01", jurisdiction: { key: "tx-example-county", rulesetVersion: 1 } });
+    expect(opened).toMatchObject({ status: "pending", deadlineOn: "2026-03-15", nextDueOn: "2026-07-01", jurisdiction: { key: "tx-example-county", rulesetVersion: 2 } });
 
     await runWorker(ctx);
     const sent = await detailOf(s, opened!.id);
@@ -242,7 +242,7 @@ describe("jurisdiction requirements", () => {
     const list = (await s.api.get("/jurisdictions")).json().items;
     expect(list.map((j: { key: string }) => j.key).sort()).toEqual(["tx-bastrop-county", "tx-bell-county-phd", "tx-bexar-county", "tx-brazoria-county", "tx-city-of-denton", "tx-collin-county", "tx-comal-county", "tx-denton-county", "tx-ellis-county", "tx-example-county", "tx-grimes-county", "tx-harris-county-oce", "tx-hays-county", "tx-hill-county", "tx-johnson-county", "tx-kaufman-county", "tx-lcra-ossf", "tx-mclennan-county", "tx-montgomery-county", "tx-sjra-ossf", "tx-travis-county", "tx-williamson-county"]);
     const example = list.find((j: { key: string }) => j.key === "tx-example-county");
-    expect(example).toMatchObject({ rulesetVersion: 1, counties: ["Example County"], assignment: "county", profileStatus: "fictional" });
+    expect(example).toMatchObject({ rulesetVersion: 2, counties: ["Example County"], assignment: "county", profileStatus: "fictional" });
     // An office override has to say what it rests on.
     expect((await s.api.put(`/sites/${s.site.id}/jurisdiction`, { jurisdictionId: example.id })).statusCode).toBe(400);
     const set = await s.api.put(`/sites/${s.site.id}/jurisdiction`, { jurisdictionId: example.id, evidenceKind: "permit_record", evidenceReference: "Permit file 2019-114" });
