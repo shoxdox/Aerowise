@@ -36,6 +36,7 @@ Choose one provider and actual permit authority; obtain a small redacted permit/
 ## Service workflows (planned, not built)
 
 - **SW-0:** [implementation plan](SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md) for general work orders, pumping/disposal records, estimates, plan-specific agreements and coverage, conventional/installation work, work on the street map and authority export interoperability — draft documentation PR, branch `claude/service-workflows-plan-ttg7xh`, baseline `0906828`. SW-1–SW-12 are proposed; no implementation worker has started.
+- **SW-11 Authority export framework:** draft PR on branch `claude/sw-11-authority-export-bb6n8v`. Ruleset `export` block, `csv_export` submission method, the authority CSV as a document in the immutable submission package (filing stays ready until mark-sent; confirm separate), demo notice column, Example County v2 fixture only. No real authority has an export block (gate G-AUTH-CSV).
 
 ## W9. Deferred
 

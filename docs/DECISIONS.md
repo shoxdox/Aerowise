@@ -739,3 +739,14 @@ Justin took the recommended answer to each (project chat, 2026-10-05 22:57Z):
 - **Lines are visit order, not roads.** Each route is drawn as straight dashed lines between consecutive visits, labelled `1 → 2`, and the key says they are not roads; travel figures stay labelled as estimates from straight-line distance without traffic. Scheduling, optimization and the estimate are unchanged.
 - **The map never blocks work.** Missing map file, no signal or no WebGL show a note, and the stop lists (always beside the map on the office schedule; under the note on the phone) keep working. The basemap is not cached for offline use; offline the technician gets the list.
 - **A demo company's addresses never reach a real geocoder.** The geocoder joins the other demo gates (`DemoGatedGeocoder`): a demo company, no company or an unknown one gets the built-in test geocoder whatever the deployment has. The map labels demo locations as made up.
+
+## 2026-10-08 · SW-11 Authority CSV export framework
+
+- **The CSV is a package document.** A filing by `csv_export` gets the authority's CSV in its submission package, after the filed report, hashed like every other document. Packages never change, so the bytes the office uploads are the bytes on record.
+- **Making the CSV files nothing.** The filing stays `ready` with a `filing_exported` event on the site's ledger. The office records the upload with the existing mark-sent route (attempt method `csv_export`, proof `manual_submission`); only `confirm`, with the authority's acknowledgment, makes it confirmed.
+- **Switching an email filing to CSV is a new submission.** The CSV cannot be added to an existing package, so "Export CSV instead" (ready or failed filings, rules with a layout) moves the filing to the next submission number and prepares it again. The email package stays on record as never sent, and a waiting email retry no longer sends it.
+- **A required column with no value holds the filing for review**, naming the column, instead of exporting a gap.
+- **Only fictional rules may carry an export block.** Bundling refuses an `export` block on any non-fictional ruleset until gate G-AUTH-CSV (the authority's accepted specification and an accepted sample, recorded as evidence) is met and a reviewed change lifts the check. Real authorities keep their email or manual channel.
+- **Example County v2** adds a made-up layout (EC-CSV-1) with the same `effectiveFrom` as v1, so new Example County filings, including the demo's, use v2. Its primary method stays email; CSV export is an office choice. v1 is unchanged.
+- **Demo CSVs say they are fictional by themselves**, like the data export (STG-07): a leading `aerowise_demo_notice` column reading `DEMO - FICTIONAL DATA - NOT FILED`, and a `DEMO-` file name.
+- **Cells a spreadsheet would run as formulas** (starting with = + - @, a tab or a return, other than plain numbers) get a leading quote.
