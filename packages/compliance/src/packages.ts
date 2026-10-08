@@ -2,11 +2,26 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, CREDENTIAL_LABELS, type ContractFilingBasis, credentialProblems, INSPECTING_CREDENTIALS, type CredentialKind, type FilingKind, type PackageDocument, type RulesetRules, siteScheduleProblem, type SubmissionMethod } from "@aerowise/domain";
+import {
+  addDays,
+  CREDENTIAL_LABELS,
+  type ContractFilingBasis,
+  credentialProblems,
+  exportLayoutFor,
+  INSPECTING_CREDENTIALS,
+  type CredentialKind,
+  type FilingKind,
+  type InspectionValues,
+  type PackageDocument,
+  type RulesetRules,
+  siteScheduleProblem,
+  type SubmissionMethod,
+} from "@aerowise/domain";
 import { fillPdfForm, renderCoverSheet } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
-import { latestAuthorityReport } from "./reports.ts";
+import { authorityCsv, type AuthorityExportFacts, missingExportColumns } from "./authority-export.ts";
+import { amendmentsOf, latestAuthorityReport } from "./reports.ts";
 import { reportSignature } from "./signatures.ts";
 import { dateInZone, type ResolvedJurisdiction } from "./rulesets.ts";
 
@@ -71,7 +86,7 @@ async function filingFacts(db: Executor, f: PackageFiling, resolved: ResolvedJur
     .selectFrom("sites as s")
     .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"))
     .innerJoin("organizations as o", "o.id", "s.organizationId")
-    .select(["s.addressLine1", "s.addressLine2", "s.city", "s.state", "s.postalCode", "s.permitNumber", "c.displayName", "o.name as orgName", "o.timezone", "o.responsibleCredentialId"])
+    .select(["s.addressLine1", "s.addressLine2", "s.city", "s.state", "s.postalCode", "s.county", "s.permitNumber", "c.displayName", "o.name as orgName", "o.timezone", "o.responsibleCredentialId", "o.demo"])
     .where("s.organizationId", "=", f.organizationId)
     .where("s.id", "=", f.siteId)
     .executeTakeFirstOrThrow();
@@ -94,12 +109,13 @@ async function filingFacts(db: Executor, f: PackageFiling, resolved: ResolvedJur
       : undefined,
   ]);
   let inspectionDate: string | null = null;
-  let technician: { userId: string; name: string; credentials: { kind: string; number: string; active: boolean; expiresOn: string | null }[] } | null = null;
+  let technician: { userId: string; name: string; license: string | null; credentials: { kind: string; number: string; active: boolean; expiresOn: string | null }[] } | null = null;
   if (f.inspectionId) {
     const insp = await db
       .selectFrom("inspections as i")
       .innerJoin("users as u", "u.id", "i.technicianUserId")
-      .select(["i.completedAt", "i.technicianUserId", "u.name"])
+      .leftJoin("memberships as m", (j) => j.onRef("m.userId", "=", "i.technicianUserId").onRef("m.organizationId", "=", "i.organizationId"))
+      .select(["i.completedAt", "i.technicianUserId", "u.name", "m.technicianLicense"])
       .where("i.organizationId", "=", f.organizationId)
       .where("i.id", "=", f.inspectionId)
       .executeTakeFirstOrThrow();
@@ -110,7 +126,7 @@ async function filingFacts(db: Executor, f: PackageFiling, resolved: ResolvedJur
       .where("organizationId", "=", f.organizationId)
       .where("userId", "=", insp.technicianUserId)
       .execute();
-    technician = { userId: insp.technicianUserId, name: insp.name, credentials };
+    technician = { userId: insp.technicianUserId, name: insp.name, license: insp.technicianLicense ?? null, credentials };
   }
   // The contract the filing is for, or the one in force on the inspection date.
   let contractQ = db
@@ -130,6 +146,8 @@ async function filingFacts(db: Executor, f: PackageFiling, resolved: ResolvedJur
     technician,
     ownerName: site.displayName,
     address: [site.addressLine1, site.addressLine2, site.city, [site.state, site.postalCode].filter(Boolean).join(" ")].filter(Boolean).join(", "),
+    site: { addressLine1: site.addressLine1, city: site.city, state: site.state, postalCode: site.postalCode, county: site.county, permitNumber: site.permitNumber },
+    demo: site.demo,
     permitNumber: site.permitNumber,
     identifiers: Object.fromEntries(identifiers.map((i) => [i.kind, i.value])) as Record<string, string>,
     contract: contract ?? null,
@@ -166,6 +184,38 @@ function fieldValue(source: NonNullable<RulesetRules["coverSheet"]>["fields"][nu
     case "identifier":
       return (source.identifier && facts.identifiers[source.identifier]) || null;
   }
+}
+
+/**
+ * What the authority CSV is filled from: the filing's facts, plus the inspection answers as
+ * on the authority report version going out (corrected answers count over the originals).
+ */
+async function exportFacts(db: Executor, f: PackageFiling, facts: Facts, reportId: string | null): Promise<AuthorityExportFacts> {
+  let values: InspectionValues = {};
+  if (f.inspectionId) {
+    const [rows, report] = await Promise.all([
+      db.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", f.organizationId).where("inspectionId", "=", f.inspectionId).execute(),
+      reportId
+        ? db.selectFrom("reports").select("snapshot").where("organizationId", "=", f.organizationId).where("id", "=", reportId).executeTakeFirst()
+        : latestAuthorityReport(db, f.organizationId, f.inspectionId),
+    ]);
+    values = { ...Object.fromEntries(rows.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])), ...amendmentsOf(report?.snapshot) };
+  }
+  return {
+    filingId: f.id,
+    submissionNo: f.submissionNo,
+    submissionDate: facts.today,
+    inspectionDate: facts.inspectionDate,
+    technicianName: facts.technician?.name ?? null,
+    technicianLicense: facts.technician?.license ?? null,
+    values,
+    ownerName: facts.ownerName,
+    site: facts.site,
+    identifiers: facts.identifiers,
+    providerName: facts.providerName,
+    responsibleProviderName: facts.responsible?.holderName ?? null,
+    responsibleProviderMpNumber: facts.responsible?.kind === "tceq_maintenance_provider" ? facts.responsible.number : null,
+  };
 }
 
 function fillTemplate(template: string, facts: Facts) {
@@ -213,6 +263,14 @@ export async function packageProblems(db: Executor, f: PackageFiling, resolved: 
   }
   if (f.kind === "contract" && rules.contracts?.submission === "unknown") {
     problems.push(`${resolved.authorityName} has not published how maintenance contracts are submitted, so this contract cannot be filed through Aerowise`);
+  }
+  if (f.submissionMethod === "csv_export") {
+    const layout = exportLayoutFor(rules, f.kind);
+    if (!layout) problems.push(`${resolved.authorityName}'s rules have no CSV layout for ${f.kind === "contract" ? "contracts" : "inspection reports"}, so this filing cannot be exported as CSV`);
+    else {
+      const missing = missingExportColumns(layout, await exportFacts(db, f, facts, null));
+      if (missing.length) problems.push(`The authority CSV's required ${missing.length === 1 ? "column" : "columns"} ${missing.map((m) => `"${m}"`).join(", ")} ${missing.length === 1 ? "has" : "have"} no value`);
+    }
   }
   if (f.kind === "contract" && f.contractId) problems.push(...(await contractTermProblems(db, f.organizationId, f.contractId, resolved, facts.today)));
   if (rules.service.categoryTerms || rules.labTests?.useCategories) {
@@ -377,6 +435,16 @@ export async function ensurePackage(ctx: { db: Database; store: ObjectStore; now
     documents.unshift({ role: "cover_sheet", filename: "cover-sheet.pdf", storageKey, contentType: "application/pdf", sha256: sha256Hex(pdf), byteSize: pdf.length, sourceId: null, sourceVersion: null });
   }
   const method: SubmissionMethod = f.submissionMethod ?? rules.submission.method;
+  // Filing by CSV export: the authority's CSV goes in the package after the filed document.
+  const layout = method === "csv_export" ? exportLayoutFor(rules, f.kind) : null;
+  if (method === "csv_export" && !layout) throw new Error(`${resolved.authorityName}'s rules have no CSV layout for this filing`);
+  if (layout) {
+    const filed = documents.find((d) => d.role === "inspection_report");
+    const csv = authorityCsv(layout, await exportFacts(ctx.db, f, facts, filed?.sourceId ?? null), { demo: facts.demo });
+    const storageKey = `${f.organizationId}/filings/${f.id}/package-${id}/${csv.filename}`;
+    await ctx.store.put(storageKey, csv.content, "text/csv; charset=utf-8");
+    documents.push({ role: "authority_csv", filename: csv.filename, storageKey, contentType: "text/csv; charset=utf-8", sha256: sha256Hex(csv.content), byteSize: csv.content.length, sourceId: null, sourceVersion: null });
+  }
   const recipient = rules.submission.email?.to ?? null;
   const subjectTemplate = f.kind === "contract" ? (rules.submission.email?.contractSubject ?? "OSSF maintenance contract, permit {permitNumber}") : (rules.submission.email?.subject ?? "Aerobic maintenance report, permit {permitNumber}");
   const subject = fillTemplate(subjectTemplate, facts);

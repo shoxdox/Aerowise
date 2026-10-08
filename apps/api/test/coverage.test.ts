@@ -46,7 +46,7 @@ describe("the ruleset coverage page", () => {
     const byKey = Object.fromEntries(body.items.map((i) => [i.key, i]));
 
     expect(body.today).toBe("2026-03-01");
-    expect(byKey["tx-example-county"]).toMatchObject({ profileStatus: "fictional", verified: null, sites: 3, organizations: 2, sitesToDecide: 0, rulesetVersion: 1 });
+    expect(byKey["tx-example-county"]).toMatchObject({ profileStatus: "fictional", verified: null, sites: 3, organizations: 2, sitesToDecide: 0, rulesetVersion: 2 });
     expect(byKey["tx-fixture-verified"]).toMatchObject({
       profileStatus: "verified",
       verified: { authorityName: "Verified Fixture County (fictional)", confirmedOn: "2026-02-02" },

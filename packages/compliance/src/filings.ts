@@ -4,6 +4,7 @@ import {
   addMonths,
   canTransitionFiling,
   contractFilingRequired,
+  exportLayoutFor,
   FILING_STATE_MACHINE,
   filingFees,
   lateFeeOwed,
@@ -630,6 +631,15 @@ export async function prepareFilingById(ctx: ComplianceContext, organizationId: 
       { type: "filing_ready", summary: `${f.kind === "contract" ? "Contract" : "Authority report"} package ready to file with ${resolved.authorityName}`, details: { packageId: pkg.id, manifestSha256: pkg.manifestSha256 } },
       actorUserId,
     );
+    // The CSV is made, not filed: the filing stays ready until someone uploads it and says so.
+    const csv = pkg.documents.find((d) => d.role === "authority_csv");
+    if (csv) {
+      await recordEvent(trx, f, at, actorUserId, {
+        type: "filing_exported",
+        summary: `Authority CSV ${csv.filename} made for ${resolved.authorityName}. Not sent: upload it, then record the filing as filed.`,
+        details: { packageId: pkg.id, filename: csv.filename, sha256: csv.sha256 },
+      });
+    }
     if (mayAutoSubmit(resolved.rules) && f.submissionMethod === "email") {
       await move(trx, f, "queued", at, {}, null);
       await queueSubmit(trx, ctx, f, at);
@@ -918,9 +928,29 @@ export async function useManualFiling(trx: Transaction<DB>, f: FilingRow, a: Act
   f.submissionMethod = "manual_export";
 }
 
-/** Records that the office filed it by hand (portal, mail, counter), with any reference. */
+/**
+ * Files this one by uploading the authority's CSV instead (its rules must have a CSV layout
+ * for this kind of filing). A package is never changed, so the CSV comes in a new
+ * submission: the filing goes back to pending under the next submission number and is
+ * prepared again; call `prepareFilingById` after committing. The old package stays on
+ * record as never sent.
+ */
+export async function useCsvExport(trx: Transaction<DB>, f: FilingRow, a: ActionArgs) {
+  if (f.submissionMethod === "csv_export") throw new FilingStateError("This filing is already filed by CSV export");
+  const resolved = await recordedJurisdiction(trx, f);
+  if (!resolved || !exportLayoutFor(resolved.rules, f.kind)) throw new FilingStateError("This authority's rules have no CSV layout for this filing");
+  if (f.status !== "ready" && f.status !== "failed") throw new FilingStateError("Only a ready or failed filing can be switched to CSV export");
+  await trx.updateTable("filings").set({ submissionMethod: "csv_export", updatedAt: a.at }).where("organizationId", "=", f.organizationId).where("id", "=", f.id).execute();
+  f.submissionMethod = "csv_export";
+  await replaceUnsentSubmission(trx, f, a.at, a.actorUserId, `Switched to filing by CSV export; submission ${f.submissionNo + 1} is prepared with the authority's CSV`);
+}
+
+/** Records that the office filed it by hand (portal, mail, counter) or uploaded its CSV, with any reference. */
 export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: ActionArgs & { reference: string | null; note: string | null; actorName: string }) {
-  if (f.status !== "ready" || f.submissionMethod !== "manual_export") throw new FilingStateError("Only a ready filing that is filed by hand can be marked as sent");
+  if (f.status !== "ready" || (f.submissionMethod !== "manual_export" && f.submissionMethod !== "csv_export")) {
+    throw new FilingStateError("Only a ready filing that is filed by hand or by CSV export can be marked as sent");
+  }
+  const method = f.submissionMethod;
   const resolved = await recordedJurisdiction(trx, f);
   if (resolved && (await unsignedPackage(trx, f, resolved))) {
     throw new FilingStateError("This package has an authority report the maintenance provider has not signed (30 TAC 285.7(b)(3)). Check the filing again to get a signed package.");
@@ -934,7 +964,7 @@ export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: A
       filingId: f.id,
       attemptNo: Number(last.n) + 1,
       submissionNo: f.submissionNo,
-      method: "manual_export",
+      method,
       idempotencyKey: `filing-${f.id}-submission-${f.submissionNo}`,
       status: "succeeded",
       startedAt: a.at,
@@ -955,7 +985,7 @@ export async function markFiledManually(trx: Transaction<DB>, f: FilingRow, a: A
     { sentAt: a.at, proof: JSON.stringify(proof), lastError: null },
     {
       type: "filing_sent",
-      summary: `Filed by hand with ${name}${a.reference ? ` (reference ${a.reference})` : ""}, as recorded by ${a.actorName}`,
+      summary: `${method === "csv_export" ? "CSV uploaded to" : "Filed by hand with"} ${name}${a.reference ? ` (reference ${a.reference})` : ""}, as recorded by ${a.actorName}`,
       details: { nextDueOn: f.nextDueOn, packageId: pkg?.id ?? null },
     },
     a.actorUserId,
