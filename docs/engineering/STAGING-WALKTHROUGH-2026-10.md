@@ -1,5 +1,21 @@
 # Aerowise staging walkthrough — October 6, 2026
 
+## October 8 catalog release follow-up
+
+Current staging app is c004148 (#101/#102/#104/#105), flags work_orders,service_items, test providers only. Bounded live catalog → 1.5-hour work → schedule → office completion → draft edit/reload → issue → void → replacement passed. API/queue/worker health and scratch backup restore passed (79 tables / 3,283 rows, 0052, 71 files). [Screenshots](staging-catalog-2026-10/README.md), [manual steps](RUNBOOK.md#catalog-review-deploy-and-claude-handoffs--october-8-2026-morning). The original dated walkthrough below remains earlier-build evidence; a full expansion walkthrough is still required after the other PRs land.
+
+### Broken — unmerged expansion review
+
+- **P2 / #107 empty selection:** an all-optional estimate with no selected items generated invalid SQL and rolled back acceptance with 500. Independently identified by Codex; Claude reproduced both entry points and is validating a 422/UI fix. [Review](https://github.com/shoxdox/Aerowise/pull/107#issuecomment-6062613130). Not deployed; no staging screen exists for this PR yet.
+- **P2 / #107 cancellation:** invoice blocker misses the new direct work-order invoice link, allowing cancellation with a live invoice. Source-confirmed; assigned for API reproduction/regressions before merge. [Review](https://github.com/shoxdox/Aerowise/pull/107#issuecomment-6062716194). Not deployed.
+- **P1 operations:** main [Actions run 37796390295](https://github.com/shoxdox/Aerowise/actions/runs/37796390295) did not start under account billing/spending restriction; manual deployment succeeded.
+
+### Confusing / incomplete expansion scope
+
+Offline work #106/#109, estimates #107 and plan builder #108 are not deployed or Codex-approved. Deposits, office contract options/intake/demo tiers and later pumping/install/cycle/map chunks remain open; four existing Claude workers have resumed. Physical-phone/provider/authority gates and earlier demo/ruleset gaps below remain. No new cosmetic issue was established in this bounded check.
+
+## October 6 full walkthrough record
+
 **Call: personalized fictional demos are now safe to send for a guided prospect walkthrough.** PRs [#93](https://github.com/shoxdox/Aerowise/pull/93), [#94](https://github.com/shoxdox/Aerowise/pull/94), [#95](https://github.com/shoxdox/Aerowise/pull/95) and [#96](https://github.com/shoxdox/Aerowise/pull/96) are merged into main and deployed by hand. Two additional bugs found during the live retest were fixed and deployed too. Application source is `5e491a0386fef627ebdaac9d8214c8ae5e7578b1`, migrations through `0047_demo_request_delivery.sql`; the final documentation deployment carries the same application code.
 
 URL: https://staging.deshain.com. **Try the demo → Start my demo** signs a visitor in without a password. Use Owner / Office / Technician in the banner. Personalized entry is the private owner link created in `/admin/prospect-demos`, with the same role switch. Platform-admin credentials and active entry links remain outside Git. No DNS, accounts, paid services or production changes were made.
