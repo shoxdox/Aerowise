@@ -29,11 +29,13 @@ import {
 } from "@aerowise/domain";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
+import { invoiceEvent } from "@aerowise/payments";
 import { sql, type Kysely, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { isWorkForm } from "../lib/forms.ts";
+import { checkDraftRefs, writeDraftLines } from "../lib/invoices.ts";
 import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
 
 // General work orders (SW-1 of the service workflows plan): the office creates them, turns
@@ -182,13 +184,15 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         .where("n.workOrderId", "=", row.id)
         .orderBy("n.createdAt")
         .execute(),
-      // Invoices that bill one of this order's visits.
+      // Invoices made from this order, or that bill one of its visits.
       db
         .selectFrom("invoices as i")
         .select(["i.id", "i.number", "i.status", "i.totalCents"])
         .where("i.organizationId", "=", organizationId)
-        .where(({ exists, selectFrom }) =>
-          exists(
+        .where(({ eb, exists, or, selectFrom }) =>
+          or([
+            eb("i.workOrderId", "=", row.id),
+            exists(
             selectFrom("invoiceLines as l")
               .innerJoin("jobs as j", (k) => k.onRef("j.id", "=", "l.jobId").onRef("j.organizationId", "=", "l.organizationId"))
               .select("l.id")
@@ -196,7 +200,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
               .whereRef("l.organizationId", "=", "i.organizationId")
               .where("j.type", "=", "work")
               .where("j.workOrderId", "=", row.id),
-          ),
+            ),
+          ]),
         )
         .orderBy("i.createdAt")
         .execute(),
@@ -211,6 +216,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       taxable: l.taxable,
       source: l.source,
       amountCents: Math.round((l.quantityMilli * l.unitPriceCents) / 1000),
+      serviceItemId: l.serviceItemId,
     }));
     return {
       ...toSummary(row),
@@ -242,9 +248,14 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
   async function writeLines(trx: Trx, organizationId: string, workOrderId: string, lines: z.infer<typeof workOrderInput>["lines"], at: Date) {
     await trx.deleteFrom("workOrderLines").where("organizationId", "=", organizationId).where("workOrderId", "=", workOrderId).where("source", "=", "planned").execute();
     if (!lines.length) return;
+    const itemIds = [...new Set(lines.map((l) => l.serviceItemId).filter((x): x is string => !!x))];
+    if (itemIds.length) {
+      const found = await trx.selectFrom("serviceItems").select("id").where("organizationId", "=", organizationId).where("id", "in", itemIds).execute();
+      if (found.length !== itemIds.length) throw notFound("Service item");
+    }
     await trx
       .insertInto("workOrderLines")
-      .values(lines.map((l, i) => ({ organizationId, workOrderId, position: i + 1, description: l.description, quantityMilli: toMilli(l.quantity), unitPriceCents: l.unitPriceCents, taxable: l.taxable, source: "planned" as const, updatedAt: at })))
+      .values(lines.map((l, i) => ({ organizationId, workOrderId, position: i + 1, description: l.description, quantityMilli: toMilli(l.quantity), unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId ?? null, source: "planned" as const, updatedAt: at })))
       .execute();
   }
 
@@ -451,6 +462,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       await db.transaction().execute(async (trx) => {
         const wo = await lockWorkOrder(trx, organizationId, req.params.id);
         if (wo.status === "completed" || wo.status === "cancelled") throw new HttpError(409, "work_order_closed", `This work order is ${wo.status}`);
+        // An invoiced order's billing follows its invoice: void it to bill again or not at all.
+        if (b.billingStatus && wo.billingStatus === "invoiced") throw new HttpError(409, "invoiced", "This work order has an invoice. Void or discard it first.");
         let category: string | undefined;
         if (b.workTypeId) category = (await activeWorkType(trx, organizationId, b.workTypeId)).category;
         await trx
@@ -623,6 +636,89 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         await audit(trx, req, { action: "work_order.completed", entityType: "work_order", entityId: wo.id, changes: { ...req.body, withoutRecord: true } });
       });
       return loadDetail(req, req.params.id);
+    },
+  );
+
+  app.post(
+    "/work-orders/:id/invoice",
+    {
+      config: { permission: "invoices:write" },
+      schema: {
+        tags: ["work"],
+        summary: "Start a draft invoice from a work order's lines; a second call returns the same invoice",
+        description:
+          "One invoice that is not void per work order. Voiding it (or discarding the draft) makes the order unbilled again, so a replacement can be made; the field work is never reopened.",
+        params,
+        body: z.object({}).optional(),
+        response: { 200: z.object({ invoiceId: id, workOrder: workOrderDetail }), 201: z.object({ invoiceId: id, workOrder: workOrderDetail }) },
+      },
+    },
+    async (req, reply) => {
+      const { organizationId, userId } = req.requireAuth();
+      const existing = (ex: Database | Trx) =>
+        ex.selectFrom("invoices").select("id").where("organizationId", "=", organizationId).where("workOrderId", "=", req.params.id).where("status", "<>", "void").executeTakeFirst();
+      let r: { created: boolean; invoiceId: string };
+      try {
+        r = await db.transaction().execute(async (trx) => {
+          const at = now();
+          // The order is locked first, so two clicks at once take turns and the second finds the first's invoice.
+          const wo = await lockWorkOrder(trx, organizationId, req.params.id);
+          const found = await existing(trx);
+          if (found) return { created: false, invoiceId: found.id };
+          if (!features.has("service_items")) throw new HttpError(409, "feature_off", "Invoicing work orders is not switched on for this deployment");
+          if (wo.status === "draft" || wo.status === "cancelled") throw new HttpError(409, "not_billable", `A ${wo.status} work order is not invoiced`);
+          if (wo.billingStatus === "no_charge") throw new HttpError(409, "no_charge", "This work order is marked no charge");
+          const lines = await trx.selectFrom("workOrderLines").selectAll().where("organizationId", "=", organizationId).where("workOrderId", "=", wo.id).orderBy("position").orderBy("createdAt").execute();
+          if (!lines.length) throw unprocessable("Add the work order's labor, parts or fees before invoicing it");
+          const invoiceLines = lines.map((l) => ({ description: l.description, quantity: l.quantityMilli / 1000, unitPriceCents: l.unitPriceCents, taxable: l.taxable, serviceItemId: l.serviceItemId }));
+          await checkDraftRefs(trx, organizationId, wo.customerId, wo.siteId, invoiceLines);
+          const org = await trx.selectFrom("organizations").select(["invoiceTermsDays", "defaultTaxRateBps"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
+          const inv = await trx
+            .insertInto("invoices")
+            .values({
+              organizationId,
+              customerId: wo.customerId,
+              siteId: wo.siteId,
+              workOrderId: wo.id,
+              number: null,
+              memo: null,
+              termsDays: org.invoiceTermsDays,
+              taxRateBps: org.defaultTaxRateBps,
+              discountCents: 0,
+              subtotalCents: 0,
+              taxableCents: 0,
+              taxCents: 0,
+              totalCents: 0,
+              issuedOn: null,
+              dueOn: null,
+              publicToken: null,
+              pdfStorageKey: null,
+              pdfSha256: null,
+              pdfByteSize: null,
+              sentAt: null,
+              paidAt: null,
+              voidedAt: null,
+              voidReason: null,
+              createdBy: userId,
+              updatedAt: at,
+            })
+            .returning("id")
+            .executeTakeFirstOrThrow();
+          await writeDraftLines(trx, organizationId, inv.id, invoiceLines, { discountCents: 0, taxRateBps: org.defaultTaxRateBps }, at);
+          await trx.updateTable("workOrders").set({ billingStatus: "invoiced", updatedAt: at }).where("organizationId", "=", organizationId).where("id", "=", wo.id).execute();
+          const woLabel = workOrderLabel(wo.number);
+          await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "created", summary: `Draft created from work order ${woLabel}`, actorUserId: userId, at });
+          await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "invoiced", summary: "Draft invoice created", details: { invoiceId: inv.id }, at });
+          await audit(trx, req, { action: "invoice.created", entityType: "invoice", entityId: inv.id, changes: { workOrderId: wo.id, lines: invoiceLines.length } });
+          return { created: true, invoiceId: inv.id };
+        });
+      } catch (err) {
+        // The database's one-live-invoice index is the backstop: the other request's invoice is the one.
+        const found = (err as { code?: string }).code === "23505" ? await existing(db) : undefined;
+        if (!found) throw err;
+        r = { created: false, invoiceId: found.id };
+      }
+      return reply.status(r.created ? 201 : 200).send({ invoiceId: r.invoiceId, workOrder: await loadDetail(req, req.params.id) });
     },
   );
 

@@ -7,7 +7,7 @@
  * readable and can be finished, so turning it off strands nothing. See the service
  * workflows plan, §9.1.
  */
-export const FEATURES = ["work_orders", "estimates"] as const;
+export const FEATURES = ["work_orders", "service_items", "estimates"] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** Reads `AEROWISE_FEATURES`. An unknown name is an error, so a typo never silently leaves a feature off. */

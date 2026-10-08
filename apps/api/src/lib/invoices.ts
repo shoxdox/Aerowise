@@ -5,6 +5,7 @@ import {
   amountDue,
   invoiceNumberLabel,
   invoiceTotals,
+  milliAmount,
   type InvoiceDetail,
   type InvoiceLineInput,
   type InvoiceListItem,
@@ -49,7 +50,29 @@ export async function checkDraftRefs(db: Database | Transaction<DB>, organizatio
     if (jobs.length !== jobIds.length) throw notFound("Job");
     if (jobs.some((j) => j.customerId !== customerId)) throw unprocessable("A job on this invoice is for a different customer");
   }
+  const itemIds = [...new Set(lines.map((l) => l.serviceItemId).filter((s): s is string => !!s))];
+  if (itemIds.length) {
+    const items = await db.selectFrom("serviceItems").select("id").where("organizationId", "=", organizationId).where("id", "in", itemIds).execute();
+    if (items.length !== itemIds.length) throw notFound("Service item");
+  }
 }
+
+/** True when a quantity is not a whole number, which only service items allow. */
+export const isFractional = (quantity: number | undefined) => quantity !== undefined && !Number.isInteger(quantity);
+
+/**
+ * How a quantity is stored. A whole number keeps the original columns alone, so its amount,
+ * PDF and QuickBooks payload are what they always were. A fraction is kept in thousandths and
+ * prices the line; the integer column then holds it rounded up, for its range check only.
+ */
+export function storedQuantity(quantity: number, unitPriceCents: number) {
+  if (Number.isInteger(quantity)) return { quantity, quantityMilli: null, amountCents: quantity * unitPriceCents };
+  const quantityMilli = Math.round(quantity * 1000);
+  return { quantity: Math.max(1, Math.ceil(quantityMilli / 1000)), quantityMilli, amountCents: milliAmount(quantityMilli, unitPriceCents) };
+}
+
+/** The quantity a stored line shows: its thousandths when it has them. */
+export const shownQuantity = (l: { quantity: number; quantityMilli: number | null }) => (l.quantityMilli === null ? l.quantity : l.quantityMilli / 1000);
 
 type NewLine = InvoiceLineInput & { contractId?: string | null; installment?: number | null; periodStart?: string | null; periodEnd?: string | null; filingId?: string | null };
 
@@ -78,11 +101,11 @@ export async function writeDraftLines(
       invoiceId,
       position: i + 1,
       description: l.description,
-      quantity: l.quantity ?? 1,
+      ...storedQuantity(l.quantity ?? 1, l.unitPriceCents),
       unitPriceCents: l.unitPriceCents,
-      amountCents: (l.quantity ?? 1) * l.unitPriceCents,
       taxable: l.taxable ?? false,
       jobId: l.jobId ?? null,
+      serviceItemId: l.serviceItemId ?? null,
       contractId: prior?.contractId ?? l.contractId ?? null,
       installment: prior?.installment ?? l.installment ?? null,
       periodStart: prior?.periodStart ?? l.periodStart ?? null,
@@ -132,13 +155,15 @@ export async function issueDraft(trx: Transaction<DB>, organizationId: string, i
   const site = inv.siteId
     ? await trx.selectFrom("sites").select(["addressLine1", "addressLine2", "city", "state", "postalCode"]).where("organizationId", "=", organizationId).where("id", "=", inv.siteId).executeTakeFirst()
     : undefined;
-  const lines = await trx
-    .selectFrom("invoiceLines")
-    .select(["description", "quantity", "unitPriceCents", "amountCents", "taxable"])
-    .where("organizationId", "=", organizationId)
-    .where("invoiceId", "=", invoiceId)
-    .orderBy("position")
-    .execute();
+  const lines = (
+    await trx
+      .selectFrom("invoiceLines")
+      .select(["description", "quantity", "quantityMilli", "unitPriceCents", "amountCents", "taxable"])
+      .where("organizationId", "=", organizationId)
+      .where("invoiceId", "=", invoiceId)
+      .orderBy("position")
+      .execute()
+  ).map(({ quantityMilli, ...l }) => ({ ...l, quantity: shownQuantity({ quantity: l.quantity, quantityMilli }) }));
   const serviceAddress = site ? joinAddress([site.addressLine1, site.addressLine2, cityLine(site.city, site.state, site.postalCode)]) : null;
   const snapshot: InvoiceSnapshot = {
     number: invoiceNumberLabel(number),
@@ -301,11 +326,13 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       id: l.id,
       position: l.position,
       description: l.description,
-      quantity: l.quantity,
+      quantity: shownQuantity(l),
+      quantityMilli: l.quantityMilli,
       unitPriceCents: l.unitPriceCents,
       amountCents: l.amountCents,
       taxable: l.taxable,
       jobId: l.jobId,
+      serviceItemId: l.serviceItemId,
       contractId: l.contractId,
       installment: l.installment,
       periodStart: l.periodStart,
