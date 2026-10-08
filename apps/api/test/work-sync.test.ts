@@ -147,6 +147,15 @@ describe("field records from the phone", () => {
     // The inspection route is unchanged: older phones never see a work visit.
     expect(JSON.stringify((await s.aApi.get("/route?date=2026-03-01")).json())).not.toContain(s.jobId);
   });
+
+  it("with no date, lists the visits for the company's today, not the server's UTC date", async () => {
+    const s = await setup(ctx);
+    // 9 pm on March 1 in Chicago is already March 2 in UTC.
+    ctx.now = new Date("2026-03-02T03:00:00Z");
+    const route = (await s.aApi.get("/work/route")).json();
+    expect(route.date).toBe("2026-03-01");
+    expect(route.items.map((i: { jobId: string }) => i.jobId)).toEqual([s.jobId]);
+  });
 });
 
 describe("visits the office changed while the phone was offline (R4)", () => {

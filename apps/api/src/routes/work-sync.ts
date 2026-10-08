@@ -35,6 +35,7 @@ import { audit } from "../lib/audit.ts";
 import { readForDownload } from "../lib/demo.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { currentForms } from "../lib/forms.ts";
+import { organizationToday } from "../lib/today.ts";
 import { lockWorkOrder, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 
@@ -593,7 +594,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
     },
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
-      const day = req.query.date ?? now().toISOString().slice(0, 10);
+      // The company's today, as the inspection route uses, not the server's UTC date.
+      const day = req.query.date ?? (await organizationToday(db, organizationId, now()));
       if (!enabled) return { date: day, items: [] };
       const rows = await db
         .selectFrom("jobs as j")
