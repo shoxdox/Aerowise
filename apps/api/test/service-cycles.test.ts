@@ -751,6 +751,29 @@ describe("offers and imports never turn cycles into inspections", () => {
     expect(portal.sites[0]).toMatchObject({ nextVisit: { label: null }, inspections: true });
   });
 
+  it("the portal shows a pumping-only cycle with no visit this term, and a booked pumping visit's scheduled date", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const pumpType = await workTypeId(t.api, "pumping");
+    const link = (await t.api.post(`/customers/${t.customer.id}/portal-link`, { send: false })).json();
+    const portal = async () => (await client(ctx.app).get(`/portal/${link.url.split("/portal/")[1]}`)).json().sites[0];
+
+    // Every 36 months on a 12-month plan: a term with no visit, accepted by the office.
+    const rare = await cyclePlan(t.api, [pumpingCycle(pumpType, { schedule: { kind: "every_months", everyMonths: 36, windowDays: 30 }, allowNoVisit: true })], false, "Rare pumping");
+    const quiet = await contractOn(t, rare.id, "2026-02-01");
+    expect(quiet.obligations).toEqual([]);
+    expect(await portal()).toMatchObject({ contract: { visitProgress: [{ label: "Tank pumping", done: 0, total: 0 }] }, nextVisit: null, inspections: false });
+
+    // A second site, pumping every 6 months, its first visit booked and scheduled.
+    const site2 = (await t.api.post(`/customers/${t.customer.id}/sites`, { addressLine1: "2 Main St", city: "Austin" })).json();
+    const plan = await cyclePlan(t.api, [pumpingCycle(pumpType)], false);
+    const c = await contractOn(t, plan.id, "2026-01-01", site2.id);
+    const wo = (await book(t.api, c.obligations[0]!.id)).json();
+    const tech = await createUser(ctx.db, t.org.id, "technician");
+    expect((await t.api.post(`/work-orders/${wo.id}/schedule`, { technicianId: tech.id, scheduledDate: "2026-06-20" })).statusCode).toBe(201);
+    const sites = (await client(ctx.app).get(`/portal/${link.url.split("/portal/")[1]}`)).json().sites as { id: string; nextVisit: unknown }[];
+    expect(sites.find((x) => x.id === site2.id)!.nextVisit).toEqual({ dueOn: "2026-06-30", windowStart: "2026-05-31", windowEnd: "2026-07-30", scheduledDate: "2026-06-20", label: "Tank pumping" });
+  });
+
   it("an import names plans with pumping or maintenance and creates no contract from them", async () => {
     const t = await createTenant(ctx, "Org A");
     const pumpType = await workTypeId(t.api, "pumping");

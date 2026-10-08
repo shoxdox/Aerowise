@@ -83,7 +83,7 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
             <ul className="plain muted small" data-testid="portal-visit-progress">
               {site.contract.visitProgress.map((p) => (
                 <li key={p.label}>
-                  {p.label}: {p.done} of {p.total} done
+                  {p.label}: {p.total === 0 ? "no visit this term" : `${p.done} of ${p.total} done`}
                 </li>
               ))}
             </ul>
@@ -95,7 +95,8 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
       {site.renewal && <Renewal r={site.renewal} />}
 
       <dl className="details">
-        <dt>Next visit</dt>
+        {/* On a contract with pumping or maintenance (SW-9) an inspection shown here is the next inspection, not the earliest visit. */}
+        <dt>{site.nextVisit && !site.nextVisit.label && (site.contract?.visitProgress.length ?? 0) > 0 ? "Next inspection" : "Next visit"}</dt>
         <dd>
           {site.nextVisit
             ? `${site.nextVisit.label ? `${site.nextVisit.label}: ` : ""}${

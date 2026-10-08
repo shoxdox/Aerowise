@@ -218,10 +218,11 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const cycleProgress = contractIds.length
         ? await db
             .selectFrom("contractServiceCycles as y")
-            .innerJoin("serviceObligations as o", (j) => j.onRef("o.cycleId", "=", "y.id").onRef("o.organizationId", "=", "y.organizationId"))
+            // A cycle with no visit this term (allowed every 36 months on a 12-month plan) still shows, as 0 of 0.
+            .leftJoin("serviceObligations as o", (j) => j.onRef("o.cycleId", "=", "y.id").onRef("o.organizationId", "=", "y.organizationId"))
             .select(["y.contractId", "y.cycleKey", "y.serviceType", sql<string | null>`y.snapshot->>'label'`.as("label")])
-            .select(sql<number>`count(*) filter (where o.status <> 'cancelled')::int`.as("total"))
-            .select(sql<number>`count(*) filter (where o.status = 'completed')::int`.as("done"))
+            .select(sql<number>`count(o.id) filter (where o.status <> 'cancelled')::int`.as("total"))
+            .select(sql<number>`count(o.id) filter (where o.status = 'completed')::int`.as("done"))
             .where("y.organizationId", "=", organizationId)
             .where("y.contractId", "in", contractIds)
             .where((eb) =>
@@ -246,12 +247,16 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             db
               .selectFrom("serviceObligations as o")
               .innerJoin("contractServiceCycles as y", (j) => j.onRef("y.id", "=", "o.cycleId").onRef("y.organizationId", "=", "o.organizationId"))
-              .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "y.cycleKey", sql<string | null>`y.snapshot->>'label'`.as("label")])
+              // A visit booked as work and put on the schedule shows its date.
+              .leftJoin("workOrders as w", (j) => j.onRef("w.obligationId", "=", "o.id").onRef("w.organizationId", "=", "o.organizationId").on("w.status", "<>", "cancelled"))
+              .leftJoin("jobs as j", (j) => j.onRef("j.workOrderId", "=", "w.id").onRef("j.organizationId", "=", "w.organizationId").on("j.status", "in", ["scheduled", "in_progress"]))
+              .select(["o.siteId", "o.dueOn", "o.windowStart", "o.windowEnd", "y.cycleKey", "j.scheduledDate", sql<string | null>`y.snapshot->>'label'`.as("label")])
               .where("o.organizationId", "=", organizationId)
               .where("o.siteId", "in", siteIds)
               .where("o.serviceType", "<>", "aerobic_inspection")
               .where("o.status", "=", "open")
               .orderBy("o.dueOn")
+              .orderBy("j.scheduledDate")
               .execute(),
             db
               .selectFrom("serviceObligations")
@@ -304,7 +309,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           nextVisit: next
             ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate, label: null }
             : nextCycle
-              ? { dueOn: nextCycle.dueOn, windowStart: nextCycle.windowStart, windowEnd: nextCycle.windowEnd, scheduledDate: null, label: nextCycle.label ?? nextCycle.cycleKey }
+              ? { dueOn: nextCycle.dueOn, windowStart: nextCycle.windowStart, windowEnd: nextCycle.windowEnd, scheduledDate: nextCycle.scheduledDate ?? null, label: nextCycle.label ?? nextCycle.cycleKey }
               : null,
           inspections: hasInspections.has(s.id) || reports.some((x) => x.siteId === s.id),
           reports: reports
