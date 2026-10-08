@@ -1,4 +1,4 @@
-import { snapshotSha256 } from "@aerowise/domain";
+import { GENERIC_REPAIR_TEMPLATE, snapshotSha256 } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
@@ -340,6 +340,140 @@ describe("visits the office changed while the phone was offline (R4)", () => {
     // The phone's next replay learns it was accepted.
     expect((await v.sync(s.aApi, "completed", 3)).json()).toEqual({ outcome: "resolved", conflictId: c.id, resolution: "attached" });
     expect((await v.photo(s.aApi, 0)).json()).toEqual({ outcome: "resolved", conflictId: c.id, resolution: "attached" });
+  });
+});
+
+describe("the office accepting a held record checks it as completion would", () => {
+  /** Reassigns the visit before the phone's first sync, so everything the phone sends is held. */
+  async function heldVisit(overrides: Record<string, unknown> = {}) {
+    const s = await setup(ctx);
+    expect((await s.api.patch(`/jobs/${s.jobId}`, { technicianId: s.b.id })).statusCode).toBe(200);
+    return { s, v: visit(s, overrides) };
+  }
+  const heldId = async (s: Setup) => ((await s.api.get("/work/conflicts?status=held")).json().items as { id: string }[])[0]!.id;
+  const attach = (s: Setup, id: string) => s.api.post(`/work/conflicts/${id}/attach`, {});
+  async function expectStillHeld(s: Setup, id: string, photos: number, signatures: number) {
+    expect((await s.api.get(`/work/conflicts/${id}`)).json()).toMatchObject({ status: "held", photoCount: photos, signatureCount: signatures });
+    expect(await count("work_records", s.org.id)).toBe(0);
+  }
+
+  it("refuses a record missing required answers and photos, keeps it held, and accepts it once they arrive", async () => {
+    const { s, v } = await heldVisit({ values: { problem: "Alarm sounding" } });
+    expect((await v.sync(s.aApi, "completed")).statusCode).toBe(202);
+    const id = await heldId(s);
+    const refused = await attach(s, id);
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json()).toMatchObject({ error: "record_incomplete" });
+    expect(refused.json().message).toMatch(/Work performed/);
+    expect(refused.json().message).toMatch(/Before the repair/);
+    await expectStillHeld(s, id, 0, 0);
+
+    // The technician sends the rest; the office accepts it.
+    const full = visit(s);
+    const fixed = await s.aApi.put("/work/sync", { clientId: v.clientId, jobId: s.jobId, templateId: s.form.id, status: "completed", revision: 2, arrivedAt: "2026-03-01T15:00:00Z", completedAt: "2026-03-01T16:00:00Z", values: VALUES, summary: SUMMARY });
+    expect(fixed.statusCode).toBe(202);
+    for (const [i, key] of (["before", "after"] as const).entries()) {
+      expect((await s.aApi.putImage(`/work/${v.clientId}/photos/${full.photos[i]}`, JPEG, { "x-photo-key": key })).statusCode).toBe(202);
+    }
+    const ok = await attach(s, id);
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json()).toMatchObject({ status: "attached" });
+    const [rec] = (await sql<{ id: string; status: string; validationStatus: string }>`select id, status, validation_status from work_records where offline_client_id = ${v.clientId}`.execute(ctx.db)).rows;
+    expect(rec).toMatchObject({ status: "completed", validationStatus: "valid" });
+    // The answers keep their form keys as the office reads them back.
+    const read = (await s.api.get(`/work-records/${rec!.id}`)).json();
+    expect(read.values).toEqual(VALUES);
+    expect(read.summary).toEqual(SUMMARY);
+  });
+
+  it("refuses a record whose customer signed a different summary, keeping its photos and signature", async () => {
+    const { s, v } = await heldVisit();
+    expect((await v.sync(s.aApi, "draft")).statusCode).toBe(202);
+    expect((await v.photo(s.aApi, 0)).statusCode).toBe(202);
+    expect((await v.photo(s.aApi, 1)).statusCode).toBe(202);
+    expect((await v.sign(s.aApi, { workDone: "Different signed work" })).statusCode).toBe(202);
+    expect((await v.sync(s.aApi, "completed", 2)).statusCode).toBe(202);
+    const id = await heldId(s);
+    const refused = await attach(s, id);
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json()).toMatchObject({ error: "signature_mismatch" });
+    await expectStillHeld(s, id, 2, 1);
+  });
+
+  it("refuses a missing required signature, and checks the form version the record was started on, not a newer one", async () => {
+    const s0 = await setup(ctx);
+    // A version that requires the customer's signature, saved before the visit started.
+    const strict = await s0.api.post("/form-templates/work-repair/versions", {
+      name: "Repair (signed)",
+      definition: { ...GENERIC_REPAIR_TEMPLATE.definition, signatures: [{ key: "customer_signoff", label: "Customer sign-off", signer: "customer", required: true }] },
+    });
+    expect(strict.statusCode, strict.body).toBe(201);
+    expect((await s0.api.patch(`/jobs/${s0.jobId}`, { technicianId: s0.b.id })).statusCode).toBe(200);
+    const v = visit(s0, { templateId: strict.json().id });
+    expect((await v.sync(s0.aApi, "draft")).statusCode).toBe(202);
+    expect((await v.photo(s0.aApi, 0)).statusCode).toBe(202);
+    expect((await v.photo(s0.aApi, 1)).statusCode).toBe(202);
+    expect((await v.sync(s0.aApi, "completed", 2)).statusCode).toBe(202);
+    const id = await heldId(s0);
+
+    // The company then retires that version for one with no signature at all: the record still needs its signature.
+    expect((await s0.api.post("/form-templates/work-repair/versions", { name: "Repair (unsigned)", definition: { ...GENERIC_REPAIR_TEMPLATE.definition, signatures: [] } })).statusCode).toBe(201);
+    const refused = await attach(s0, id);
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json()).toMatchObject({ error: "record_incomplete" });
+    expect(refused.json().message).toMatch(/Customer sign-off is required/);
+    await expectStillHeld(s0, id, 2, 0);
+
+    expect((await v.sign(s0.aApi)).statusCode).toBe(202);
+    const ok = await attach(s0, id);
+    expect(ok.statusCode, ok.body).toBe(200);
+    // Replays after the decision change nothing.
+    expect((await attach(s0, id)).statusCode).toBe(409);
+    const replay = await v.sync(s0.aApi, "completed", 2);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({ outcome: "resolved", resolution: "attached" });
+    expect(await count("work_records", s0.org.id)).toBe(1);
+  });
+
+  it("an attach racing the last photo upload never accepts a record without it", async () => {
+    const { s, v } = await heldVisit();
+    expect((await v.sync(s.aApi, "draft")).statusCode).toBe(202);
+    expect((await v.photo(s.aApi, 0)).statusCode).toBe(202);
+    expect((await v.sign(s.aApi)).statusCode).toBe(202);
+    expect((await v.sync(s.aApi, "completed", 2)).statusCode).toBe(202);
+    const id = await heldId(s);
+
+    // Hold the record's client lock, start both, then let them run in whichever order they get it.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const holder = ctx.db.transaction().execute(async (trx) => {
+      await sql`select pg_advisory_xact_lock(hashtext(${`work-client:${s.org.id}:${v.clientId}`}))`.execute(trx);
+      locked();
+      await gate;
+    });
+    await isLocked;
+    const attaching = attach(s, id);
+    const uploading = v.photo(s.aApi, 1);
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await holder;
+    const [a, u] = await Promise.all([attaching, uploading]);
+
+    if (a.statusCode === 200) {
+      // The upload ran first: the accepted record has both photos.
+      expect(u.statusCode).toBe(202);
+    } else {
+      // The attach ran first and refused; the photo then arrived, and accepting works.
+      expect(a.statusCode, a.body).toBe(409);
+      expect(a.json()).toMatchObject({ error: "record_incomplete" });
+      expect(u.statusCode).toBe(202);
+      expect((await attach(s, id)).statusCode).toBe(200);
+    }
+    const rec = (await s.api.get(`/jobs/${s.jobId}/work-record`)).json();
+    expect(rec.photos).toHaveLength(2);
+    expect(rec.validationStatus).toBe("valid");
   });
 });
 

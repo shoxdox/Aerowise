@@ -91,6 +91,14 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
   const clientLock = (trx: Trx, organizationId: string, clientId: string) =>
     sql`select pg_advisory_xact_lock(hashtext(${`work-client:${organizationId}:${clientId}`}))`.execute(trx);
 
+  /**
+   * A jsonb column as stored. The query builder camel-cases the keys of objects it reads back,
+   * which would turn answer keys such as work_performed into workPerformed, so answers,
+   * summaries and held payloads are read as text and parsed here.
+   */
+  const jsonText = (column: string) => sql<string | null>`${sql.ref(column)}::text`;
+  const parseJson = (text: string | null) => (text === null ? null : (JSON.parse(text) as unknown));
+
   const findRecord = (ex: Executor, organizationId: string, clientId: string) =>
     ex.selectFrom("workRecords").selectAll().where("organizationId", "=", organizationId).where("offlineClientId", "=", clientId).executeTakeFirst();
   const findConflict = (ex: Executor, organizationId: string, clientId: string) =>
@@ -152,6 +160,33 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       .executeTakeFirst();
   }
 
+  /**
+   * What completing a record would find wrong, checked against its pinned form version and what
+   * the server holds for its client id (photos, signatures): the same checks whether the
+   * technician completes it or the office accepts it from a held record. `values` are the
+   * answers kept on completion (only fields the form shows); `mismatch` means a signature was
+   * given on a different summary.
+   */
+  async function completionCheck(trx: Trx, organizationId: string, clientId: string, definition: TemplateDefinition, sent: Record<string, unknown>, summary: unknown) {
+    const answers = Object.fromEntries(Object.entries(sent).filter(([, v]) => v !== null && v !== "")) as Parameters<typeof visibleFields>[1];
+    const shown = new Set(visibleFields(definition, answers).map((f) => f.key));
+    const values = Object.fromEntries(Object.entries(answers).filter(([k]) => shown.has(k)));
+    const summarySha256 = summary ? await snapshotSha256(summary) : null;
+    const signed = await trx
+      .selectFrom("signedDocuments")
+      .select(["requirementKey", "contentSha256"])
+      .where("organizationId", "=", organizationId)
+      .where("recordClientId", "=", clientId)
+      .execute();
+    const mismatch = signed.some((sig) => sig.contentSha256 !== summarySha256);
+    const problems = [
+      ...validateInspection(definition, values, await photoCounts(trx, organizationId, clientId)),
+      ...signatureProblems(definition, new Set(signed.map((sig) => sig.requirementKey!))),
+    ];
+    return { values, summarySha256, mismatch, problems };
+  }
+  const signatureMismatch = () => conflict("signature_mismatch", "The work summary changed after the customer signed it; ask for a new signature");
+
   const held = (c: { id: string; reason: string }) => ({ outcome: "held_for_review" as const, conflictId: c.id, reason: c.reason as "reassigned" | "cancelled" | "office_completed" });
   const resolved = (c: { id: string; status: string }) => ({ outcome: "resolved" as const, conflictId: c.id, resolution: c.status as "attached" | "dismissed" });
 
@@ -160,7 +195,13 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
   const PHOTO_COLUMNS = ["id", "offlineClientId", "photoKey", "contentType", "byteSize", "capturedAt"] as const;
 
   async function loadRecord(ex: Executor, organizationId: string, recordId: string): Promise<WorkRecord> {
-    const r = await ex.selectFrom("workRecords").selectAll().where("organizationId", "=", organizationId).where("id", "=", recordId).executeTakeFirst();
+    const r = await ex
+      .selectFrom("workRecords")
+      .selectAll()
+      .select([jsonText("answers").as("answersText"), jsonText("summary").as("summaryText")])
+      .where("organizationId", "=", organizationId)
+      .where("id", "=", recordId)
+      .executeTakeFirst();
     if (!r) throw notFound("Work record");
     const photos = await ex
       .selectFrom("workAttachments")
@@ -187,8 +228,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       status: r.status,
       validationStatus: r.validationStatus,
       validationProblems: r.validationProblems as WorkRecord["validationProblems"],
-      values: r.answers as WorkRecord["values"],
-      summary: (r.summary as WorkRecord["summary"]) ?? null,
+      values: parseJson(r.answersText) as WorkRecord["values"],
+      summary: (parseJson(r.summaryText) as WorkRecord["summary"]) ?? null,
       summarySha256: r.summarySha256,
       finalVisit: r.finalVisit,
       arrivedAt: r.arrivedAt.toISOString(),
@@ -315,11 +356,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const definition = template.definition as TemplateDefinition;
         const unknown = unknownKeys(definition, body.values);
         if (unknown.length) throw unprocessable(`Unknown fields: ${unknown.join(", ")}`);
-        let values = Object.fromEntries(Object.entries(body.values).filter(([, v]) => v !== null && v !== ""));
-        if (body.status === "completed") {
-          const shown = new Set(visibleFields(definition, values).map((f) => f.key));
-          values = Object.fromEntries(Object.entries(values).filter(([k]) => shown.has(k)));
-        }
+        const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary) : null;
+        const values = check?.values ?? Object.fromEntries(Object.entries(body.values).filter(([, v]) => v !== null && v !== ""));
         const summarySha256 = body.summary ? await snapshotSha256(body.summary) : null;
         const columns = {
           answers: JSON.stringify(values),
@@ -354,21 +392,10 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
           await audit(trx, req, { action: "work_record.started", entityType: "work_record", entityId: recordId, changes: { jobId: job.id } });
         }
 
-        if (body.status === "completed") {
+        if (check) {
           // A signed summary must be the summary sent now, byte for byte.
-          const signed = await trx
-            .selectFrom("signedDocuments")
-            .select(["requirementKey", "contentSha256"])
-            .where("organizationId", "=", organizationId)
-            .where("recordClientId", "=", body.clientId)
-            .execute();
-          if (signed.some((s) => s.contentSha256 !== summarySha256)) {
-            throw conflict("signature_mismatch", "The work summary changed after the customer signed it; ask for a new signature");
-          }
-          const problems = [
-            ...validateInspection(definition, values, await photoCounts(trx, organizationId, body.clientId)),
-            ...signatureProblems(definition, new Set(signed.map((s) => s.requirementKey!))),
-          ];
+          if (check.mismatch) throw signatureMismatch();
+          const problems = check.problems;
           if (problems.length) {
             await trx
               .updateTable("workRecords")
@@ -709,7 +736,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         "u.name as technicianName",
         "c.reason",
         "c.status",
-        "c.payload",
+        jsonText("c.payload").as("payloadText"),
         "c.resolutionNote",
         "c.resolvedAt",
         "c.attachedJobId",
@@ -731,7 +758,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       technicianName: r.technicianName,
       reason: r.reason,
       status: r.status,
-      payload: (r.payload as Record<string, unknown> | null) ?? null,
+      payload: (parseJson(r.payloadText) as Record<string, unknown> | null) ?? null,
       photoCount: Number(r.photoCount ?? 0),
       signatureCount: Number(r.signatureCount ?? 0),
       resolutionNote: r.resolutionNote,
@@ -771,7 +798,14 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
     if (!peek) throw notFound("Held record");
     await clientLock(trx, organizationId, peek.offlineClientId);
     const wo = await lockWorkOrder(trx, organizationId, peek.workOrderId);
-    const c = await trx.selectFrom("workSyncConflicts").selectAll().where("organizationId", "=", organizationId).where("id", "=", id).forUpdate().executeTakeFirstOrThrow();
+    const c = await trx
+      .selectFrom("workSyncConflicts")
+      .selectAll()
+      .select(jsonText("payload").as("payloadText"))
+      .where("organizationId", "=", organizationId)
+      .where("id", "=", id)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
     if (c.status !== "held") throw conflict("already_resolved", `This record was already ${c.status}`);
     return { wo, c };
   }
@@ -797,11 +831,20 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       const at = now();
       await db.transaction().execute(async (trx) => {
         const { wo, c } = await lockHeld(trx, organizationId, req.params.id);
-        const payload = workSync.safeParse(c.payload);
+        const payload = workSync.safeParse(parseJson(c.payloadText));
         if (!payload.success || payload.data.status !== "completed") throw conflict("not_finished", "The technician has not finished this record on the phone yet");
         const p = payload.data;
+        // The form version the record was started on, even if the company has since saved a newer one.
         const template = await workTemplate(trx, organizationId, p.templateId);
         if (!template) throw unprocessable("The record's form is not available to this organization");
+        // Accepted only as the technician could have completed it: the same checks, against the
+        // photos and signatures held for it. Refused, it stays held with everything kept.
+        const definition = template.definition as TemplateDefinition;
+        const unknown = unknownKeys(definition, p.values);
+        if (unknown.length) throw conflict("record_incomplete", `The record has answers its form does not ask: ${unknown.join(", ")}`);
+        const check = await completionCheck(trx, organizationId, c.offlineClientId, definition, p.values, p.summary);
+        if (check.mismatch) throw signatureMismatch();
+        if (check.problems.length) throw conflict("record_incomplete", `The record is not complete: ${check.problems.map((x) => x.message).join("; ")}`);
 
         const job = await trx.selectFrom("jobs").select(["id", "status", "siteId", "scheduledDate"]).where("organizationId", "=", organizationId).where("id", "=", c.jobId).forUpdate().executeTakeFirstOrThrow();
         const hasRecord = await trx.selectFrom("workRecords").select("id").where("jobId", "=", job.id).executeTakeFirst();
@@ -830,7 +873,6 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
             .executeTakeFirstOrThrow();
           targetJobId = created.id;
         }
-        const values = Object.fromEntries(Object.entries(p.values).filter(([, v]) => v !== null && v !== ""));
         const rec = await trx
           .insertInto("workRecords")
           .values({
@@ -841,9 +883,9 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
             siteId: job.siteId,
             technicianUserId: c.technicianUserId,
             templateId: template.id,
-            answers: JSON.stringify(values),
+            answers: JSON.stringify(check.values),
             summary: p.summary ? JSON.stringify(p.summary) : null,
-            summarySha256: p.summary ? await snapshotSha256(p.summary) : null,
+            summarySha256: check.summarySha256,
             finalVisit: p.finalVisit,
             phoneRevision: c.phoneRevision,
             arrivedAt: p.arrivedAt,
