@@ -14,6 +14,7 @@ import {
   serviceRequest,
   serviceRequestInput,
   serviceRequestResolveInput,
+  workOrderLabel,
   type PortalSite,
   type PortalView,
   type ServiceRequest,
@@ -28,6 +29,7 @@ import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
 import { readForDownload } from "../lib/demo.ts";
+import { completedWorkOrders, completionSummaryPdf } from "../lib/completion.ts";
 
 const params = z.object({ id });
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
@@ -208,6 +210,8 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           .limit(50)
           .execute(),
       ]);
+      // SW-7: finished work with its completion summary.
+      const work = await completedWorkOrders(db, organizationId, siteIds);
       // A report waiting for the maintenance provider's signature is not shown yet (30 TAC 285.7(b)(3)).
       const ready = new Set((await Promise.all(reports.map(async (x) => ((await customerCopy(db, organizationId, x.id))?.ready ? x.id : null)))).filter(Boolean));
 
@@ -244,6 +248,9 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             .filter((x) => x.siteId === s.id && ready.has(x.id))
             .map((x) => ({ id: x.id, inspectedOn: dateInZone(x.completedAt ?? x.arrivedAt, org.timezone), url: `/portal/${req.params.token}/reports/${x.id}` }))
             .sort((a, b) => b.inspectedOn.localeCompare(a.inspectedOn)),
+          completedWork: work
+            .filter((w) => w.siteId === s.id)
+            .map((w) => ({ id: w.id, label: workOrderLabel(w.number), title: w.title, completedOn: dateInZone(w.completedAt!, org.timezone), url: `/portal/${req.params.token}/work-orders/${w.id}/summary` })),
           serviceRequests: requests
             .filter((x) => x.siteId === s.id)
             .map((x) => ({ id: x.id, kind: x.kind, description: x.description, status: x.status, resolution: x.resolution, createdAt: x.createdAt.toISOString(), closedAt: iso(x.closedAt) })),
@@ -304,6 +311,27 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .header("content-disposition", `inline; filename="inspection-report-${row.inspectionId.slice(0, 8)}${copy.signed ? "-signed" : ""}.pdf"`)
         .header("x-content-type-options", "nosniff")
         .send(data);
+    },
+  );
+
+  app.get(
+    "/portal/:token/work-orders/:workOrderId/summary",
+    {
+      config: { public: true, rateLimit: publicLimit },
+      schema: { tags: ["portal"], summary: "Open the completion summary of the customer's finished work (SW-7)", params: token.extend({ workOrderId: id }) },
+    },
+    async (req, reply) => {
+      const link = await linkFor(req.params.token);
+      // Only this customer's work order; any other id is simply not found.
+      const pdf = await completionSummaryPdf(db, link.organizationId, req.params.workOrderId, now(), { customerId: link.customerId }).catch((err: unknown) => {
+        if ((err as { statusCode?: number }).statusCode === 409) throw notFound("Work completion summary");
+        throw err;
+      });
+      return reply
+        .type("application/pdf")
+        .header("content-disposition", `inline; filename="work-completion-${req.params.workOrderId.slice(0, 8)}.pdf"`)
+        .header("x-content-type-options", "nosniff")
+        .send(pdf);
     },
   );
 

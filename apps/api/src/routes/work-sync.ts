@@ -187,7 +187,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
     definition: TemplateDefinition,
     sent: Record<string, unknown>,
     summary: unknown,
-    work: { workOrderId: string; pumpOut: PumpOutInput | null | undefined },
+    work: { workOrderId: string; pumpOut: PumpOutInput | null | undefined; finalVisit: boolean },
   ) {
     const answers = Object.fromEntries(Object.entries(sent).filter(([, v]) => v !== null && v !== "")) as Parameters<typeof visibleFields>[1];
     const shown = new Set(visibleFields(definition, answers).map((f) => f.key));
@@ -202,7 +202,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
     const mismatch = signed.some((sig) => sig.contentSha256 !== summarySha256);
     const problems = [
       ...validateInspection(definition, values, await photoCounts(trx, organizationId, clientId)),
-      ...signatureProblems(definition, new Set(signed.map((sig) => sig.requirementKey!))),
+      // SW-7: a sign-off marked for the final visit is asked for only on the visit that finishes the work.
+      ...signatureProblems(definition, new Set(signed.map((sig) => sig.requirementKey!)), work.finalVisit),
       // SW-6: work that needs a disposal record completes only with its pump-out.
       ...pumpOutProblems(await pumpOutRequired(trx, features, organizationId, work.workOrderId), work.pumpOut),
       ...(await pumpOutVehicleProblems(trx, organizationId, work.pumpOut)),
@@ -380,7 +381,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const definition = template.definition as TemplateDefinition;
         const unknown = unknownKeys(definition, body.values);
         if (unknown.length) throw unprocessable(`Unknown fields: ${unknown.join(", ")}`);
-        const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary, { workOrderId: job.workOrderId, pumpOut: body.pumpOut }) : null;
+        const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary, { workOrderId: job.workOrderId, pumpOut: body.pumpOut, finalVisit: body.finalVisit }) : null;
         const values = check?.values ?? Object.fromEntries(Object.entries(body.values).filter(([, v]) => v !== null && v !== ""));
         const summarySha256 = body.summary ? await snapshotSha256(body.summary) : null;
         const columns = {
@@ -891,7 +892,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const definition = template.definition as TemplateDefinition;
         const unknown = unknownKeys(definition, p.values);
         if (unknown.length) throw conflict("record_incomplete", `The record has answers its form does not ask: ${unknown.join(", ")}`);
-        const check = await completionCheck(trx, organizationId, c.offlineClientId, definition, p.values, p.summary, { workOrderId: wo.id, pumpOut: p.pumpOut });
+        const check = await completionCheck(trx, organizationId, c.offlineClientId, definition, p.values, p.summary, { workOrderId: wo.id, pumpOut: p.pumpOut, finalVisit: p.finalVisit });
         if (check.mismatch) throw signatureMismatch();
         if (check.problems.length) throw conflict("record_incomplete", `The record is not complete: ${check.problems.map((x) => x.message).join("; ")}`);
 

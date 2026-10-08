@@ -20,6 +20,7 @@ const SYSTEM_COLUMNS = [
   "treatmentType",
   "disposalType",
   "chlorinationMethod",
+  "systemCategory",
   "notes",
   "active",
 ] as const;

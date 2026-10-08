@@ -58,6 +58,13 @@ export const contractInput = z.object({
    */
   acceptVisits: z.number().int().min(1).max(366).optional(),
   /**
+   * SW-7: the office confirms an aerobic inspection contract on a site whose systems are all
+   * recorded as non-aerobic (see `systemWarning` in `GET /sites/:id/contract-terms`). Without it
+   * such a contract is refused (409 `system_not_aerobic`); the records may be wrong, so it is
+   * never a hard refusal.
+   */
+  confirmSystemCategory: z.boolean().optional(),
+  /**
    * The plan version's options the customer takes (SW-8, plan builder on). Required options are
    * included whatever is sent; any other option is taken only when named here.
    */
@@ -72,6 +79,8 @@ export const contractTermsPreview = z.object({
   warning: z.string().nullable(),
   /** Set when the authority's schedule for this site isn't settled yet (Montgomery food establishments). */
   scheduleNotice: z.string().nullable(),
+  /** SW-7: set when the site's systems are all recorded as non-aerobic: confirm before creating. */
+  systemWarning: z.string().nullable(),
 });
 
 export const renewInput = z.object({

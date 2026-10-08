@@ -161,6 +161,36 @@ export const site = z.object({
 });
 export const siteListItem = site.extend({ customerName: z.string() });
 
+/**
+ * What kind of system it is (SW-7). Null until someone says; a backfill set `aerobic` only where
+ * the site has an aerobic inspection contract, and `unknown` elsewhere. Nothing is guessed from
+ * the free-text type columns, which are kept as they are.
+ */
+export const SYSTEM_CATEGORIES = ["aerobic", "conventional", "low_pressure_dosing", "drip", "holding_tank", "lift_station", "other", "unknown"] as const;
+export type SystemCategory = (typeof SYSTEM_CATEGORIES)[number];
+export const SYSTEM_CATEGORY_LABELS: Record<SystemCategory, string> = {
+  aerobic: "Aerobic",
+  conventional: "Conventional",
+  low_pressure_dosing: "Low-pressure dosing",
+  drip: "Drip",
+  holding_tank: "Holding tank",
+  lift_station: "Lift station",
+  other: "Other",
+  unknown: "Not known",
+};
+
+/**
+ * The warning before an aerobic inspection contract starts on a site whose systems are all
+ * recorded as something other than aerobic. A warning, not a refusal: the records may be wrong.
+ * Systems with no category or `unknown` might be aerobic, so they never raise it.
+ */
+export function aerobicContractWarning(categories: readonly (SystemCategory | null)[]): string | null {
+  if (categories.length === 0) return null;
+  if (!categories.every((c) => c !== null && c !== "unknown" && c !== "aerobic")) return null;
+  const kinds = [...new Set(categories.map((c) => SYSTEM_CATEGORY_LABELS[c!].toLowerCase()))].join(" and ");
+  return `This site's system${categories.length === 1 ? " is" : "s are"} recorded as ${kinds}, not aerobic. An aerobic inspection contract is for an aerobic system. Start it anyway?`;
+}
+
 const systemFields = z.object({
   manufacturer: optionalText(100),
   model: optionalText(100),
@@ -170,6 +200,7 @@ const systemFields = z.object({
   treatmentType: optionalText(100),
   disposalType: optionalText(100),
   chlorinationMethod: optionalText(100),
+  systemCategory: z.enum(SYSTEM_CATEGORIES).nullish(),
   notes: optionalText(5000),
   active: z.boolean(),
 });
@@ -187,6 +218,7 @@ export const wastewaterSystem = z.object({
   treatmentType: z.string().nullable(),
   disposalType: z.string().nullable(),
   chlorinationMethod: z.string().nullable(),
+  systemCategory: z.enum(SYSTEM_CATEGORIES).nullable(),
   notes: z.string().nullable(),
   active: z.boolean(),
 });

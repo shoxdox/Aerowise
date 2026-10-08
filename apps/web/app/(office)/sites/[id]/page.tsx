@@ -1,6 +1,6 @@
 "use client";
 
-import { SAFETY_FLAGS, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, type SiteDetail } from "@aerowise/domain";
+import { SAFETY_FLAGS, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, SYSTEM_CATEGORIES, SYSTEM_CATEGORY_LABELS, type SiteDetail, type SystemCategory } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -73,6 +73,7 @@ export default function SitePage() {
       disposalType: v.disposalType,
       chlorinationMethod: v.chlorinationMethod,
       systemType: "aerobic",
+      systemCategory: v.systemCategory || null,
     });
   }
 
@@ -246,6 +247,16 @@ export default function SitePage() {
         {editing === "system" && (
           <form className="card grid" onSubmit={onAddSystem}>
             <label>
+              Kind of system
+              <select name="systemCategory" defaultValue="aerobic">
+                {SYSTEM_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {SYSTEM_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
               Manufacturer
               <input name="manufacturer" />
             </label>
@@ -285,9 +296,31 @@ export default function SitePage() {
             </div>
           </form>
         )}
+        {formError && editing === null && <p className="error">{formError}</p>}
         {site.systems.length === 0 && <p className="muted">No systems recorded.</p>}
         {site.systems.map((s) => (
-          <dl key={s.id} className="card details">
+          <dl key={s.id} className="card details" data-testid="system">
+            <dt>Kind of system</dt>
+            <dd>
+              {editable ? (
+                <select
+                  aria-label="Kind of system"
+                  value={s.systemCategory ?? ""}
+                  onChange={(e) => void save(`/systems/${s.id}`, "PATCH", { systemCategory: (e.target.value || null) as SystemCategory | null })}
+                >
+                  <option value="">Not recorded</option>
+                  {SYSTEM_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {SYSTEM_CATEGORY_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+              ) : s.systemCategory ? (
+                SYSTEM_CATEGORY_LABELS[s.systemCategory]
+              ) : (
+                "Not recorded"
+              )}
+            </dd>
             <dt>Unit</dt>
             <dd>{[s.manufacturer, s.model].filter(Boolean).join(" ") || "Unknown"}</dd>
             <dt>Serial</dt>

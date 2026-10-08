@@ -59,7 +59,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
     void run(async () => {
       const preview = await api<ContractTermsPreview>(`/sites/${siteId}/contract-terms?planId=${v.planId}&startOn=${v.startOn}`);
       // Said before the contract is made: more visits than the plan, or a schedule the authority hasn't settled.
-      if (preview.warning || preview.scheduleNotice) {
+      if (preview.warning || preview.scheduleNotice || preview.systemWarning) {
         setMoreVisits({ body, preview });
         throw new Keep();
       }
@@ -71,7 +71,12 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
     if (!moreVisits) return;
     const { body, preview } = moreVisits;
     setMoreVisits(null);
-    void run(() => api(`/sites/${siteId}/contracts`, { method: "POST", body: { ...body, acceptVisits: preview.visitsPerTerm } }));
+    void run(() =>
+      api(`/sites/${siteId}/contracts`, {
+        method: "POST",
+        body: { ...body, acceptVisits: preview.visitsPerTerm, ...(preview.systemWarning ? { confirmSystemCategory: true } : {}) },
+      }),
+    );
   }
 
   function cancel(c: ContractDetail, event: FormEvent<HTMLFormElement>) {
@@ -155,6 +160,11 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               </label>
               {moreVisits ? (
                 <div className="wide stack" role="alert">
+                  {moreVisits.preview.systemWarning && (
+                    <p className="restriction" data-testid="system-warning">
+                      {moreVisits.preview.systemWarning}
+                    </p>
+                  )}
                   {moreVisits.preview.warning && <p className="restriction">{moreVisits.preview.warning}</p>}
                   {moreVisits.preview.scheduleNotice && (
                     <p className="restriction">{moreVisits.preview.scheduleNotice}. Until then its filings are held for review.</p>

@@ -37,6 +37,7 @@ describe("work orders", () => {
       ["repair", "repair"],
       ["installation", "installation"],
       ["service_call", "other"],
+      ["conventional_service", "maintenance"],
     ]);
 
     for (const [i, t] of types.entries()) {
@@ -147,7 +148,7 @@ describe("work orders", () => {
     const t = await createTenant(ctx, "Org A");
     const added = await t.api.post("/work-types", { key: "jetting", name: "Line jetting", category: "maintenance", defaultDurationMinutes: 120 });
     expect(added.statusCode, added.body).toBe(201);
-    expect(added.json()).toMatchObject({ key: "jetting", position: 5, active: true });
+    expect(added.json()).toMatchObject({ key: "jetting", position: 6, active: true });
     expect((await t.api.post("/work-types", { key: "jetting", name: "Again", category: "other" })).statusCode).toBe(409);
     const off = await t.api.patch(`/work-types/${added.json().id}`, { active: false, name: "Jetting" });
     expect(off.json()).toMatchObject({ name: "Jetting", active: false });

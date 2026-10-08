@@ -4,6 +4,7 @@ import {
   formatEntered,
   pumpOutProblems,
   signatureProblems,
+  signaturesForVisit,
   snapshotSha256,
   validateInspection,
   visibleFields,
@@ -214,7 +215,8 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   for (const p of rec.photos) counts[p.photoKey] = (counts[p.photoKey] ?? 0) + 1;
   const invalidNow = readOnly ? [] : validateInspection(def, rec.values, counts).filter((p) => p.problem === "invalid");
   const problemFor = (key: string) => problems.find((p) => p.key === key) ?? invalidNow.find((p) => p.key === key);
-  const signatures = def.signatures ?? [];
+  // SW-7: a sign-off marked for the final visit is not asked for while another visit is to come.
+  const signatures = signaturesForVisit(def, rec.finalVisit);
   const required = signatures.filter((s) => s.required);
 
   const setValue = (key: string, v: InspectionValue) => {
@@ -287,7 +289,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
           },
         ]
       : [];
-    const missing = signatureProblems(def, new Set(sigs.map((s) => s.requirementKey)));
+    const missing = signatureProblems(def, new Set(sigs.map((s) => s.requirementKey)), base.finalVisit);
     if (missing.length) {
       setProblems(missing);
       setBusy(false);
