@@ -13,7 +13,8 @@
 # All worktrees must be installed and built (pnpm install --frozen-lockfile && pnpm build).
 # Ports 3000 and 4000 must be free; the script stops only the process groups it started.
 # Env: CHROMIUM_PATH, PGHOST_URL (default postgres://aerowise:aerowise@localhost:5432),
-#      FINAL_FEATURES (default all six core flags; add later slices' flags when they merge).
+#      FINAL_FEATURES (default: every flag in the final SHA's FEATURES), SERVER_FEATURES (default:
+#      every flag the server SHA knows, for the floor phase's API).
 #
 # Verdict: each phase prints "PHASE <name> END checks=<n> fails=<m>" as its last line. The drill
 # passes only when every phase exited 0 and printed that marker with fails=0 and at least its
@@ -23,10 +24,15 @@ FINAL=$(cd "$1" && pwd); PHONE=$(cd "$2" && pwd); SERVER=$(cd "${3:-$1}" && pwd)
 PG=${PGHOST_URL:-postgres://aerowise:aerowise@localhost:5432}
 DB=aerowise_drilltest
 URL=$PG/$DB
-FEATURES=${FINAL_FEATURES:-work_orders,service_items,field_work,estimates,deposits,plan_builder}
+# Flags: every flag each SHA knows, so the final runs with all waves (read from its FEATURES).
+knows() { sed -n 's/^export const FEATURES = \[\(.*\)\] as const;$/\1/p' "$1/packages/domain/src/features.ts" | tr -d ' "'; }
+FEATURES=${FINAL_FEATURES:-$(knows "$FINAL")}
+SERVER_FEATURES=${SERVER_FEATURES:-$(knows "$SERVER")}
+[ -n "$FEATURES" ] && [ -n "$SERVER_FEATURES" ] || { echo "could not read FEATURES from the final or server worktree"; exit 2; }
 OUT=${DRILL_OUT:-$(mktemp -d /tmp/sw12-drill-a.XXXX)}
 PROFILE=$OUT/phone-profile; STATE=$OUT/state.json; FILES=$OUT/files; RESULTS=$OUT/results.txt
 mkdir -p "$PROFILE" "$FILES"; : > "$RESULTS"
+echo "flags: final $FEATURES; floor-phase server $SERVER_FEATURES" | tee -a "$RESULTS"
 sha() { git -C "$1" rev-parse HEAD; }
 [ "$(sha "$PHONE")" = a39e875023abe72b1e8ae237f3fdd2ee53dff2bd ] || { echo "phone floor worktree is not a39e875"; exit 2; }
 if [ "$SERVER" = "$FINAL" ]; then
@@ -89,7 +95,7 @@ phase() { # <name> <min-checks>
 
 busy && { echo "ports 3000/4000 are in use; stop whatever runs there first"; exit 2; }
 psql "$PG/postgres" -qc "drop database if exists $DB" -c "create database $DB"
-(cd "$FINAL" && DATABASE_URL=$URL pnpm db:migrate && DATABASE_URL=$URL DEMO_MODE=true AEROWISE_FEATURES=$FEATURES pnpm db:seed) > "$OUT/setup.log" 2>&1
+(cd "$FINAL" && DATABASE_URL=$URL pnpm db:migrate && DATABASE_URL=$URL DEMO_MODE=true FILE_STORAGE_DIR="$FILES" AEROWISE_FEATURES=$FEATURES pnpm db:seed) > "$OUT/setup.log" 2>&1
 
 if start "$FINAL" "$FINAL" "$FEATURES" final-1; then phase before 2; else STATUS[before]="FAILED (servers)"; fi
 stop
@@ -98,7 +104,7 @@ if [ "${STATUS[before]}" = passed ]; then
     echo "server floor migrate (must be a no-op): $(cd "$SERVER" && DATABASE_URL=$URL pnpm db:migrate 2>&1 | tail -1)" | tee -a "$RESULTS"
   fi
   # Only the phone's web app rolls back; the API is the approved server.
-  if start "$SERVER" "$PHONE" "$FEATURES" floor; then phase floor 8; else STATUS[floor]="FAILED (servers)"; fi
+  if start "$SERVER" "$PHONE" "$SERVER_FEATURES" floor; then phase floor 8; else STATUS[floor]="FAILED (servers)"; fi
   stop
   # Roll forward and recover the phone whatever happened on the floor.
   if start "$FINAL" "$FINAL" "$FEATURES" final-2; then phase after 6; else STATUS[after]="FAILED (servers)"; fi

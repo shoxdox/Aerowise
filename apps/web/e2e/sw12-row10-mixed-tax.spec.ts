@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import pg from "pg";
-import { connectQuickBooks, disconnectQuickBooks, syncQuickBooksOnce } from "./sw12-quickbooks.ts";
+import { connectQuickBooks, disconnectQuickBooks, syncQuickBooksOnce } from "./sw12-worker-steps.ts";
 
 // SW-12 plan §12 row 10, browser half: the office issues an invoice with a taxable and a
 // non-taxable line. With QuickBooks sales tax sync off it waits in the conflict center as "Sales

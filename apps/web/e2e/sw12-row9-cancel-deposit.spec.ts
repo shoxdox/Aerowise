@@ -1,14 +1,17 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import pg from "pg";
-import { connectQuickBooks, disconnectQuickBooks, syncQuickBooksOnce } from "./sw12-quickbooks.ts";
+import { connectQuickBooks, disconnectQuickBooks, syncQuickBooksOnce } from "./sw12-worker-steps.ts";
 
 // SW-12 plan §12 row 9, browser half: the office cancels accepted work whose deposit is paid, then
 // settles the deposit from the inbox: refunded in one case, kept with a reason in the other. The
 // work order and its visit are cancelled, the inbox asks for a decision and nothing moves until
-// the office makes it, and the decision is on the deposit ledger. With the built-in test
-// QuickBooks company connected, a sync keeps the deposit and its refund out of QuickBooks behind
-// the deposit-mapping conflict (plan §3.6 and SW-5's "QuickBooks deposit handling behind its
-// conflict"); no Refund Receipt is written for it. On the e2e demo company with test payments.
+// the office makes it, and the decision is on the deposit ledger. On the e2e demo company with
+// test payments.
+//
+// QuickBooks evidence is HELD, not delivered: with the built-in test company connected, a sync
+// keeps the deposit invoice in the "Deposit not mapped" conflict (plan §3.6; gate G-QBO-DEPOSIT),
+// so its refund is not sent and no Refund Receipt exists. The plan's "QuickBooks refund receipt
+// where connected" is therefore not shown for deposits here; this spec proves only the hold.
 const databaseUrl = process.env.E2E_DATABASE_URL ?? "postgres://aerowise:aerowise@localhost:5432/aerowise_e2e";
 
 async function signIn(page: Page) {
@@ -41,7 +44,7 @@ async function acceptedWithPaidDeposit(api: APIRequestContext, db: pg.Client, ti
   return { id: est.id as string, depositId, depositNumber: deposit.number as string, workOrderId, jobId: (await scheduled.json()).visits[0].jobId as string };
 }
 
-test("cancelled accepted work with a paid deposit: refunded in one case, kept with a reason in the other, decided only by the office", async ({ page }) => {
+test("cancelled accepted work with a paid deposit: refunded in one case, kept with a reason in the other, decided only by the office; QuickBooks holds the deposit (no refund receipt)", async ({ page }) => {
   test.setTimeout(240_000);
   const db = new pg.Client({ connectionString: databaseUrl });
   await db.connect();
@@ -112,7 +115,8 @@ test("cancelled accepted work with a paid deposit: refunded in one case, kept wi
       await page.goto("/inbox");
       await expect(page.locator("li.card").filter({ hasText: "Deposit disposition needed" }).filter({ hasText: e.depositNumber })).toHaveCount(0);
 
-      // QuickBooks: the deposit is held behind its mapping conflict, so no Refund Receipt is written.
+      // QuickBooks: HELD. The deposit waits behind its mapping conflict and its refund is not sent
+      // (not a delivered Refund Receipt).
       syncQuickBooksOnce(org);
       const link = async (type: string, id: string) => (await db.query("select status, conflict_kind, external_id from quickbooks_links where entity_type = $1 and entity_id = $2", [type, id])).rows[0];
       expect(await link("invoice", e.depositId)).toMatchObject({ status: "conflict", conflict_kind: "deposit_mapping_missing", external_id: null });

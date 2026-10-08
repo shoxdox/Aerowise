@@ -38,6 +38,7 @@ FLOOR_SHA=$(git -C "$FLOOR" rev-parse HEAD)
 case "$FLOOR_SHA" in "$APP_FLOOR"*) ;; *) echo "floor worktree $FLOOR_SHA is not APP_FLOOR $APP_FLOOR"; exit 2;; esac
 log() { echo "$*" | tee -a "$RESULTS"; }
 log "Drill B: final $(git -C "$FINAL" rev-parse HEAD), floor $FLOOR_SHA, db $DB, out $OUT"
+log "flags: final $FEATURES; floor $FLOOR_FEATURES"
 case "$FLOOR_SHA" in 81048d3*) log "NOTE floor 81048d3 is the core/pumping floor; it is not the final app floor once SW-9 has merged (plan §9.2)";; esac
 [ -n "${FLOOR_UNSUPPORTED:-}" ] && log "NOTE newer than the floor, reported as unsupported there: $FLOOR_UNSUPPORTED"
 
