@@ -8,6 +8,7 @@ import { useLoad } from "@/components/useLoad";
 import { HeldFieldRecords, useWorkForms, VisitFieldRecord } from "@/components/WorkFieldRecords";
 import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
+import { WorkCoverage } from "@/components/WorkCoverage";
 import { day, money } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
@@ -216,6 +217,8 @@ export default function WorkOrderPage() {
           </p>
         )}
       </section>
+
+      {editable && roleHasPermission(me.role, "work:write") && <WorkCoverage workOrderId={w.id} onChange={() => void reload()} />}
 
       <section className="stack">
         <h2>Notes</h2>

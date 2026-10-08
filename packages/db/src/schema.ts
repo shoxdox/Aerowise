@@ -21,6 +21,9 @@ import type {
   WorkCategory,
   WorkOrderStatus,
   WorkSourceKind,
+  EstimateStatus,
+  EstimateSourceKind,
+  EstimateAcceptanceKind,
 } from "@aerowise/domain";
 
 // Hand-written Kysely table types (camelCase via CamelCasePlugin). Keep in sync with
@@ -53,6 +56,7 @@ export interface OrganizationsTable {
   nextInvoiceNumber: Generated<number>;
   /** Next work order number (WO-1001 onward), gapless per company. */
   nextWorkOrderNumber: Generated<number>;
+  nextEstimateNumber: Generated<number>;
   stripeAccountId: string | null;
   stripeChargesEnabled: Generated<boolean>;
   stripeDetailsSubmitted: Generated<boolean>;
@@ -228,6 +232,59 @@ export interface PlansTable {
   billingFrequency: Generated<"annual" | "semiannual" | "quarterly" | "monthly">;
   serviceType: Generated<"aerobic_inspection">;
   active: Generated<boolean>;
+  /** Set by the database when the plan is made or its terms change (SW-8, migration 0053). */
+  currentVersionId: Generated<string>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+/** Immutable; see migration 0053 and packages/domain/src/plans.ts. */
+export interface PlanVersionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  planId: string;
+  version: number;
+  name: string;
+  customerType: "residential" | "commercial";
+  termMonths: number;
+  visitsPerTerm: number;
+  priceCents: number;
+  billingFrequency: "annual" | "semiannual" | "quarterly" | "monthly";
+  serviceType: "aerobic_inspection";
+  termsText: string | null;
+  options: ColumnType<unknown, string | undefined, never>;
+  coverage: ColumnType<unknown, string | undefined, never>;
+  serviceCycles: ColumnType<unknown, string | undefined, never>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
+/** Frozen when the contract is made; never updated or deleted. */
+export interface ContractCoverageRulesTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractId: string;
+  ruleKey: string;
+  position: number;
+  rule: ColumnType<unknown, string, never>;
+  planVersionId: string;
+  limitCount: number | null;
+  periodStart: string;
+  periodEnd: string;
+  createdAt: CreatedAt;
+}
+
+export interface CoverageUsesTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractCoverageRuleId: string;
+  workOrderId: string;
+  state: Generated<"reserved" | "consumed" | "released">;
+  invoiceId: string | null;
+  reservedAt: Timestamp;
+  consumedAt: Timestamp | null;
+  releasedAt: Timestamp | null;
+  reason: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -264,6 +321,8 @@ export interface ContractsTable {
   noticeSentOn: ColumnType<string | null, string | null | undefined, string | null>;
   noticeNote: ColumnType<string | null, string | null | undefined, string | null>;
   noticeRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
+  planVersionId: ColumnType<string | null, string | null | undefined, string | null>;
+  agreementSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
   notes: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
@@ -1055,6 +1114,8 @@ export interface RenewalsTable {
   startOn: string;
   endOn: string;
   selectedAddons: ColumnType<unknown, string | undefined, string>;
+  planVersionId: ColumnType<string | null, string | null | undefined, string | null>;
+  selectedOptions: ColumnType<unknown, string | undefined, string>;
   customerUpdates: ColumnType<unknown, string | undefined, string>;
   sentAt: Timestamp | null;
   sendCount: Generated<number>;
@@ -1100,6 +1161,8 @@ export interface SignedDocumentsTable {
   offlineClientId: ColumnType<string | null, string | null | undefined, never>;
   recordClientId: ColumnType<string | null, string | null | undefined, never>;
   requirementKey: ColumnType<string | null, string | null | undefined, never>;
+  /** Set on an estimate acceptance (SW-5). */
+  estimateId: ColumnType<string | null, string | null | undefined, never>;
   createdAt: CreatedAt;
 }
 
@@ -1347,6 +1410,99 @@ export interface WorkTypesTable {
   updatedAt: Timestamp;
 }
 
+type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>;
+
+export interface EstimatesTable {
+  id: Generated<string>;
+  organizationId: string;
+  number: number;
+  customerId: string;
+  siteId: string;
+  workTypeId: Nullable<string>;
+  title: string;
+  status: Generated<EstimateStatus>;
+  currentVersion: Generated<number>;
+  taxRateBps: Generated<number>;
+  discountCents: Generated<number>;
+  termsText: Generated<string>;
+  expiresOn: Nullable<string>;
+  sourceKind: Generated<EstimateSourceKind>;
+  sourceId: Nullable<string>;
+  sentAt: Nullable<Date>;
+  viewedAt: Nullable<Date>;
+  acceptedVersion: Nullable<number>;
+  acceptedAt: Nullable<Date>;
+  acceptanceKind: Nullable<EstimateAcceptanceKind>;
+  acceptedDocumentId: Nullable<string>;
+  officeEvidence: Nullable<string>;
+  acceptedBy: Nullable<string>;
+  acceptedSelection: ColumnType<unknown, string | null | undefined, string | null>;
+  workOrderId: Nullable<string>;
+  declinedAt: Nullable<Date>;
+  declinedReason: Nullable<string>;
+  expiredAt: Nullable<Date>;
+  voidedAt: Nullable<Date>;
+  voidReason: Nullable<string>;
+  cancelledAt: Nullable<Date>;
+  cancelReason: Nullable<string>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export interface EstimateLinesTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  position: number;
+  description: string;
+  quantityMilli: number;
+  unitPriceCents: number;
+  taxable: Generated<boolean>;
+  optional: Generated<boolean>;
+  selectedByDefault: Generated<boolean>;
+  createdAt: CreatedAt;
+}
+
+export interface EstimateVersionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  version: number;
+  lines: ColumnType<unknown, string, never>;
+  taxRateBps: number;
+  discountCents: number;
+  totals: ColumnType<unknown, string, never>;
+  termsText: string;
+  expiresOn: string | null;
+  contentSha256: string;
+  sentAt: Date;
+  sentBy: string | null;
+}
+
+export interface EstimateEventsTable {
+  id: Generated<string>;
+  seq: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  eventType: string;
+  summary: string;
+  actorUserId: string | null;
+  details: ColumnType<unknown, string | undefined, never>;
+  occurredAt: Timestamp;
+}
+
+export interface EstimateLinksTable {
+  id: Generated<string>;
+  organizationId: string;
+  estimateId: string;
+  tokenHash: Buffer;
+  source: "email" | "office";
+  sentTo: string | null;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
 export interface WorkOrdersTable {
   id: Generated<string>;
   organizationId: string;
@@ -1429,6 +1585,9 @@ export interface DB {
   systemMonitoring: SystemMonitoringTable;
   auditEvents: AuditEventsTable;
   plans: PlansTable;
+  planVersions: PlanVersionsTable;
+  contractCoverageRules: ContractCoverageRulesTable;
+  coverageUses: CoverageUsesTable;
   contracts: ContractsTable;
   serviceObligations: ServiceObligationsTable;
   jobs: JobsTable;
@@ -1462,6 +1621,11 @@ export interface DB {
   renewalAddons: RenewalAddonsTable;
   renewals: RenewalsTable;
   signedDocuments: SignedDocumentsTable;
+  estimates: EstimatesTable;
+  estimateLines: EstimateLinesTable;
+  estimateVersions: EstimateVersionsTable;
+  estimateEvents: EstimateEventsTable;
+  estimateLinks: EstimateLinksTable;
   portalLinks: PortalLinksTable;
   serviceRequests: ServiceRequestsTable;
   smsMessages: SmsMessagesTable;

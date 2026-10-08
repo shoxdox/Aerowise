@@ -27,6 +27,7 @@ function RenewPage() {
   const justPaid = useSearchParams().get("paid") === "1";
   const { data: r, error, reload } = useLoad<PublicRenewal>(`/renew/${token}`);
   const [addonIds, setAddonIds] = useState<string[] | null>(null);
+  const [optionKeys, setOptionKeys] = useState<string[] | null>(null);
   const [mode, setMode] = useState<"typed" | "drawn">("typed");
   const [drawn, setDrawn] = useState<string | null>(null);
   const [signer, setSigner] = useState("");
@@ -61,8 +62,14 @@ function RenewPage() {
   const contact = [r.provider.phone, r.provider.email].filter(Boolean).join(" or ");
   const chosen = addonIds ?? r.selectedAddonIds;
   const chosenAddons = r.addons.filter((a) => chosen.includes(a.id));
+  // The plan's own options (SW-8): the required ones are always in.
+  const picked = optionKeys ?? r.selectedOptionKeys;
+  const chosenOptions = r.options.filter((o) => o.required || picked.includes(o.optionKey));
   const totals = invoiceTotals(
-    [{ quantity: 1, unitPriceCents: r.firstPaymentCents, taxable: false }, ...chosenAddons.map((a) => ({ quantity: 1, unitPriceCents: a.priceCents, taxable: a.taxable }))],
+    [
+      { quantity: 1, unitPriceCents: r.firstPaymentCents, taxable: false },
+      ...[...chosenOptions, ...chosenAddons].map((a) => ({ quantity: 1, unitPriceCents: a.priceCents, taxable: a.taxable })),
+    ],
     0,
     r.taxRateBps,
   );
@@ -84,6 +91,7 @@ function RenewPage() {
           version: r!.version,
           contact: { email: v.email, phone: v.phone ?? null },
           addonIds: chosen,
+          optionKeys: chosenOptions.map((o) => o.optionKey),
           signerName: signer.trim(),
           signature: mode === "drawn" ? { kind: "drawn", image: drawn } : { kind: "typed" },
           agree: v.agree === "on",
@@ -242,6 +250,40 @@ function RenewPage() {
           </label>
         </div>
 
+        {r.coverage.length > 0 && (
+          <div className="card stack" data-testid="renewal-coverage">
+            <h2>What your plan covers</h2>
+            <ul className="plain">
+              {r.coverage.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {r.options.length > 0 && (
+          <div className="card stack">
+            <h2>Plan options</h2>
+            {r.options.map((o) => (
+              <label key={o.optionKey} className="addon">
+                <input
+                  type="checkbox"
+                  checked={o.required || picked.includes(o.optionKey)}
+                  disabled={o.required || !signable}
+                  onChange={(e) => setOptionKeys(e.target.checked ? [...picked, o.optionKey] : picked.filter((x) => x !== o.optionKey))}
+                />
+                <span className="stack" style={{ gap: 0 }}>
+                  <span>
+                    {o.name} · {money(o.priceCents)}
+                    {o.required ? " (included with this plan)" : ""}
+                  </span>
+                  {o.description && <span className="muted small">{o.description}</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
         {r.addons.length > 0 && (
           <div className="card stack">
             <h2>Add to your plan</h2>
@@ -268,6 +310,12 @@ function RenewPage() {
           <dl className="details totals" style={{ marginLeft: 0 }}>
             <dt>{r.installments > 1 ? "First payment" : "Plan"}</dt>
             <dd>{money(r.firstPaymentCents)}</dd>
+            {chosenOptions.map((o) => (
+              <span key={o.optionKey} style={{ display: "contents" }}>
+                <dt>{o.name}</dt>
+                <dd>{money(o.priceCents)}</dd>
+              </span>
+            ))}
             {chosenAddons.map((a) => (
               <span key={a.id} style={{ display: "contents" }}>
                 <dt>{a.name}</dt>

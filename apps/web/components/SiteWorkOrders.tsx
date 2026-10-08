@@ -9,6 +9,7 @@ import { useFeature } from "@/lib/features";
 /** The site's work orders (pumping, repairs, installations), apart from its inspection visits. */
 export function SiteWorkOrders({ siteId, editable }: { siteId: string; editable: boolean }) {
   const on = useFeature("work_orders");
+  const estimates = useFeature("estimates");
   const { data } = useLoad<{ items: WorkOrderSummary[]; total: number }>(`/work-orders?siteId=${siteId}&limit=20`);
   if (!on && !data?.items.length) return null;
   return (
@@ -16,6 +17,11 @@ export function SiteWorkOrders({ siteId, editable }: { siteId: string; editable:
       <div className="row">
         <h2>Work orders</h2>
         <span className="spacer" />
+        {on && estimates && editable && (
+          <Link href={`/estimates/new?siteId=${siteId}`} className="button secondary">
+            Create estimate
+          </Link>
+        )}
         {on && editable && (
           <Link href={`/work/new?siteId=${siteId}`} className="button secondary">
             Create work order
