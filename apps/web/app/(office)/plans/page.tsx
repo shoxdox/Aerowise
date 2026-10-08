@@ -1,6 +1,7 @@
 "use client";
 
 import type { Plan } from "@aerowise/domain";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -107,7 +108,7 @@ export default function PlansPage() {
           {data?.items.map((p) => (
             <tr key={p.id}>
               <td>
-                {p.name} <span className="muted">· {p.customerType}</span>
+                <Link href={`/plans/${p.id}`}>{p.name}</Link> <span className="muted">· {p.customerType} · version {p.version}</span>
               </td>
               <td>{p.termMonths} months</td>
               <td>

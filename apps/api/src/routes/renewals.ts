@@ -20,15 +20,18 @@ import {
   renewalSettings,
   renewalSettingsInput,
   renewalSignInput,
+  parsePlanOptions,
   type AgreementContent,
   type ChosenAddon,
+  type Feature,
+  type PlanOption,
   type PublicRenewal,
   type RenewalDetail,
   type RenewalSettings,
   type RenewalStatus,
 } from "@aerowise/domain";
 import { invoiceEvent } from "@aerowise/payments";
-import { activateRenewal, canonicalJson, createRenewal, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
+import { activateRenewal, canonicalJson, coverageLines, createRenewal, loadPlanVersion, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
 import type { ObjectStore } from "@aerowise/storage";
 import { enqueue, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -151,8 +154,19 @@ interface RenewalRow {
  * Renewals: the office's pipeline, campaign settings and add-on catalog, plus the link a
  * homeowner opens without signing in to confirm their details, sign and pay.
  */
-export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig }> = async (app, { db, now, store, payments }) => {
+export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; features?: ReadonlySet<Feature> }> = async (
+  app,
+  { db, now, store, payments, features = new Set() },
+) => {
   const { provider, appUrl } = payments;
+  const planBuilder = features.has("plan_builder");
+
+  /**
+   * The plan version a renewal offers, when the plan builder is on (SW-8): its own terms,
+   * options and coverage go into the offer. Off, or with no version, the offer is as before.
+   */
+  const planOffer = async (ex: Database | Transaction<DB>, r: { organizationId: string; planVersionId: string | null }) =>
+    planBuilder && r.planVersionId ? loadPlanVersion(ex, r.organizationId, r.planVersionId) : null;
 
   // ---- Settings and add-ons ----
 
@@ -364,12 +378,13 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
 
   async function detail(organizationId: string, renewalId: string): Promise<RenewalDetail> {
     const r = await loadRow(organizationId, renewalId);
-    const [row, contract, invoice, doc, contact] = await Promise.all([
+    const [row, contract, invoice, doc, contact, version] = await Promise.all([
       listBase(organizationId).where("r.id", "=", r.id).executeTakeFirstOrThrow(),
       db.selectFrom("contracts").select("autoRenew").where("id", "=", r.contractId).executeTakeFirstOrThrow(),
       r.invoiceId ? db.selectFrom("invoices").select(["id", "number", "totalCents", "paymentStatus"]).where("id", "=", r.invoiceId).executeTakeFirst() : undefined,
       r.signedDocumentId ? db.selectFrom("signedDocuments").selectAll().where("id", "=", r.signedDocumentId).executeTakeFirst() : undefined,
       renewalContact(db, organizationId, r.customerId),
+      r.planVersionId ? db.selectFrom("planVersions").select(["id", "version"]).where("id", "=", r.planVersionId).executeTakeFirst() : undefined,
     ]);
     return {
       ...toListItem(row),
@@ -379,6 +394,8 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       sendCount: r.sendCount,
       autoRenewContract: contract.autoRenew,
       selectedAddons: r.selectedAddons as ChosenAddon[],
+      selectedOptions: parsePlanOptions(r.selectedOptions),
+      planVersion: version ? { id: version.id, version: version.version } : null,
       customerUpdates: r.customerUpdates as Record<string, unknown>,
       paidAt: iso(r.paidAt),
       declinedAt: iso(r.declinedAt),
@@ -567,7 +584,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (r.status === "activated") throw new HttpError(409, "already_activated", "This renewal is already active");
         if (!allowed) throw unprocessable(contract.autoRenew ? "This renewal cannot be activated" : "The customer has to sign first, unless the contract is set to auto-renew");
         const note = req.body.note ?? (signed ? "activated by the office" : "auto-renewed by the office");
-        return activateRenewal(trx, organizationId, r.id, { now: now(), actorUserId: userId, requestId: req.id, note });
+        return activateRenewal(trx, organizationId, r.id, { now: now(), actorUserId: userId, requestId: req.id, note, planBuilder });
       });
       if (result.status === "needs_review") throw new HttpError(409, "needs_review", result.reason);
       return detail(organizationId, req.params.id);
@@ -619,6 +636,12 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         r.invoiceId ? db.selectFrom("invoices").select(["publicToken"]).where("id", "=", r.invoiceId).where("status", "=", "open").executeTakeFirst() : undefined,
       ]);
       const terms = termsOf(r);
+      // What the plan adds to the offer (SW-8): from the signed agreement once signed, from the
+      // offered version while it can be signed.
+      const signedContent = doc ? (doc.content as AgreementContent) : null;
+      const offer = isSignable(r.status) ? await planOffer(db, r) : null;
+      const options = signedContent ? (signedContent.options ?? []) : offer ? offer.options : parsePlanOptions(r.selectedOptions);
+      const coverage = signedContent ? (signedContent.coverage ?? []) : offer ? await coverageLines(db, organizationId, offer.coverage) : [];
       let pay: PublicRenewal["pay"] = null;
       if (inv?.publicToken) {
         const payable = await invoiceByToken(db, inv.publicToken);
@@ -637,8 +660,11 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         taxRateBps: org.defaultTaxRateBps,
         addons,
         selectedAddonIds: (r.selectedAddons as ChosenAddon[]).map((a) => a.id),
+        options,
+        selectedOptionKeys: (signedContent ? options : offer ? offer.options.filter((o) => o.default) : parsePlanOptions(r.selectedOptions)).map((o) => o.optionKey),
+        coverage: coverage.map((c) => c.summary),
         contact: { name: contact?.name ?? null, email: contact?.email ?? null, phone: contact?.phone ?? null },
-        agreementText: doc ? (doc.content as AgreementContent).terms : (org.renewalTerms ?? DEFAULT_RENEWAL_TERMS),
+        agreementText: signedContent ? signedContent.terms : (offer?.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS),
         consentText: CONSENT_TEXT,
         payment: org.renewalPayment,
         signed: doc ? { signerName: doc.signerName, signedAt: doc.signedAt.toISOString(), pdfReady: !!doc.pdfStorageKey } : null,
@@ -723,6 +749,12 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           : [];
         if (addons.length !== ids.length) throw unprocessable("An add-on you chose is no longer offered. Reload the page.");
 
+        // The plan's own options (SW-8): the required ones always, plus those chosen.
+        const offer = await planOffer(trx, r);
+        const keys = new Set(b.optionKeys);
+        const options: PlanOption[] = (offer?.options ?? []).filter((o) => o.required || keys.has(o.optionKey));
+        if ([...keys].some((k) => !offer?.options.some((o) => o.optionKey === k))) throw unprocessable("An option you chose is no longer offered. Reload the page.");
+
         // The customer's confirmed contact details.
         const contact = await renewalContact(trx, organizationId, r.customerId);
         const phone = b.contact.phone ?? null;
@@ -745,7 +777,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const changed = !before || before.email !== after.email || before.phone !== after.phone;
 
         const terms = termsOf(r);
-        const charges = renewalCharges(terms, addons, org.defaultTaxRateBps);
+        const charges = renewalCharges(terms, addons, org.defaultTaxRateBps, options);
         const content: AgreementContent = {
           format: 1,
           title: `${terms.planName} renewal agreement`,
@@ -763,7 +795,15 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
             installments: charges.installments,
             payment: org.renewalPayment,
           },
-          terms: org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
+          terms: offer?.termsText ?? org.renewalTerms ?? DEFAULT_RENEWAL_TERMS,
+          // Only with the plan builder on, so every other agreement keeps exactly its old content.
+          ...(offer
+            ? {
+                plan: { versionId: offer.id, version: offer.version, termsSource: offer.termsText ? ("plan" as const) : ("organization" as const) },
+                options,
+                coverage: await coverageLines(trx, organizationId, offer.coverage),
+              }
+            : {}),
         };
         const doc = await trx
           .insertInto("signedDocuments")
@@ -845,6 +885,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
             signedDocumentId: doc.id,
             invoiceId,
             selectedAddons: JSON.stringify(addons),
+            selectedOptions: JSON.stringify(options),
             customerUpdates: JSON.stringify(changed ? { contact: { before, after } } : {}),
             updatedAt: at,
           })
@@ -864,7 +905,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           action: "renewal.signed",
           entityType: "renewal",
           entityId: r.id,
-          changes: { signedDocumentId: doc.id, invoiceId, addons: addons.map((a) => a.id), contactChanged: changed, ...meta },
+          changes: { signedDocumentId: doc.id, invoiceId, addons: addons.map((a) => a.id), ...(offer ? { options: options.map((o) => o.optionKey) } : {}), contactChanged: changed, ...meta },
         });
         await enqueue(trx, { kind: RENEWAL_AGREEMENT, organizationId, payload: { documentId: doc.id }, dedupeKey: `renewal-agreement-${doc.id}`, runAt: at });
 

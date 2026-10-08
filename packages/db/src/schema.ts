@@ -232,6 +232,59 @@ export interface PlansTable {
   billingFrequency: Generated<"annual" | "semiannual" | "quarterly" | "monthly">;
   serviceType: Generated<"aerobic_inspection">;
   active: Generated<boolean>;
+  /** Set by the database when the plan is made or its terms change (SW-8, migration 0053). */
+  currentVersionId: Generated<string>;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+/** Immutable; see migration 0053 and packages/domain/src/plans.ts. */
+export interface PlanVersionsTable {
+  id: Generated<string>;
+  organizationId: string;
+  planId: string;
+  version: number;
+  name: string;
+  customerType: "residential" | "commercial";
+  termMonths: number;
+  visitsPerTerm: number;
+  priceCents: number;
+  billingFrequency: "annual" | "semiannual" | "quarterly" | "monthly";
+  serviceType: "aerobic_inspection";
+  termsText: string | null;
+  options: ColumnType<unknown, string | undefined, never>;
+  coverage: ColumnType<unknown, string | undefined, never>;
+  serviceCycles: ColumnType<unknown, string | undefined, never>;
+  createdBy: string | null;
+  createdAt: CreatedAt;
+}
+
+/** Frozen when the contract is made; never updated or deleted. */
+export interface ContractCoverageRulesTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractId: string;
+  ruleKey: string;
+  position: number;
+  rule: ColumnType<unknown, string, never>;
+  planVersionId: string;
+  limitCount: number | null;
+  periodStart: string;
+  periodEnd: string;
+  createdAt: CreatedAt;
+}
+
+export interface CoverageUsesTable {
+  id: Generated<string>;
+  organizationId: string;
+  contractCoverageRuleId: string;
+  workOrderId: string;
+  state: Generated<"reserved" | "consumed" | "released">;
+  invoiceId: string | null;
+  reservedAt: Timestamp;
+  consumedAt: Timestamp | null;
+  releasedAt: Timestamp | null;
+  reason: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -268,6 +321,8 @@ export interface ContractsTable {
   noticeSentOn: ColumnType<string | null, string | null | undefined, string | null>;
   noticeNote: ColumnType<string | null, string | null | undefined, string | null>;
   noticeRecordedBy: ColumnType<string | null, string | null | undefined, string | null>;
+  planVersionId: ColumnType<string | null, string | null | undefined, string | null>;
+  agreementSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
   notes: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
@@ -1059,6 +1114,8 @@ export interface RenewalsTable {
   startOn: string;
   endOn: string;
   selectedAddons: ColumnType<unknown, string | undefined, string>;
+  planVersionId: ColumnType<string | null, string | null | undefined, string | null>;
+  selectedOptions: ColumnType<unknown, string | undefined, string>;
   customerUpdates: ColumnType<unknown, string | undefined, string>;
   sentAt: Timestamp | null;
   sendCount: Generated<number>;
@@ -1523,6 +1580,9 @@ export interface DB {
   systemMonitoring: SystemMonitoringTable;
   auditEvents: AuditEventsTable;
   plans: PlansTable;
+  planVersions: PlanVersionsTable;
+  contractCoverageRules: ContractCoverageRulesTable;
+  coverageUses: CoverageUsesTable;
   contracts: ContractsTable;
   serviceObligations: ServiceObligationsTable;
   jobs: JobsTable;
