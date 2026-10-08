@@ -423,4 +423,16 @@ describe("estimates", () => {
     expect((await t.api.get(`/estimates/${e.id}`)).json()).toMatchObject({ status: "draft", versions: [], acceptance: null, workOrder: null });
     expect(await count(ctx, "work_orders", t.org.id)).toBe(0);
   });
+
+  it("refuses to ask for a deposit with the deposits feature off, and drafts without one as before", async () => {
+    const t = await tenant(ctx);
+    const res = await t.api.post("/estimates", { siteId: t.site.id, lines: LINES, depositCents: 10000 });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "feature_off" });
+    const e = await draft(t);
+    expect((await t.api.patch(`/estimates/${e.id}`, { depositCents: 5000 })).statusCode).toBe(409);
+    expect((await t.api.patch(`/estimates/${e.id}`, { depositCents: null })).statusCode).toBe(200);
+    const accepted = (await t.api.post(`/estimates/${e.id}/record-acceptance`, { evidence: "Phone" })).json();
+    expect(accepted).toMatchObject({ status: "accepted", deposit: null, versions: [{ depositCents: null }] });
+  });
 });

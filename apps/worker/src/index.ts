@@ -4,7 +4,7 @@ import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db
 import { storeFromEnv } from "@aerowise/storage";
 import { createLogger, reporterFromEnv } from "@aerowise/observability";
 import { subscriptionConfigFromEnv } from "@aerowise/domain";
-import { AlertThrottle, checkQueue, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleBillingRuns, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
+import { AlertThrottle, checkQueue, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleBillingRuns, scheduleRefundReconcile, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations, Aerowise billing) from the Postgres queue.
 // In production, refuse to start without the secrets and providers it needs (names them all).
@@ -41,6 +41,8 @@ const ctx = {
   // production; in production without it, months are counted but not invoiced and free
   // periods are not ended automatically.
   billing: { provider: providers.billing, config: subscriptionConfigFromEnv(process.env) },
+  // Homeowner payments, for refunds whose provider call has to be repeated.
+  payments: providers.payments,
 };
 // Every connected QuickBooks company is synced at least this often (and soon after each change).
 const quickbooksEveryMs = Number(process.env.QUICKBOOKS_SYNC_INTERVAL_MS ?? 5 * 60_000);
@@ -63,6 +65,9 @@ let nextBillingRun = 0;
 // The queue is checked this often for stalled work and filing tasks that keep failing.
 const queueCheckEveryMs = Number(process.env.QUEUE_CHECK_INTERVAL_MS ?? 5 * 60_000);
 let nextQueueCheck = 0;
+// Reserved refunds that never reached the provider are looked for this often.
+const refundsEveryMs = Number(process.env.REFUND_RECONCILE_INTERVAL_MS ?? 5 * 60_000);
+let nextRefundReconcile = 0;
 const alerts = new AlertThrottle();
 const workerId = `${hostname()}:${process.pid}`;
 const idleMs = Number(process.env.WORKER_POLL_MS ?? 2000);
@@ -112,6 +117,10 @@ while (!stopping) {
     if (Date.now() >= nextBillingRun) {
       nextBillingRun = Date.now() + billingEveryMs;
       await scheduleBillingRuns(db, new Date(), billingEveryMs);
+    }
+    if (ctx.payments && Date.now() >= nextRefundReconcile) {
+      nextRefundReconcile = Date.now() + refundsEveryMs;
+      await scheduleRefundReconcile(db, new Date(), refundsEveryMs);
     }
     if (Date.now() >= nextQueueCheck) {
       nextQueueCheck = Date.now() + queueCheckEveryMs;

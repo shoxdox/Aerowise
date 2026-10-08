@@ -1,6 +1,7 @@
 import type { Database, DB } from "@aerowise/db";
 import { invoiceNumberLabel, PAYMENT_METHOD_LABELS, paymentStatus, type PaymentMethod } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
+import { reconcileDeposit } from "./deposits.ts";
 
 export type Executor = Database | Transaction<DB>;
 
@@ -78,6 +79,8 @@ export async function recalcInvoice(trx: Transaction<DB>, organizationId: string
     .where("organizationId", "=", organizationId)
     .where("id", "=", invoiceId)
     .execute();
+  // A deposit invoice's ledger books the same payments and refunds, in the same transaction.
+  await reconcileDeposit(trx, organizationId, invoiceId, now);
   return { paidCents, pendingCents: sums.pending, refundedCents: sums.refunded, creditedCents: sums.credited, paymentStatus: status };
 }
 

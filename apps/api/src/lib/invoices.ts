@@ -3,6 +3,7 @@ import type { Database, DB } from "@aerowise/db";
 import {
   addDays,
   amountDue,
+  estimateLabel,
   invoiceNumberLabel,
   invoiceTotals,
   milliAmount,
@@ -14,6 +15,7 @@ import {
 import { recalcInvoice, type PaymentProvider } from "@aerowise/payments";
 import { billingEmail, enqueue, payUrlFor, RENDER_INVOICE, SEND_INVOICE } from "@aerowise/tasks";
 import { sql, type Transaction } from "kysely";
+import { applyDepositAtIssue, type LockedDeposit } from "./deposits.ts";
 import { notFound, unprocessable } from "./errors.ts";
 import { dateInZone } from "./today.ts";
 
@@ -129,10 +131,20 @@ export async function writeDraftLines(
  * snapshot, makes its pay link and queues its PDF (and the email, when sending). One
  * transaction, so a failure leaves the draft as it was.
  */
-export async function issueDraft(trx: Transaction<DB>, organizationId: string, invoiceId: string, opts: { send: boolean; now: Date }) {
-  const inv = await trx.selectFrom("invoices").selectAll().where("organizationId", "=", organizationId).where("id", "=", invoiceId).forUpdate().executeTakeFirst();
+export async function issueDraft(
+  trx: Transaction<DB>,
+  organizationId: string,
+  invoiceId: string,
+  opts: { send: boolean; now: Date; deposit?: { lock: LockedDeposit; requestedCents?: number; actorUserId: string | null } },
+) {
+  let inv = await trx.selectFrom("invoices").selectAll().where("organizationId", "=", organizationId).where("id", "=", invoiceId).forUpdate().executeTakeFirst();
   if (!inv) throw notFound("Invoice");
   if (inv.status !== "draft") throw unprocessable("This invoice has already been issued");
+  // The final invoice for an estimate with a deposit: its free money comes off the total.
+  if (opts.deposit) {
+    await applyDepositAtIssue(trx, organizationId, opts.deposit.lock, inv, { requestedCents: opts.deposit.requestedCents, actorUserId: opts.deposit.actorUserId, at: opts.now });
+    inv = await trx.selectFrom("invoices").selectAll().where("id", "=", invoiceId).executeTakeFirstOrThrow();
+  }
   const billTo = await billingEmail(trx, organizationId, inv.customerId);
   if (opts.send && !billTo) throw unprocessable("The customer has no email address on file. Add a billing contact with an email, or issue without sending.");
 
@@ -184,6 +196,7 @@ export async function issueDraft(trx: Transaction<DB>, organizationId: string, i
     discountCents: inv.discountCents,
     taxRateBps: inv.taxRateBps,
     taxCents: inv.taxCents,
+    ...(inv.depositAppliedCents > 0 ? { depositAppliedCents: inv.depositAppliedCents } : {}),
     totalCents: inv.totalCents,
   };
 
@@ -276,6 +289,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       "i.subtotalCents",
       "i.discountCents",
       "i.taxableCents",
+      "i.depositAppliedCents",
       "i.taxCents",
       "i.voidedAt",
       "i.voidReason",
@@ -287,7 +301,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
     .where("i.id", "=", invoiceId)
     .executeTakeFirst();
   if (!row) throw notFound("Invoice");
-  const [lines, payments, refunds, events] = await Promise.all([
+  const [lines, payments, refunds, events, estimate] = await Promise.all([
     db.selectFrom("invoiceLines").selectAll().where("organizationId", "=", organizationId).where("invoiceId", "=", invoiceId).orderBy("position").execute(),
     db.selectFrom("payments").selectAll().where("organizationId", "=", organizationId).where("invoiceId", "=", invoiceId).orderBy("createdAt").execute(),
     db
@@ -306,6 +320,13 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       .where("e.invoiceId", "=", invoiceId)
       .orderBy("e.seq")
       .execute(),
+    db
+      .selectFrom("estimateInvoices as ei")
+      .innerJoin("estimates as est", (j) => j.onRef("est.id", "=", "ei.estimateId").onRef("est.organizationId", "=", "ei.organizationId"))
+      .select(["est.id", "est.number", "ei.role"])
+      .where("ei.organizationId", "=", organizationId)
+      .where("ei.invoiceId", "=", invoiceId)
+      .executeTakeFirst(),
   ]);
   const snapshot = row.snapshot as InvoiceSnapshot | null;
   return {
@@ -316,6 +337,8 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
     subtotalCents: row.subtotalCents,
     discountCents: row.discountCents,
     taxableCents: row.taxableCents,
+    depositAppliedCents: row.depositAppliedCents,
+    estimate: estimate ? { id: estimate.id, label: estimateLabel(estimate.number), role: estimate.role } : null,
     taxCents: row.taxCents,
     voidedAt: row.voidedAt?.toISOString() ?? null,
     voidReason: row.voidReason,

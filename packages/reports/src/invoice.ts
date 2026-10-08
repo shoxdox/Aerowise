@@ -97,6 +97,7 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
   const totals: [string, string, boolean][] = [["Subtotal", money(s.subtotalCents), false]];
   if (s.discountCents > 0) totals.push(["Discount", `−${money(s.discountCents)}`, false]);
   if (s.taxRateBps > 0) totals.push([`Sales tax (${(s.taxRateBps / 100).toFixed(2)}%)`, money(s.taxCents), false]);
+  if (s.depositAppliedCents) totals.push(["Deposit applied", `−${money(s.depositAppliedCents)}`, false]);
   totals.push(["Total", money(s.totalCents), true]);
   for (const [label, value, bold] of totals) {
     const ty = doc.y;
