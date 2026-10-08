@@ -25,6 +25,9 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     scheduled for tomorrow, and a homeowner's portal request became a third, ready to schedule.
 //     With service items switched on too, the company has a small catalog and the pump-out is
 //     priced by the gallon and the hour and invoiced straight from its work order.
+//   - With the plan builder switched on: three fictional plan tiers (Basic, Gold, Platinum) whose
+//     own terms say they are fictional, with different coverage and options, and an intake form
+//     the Gold and Platinum tiers ask at online signing. No real terms or coverage are promised.
 //
 // Today's and tomorrow's route is left alone for the visitor to work through.
 
@@ -70,6 +73,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   const { db, store, now = () => new Date(), log = () => {}, features = parseFeatures(process.env.AEROWISE_FEATURES) } = opts;
   const work = features.has("work_orders");
   const catalog = work && features.has("service_items");
+  const tiers = features.has("plan_builder");
   const found = db.selectFrom("organizations").select(["id", "demo"]);
   const org = await (opts.organizationId ? found.where("id", "=", opts.organizationId) : found.where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null)).executeTakeFirst();
   if (!org?.demo) {
@@ -283,7 +287,78 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       }
       await worker();
     }
-    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates`);
+
+    // ---- Fictional plan tiers, when the plan builder is on (SW-8) ----
+    let tierCount = 0;
+    if (tiers) {
+      const intake = await owner.post("/intake-forms", {
+        key: "demo-renewal-intake",
+        name: "Before you renew (demo)",
+        definition: {
+          photos: [],
+          fields: [
+            { key: "property_changes", label: "Anything changed at the property since last year?", section: "Before you sign", type: "boolean", required: true },
+            { key: "change_notes", label: "What changed?", section: "Before you sign", type: "text", maxLength: 500, showWhen: { field: "property_changes", in: [true] } },
+            { key: "access_notes", label: "Gate code or access notes", section: "Before you sign", type: "text", maxLength: 500 },
+            {
+              key: "visit_time",
+              label: "Preferred visit time",
+              section: "Before you sign",
+              type: "select",
+              options: [
+                { value: "morning", label: "Morning" },
+                { value: "afternoon", label: "Afternoon" },
+                { value: "any", label: "No preference" },
+              ],
+            },
+          ],
+        },
+      });
+      const terms = (tier: string) =>
+        `DEMO ONLY. "${tier}" is a fictional plan of a fictional company, shown to demonstrate the plan builder. It is not a real agreement, and no service or coverage is promised.`;
+      const TIERS = [
+        {
+          name: "Basic (demo)",
+          visitsPerTerm: 3,
+          priceCents: 27500,
+          options: [],
+          coverage: [{ ruleKey: "pumping-discount", label: "Pumping discount", match: { category: "pumping" }, effect: "percent_off", percentOff: 10, limit: null }],
+          intakeTemplateId: null,
+        },
+        {
+          name: "Gold (demo)",
+          visitsPerTerm: 3,
+          priceCents: 39500,
+          options: [{ optionKey: "filter-cleaning", name: "Annual filter cleaning (fictional)", description: null, priceCents: 4500, taxable: false, required: false, default: true }],
+          coverage: [
+            { ruleKey: "repairs", label: "Repairs", match: { category: "repair" }, effect: "included", percentOff: null, limit: { count: 1, per: "term" } },
+            { ruleKey: "pumping-discount", label: "Pumping discount", match: { category: "pumping" }, effect: "percent_off", percentOff: 15, limit: null },
+          ],
+          intakeTemplateId: intake.id,
+        },
+        {
+          name: "Platinum (demo)",
+          visitsPerTerm: 4,
+          priceCents: 59500,
+          options: [
+            { optionKey: "priority", name: "Priority scheduling (fictional)", description: null, priceCents: 2500, taxable: false, required: true, default: true },
+            { optionKey: "filter-cleaning", name: "Annual filter cleaning (fictional)", description: null, priceCents: 4500, taxable: false, required: false, default: true },
+          ],
+          coverage: [
+            { ruleKey: "repairs", label: "Repairs", match: { category: "repair" }, effect: "included", percentOff: null, limit: { count: 3, per: "term" } },
+            { ruleKey: "pumping", label: "One pump-out", match: { category: "pumping" }, effect: "included", percentOff: null, limit: { count: 1, per: "term" } },
+            { ruleKey: "service-calls", label: "Service calls", match: { category: "other" }, effect: "included", percentOff: null, limit: null },
+          ],
+          intakeTemplateId: intake.id,
+        },
+      ];
+      for (const t of TIERS) {
+        const plan = await owner.post("/plans", { name: t.name, termMonths: 12, visitsPerTerm: t.visitsPerTerm, priceCents: t.priceCents });
+        await owner.post(`/plans/${plan.id}/versions`, { termsText: terms(t.name), options: t.options, coverage: t.coverage, intakeTemplateId: t.intakeTemplateId });
+        tierCount++;
+      }
+    }
+    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates${tiers ? `, ${tierCount} fictional plan tiers` : ""}`);
     return true;
   } finally {
     // The story's own sign-ins end with it.

@@ -1,12 +1,13 @@
 "use client";
 
-import { RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type RenewalStatus } from "@aerowise/domain";
+import { RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type PlanDetail, type RenewalStatus } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ContractFilingStatus } from "@/components/ContractFilingStatus";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
+import { useFeature } from "@/lib/features";
 import { day, money, today } from "@/lib/format";
 
 /** Thrown to stop `run` without an error message or closing the form. */
@@ -28,6 +29,10 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   // The authority needs more visits than the plan has: shown before anything is created.
   const [moreVisits, setMoreVisits] = useState<{ body: Record<string, unknown>; preview: ContractTermsPreview } | null>(null);
   const router = useRouter();
+  // The chosen plan's options (SW-8, plan builder on): the office ticks what the customer takes.
+  const builder = useFeature("plan_builder");
+  const [planId, setPlanId] = useState("");
+  const [optionKeys, setOptionKeys] = useState<string[] | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -49,6 +54,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
       startOn: v.startOn,
       priceCents: v.price ? Math.round(Number(v.price) * 100) : undefined,
       autoRenew: v.autoRenew === "on",
+      ...(planOptions.length ? { optionKeys: planOptions.filter((o) => o.required || ticked.includes(o.optionKey)).map((o) => o.optionKey) } : {}),
     };
     void run(async () => {
       const preview = await api<ContractTermsPreview>(`/sites/${siteId}/contract-terms?planId=${v.planId}&startOn=${v.startOn}`);
@@ -76,6 +82,10 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   }
 
   const offered = plans.data?.items.filter((p) => p.active) ?? [];
+  const chosenPlanId = planId || offered[0]?.id || "";
+  const planDetail = useLoad<PlanDetail>(creating && builder && chosenPlanId ? `/plans/${chosenPlanId}` : null);
+  const planOptions = planDetail.data?.id === chosenPlanId ? planDetail.data.preview.options : [];
+  const ticked = optionKeys ?? planOptions.filter((o) => o.default).map((o) => o.optionKey);
 
   return (
     <section className="stack">
@@ -98,7 +108,15 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             <>
               <label className="wide">
                 Plan
-                <select name="planId" required>
+                <select
+                  name="planId"
+                  required
+                  value={chosenPlanId}
+                  onChange={(e) => {
+                    setPlanId(e.target.value);
+                    setOptionKeys(null);
+                  }}
+                >
                   {offered.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}: {p.termMonths} months, {p.visitsPerTerm} visits, {money(p.priceCents)}
@@ -106,6 +124,23 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                   ))}
                 </select>
               </label>
+              {planOptions.length > 0 && (
+                <fieldset className="wide" data-testid="contract-options">
+                  <legend>Plan options (billed with the first payment)</legend>
+                  {planOptions.map((o) => (
+                    <label key={o.optionKey} className="check">
+                      <input
+                        type="checkbox"
+                        checked={o.required || ticked.includes(o.optionKey)}
+                        disabled={o.required}
+                        onChange={(e) => setOptionKeys(e.target.checked ? [...ticked, o.optionKey] : ticked.filter((k) => k !== o.optionKey))}
+                      />
+                      {o.name} · {money(o.priceCents)}
+                      {o.required ? " (always included)" : ""}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
               <label>
                 Start date
                 <input name="startOn" type="date" required defaultValue={today()} />
@@ -226,6 +261,12 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             </p>
           )}
           {c.status === "cancelled" && c.cancelReason && <p className="muted">Cancelled: {c.cancelReason}</p>}
+          {c.options.length > 0 && (
+            <p className="small" data-testid="contract-options-taken">
+              <span className="muted">Options: </span>
+              {c.options.map((o) => `${o.name} (${money(o.priceCents)})`).join(", ")}
+            </p>
+          )}
           {c.coverage.length > 0 && (
             <div className="small" data-testid="contract-coverage">
               <span className="muted">Coverage{c.planVersion ? ` (plan version ${c.planVersion.version})` : ""}:</span>

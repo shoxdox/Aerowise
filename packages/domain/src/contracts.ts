@@ -57,6 +57,11 @@ export const contractInput = z.object({
    * plan has (see `GET /sites/:id/contract-terms`). Without it such a contract is refused (409).
    */
   acceptVisits: z.number().int().min(1).max(366).optional(),
+  /**
+   * The plan version's options the customer takes (SW-8, plan builder on). Required options are
+   * included whatever is sent; any other option is taken only when named here.
+   */
+  optionKeys: z.array(z.string().max(64)).max(20).optional(),
 });
 
 /** What a contract on this plan at this site would get, before it is created. */
@@ -75,6 +80,8 @@ export const renewInput = z.object({
   priceCents: money.optional(),
   /** As for a new contract: the visits agreed to when the authority needs more than the plan has. */
   acceptVisits: z.number().int().min(1).max(366).optional(),
+  /** As for a new contract: the plan options taken (SW-8). */
+  optionKeys: z.array(z.string().max(64)).max(20).optional(),
 });
 
 export const cancelInput = z.object({
@@ -140,6 +147,8 @@ export const contractDetail = contract.extend({
   planVersion: z.object({ id, version: z.number().int() }).nullable(),
   /** The coverage rules frozen on the contract when it was made, with their use this term. */
   coverage: z.array(z.object({ id, ruleKey: z.string(), label: z.string(), summary: z.string(), limit: z.number().int().nullable(), used: z.number().int() })),
+  /** Plan options taken when the office made the contract (SW-8), billed with its first payment. */
+  options: z.array(z.object({ optionKey: z.string(), name: z.string(), priceCents: z.number().int(), taxable: z.boolean() })),
 });
 
 export const dueObligation = obligation.extend({

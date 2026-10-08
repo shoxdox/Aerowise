@@ -15,6 +15,7 @@ import {
   refundInput,
   type Feature,
   type InvoiceLineInput,
+  parseSnapshotOptions,
 } from "@aerowise/domain";
 import { dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
 import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
@@ -229,7 +230,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const c = await trx
           .selectFrom("contracts as k")
           .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "k.siteId").onRef("s.organizationId", "=", "k.organizationId"))
-          .select(["k.id", "k.siteId", "k.status", "k.planName", "k.startOn", "k.endOn", "k.termMonths", "k.priceCents", "k.billingFrequency", "s.customerId", "s.addressLine1"])
+          .select(["k.id", "k.siteId", "k.status", "k.planName", "k.startOn", "k.endOn", "k.termMonths", "k.priceCents", "k.billingFrequency", "k.agreementSnapshot", "s.customerId", "s.addressLine1"])
           .where("k.organizationId", "=", organizationId)
           .where("k.id", "=", req.params.id)
           .forUpdate()
@@ -296,6 +297,19 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
               periodStart: part.periodStart,
               periodEnd: part.periodEnd,
             },
+            // Plan options the office took with the contract (SW-8), once, with the first payment.
+            ...(part.installment === 1
+              ? parseSnapshotOptions(c.agreementSnapshot).map((o) => ({
+                  description: `${c.planName} option: ${o.name}`,
+                  quantity: 1,
+                  unitPriceCents: o.priceCents,
+                  taxable: o.taxable,
+                  contractId: c.id,
+                  installment: part.installment,
+                  periodStart: part.periodStart,
+                  periodEnd: part.periodEnd,
+                }))
+              : []),
             ...(org.billFilingFees ? await filingFeeLines(trx, organizationId, c.siteId, org.timezone) : []),
           ],
           { discountCents: 0, taxRateBps: org.defaultTaxRateBps },

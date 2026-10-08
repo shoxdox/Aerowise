@@ -255,6 +255,8 @@ export interface PlanVersionsTable {
   options: ColumnType<unknown, string | undefined, never>;
   coverage: ColumnType<unknown, string | undefined, never>;
   serviceCycles: ColumnType<unknown, string | undefined, never>;
+  // SW-8 follow-up (0057): the intake form version asked at online signing.
+  intakeTemplateId: ColumnType<string | null, string | null | undefined, never>;
   createdBy: string | null;
   createdAt: CreatedAt;
 }

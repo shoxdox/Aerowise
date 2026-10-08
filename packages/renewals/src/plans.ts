@@ -1,5 +1,5 @@
 import type { Database, DB } from "@aerowise/db";
-import { coverageSummary, DEFAULT_RENEWAL_TERMS, parseCoverageRules, parsePlanOptions, type AgreementPreview, type CoverageRule, type PlanOption } from "@aerowise/domain";
+import { coverageSummary, DEFAULT_RENEWAL_TERMS, parseCoverageRules, parsePlanOptions, type AgreementPreview, type CoverageRule, type IntakeFormRef, type PlanOption, type TemplateDefinition } from "@aerowise/domain";
 import type { Transaction } from "kysely";
 
 type Executor = Database | Transaction<DB>;
@@ -14,18 +14,27 @@ export interface LoadedPlanVersion {
   termsText: string | null;
   options: PlanOption[];
   coverage: CoverageRule[];
+  /** The intake form version asked at online signing, with its questions. */
+  intake: (IntakeFormRef & { definition: TemplateDefinition }) | null;
 }
 
 /** A version of one of this organization's plans; null when it is not one. */
 export async function loadPlanVersion(db: Executor, organizationId: string, versionId: string): Promise<LoadedPlanVersion | null> {
   const v = await db
     .selectFrom("planVersions")
-    .select(["id", "planId", "version", "name", "termsText", "options", "coverage"])
+    .select(["id", "planId", "version", "name", "termsText", "options", "coverage", "intakeTemplateId"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", versionId)
     .executeTakeFirst();
   if (!v) return null;
-  return { ...v, options: parsePlanOptions(v.options), coverage: parseCoverageRules(v.coverage) };
+  const { intakeTemplateId, ...rest } = v;
+  return { ...rest, options: parsePlanOptions(v.options), coverage: parseCoverageRules(v.coverage), intake: intakeTemplateId ? await loadIntakeForm(db, intakeTemplateId) : null };
+}
+
+/** One version of an intake form, as a plan version names it. */
+export async function loadIntakeForm(db: Executor, templateId: string): Promise<(IntakeFormRef & { definition: TemplateDefinition }) | null> {
+  const t = await db.selectFrom("inspectionTemplates").select(["id", "key", "version", "name", "definition"]).where("id", "=", templateId).executeTakeFirst();
+  return t ? { id: t.id, key: t.key, version: t.version, name: t.name, definition: t.definition as TemplateDefinition } : null;
 }
 
 /** Catalog item names for coverage rules that name an item. */
@@ -49,5 +58,6 @@ export async function agreementPreview(db: Executor, organizationId: string, v: 
     terms: v.termsText ?? organizationTerms ?? DEFAULT_RENEWAL_TERMS,
     options: v.options,
     coverage: await coverageLines(db, organizationId, v.coverage),
+    intake: v.intake ? { name: v.intake.name, questions: v.intake.definition.fields.map((f) => f.label) } : null,
   };
 }
