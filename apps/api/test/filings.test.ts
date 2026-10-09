@@ -4,7 +4,7 @@ import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { FakeMail } from "./fake-mail.ts";
-import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
+import { client, createOrg, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
@@ -330,5 +330,38 @@ describe("startup", () => {
     await app.close();
     const n = await ctx.db.selectFrom("jurisdictionRulesets").select(sql<number>`count(*)::int`.as("n")).executeTakeFirstOrThrow();
     expect(Number(n.n)).toBe(bundledRulesets().length);
+  });
+});
+
+describe("the fictional example authority in production", () => {
+  it("is hidden from and refused for real companies, and kept for demo companies", async () => {
+    // As the hosted demo runs: production, with demo companies and real trial companies in one database.
+    const app = await buildApp({ db: ctx.db, production: true, fileSigningSecret: "fictional-guard", loginRateLimit: 1000, now: () => ctx.now, store: ctx.store });
+    try {
+      const example = (await loadCatalog(ctx.db)).find((e) => e.jurisdiction.key === "tx-example-county")!.jurisdiction;
+      const company = async (name: string, demo: boolean) => {
+        const org = demo ? await ctx.db.insertInto("organizations").values({ name, demo: true } as never).returning("id").executeTakeFirstOrThrow() : await createOrg(ctx.db, name);
+        const owner = await createUser(ctx.db, org.id, "owner");
+        const api = client(app, await login(app, owner.email));
+        const customer = (await api.post("/customers", { displayName: `${name} customer` })).json();
+        const site = (await api.post(`/customers/${customer.id}/sites`, { addressLine1: "1 Main St", city: "Austin" })).json();
+        return { api, site };
+      };
+      const assign = (c: Awaited<ReturnType<typeof company>>) => c.api.put(`/sites/${c.site.id}/jurisdiction`, { jurisdictionId: example.id, evidenceKind: "permit_record", evidenceReference: "Permit file 2019-114" });
+
+      const real = await company("Real Co", false);
+      const keys = (await real.api.get("/jurisdictions")).json().items.map((j: { key: string }) => j.key);
+      expect(keys).not.toContain("tx-example-county");
+      expect(keys).toContain("tx-hays-county");
+      const refused = await assign(real);
+      expect(refused.statusCode).toBe(422);
+      expect(refused.json().message).toMatch(/fictional/);
+
+      const demo = await company("Demo Co (demo)", true);
+      expect((await demo.api.get("/jurisdictions")).json().items.map((j: { key: string }) => j.key)).toContain("tx-example-county");
+      expect((await assign(demo)).json()).toMatchObject({ source: "override", jurisdiction: { key: "tx-example-county" } });
+    } finally {
+      await app.close();
+    }
   });
 });

@@ -25,6 +25,14 @@ export interface BillingInvoiceInput {
   description: string;
   lines: BillingLine[];
   metadata: { organizationId: string; billingPeriodId: string };
+  /**
+   * The draft an earlier run made for this key before it died (its id was saved through
+   * `onCreated`). The provider carries on with that draft instead of making another, which
+   * matters once Stripe has forgotten the idempotency keys (after 24 hours).
+   */
+  existingInvoiceId?: string | null;
+  /** Called with the draft's id as soon as it exists and before any line is added, so the caller can save it. */
+  onCreated?: (invoiceId: string) => Promise<void>;
 }
 
 export type BillingInvoiceStatus = "open" | "paid";

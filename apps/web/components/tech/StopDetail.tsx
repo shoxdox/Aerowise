@@ -6,7 +6,20 @@ import type { LocalInspection } from "@/lib/offline/db";
 import { clock, day } from "@/lib/format";
 import { stopStatus } from "./StopList";
 
-export function StopDetail({ stop, inspection, canStart, onStart }: { stop: Stop; inspection: LocalInspection | undefined; canStart: boolean; onStart: () => void }) {
+export function StopDetail({
+  stop,
+  inspection,
+  canStart,
+  onStart,
+  notice = null,
+}: {
+  stop: Stop;
+  inspection: LocalInspection | undefined;
+  canStart: boolean;
+  onStart: () => void;
+  /** Why the last tap on the button did not open the form. */
+  notice?: string | null;
+}) {
   const { site, customer, system } = stop;
   const address = [site.addressLine1, site.addressLine2, `${site.city}, ${site.state} ${site.postalCode ?? ""}`].filter(Boolean).join(", ");
   const mapsUrl = site.lat !== null && site.lng !== null ? `https://maps.google.com/?q=${site.lat},${site.lng}` : `https://maps.google.com/?q=${encodeURIComponent(address)}`;
@@ -80,10 +93,15 @@ export function StopDetail({ stop, inspection, canStart, onStart }: { stop: Stop
         <p className={`badge ${status.tone}`}>{status.label}</p>
       ) : (
         <button className="big" onClick={onStart} disabled={!canStart}>
-          {inspection ? "Continue inspection" : "Arrive and start inspection"}
+          {inspection || stop.inspection?.status === "draft" ? "Continue inspection" : "Arrive and start inspection"}
         </button>
       )}
       {!canStart && <p className="muted small">The inspection form has not been downloaded yet. Open the app once with signal.</p>}
+      {notice && (
+        <p className="problems" role="alert">
+          {notice}
+        </p>
+      )}
     </div>
   );
 }

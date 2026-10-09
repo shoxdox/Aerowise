@@ -34,10 +34,12 @@ describe("inspection templates", () => {
 describe("recording an inspection", () => {
   it("starts the job on the first sync and completes job and visit when the inspection is valid", async () => {
     const s = await setup(ctx);
+    expect((await s.techApi.get("/route")).json().items[0]).toMatchObject({ status: "scheduled", inspection: null });
     const draft = await s.techApi.put("/inspections/sync", payload(s));
     expect(draft.statusCode).toBe(200);
     expect(draft.json()).toMatchObject({ status: "draft", validationStatus: "pending", values: { aerator: "pass" }, arrivalLat: 30.27 });
-    expect((await s.techApi.get("/route")).json().items[0].status).toBe("in_progress");
+    // The route names the inspection, so another phone continues it rather than starting a second one.
+    expect((await s.techApi.get("/route")).json().items[0]).toMatchObject({ status: "in_progress", inspection: { clientId: payload(s).clientId, status: "draft" } });
 
     const clientId = draft.json().clientId;
     await uploadRequiredPhotos(s, clientId);
@@ -55,7 +57,7 @@ describe("recording an inspection", () => {
     expect(done.json().photos).toHaveLength(2);
     expect(done.json().issues).toMatchObject([{ type: "pump_out", status: "open" }]);
 
-    expect((await s.techApi.get("/route")).json().items[0].status).toBe("completed");
+    expect((await s.techApi.get("/route")).json().items[0]).toMatchObject({ status: "completed", inspection: { clientId: payload(s).clientId, status: "completed" } });
     const contract = (await s.api.get(`/contracts/${s.contract.id}`)).json();
     expect(contract.obligations[0]).toMatchObject({ id: s.visit.id, status: "completed" });
     expect((await s.api.get(`/jobs/${s.job.jobId}/inspection`)).json().id).toBe(done.json().id);

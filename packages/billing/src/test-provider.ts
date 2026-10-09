@@ -24,6 +24,8 @@ export class TestBillingProvider implements BillingProvider {
   readonly retried: string[] = [];
   /** Set to make the next calls fail, as a network error would. */
   failNext = 0;
+  /** Set to fail the next invoice after its draft exists (and `onCreated` ran), as a crash mid-run would. */
+  failAfterCreate = false;
 
   private maybeFail() {
     if (this.failNext > 0) {
@@ -43,9 +45,16 @@ export class TestBillingProvider implements BillingProvider {
 
   async createInvoice(input: BillingInvoiceInput) {
     this.maybeFail();
-    const existing = this.invoices.find((i) => i.idempotencyKey === input.idempotencyKey);
+    const existing = this.invoices.find((i) => i.idempotencyKey === input.idempotencyKey || (!!input.existingInvoiceId && i.invoiceId === input.existingInvoiceId));
     const invoice = existing ?? { ...input, invoiceId: rid("in"), totalCents: input.lines.reduce((sum, l) => sum + l.quantity * l.unitAmountCents, 0) };
-    if (!existing) this.invoices.push(invoice);
+    if (!existing) {
+      this.invoices.push(invoice);
+      await input.onCreated?.(invoice.invoiceId);
+      if (this.failAfterCreate) {
+        this.failAfterCreate = false;
+        throw new Error("Stripe is unreachable after the draft was made (test)");
+      }
+    }
     return { invoiceId: invoice.invoiceId, status: "open" as const, hostedUrl: `https://invoice.stripe.test/${invoice.invoiceId}` };
   }
 

@@ -1,4 +1,4 @@
-import { runMonthlyBilling, TestBillingProvider } from "@aerowise/billing";
+import { runMonthlyBilling, StripeBillingProvider, TestBillingProvider } from "@aerowise/billing";
 import { DEFAULT_SUBSCRIPTION_CONFIG, type SubscriptionState } from "@aerowise/domain";
 import { drainTasks, scheduleBillingRuns } from "@aerowise/tasks";
 import { sql } from "kysely";
@@ -184,6 +184,21 @@ describe("invoicing retries", () => {
     expect(provider.invoices).toHaveLength(1);
   });
 
+  it("resumes the draft a run that died left behind, instead of making a second invoice", async () => {
+    const a = await orgWithContracts(ctx);
+    await setPlan(ctx, a.org.id, "active");
+    const provider = new TestBillingProvider();
+    provider.failAfterCreate = true;
+    await expect(runMonthlyBilling(ctx.db, { provider, config, now: ctx.now }, a.org.id)).rejects.toThrow(/after the draft/);
+    // The draft's id was saved before anything else, so the month knows which invoice is its own.
+    const draftId = provider.invoices[0]!.invoiceId;
+    expect((await periods(ctx))[0]).toMatchObject({ status: "pending", provider: "test", providerInvoiceId: draftId });
+
+    expect(await runMonthlyBilling(ctx.db, { provider, config, now: ctx.now }, a.org.id)).toMatchObject({ counted: false, invoiced: true, status: "open" });
+    expect(provider.invoices).toHaveLength(1);
+    expect((await periods(ctx))[0]).toMatchObject({ status: "open", providerInvoiceId: draftId });
+  });
+
   it("counts without invoicing when no billing provider is configured", async () => {
     const a = await orgWithContracts(ctx);
     await setPlan(ctx, a.org.id, "active");
@@ -245,6 +260,22 @@ describe("Stripe Billing webhook", () => {
     expect((await periods(ctx))[0]?.status).toBe("paid");
   });
 
+  it("lets a month claim its own invoice when the run died before saving the id", async () => {
+    const a = await orgWithContracts(ctx);
+    await setPlan(ctx, a.org.id, "active");
+    const provider = new TestBillingProvider();
+    const pending = await runMonthlyBilling(ctx.db, { provider: null, config, now: ctx.now }, a.org.id);
+    expect(pending.status).toBe("pending");
+    // Stripe made the draft and finalized it, but Aerowise never heard: the invoice names the month in its metadata.
+    const paid = provider.signedEvent("invoice.paid", { id: "in_unsaved", object: "invoice", metadata: { organizationId: a.org.id, billingPeriodId: pending.periodId } });
+    expect((await deliver(paid)).json()).toEqual({ received: true, outcome: "applied" });
+    expect((await periods(ctx))[0]).toMatchObject({ status: "paid", providerInvoiceId: "in_unsaved" });
+    // Another month's id, or a month that already has its invoice, is not claimed.
+    const other = provider.signedEvent("invoice.paid", { id: "in_other", object: "invoice", metadata: { billingPeriodId: pending.periodId } });
+    expect((await deliver(other)).json().outcome).toBe("ignored");
+    expect((await deliver(provider.signedEvent("invoice.paid", { id: "in_x", object: "invoice", metadata: { billingPeriodId: "00000000-0000-0000-0000-000000000000" } }))).json().outcome).toBe("ignored");
+  });
+
   it("ignores invoices it did not issue and refuses unsigned or Connect-signed requests", async () => {
     const provider = new TestBillingProvider();
     expect((await deliver(provider.signedEvent("invoice.paid", { id: "in_someone_else", object: "invoice" }))).json().outcome).toBe("ignored");
@@ -257,5 +288,59 @@ describe("Stripe Billing webhook", () => {
     const { TestPaymentProvider } = await import("@aerowise/payments");
     const connect = new TestPaymentProvider().signedEvent("invoice.paid", { id: "in_x" }, "acct_1");
     expect((await deliver(connect)).statusCode).toBe(400);
+  });
+});
+
+describe("Stripe Billing invoice creation", () => {
+  const lines = [
+    { description: "Contracts", quantity: 2, unitAmountCents: 150 },
+    { description: "Minimum", quantity: 1, unitAmountCents: 9600 },
+  ];
+  const input = { customerId: "cus_1", idempotencyKey: "k", description: "Aerowise, March 2026", lines, metadata: { organizationId: "o", billingPeriodId: "p" } };
+
+  function stubStripe(status: "draft" | "open" | "paid") {
+    const calls: string[] = [];
+    const client = {
+      invoices: {
+        create: async (p: { auto_advance: boolean }, o: { idempotencyKey: string }) => {
+          calls.push(`create auto_advance=${p.auto_advance} ${o.idempotencyKey}`);
+          return { id: "in_1", status: "draft" };
+        },
+        retrieve: async (id: string) => {
+          calls.push(`retrieve ${id}`);
+          return { id, status, hosted_invoice_url: "https://invoice.stripe.test/in_1" };
+        },
+        finalizeInvoice: async (id: string, p: { auto_advance: boolean }, o: { idempotencyKey: string }) => {
+          calls.push(`finalize ${id} auto_advance=${p.auto_advance} ${o.idempotencyKey}`);
+          return { id, status: "open", hosted_invoice_url: "https://invoice.stripe.test/in_1" };
+        },
+      },
+      invoiceItems: {
+        create: async (p: { invoice: string }, o: { idempotencyKey: string }) => {
+          calls.push(`line ${p.invoice} ${o.idempotencyKey}`);
+          return {};
+        },
+      },
+    };
+    return { calls, provider: new StripeBillingProvider({ secretKey: "sk_test_x", webhookSecrets: [], client: client as never }) };
+  }
+
+  it("makes the draft without auto-advance, saves its id before any line, then finalizes", async () => {
+    const { calls, provider } = stubStripe("draft");
+    const saved: string[] = [];
+    const result = await provider.createInvoice({ ...input, onCreated: async (id) => void saved.push(`${id} after ${calls.length} call(s)`) });
+    expect(result).toEqual({ invoiceId: "in_1", status: "open", hostedUrl: "https://invoice.stripe.test/in_1" });
+    expect(saved).toEqual(["in_1 after 1 call(s)"]);
+    expect(calls).toEqual(["create auto_advance=false k-invoice", "line in_1 k-line-0", "line in_1 k-line-1", "finalize in_1 auto_advance=true k-finalize"]);
+  });
+
+  it("carries on with a saved draft, and leaves a finalized invoice alone", async () => {
+    const draft = stubStripe("draft");
+    await draft.provider.createInvoice({ ...input, existingInvoiceId: "in_1" });
+    expect(draft.calls).toEqual(["retrieve in_1", "line in_1 k-line-0", "line in_1 k-line-1", "finalize in_1 auto_advance=true k-finalize"]);
+
+    const done = stubStripe("paid");
+    expect(await done.provider.createInvoice({ ...input, existingInvoiceId: "in_1" })).toMatchObject({ invoiceId: "in_1", status: "paid" });
+    expect(done.calls).toEqual(["retrieve in_1"]);
   });
 });

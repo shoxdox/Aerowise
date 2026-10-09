@@ -1,6 +1,6 @@
 "use client";
 
-import type { InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
+import type { Inspection, InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IntroCard } from "@/components/Intro";
 import { InspectionForm } from "@/components/tech/InspectionForm";
@@ -14,7 +14,7 @@ import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
-import { currentPosition, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
+import { currentPosition, fetchInspectionForJob, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
@@ -35,6 +35,25 @@ function registerServiceWorker() {
     .catch(() => {});
 }
 
+/** The server's copy of an inspection as this phone's draft: its answers, issues and already-uploaded photos, under the same id. */
+function adoptInspection(server: Inspection): LocalInspection {
+  return {
+    clientId: server.clientId,
+    jobId: server.jobId,
+    templateId: server.templateId,
+    status: "draft",
+    arrivedAt: server.arrivedAt,
+    completedAt: null,
+    arrivalGps: server.arrivalLat !== null && server.arrivalLng !== null ? { lat: server.arrivalLat, lng: server.arrivalLng } : null,
+    completionGps: null,
+    accessIssue: server.accessIssue,
+    values: server.values,
+    issues: server.issues.map(({ clientId, type, severity, description }) => ({ clientId, type, severity, description })),
+    photos: server.photos.map((p) => ({ clientId: p.clientId, photoKey: p.photoKey, capturedAt: p.capturedAt ?? server.arrivedAt, lat: p.lat, lng: p.lng, uploaded: true })),
+    server: { id: server.id, status: server.status, validationStatus: server.validationStatus, problems: server.validationProblems },
+  };
+}
+
 export default function TechApp() {
   const [me, setMe] = useState<Me | null>(null);
   const [route, setRoute] = useState<{ date: string; items: Stop[] } | null>(null);
@@ -42,6 +61,8 @@ export default function TechApp() {
   const [template, setTemplate] = useState<InspectionTemplate | undefined>();
   const [inspections, setInspections] = useState<Map<string, LocalInspection>>(new Map());
   const [failures, setFailures] = useState<string[]>([]);
+  /** Why a stop could not be opened just now (an inspection started on another phone, with no signal to fetch it). */
+  const [startNotice, setStartNotice] = useState<string | null>(null);
   // Work visits (SW-2): empty unless field work is switched on and the office scheduled some.
   const [workStops, setWorkStops] = useState<WorkStop[]>([]);
   const [works, setWorks] = useState<Map<string, LocalWork>>(new Map());
@@ -144,23 +165,36 @@ export default function TechApp() {
 
   async function start(stop: Stop) {
     if (!template) return;
+    setStartNotice(null);
     const existing = inspections.get(stop.jobId);
     if (!existing) {
-      const insp: LocalInspection = {
-        clientId: crypto.randomUUID(),
-        jobId: stop.jobId,
-        templateId: template.id,
-        status: "draft",
-        arrivedAt: new Date().toISOString(),
-        completedAt: null,
-        arrivalGps: await currentPosition(),
-        completionGps: null,
-        accessIssue: null,
-        values: {},
-        issues: [],
-        photos: [],
-        server: null,
-      };
+      let insp: LocalInspection;
+      if (stop.inspection?.status === "draft") {
+        // Started on another phone (or here, before this phone's data was cleared): continue the
+        // server's copy under its own id. A second inspection for the job would be refused at sync.
+        const fetched = await fetchInspectionForJob(stop.jobId, activeStore().tenant);
+        if (!fetched.ok) {
+          setStartNotice("This inspection was started on another phone. Open this stop once with signal to continue it here.");
+          return;
+        }
+        insp = adoptInspection(fetched.data);
+      } else {
+        insp = {
+          clientId: crypto.randomUUID(),
+          jobId: stop.jobId,
+          templateId: template.id,
+          status: "draft",
+          arrivedAt: new Date().toISOString(),
+          completedAt: null,
+          arrivalGps: await currentPosition(),
+          completionGps: null,
+          accessIssue: null,
+          values: {},
+          issues: [],
+          photos: [],
+          server: null,
+        };
+      }
       await saveInspection(insp);
       await refreshLocal();
       void syncNow();
@@ -340,7 +374,7 @@ export default function TechApp() {
           />
         )}
         {view.name === "stop" && stop && (
-          <StopDetail stop={stop} inspection={inspections.get(stop.jobId)} canStart={!!template} onStart={() => void start(stop)} />
+          <StopDetail stop={stop} inspection={inspections.get(stop.jobId)} canStart={!!template} onStart={() => void start(stop)} notice={startNotice} />
         )}
         {view.name === "inspect" && stop && inspections.get(stop.jobId) && (
           <InspectionForm

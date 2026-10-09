@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormTemplate, InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
+import type { FormTemplate, Inspection, InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
 import type { Me } from "../session";
 import { activeStore, type CachedRoute, type Gps, type Tenant, type TenantStore } from "./db";
 import { tenantHeader } from "./sync";
@@ -20,6 +20,9 @@ async function fetchJson<T>(path: string, tenant?: Tenant): Promise<Fetched<T>> 
     return { ok: false, reason: "offline" };
   }
 }
+
+/** The inspection the server holds for a job, to continue one started on another phone. */
+export const fetchInspectionForJob = (jobId: string, tenant?: Tenant) => fetchJson<Inspection>(`/jobs/${jobId}/inspection`, tenant);
 
 /** Who this phone's session is signed in as right now, straight from the server. */
 export const fetchMe = () => fetchJson<Me>("/auth/me");

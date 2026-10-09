@@ -40,8 +40,12 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       .leftJoin("serviceObligations as o", (k) => k.onRef("o.id", "=", "j.obligationId").onRef("o.organizationId", "=", "j.organizationId"))
       .leftJoin("workOrders as wo", (k) => k.onRef("wo.id", "=", "j.workOrderId").onRef("wo.organizationId", "=", "j.organizationId"))
       .leftJoin("workTypes as wt", (k) => k.onRef("wt.id", "=", "wo.workTypeId").onRef("wt.organizationId", "=", "wo.organizationId"))
+      // At most one inspection per job (unique index), so this never multiplies rows.
+      .leftJoin("inspections as i", (k) => k.onRef("i.jobId", "=", "j.id").onRef("i.organizationId", "=", "j.organizationId"))
       .select([
         "j.id as jobId",
+        "i.offlineClientId as inspectionClientId",
+        "i.status as inspectionStatus",
         "j.type as kind",
         "j.visitNumber",
         "wo.id as workOrderId",
@@ -144,6 +148,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         ? { id: r.workOrderId, number: r.workOrderNumber, label: workOrderLabel(r.workOrderNumber), title: r.workOrderTitle, category: r.workOrderCategory, workTypeName: r.workTypeName, visitNumber: r.visitNumber ?? 1 }
         : null,
     durationMinutes: r.durationMinutes ?? null,
+    inspection: r.inspectionClientId && r.inspectionStatus ? { clientId: r.inspectionClientId, status: r.inspectionStatus } : null,
   });
 
   async function assertAssignable(organizationId: string, userId: string) {

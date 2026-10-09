@@ -97,12 +97,24 @@ export async function runMonthlyBilling(
 
   const provider = opts.provider;
   const customerId = await ensureBillingCustomer(db, provider, org);
+  const periodId = period.id;
   const invoice = await provider.createInvoice({
     customerId,
-    idempotencyKey: `aerowise-billing-${period.id}`,
+    idempotencyKey: `aerowise-billing-${periodId}`,
     description: `Aerowise, ${monthName(period.startsOn)}`,
     lines: invoiceLines(period),
-    metadata: { organizationId, billingPeriodId: period.id },
+    metadata: { organizationId, billingPeriodId: periodId },
+    existingInvoiceId: period.providerInvoiceId,
+    // Saved before any line goes on, so a run that dies here resumes this draft rather than
+    // making a second invoice, and the draft's webhooks already find their month.
+    onCreated: async (invoiceId) => {
+      await db
+        .updateTable("billingPeriods")
+        .set({ provider: provider.kind, providerInvoiceId: invoiceId, updatedAt: opts.now })
+        .where("id", "=", periodId)
+        .where("status", "=", "pending")
+        .execute();
+    },
   });
   const updated = await db
     .updateTable("billingPeriods")
@@ -130,7 +142,7 @@ export async function ensureBillingCustomer(
 async function findPeriod(db: Executor, organizationId: string, startsOn: string) {
   return db
     .selectFrom("billingPeriods")
-    .select(["id", "status", "startsOn", "activeContracts", "pricePerContractCents", "monthlyMinimumCents", "amountCents"])
+    .select(["id", "status", "startsOn", "activeContracts", "pricePerContractCents", "monthlyMinimumCents", "amountCents", "providerInvoiceId"])
     .where("organizationId", "=", organizationId)
     .where("startsOn", "=", startsOn)
     .executeTakeFirst();
@@ -181,8 +193,19 @@ export async function applyBillingEvent(
     const status = STATUS_FOR_EVENT[event.type];
     const invoiceId = typeof event.data.object.id === "string" ? event.data.object.id : null;
     if (!status || !invoiceId) return "ignored";
-    const period = await trx.selectFrom("billingPeriods").select(["id", "organizationId", "status"]).where("providerInvoiceId", "=", invoiceId).forUpdate().executeTakeFirst();
-    if (!period) return "ignored";
+    let period = await trx.selectFrom("billingPeriods").select(["id", "organizationId", "status"]).where("providerInvoiceId", "=", invoiceId).forUpdate().executeTakeFirst();
+    if (!period) {
+      // An invoice Aerowise made (its metadata names the month) whose id was never saved, say
+      // because the run died right after Stripe made the draft: the month claims it now.
+      const meta = event.data.object.metadata as Record<string, unknown> | undefined;
+      const periodId = typeof meta?.billingPeriodId === "string" ? meta.billingPeriodId : null;
+      const own = periodId
+        ? await trx.selectFrom("billingPeriods").select(["id", "organizationId", "status"]).where("id", "=", periodId).where("providerInvoiceId", "is", null).forUpdate().executeTakeFirst()
+        : undefined;
+      if (!own) return "ignored";
+      await trx.updateTable("billingPeriods").set({ providerInvoiceId: invoiceId, updatedAt: now }).where("id", "=", own.id).execute();
+      period = own;
+    }
     await trx.updateTable("billingEvents").set({ organizationId: period.organizationId }).where("id", "=", event.id).execute();
     if (period.status === "paid" || period.status === status) return "applied";
     // A failed payment that Stripe retries reopens the invoice; "finalized" never undoes a failure.

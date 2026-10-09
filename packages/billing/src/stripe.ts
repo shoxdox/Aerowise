@@ -14,8 +14,8 @@ export class StripeBillingProvider implements BillingProvider {
   private readonly webhookSecrets: string[];
   private readonly productId: string | null;
 
-  constructor(opts: { secretKey: string; webhookSecrets: string[]; productId?: string | null }) {
-    this.stripe = new Stripe(opts.secretKey, { maxNetworkRetries: 2, appInfo: { name: "Aerowise Billing" } });
+  constructor(opts: { secretKey: string; webhookSecrets: string[]; productId?: string | null; client?: Stripe }) {
+    this.stripe = opts.client ?? new Stripe(opts.secretKey, { maxNetworkRetries: 2, appInfo: { name: "Aerowise Billing" } });
     this.webhookSecrets = opts.webhookSecrets;
     this.productId = opts.productId ?? null;
   }
@@ -28,26 +28,41 @@ export class StripeBillingProvider implements BillingProvider {
     return { customerId: customer.id };
   }
 
+  /**
+   * Draft, lines, finalize: three or more calls, each with its own idempotency key. The draft
+   * is made with `auto_advance` off, so if this run dies part-way Stripe never finalizes and
+   * collects a half-built invoice by itself; the next run resumes the same draft (by the saved
+   * id, or by the replayed keys) and finalizes it once every line is on it.
+   */
   async createInvoice(input: BillingInvoiceInput) {
-    const invoice = await this.stripe.invoices.create(
-      {
-        customer: input.customerId,
-        collection_method: "charge_automatically",
-        auto_advance: true,
-        // Only the lines added below, never stray pending items on the customer.
-        pending_invoice_items_behavior: "exclude",
-        description: input.description,
-        metadata: input.metadata,
-      },
-      { idempotencyKey: `${input.idempotencyKey}-invoice` },
-    );
-    if (!invoice.id) throw new Error("Stripe returned an invoice without an id");
+    let invoiceId = input.existingInvoiceId ?? null;
+    if (invoiceId) {
+      const existing = await this.stripe.invoices.retrieve(invoiceId);
+      // Finalized by an earlier run whose answer was lost: nothing more to add.
+      if (existing.status !== "draft") return toResult(existing);
+    } else {
+      const invoice = await this.stripe.invoices.create(
+        {
+          customer: input.customerId,
+          collection_method: "charge_automatically",
+          auto_advance: false,
+          // Only the lines added below, never stray pending items on the customer.
+          pending_invoice_items_behavior: "exclude",
+          description: input.description,
+          metadata: input.metadata,
+        },
+        { idempotencyKey: `${input.idempotencyKey}-invoice` },
+      );
+      if (!invoice.id) throw new Error("Stripe returned an invoice without an id");
+      invoiceId = invoice.id;
+      await input.onCreated?.(invoiceId);
+    }
     for (const [i, line] of input.lines.entries()) {
       await this.stripe.invoiceItems.create(
         this.productId
           ? {
               customer: input.customerId,
-              invoice: invoice.id,
+              invoice: invoiceId,
               description: line.description,
               quantity: line.quantity,
               price_data: { currency: "usd", product: this.productId, unit_amount: line.unitAmountCents },
@@ -55,7 +70,7 @@ export class StripeBillingProvider implements BillingProvider {
             }
           : {
               customer: input.customerId,
-              invoice: invoice.id,
+              invoice: invoiceId,
               description: line.description,
               amount: line.quantity * line.unitAmountCents,
               currency: "usd",
@@ -64,8 +79,8 @@ export class StripeBillingProvider implements BillingProvider {
         { idempotencyKey: `${input.idempotencyKey}-line-${i}` },
       );
     }
-    const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id, { auto_advance: true }, { idempotencyKey: `${input.idempotencyKey}-finalize` });
-    return { invoiceId: invoice.id, status: finalized.status === "paid" ? ("paid" as const) : ("open" as const), hostedUrl: finalized.hosted_invoice_url ?? null };
+    const finalized = await this.stripe.invoices.finalizeInvoice(invoiceId, { auto_advance: true }, { idempotencyKey: `${input.idempotencyKey}-finalize` });
+    return toResult(finalized);
   }
 
   async retryInvoice(invoiceId: string) {
@@ -116,6 +131,12 @@ export class StripeBillingProvider implements BillingProvider {
     throw new BillingSignatureError("Stripe signature did not verify");
   }
 }
+
+const toResult = (invoice: Pick<Stripe.Invoice, "id" | "status" | "hosted_invoice_url">) => ({
+  invoiceId: invoice.id!,
+  status: invoice.status === "paid" ? ("paid" as const) : ("open" as const),
+  hostedUrl: invoice.hosted_invoice_url ?? null,
+});
 
 /** Stripe Billing from the environment, or null when its key is not set. */
 export function billingFromEnv(env: Record<string, string | undefined>): StripeBillingProvider | null {

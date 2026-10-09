@@ -98,6 +98,12 @@ export const stop = z.object({
   durationMinutes: z.number().int().nullable().optional(),
   /** What the site's reporting authority adds to the inspection. Only on the technician's route. */
   requirements: inspectionRequirements.nullable().optional(),
+  /**
+   * The inspection the server already holds for this job (started on another phone, or on
+   * this one before its data was cleared), so the phone continues it instead of starting a
+   * second one the server would refuse. Older clients ignore it.
+   */
+  inspection: z.object({ clientId: z.string(), status: z.enum(["draft", "completed"]) }).nullable().optional(),
 });
 
 export const technician = z.object({ id, name: z.string(), technicianLicense: z.string().nullable() });

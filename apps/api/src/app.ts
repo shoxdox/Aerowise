@@ -321,7 +321,7 @@ export async function buildApp({
   await app.register(routingRoutes, { db, now, geocoder });
   await app.register(emailRoutes, { db, now, provider: mailProvider });
   const compliance = { store, mail: transport, enqueue };
-  await app.register(filingRoutes, { db, now, signer, compliance });
+  await app.register(filingRoutes, { db, now, signer, compliance, production });
   await app.register(readinessRoutes, { db, now, signer, compliance });
   await app.register(labTestRoutes, { db, now });
   await app.register(monitoringRoutes, { db, now });

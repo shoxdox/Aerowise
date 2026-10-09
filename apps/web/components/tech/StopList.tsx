@@ -9,6 +9,7 @@ export function stopStatus(stop: Stop, insp: LocalInspection | undefined): { lab
   if (insp?.status === "completed") return insp.server?.status === "completed" ? { label: "Done", tone: "ok" } : { label: "Done · not sent yet", tone: "warn" };
   if (stop.status === "completed") return { label: "Done", tone: "ok" };
   if (insp) return { label: "In progress", tone: "warn" };
+  if (stop.inspection?.status === "draft") return { label: "In progress · on another phone", tone: "warn" };
   return { label: "To do", tone: "" };
 }
 

@@ -63,11 +63,23 @@ const params = z.object({ id });
 
 const VIEWS = ["attention", "open", "sent", "confirmed", "all"] as const;
 
-export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; signer: UrlSigner; compliance: Omit<ComplianceContext, "db" | "now"> }> = async (
+export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; signer: UrlSigner; compliance: Omit<ComplianceContext, "db" | "now">; production?: boolean }> = async (
   app,
-  { db, now, signer, compliance },
+  { db, now, signer, compliance, production = false },
 ) => {
   const ctx = (): ComplianceContext => ({ ...compliance, db, now });
+
+  /**
+   * The fictional example authority is for development, tests and demo companies. In
+   * production a real company never sees it or files under it, even where the hosted demo's
+   * database holds it (DEMO_MODE loads it for the demo companies that share that database).
+   */
+  const fictionalAllowed = async (organizationId: string) => {
+    if (!production) return true;
+    const org = await db.selectFrom("organizations").select("demo").where("id", "=", organizationId).executeTakeFirst();
+    return org?.demo === true;
+  };
+  const isFictional = (entry: Awaited<ReturnType<typeof loadCatalog>>[number]) => entry.rulesets.every((rs) => profileStatus(rs.rules) === "fictional");
 
   /** When the sources were read and when the requirement took effect: two different dates, kept apart. */
   const profileDates = (rules: RulesetRules) => ({ sourcesCheckedOn: rules.profile?.sourcesCheckedOn ?? null, requirementEffective: rules.profile?.requirementEffective ?? null });
@@ -96,8 +108,15 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       schema: { tags: ["filings"], summary: "Reporting authorities and their current ruleset version", response: { 200: z.object({ items: z.array(jurisdiction) }) } },
     },
     async (req) => {
-      const today = await organizationToday(db, req.requireAuth().organizationId, now());
-      return { items: (await loadCatalog(db)).filter((e) => e.jurisdiction.active).map((e) => toJurisdiction(e, today)) };
+      const { organizationId } = req.requireAuth();
+      const today = await organizationToday(db, organizationId, now());
+      const showFictional = await fictionalAllowed(organizationId);
+      return {
+        items: (await loadCatalog(db))
+          .filter((e) => e.jurisdiction.active)
+          .filter((e) => showFictional || !isFictional(e))
+          .map((e) => toJurisdiction(e, today)),
+      };
     },
   );
 
@@ -195,6 +214,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       if (body.jurisdictionId) {
         const j = await db.selectFrom("jurisdictions").select("id").where("id", "=", body.jurisdictionId).where("active", "=", true).executeTakeFirst();
         if (!j) throw unprocessable("jurisdictionId does not match an active authority");
+        const entry = (await loadCatalog(db)).find((e) => e.jurisdiction.id === j.id);
+        if (entry && isFictional(entry) && !(await fictionalAllowed(organizationId))) {
+          throw unprocessable("jurisdictionId is the fictional example authority, which a real company cannot report to");
+        }
       }
       await db.transaction().execute(async (trx) => {
         const site = await trx.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).forUpdate().executeTakeFirst();
