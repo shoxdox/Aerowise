@@ -2,7 +2,7 @@
 
 Software for Texas septic maintenance and service providers: customers, sites and contracts, recurring inspections, an offline technician app, reporting and filing evidence, renewals, invoices, payments and the customer portal.
 
-**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The authorized service expansion is deployed on staging at application `be44166` through migration `0060`, with all eight workflow flags enabled. Final validation is on frozen `9daf3d7`, including a reviewed phone sync-status correction. API/package results passed on unchanged code; the corrected browser suite is running. Phone and application floor/recovery checks passed with the limits recorded in the runbook. Production, real providers and authority acceptance remain separate gates.
+**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The authorized service expansion is built, independently reviewed and deployed on staging at `a444be2`, migration `0060`, with all eight workflow flags enabled. Final browser validation passed 106/106; unchanged server/package evidence passed 879 API / 161 domain tests, with rollback/recovery and Docker smoke checks complete. The [37-row validation record](docs/engineering/SW12-VALIDATION-2026-10-08.md) states exactly what passed and the remaining exceptions. Physical-phone, real-provider/accounting/legal and authority acceptance remain separate gates. Production is unchanged.
 
 ## Start here
 

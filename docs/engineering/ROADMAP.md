@@ -1,6 +1,6 @@
 # Delivery record and remaining pilot work
 
-Updated October 6, 2026 after #90 (`d646512`, migrations through `0046`). This replaces the completed build queue. The [current handoff](../DEMO-PILOT-BRIEF.md) governs next steps; the [pilot worksheet](../PILOT-CALL-SHEET.md) governs evidence collection. No worker assignment or new feature phase is active here.
+Updated October 8, 2026 through service workflow migration `0060`. This records shipped engineering and the remaining pilot gates. The [current handoff](../DEMO-PILOT-BRIEF.md) governs next steps; the [pilot worksheet](../PILOT-CALL-SHEET.md) governs evidence collection. No worker assignment or new feature phase is active here.
 
 ## Delivered foundation (W1–W8)
 
@@ -13,7 +13,7 @@ Hosting/deploy configuration, demo stand-ins, organization/admin onboarding and 
 - **W10.3:** populated guided story — done #86.
 - **W10.4:** intros and explanatory empty states — done #89, migration 0044.
 - **W10.5:** site/filing authority panel with partial confirmation — done #89, using #85.
-- **W10.6:** admin-created prospect demos and clean trial conversion — done #89, migration 0046. Invitations/deployment are separate. STG-01: the nightly reset now keeps prospect demos and real trials (draft PR, branch `claude/stg-01-preserve-prospect-demos-3vhznh`; staging retest pending).
+- **W10.6:** admin-created prospect demos and clean trial conversion — done #89, migration 0046. Invitations/deployment are separate. STG-01 is fixed and deployed; subsequent staging reseeds preserved prospect/non-demo organizations, as recorded in RUNBOOK.
 - **W11.1–W11.3:** two walkthrough rounds and material fixes/measurements — done #81/#90; three cosmetic leftovers recorded in [W11-WALKTHROUGH.md](../product/W11-WALKTHROUGH.md#left-open-cosmetic).
 - **W11.4:** accurate marketing coverage and demo-only "Try the demo" — done #90.
 - **W12.C1:** primary-source research packet — done #80.
@@ -23,7 +23,7 @@ Hosting/deploy configuration, demo stand-ins, organization/admin onboarding and 
 - **W12.V2:** preparation of a next-version proposal/diff — done #82. Publication remains a separate reviewed immutable-version PR.
 - **W12.V3:** call sheet prepared; [repository worksheet](../PILOT-CALL-SHEET.md) now available. Pilot provider/authority not selected; no contact sent.
 - **W12.V4:** per-field confirmation in admin/coverage/marketing — done #85.
-- **Street map for routes:** office schedule and technician map/list toggle on a self-hosted OpenStreetMap basemap ([MAP.md](MAP.md)); demo addresses gated from real geocoders — draft PR, branch `claude/route-street-map-ae4nrx`. Staging map file not yet installed; no offline basemap.
+- **Street map for routes:** office schedule and technician map/list toggle on a self-hosted OpenStreetMap basemap ([MAP.md](MAP.md)); demo addresses gated from real geocoders — merged with reviewed map/lifecycle release #97 (`220b4e7`) and later SW-10 mixed-work support. Same-origin staging map is installed and verified; no offline basemap guarantee or traffic estimates.
 
 ## W12. County evidence and verification
 
@@ -33,7 +33,7 @@ Supported research corrections have landed; original packet `implemented: false`
 
 Choose one provider and actual permit authority; obtain a small redacted permit/contract/accepted-report pack; deploy and verify controlled staging/demo; compare one generated report and schedule; confirm the pilot's remaining acceptance details; log evidence and review any proposed new version. Before real operations, validate required integrations, credentials, legal text and backup/restore. These steps require fresh evidence, not automatic new coding workers.
 
-## Service workflows (final validation in progress)
+## Service workflows (engineering complete on staging; external gates remain)
 
 - **SW-0:** [implementation plan](SERVICE-WORKFLOWS-IMPLEMENTATION-PLAN.md) for general work orders, pumping/disposal records, estimates, plan-specific agreements and coverage, conventional/installation work, work on the street map and authority export interoperability — merged #98 (`2faf91c`, documentation only).
 - **SW-1:** work foundation, flag `work_orders` (off by default) — merged #100 (`79b3c12`), migration 0048; deployed to staging with `work_orders` on there only (RUNBOOK). Kinds of work, work orders with lines, notes and an append-only timeline, work visits as `type = 'work'` jobs (several visits per order, one open at a time), database-enforced job/obligation/inspection kinds, the retest link stored, every existing jobs reader explicit about its kind, idempotent issue and request conversion, office `/work` pages, inbox buttons and schedule badges, demo story behind the flag. Phone work form and sync shipped in SW-2; homeowner portal listing remains SW-7. Rollback floor SW-1 (service workflows plan §9.1).
@@ -53,7 +53,7 @@ Choose one provider and actual permit authority; obtain a small redacted permit/
 - **Phone follow-up:** #117 merged (`be6449c`) after independent direct build, coverage API 2/2 and focused browser 10/10. Atomic storage-full handling, retry of refused changes, stale sent-photo reconciliation and price-free technician coverage are included. Quota was simulated. Deployed to staging; preserved WO1005 photo/signature-label retest passed before the public reset. The fresh demo contains the fictional pumping/disposal story; seven other organizations were retained by reset.
 - **SW-7:** conventional/install merged #119 (`e177c56`), migration `0059`, and deployed to staging. Independent installation API 10/10, direct build and browser 1/1 passed. Actual staging two-visit installation retained both photos, required sign-off only on the final visit, and rendered the watermarked completion PDF in the office and homeowner portal. Conventional-system contract warning passed. Physical device and actual installation/authority acceptance remain external gates.
 - **SW-9:** non-aerobic cycles merged #118 (`be44166`), migration `0060`, flag `service_cycles`; deployed off first and then enabled on staging. Frozen per-contract cycles schedule pumping and maintenance as work, keep aerobic inspections isolated, book exactly one live work order per visit and show each cycle in renewal/portal copy. Independent API, build and office/homeowner browser checks passed. Ordered upgrade preserves the compared existing visits/contracts/filings; aerobic output comparisons use UUID-normalized stored report snapshots before re-rendering, not identical raw stored PDFs. Actual staging pumping-only cycle completion, manifest photo, two-visit renewal preview and 1-of-2 portal progress passed without inspection or filing. Final app rollback floor is `be44166`; phone web floor remains `a39e875` with a compatible server.
-- **SW-12:** frozen #116 `97aca5b` contains the 37-row matrix, new browser cases, tenant/role sweeps and repeatable floor drills. One final combined local suite is running. Root phone-floor drill passed 2/8/6 checks; app-floor/forward/restore passed 17/17 steps with 97 table snapshots and 30 stored-file checksums preserved. The first local app drill's one-table snapshot was invalidated and repeated after correcting the root Docker client wrapper; no product or frozen-head change. Final actual staging backup/restore passed: 101 tables, 4,896 rows, migration 0060 and 99 files; server-local backup only. Full expansion validation is not complete yet. Hosted CI remains billing-blocked; physical device, real-provider/accounting/legal and authority gates remain open.
+- **SW-12:** #116 merged as `a444be2` and deployed to staging after independent review of tested `9daf3d7`. Full corrected browser suite passed 106/106/no retries, and corrected image/Compose smoke passed. Original 97aca5b API879/domain161/package/upgrade/config evidence carries on verified unchanged source; original browser101/102 and its real sync-banner failure remain recorded. The final client fix passed fail-before/pass-after checks, root build/six regressions and affected phone-floor A2/8/6. Populated application-floor B17/17 preserves97 compared tables/30files with documented exclusions and the invalid first tooling run disclosed. Actual fresh staging scratch restore passes101tables/4983rows/0060/99files, server-local only. [Complete 37-row record](SW12-VALIDATION-2026-10-08.md). Hosted CI remains billing-blocked; physical device, real-provider/accounting/legal and authority gates remain open.
 
 ## W9. Deferred
 

@@ -1,5 +1,7 @@
 # Codex / Claude continuation — October 8, 2026
 
+**Completed continuation:** the authorized expansion engineering and final validation are merged and deployed on staging at `a444be2`/migration0060. The remainder of this file is the historical starting handoff. Use [current status](../DEMO-PILOT-BRIEF.md), [final 37-row validation](SW12-VALIDATION-2026-10-08.md) and RUNBOOK for actual results and open external gates. The four existing workers are finished; do not replay this completed build queue.
+
 Justin requested a fresh Codex chat to take over the accepted Fieldbase expansion. The outgoing chat has stopped implementation/review work after saving this record. Continue autonomously with the four existing Claude workers; do not create duplicate workers or rebuild the plan from scratch.
 
 ## Boundaries and authority
