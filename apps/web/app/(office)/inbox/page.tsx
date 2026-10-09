@@ -199,6 +199,58 @@ function RetestAction({ e, today, onDone }: { e: InboxException; today: string; 
   );
 }
 
+/** A held inspection: accept it as the visit's inspection, or set it aside with a reason. */
+function HeldInspectionAction({ e, onDone }: { e: InboxException; onDone: () => void }) {
+  const [aside, setAside] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function accept() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/inspections/conflicts/${e.target.id}/attach`, { method: "POST", body: {} });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not accept it");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function dismiss(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    try {
+      await api(`/inspections/conflicts/${e.target.id}/dismiss`, { method: "POST", body: { reason: formValues(event.currentTarget).text } });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not set it aside");
+    }
+  }
+  if (aside) {
+    return (
+      <form className="row" onSubmit={dismiss}>
+        <input name="text" required placeholder="Why it is set aside (kept on record)" aria-label="Reason" />
+        <button type="submit">Set aside</button>
+        <button type="button" className="link" onClick={() => setAside(false)}>
+          Cancel
+        </button>
+        {error && <span className="error">{error}</span>}
+      </form>
+    );
+  }
+  return (
+    <span className="row">
+      <button onClick={() => void accept()} disabled={busy}>
+        {busy ? "Accepting…" : "Accept as the inspection"}
+      </button>
+      <button className="secondary" onClick={() => setAside(true)}>
+        Set aside
+      </button>
+      {error && <span className="error">{error}</span>}
+    </span>
+  );
+}
+
 /** Accept an unfinished inspection, or close an issue or a service request, without leaving the inbox. */
 function InlineAction({ e, onDone }: { e: InboxException; onDone: () => void }) {
   const [open, setOpen] = useState(false);
@@ -312,6 +364,7 @@ export default function InboxPage() {
                     {(e.kind === "issue_open" || e.kind === "service_request") && (e.workOrder || editable) && <WorkOrderAction e={e} canCreate={editable && workOrders} />}
                     {(e.kind === "issue_open" || e.kind === "service_request") && !e.workOrder && editable && estimates && <EstimateAction e={e} />}
                     {inline && <InlineAction e={e} onDone={() => void reload()} />}
+                    {editable && e.kind === "inspection_held" && <HeldInspectionAction e={e} onDone={() => void reload()} />}
                     {retest && <RetestAction e={e} today={data.today} onDone={() => void reload()} />}
                     {editable && e.target.type === "sms_message" && <HandledButton e={e} onDone={() => void reload()} />}
                     {link && (

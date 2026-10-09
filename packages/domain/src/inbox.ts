@@ -7,6 +7,7 @@ import { workOrderLink } from "./work.ts";
 export const EXCEPTION_KINDS = [
   "inspection_overdue",
   "inspection_incomplete",
+  "inspection_held",
   "filing_failed",
   "filing_rejected",
   "filing_needs_review",
@@ -70,7 +71,7 @@ export const inboxException = z.object({
   site: z.object({ id, addressLine1: z.string(), city: z.string() }).nullable(),
   customer: z.object({ id, displayName: z.string() }),
   /** The record to open to deal with it. */
-  target: z.object({ type: z.enum(["filing", "inspection", "issue", "obligation", "contract", "site", "invoice", "quickbooks", "renewal", "service_request", "sms_message"]), id }),
+  target: z.object({ type: z.enum(["filing", "inspection", "inspection_conflict", "issue", "obligation", "contract", "site", "invoice", "quickbooks", "renewal", "service_request", "sms_message"]), id }),
   /** An issue or request already turned into a work order: its link instead of "Turn into work order". */
   workOrder: workOrderLink.nullable().optional(),
 });

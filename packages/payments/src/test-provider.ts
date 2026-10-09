@@ -43,7 +43,11 @@ export class TestPaymentProvider implements PaymentProvider {
     };
   }
 
-  async expireCheckout() {}
+  /** Checkout pages Aerowise asked to close (a payment recorded by the office, a void). */
+  readonly expiredSessions: string[] = [];
+  async expireCheckout(input: { sessionId: string }) {
+    this.expiredSessions.push(input.sessionId);
+  }
 
   /** Every refund asked for, retries included. */
   readonly refunds: RefundInput[] = [];

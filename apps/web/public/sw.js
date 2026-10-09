@@ -6,6 +6,14 @@
 
 const CACHE = "aerowise-shell-v1";
 const SHELL = "/tech";
+/** How long to wait for a fresh copy of the app before opening the cached one. */
+const SHELL_FETCH_TIMEOUT_MS = 8000;
+
+function timeoutSignal(ms) {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -47,16 +55,19 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
-  // The app page: network first so updates arrive, the cached copy when offline.
+  // The app page: network first so updates arrive, the cached copy when offline or when the
+  // network answers nothing for a while (one bar of signal keeps a socket open for a minute
+  // or more before it fails; the technician should not wait on it).
   if (req.mode === "navigate" && (url.pathname === SHELL || url.pathname.startsWith(SHELL + "/"))) {
     event.respondWith(
       (async () => {
+        const cached = await caches.match(SHELL);
         try {
-          const res = await fetch(req);
+          const res = await fetch(req, cached ? { signal: timeoutSignal(SHELL_FETCH_TIMEOUT_MS) } : {});
           if (res.ok) (await caches.open(CACHE)).put(SHELL, res.clone());
           return res;
         } catch {
-          return (await caches.match(SHELL)) || Response.error();
+          return cached || Response.error();
         }
       })(),
     );

@@ -1,11 +1,12 @@
 import type { EmailMessage, EmailResult, EmailTransport } from "@aerowise/compliance";
 import { TestPaymentProvider } from "@aerowise/payments";
-import { drainTasks } from "@aerowise/tasks";
+import { drainTasks, reconcileRefunds } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
 
-const ctx = setupTestApp();
+const stripe = new TestPaymentProvider();
+const ctx = setupTestApp({ payments: stripe });
 
 class FakeMail implements EmailTransport {
   readonly name = "fake";
@@ -17,7 +18,6 @@ class FakeMail implements EmailTransport {
 }
 const mail = new FakeMail();
 const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now: () => c.now, mail, appUrl: "https://app.example.test" });
-const stripe = new TestPaymentProvider();
 
 const LINES = [
   { description: "Aerator repair", quantity: 1, unitPriceCents: 30000 },
@@ -395,6 +395,50 @@ describe("paying online", () => {
     expect(voided).toMatchObject({ status: "void", paymentStatus: "refunded" });
     expect((await t.api.get("/inbox")).json().items.find((i: { kind: string }) => i.kind === "invoice_overpaid")).toBeUndefined();
     expect((await client(ctx.app).get(`/pay/${inv.token}`)).statusCode).toBe(404);
+  });
+
+  it("closes a checkout page the customer left open once the office records their payment", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    const anon = client(ctx.app);
+    const checkout = (await anon.post(`/pay/${inv.token}/checkout`, {})).json();
+    const sessionId = new URL(checkout.url).searchParams.get("session")!;
+    // The check arrives in the mail; the office records it in full.
+    const recorded = await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 32500, method: "check", receivedOn: "2026-03-01", reference: "1042" });
+    expect(recorded.statusCode, recorded.body).toBe(200);
+    expect(recorded.json()).toMatchObject({ paymentStatus: "paid", amountDueCents: 0 });
+    // The page the customer still had open is closed here and at the provider, so it cannot charge the card too.
+    expect((await ctx.db.selectFrom("checkoutSessions").select("status").where("providerSessionId", "=", sessionId).executeTakeFirstOrThrow()).status).toBe("expired");
+    expect(stripe.expiredSessions).toContain(sessionId);
+    expect((await t.api.get(`/invoices/${inv.id}`)).json()).toMatchObject({ paymentStatus: "paid", paidCents: 32500 });
+  });
+
+  it("asks again with the same key for a refund whose answer was lost, and never refunds twice", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    await webhook(ctx, "checkout.session.completed", session(inv, t.org.id, { paid: true, amount: 32500 }), t.accountId!);
+    const paymentId = (await t.api.get(`/invoices/${inv.id}`)).json().payments[0].id;
+
+    const before = stripe.refunds.length;
+    stripe.dropRefundResponses = 1;
+    const res = await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 2500, reason: "Tablets returned" });
+    expect(res.statusCode, res.body).toBe(200);
+    // Reserved and asked for; the answer never came back, so it waits rather than guessing.
+    const reserved = await ctx.db.selectFrom("refunds").select(["status", "providerRefundId", "idempotencyKey"]).where("paymentId", "=", paymentId).executeTakeFirstOrThrow();
+    expect(reserved).toMatchObject({ status: "pending", providerRefundId: null });
+    expect(reserved.idempotencyKey).toMatch(/^aerowise-refund-/);
+    expect(stripe.refunds).toHaveLength(before + 1);
+    // Pressing Refund again does not reserve a second refund of money already spoken for.
+    expect((await t.api.post(`/payments/${paymentId}/refund`, { amountCents: 32500, reason: "again" })).statusCode).toBe(422);
+
+    // Six minutes on, the reconcile task asks with the same key: the provider answers with the refund it already made.
+    ctx.now = new Date(ctx.now.getTime() + 6 * 60_000);
+    expect(await reconcileRefunds(ctx.db, stripe, () => ctx.now)).toMatchObject({ sent: 1, failed: 0 });
+    expect(stripe.refunds).toHaveLength(before + 2);
+    expect(stripe.refunds[before]!.idempotencyKey).toBe(stripe.refunds[before + 1]!.idempotencyKey);
+    const settled = await ctx.db.selectFrom("refunds").select(["status", "providerRefundId"]).where("paymentId", "=", paymentId).execute();
+    expect(settled).toEqual([{ status: "succeeded", providerRefundId: expect.stringMatching(/^re_/) }]);
+    expect((await t.api.get(`/invoices/${inv.id}`)).json()).toMatchObject({ paymentStatus: "paid", paidCents: 30000, creditedCents: 2500 });
   });
 
   it("flags money that arrives on a void invoice for refund", async () => {

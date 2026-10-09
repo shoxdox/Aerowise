@@ -105,7 +105,8 @@ test("a company that went read-only while the phone was offline keeps the techni
 
     // Reactivated: it all arrives, once.
     await db.query(`update organizations set subscription_state = $1 where id = ${TESS_ORG}`, [original]);
-    await page.getByRole("button", { name: "Try now" }).click();
+    // The app retries on its own every 20 seconds; Try now only hurries it, and may already be gone.
+    await page.getByRole("button", { name: "Try now" }).click({ timeout: 15_000 }).catch(() => {});
     await expect(status).toHaveText("All changes sent", { timeout: 60_000 });
     const row = (
       await db.query(

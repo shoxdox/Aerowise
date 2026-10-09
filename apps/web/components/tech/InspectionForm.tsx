@@ -2,6 +2,7 @@
 
 import {
   applyRequirements,
+  INSPECTION_CONFLICT_REASON_LABELS,
   ISSUE_LABELS,
   ISSUE_SEVERITIES,
   ISSUE_TYPES,
@@ -76,7 +77,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
 
   // The county's requirements, saved with the route, make extra fields required.
   const def = applyRequirements(template.definition, stop.requirements);
-  const readOnly = insp.status === "completed";
+  const readOnly = insp.status === "completed" || !!insp.held;
   const fields = visibleFields(def, insp.values);
   const photos = visiblePhotos(def, insp.values);
   const counts: Record<string, number> = {};
@@ -156,7 +157,12 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
           {stop.customer.displayName} · {stop.site.addressLine1}
         </p>
         {stop.requirements && <p className="muted small">Reported to {stop.requirements.authorityName}</p>}
-        {readOnly && <p className="badge ok">Finished on this phone</p>}
+        {insp.held && (
+          <p className="card warn" role="status" data-testid="inspection-held">
+            {INSPECTION_CONFLICT_REASON_LABELS[insp.held.reason]} while this phone was offline. Your inspection reached the office, and the office will decide what to do with it.
+          </p>
+        )}
+        {readOnly && !insp.held && <p className="badge ok">Finished on this phone</p>}
       </div>
 
       {problems.length > 0 && (

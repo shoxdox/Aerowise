@@ -21,7 +21,7 @@ Software for Texas septic maintenance and service providers: customers, sites an
 
 - Organization isolation, role-based access, invitations, password reset, audit history and separate platform administration.
 - Customers, sites, systems, plans, contracts, recurring due dates, scheduling and estimated route optimization.
-- Offline technician inspections with sync, signatures and photos; report PDFs, review and filing preparation with recorded proof.
+- Offline technician inspections with sync, signatures and photos; an inspection for a visit the office changed meanwhile is held for the office to accept or set aside, never refused; report PDFs, review and filing preparation with recorded proof.
 - Renewals, homeowner signatures, invoicing, Stripe Connect and Aerowise subscription billing, customer portal, imports and exports.
 - General work orders, offline work records, service items and fractional quantities, estimates/deposits/refunds, frozen plan versions/options/coverage, pumping/disposal, conventional service and installation summaries, non-aerobic service cycles, mixed-service maps and authority CSV exports.
 - One-way QuickBooks sync, SMS workflows and configurable file/email providers. Real-service validation still depends on configured accounts and controlled integration checks.

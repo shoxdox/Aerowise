@@ -41,6 +41,8 @@ export async function enqueue(
 
 /** A task locked longer than this is assumed to belong to a crashed worker and is retried. */
 const LOCK_TIMEOUT = "10 minutes";
+/** A running task renews its lock this often, so a slow one is never taken by a second worker. */
+export const LOCK_HEARTBEAT_MS = 2 * 60_000;
 
 /**
  * Claims the next due task, or returns null. Safe to call from several workers at once.
@@ -84,4 +86,10 @@ export async function markFailed(db: Database, task: Task, error: string, now: D
     .where("id", "=", task.id)
     .execute();
   return giveUp;
+}
+
+/** Renews a running task's lock; false when the task is no longer this worker's (it was reclaimed or finished). */
+export async function extendLock(db: Database, taskId: string, workerId: string, now: Date = new Date()): Promise<boolean> {
+  const res = await db.updateTable("backgroundTasks").set({ lockedAt: now }).where("id", "=", taskId).where("lockedBy", "=", workerId).where("completedAt", "is", null).executeTakeFirst();
+  return Number(res.numUpdatedRows) === 1;
 }

@@ -40,7 +40,11 @@ describe("prospect demos", () => {
     }
     // The five-minute story was played; nobody was invited and nothing left for a real inbox.
     const filings = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", demo.id).where("inspectionId", "is not", null).execute();
-    expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
+    // Yesterday's two and the year's history before them: every report filing sent or confirmed.
+
+    expect(filings.length).toBeGreaterThan(2);
+
+    expect(new Set(filings.map((f) => f.status))).toEqual(new Set(["confirmed", "sent"]));
     expect(await ctx.db.selectFrom("invitations").select("id").where("organizationId", "=", demo.id).execute()).toEqual([]);
     const tokens = await ctx.db.selectFrom("demoAccessLinks").select("tokenHash").execute();
     expect(tokens.every((t) => !link.url.includes(t.tokenHash))).toBe(true);

@@ -28,6 +28,8 @@ import { ADMIN_SESSION_COOKIE, createAdminSession, findAdminSession, revokeAdmin
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { createInvitation, emailInvitation, inviteUrlFor, listInvitations, type InvitationMail } from "../lib/invitations.ts";
 import { eraseOrganization } from "../lib/org-erase.ts";
+import { SUPPORT_SESSION_COOKIE } from "../auth/support-sessions.ts";
+import { endOpenSupportSessions } from "../lib/support.ts";
 import { platformAudit } from "../lib/platform-audit.ts";
 
 // Same shape as a real hash so an unknown email costs the same time as a wrong password.
@@ -164,9 +166,12 @@ export const adminRoutes: FastifyPluginAsyncZod<{
       const session = token ? await findAdminSession(db, token) : null;
       if (session) {
         await revokeAdminSession(db, session.sessionId);
+        // Support access opened from this sign-in ends with it: its cookie must not outlive the admin's.
+        await db.transaction().execute((trx) => endOpenSupportSessions(trx, req, session.adminId, "signed_out"));
         await platformAudit(db, req, { adminId: session.adminId, action: "admin.signed_out", entityType: "platform_admin", entityId: session.adminId });
       }
       reply.clearCookie(ADMIN_SESSION_COOKIE, cookieOptions);
+      reply.clearCookie(SUPPORT_SESSION_COOKIE, cookieOptions);
       return reply.status(204).send(null);
     },
   );

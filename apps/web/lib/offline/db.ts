@@ -46,6 +46,8 @@ export interface LocalInspection {
   photos: LocalPhoto[];
   /** What the server last said about it. */
   server: { id: string; status: "draft" | "completed"; validationStatus: string; problems: { key: string; message: string }[] } | null;
+  /** Held for the office: the visit changed while the phone was offline. The form is read-only from then on. */
+  held?: { conflictId: string; reason: "reassigned" | "cancelled" | "office_completed"; status: "held" | "attached" | "dismissed" } | null;
 }
 
 export interface PhotoBlob {
@@ -451,6 +453,12 @@ export function storeFor(t: KnownTenant) {
     /** Puts changes the server turned down back in line to send, in their places; nothing is deleted. */
     retryFailed: () => run(["outbox"], "readwrite", (trx) => unfail(trx.objectStore("outbox"))),
     putInspection: (insp: LocalInspection) => run(["inspections"], "readwrite", (trx) => done(trx.objectStore("inspections").put(insp)).then(() => undefined)),
+    /** The server holds this inspection for the office; the phone keeps it, read-only, and says so. */
+    markHeld: (jobId: string, held: NonNullable<LocalInspection["held"]>) =>
+      run(["inspections"], "readwrite", async (trx) => {
+        const insp = (await done(trx.objectStore("inspections").get(jobId))) as LocalInspection | undefined;
+        if (insp) trx.objectStore("inspections").put({ ...insp, held });
+      }),
 
     acknowledgeSync: (op: QueuedOp, sent: LocalInspection, server: NonNullable<LocalInspection["server"]>, completedSent: boolean) =>
       run(["inspections", "outbox"], "readwrite", async (trx) => {

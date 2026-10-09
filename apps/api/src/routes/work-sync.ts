@@ -36,6 +36,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
+import { boundPhoneTimes } from "../lib/clock.ts";
 import { readForDownload } from "../lib/demo.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { currentForms } from "../lib/forms.ts";
@@ -384,13 +385,14 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary, { workOrderId: job.workOrderId, pumpOut: body.pumpOut, finalVisit: body.finalVisit }) : null;
         const values = check?.values ?? Object.fromEntries(Object.entries(body.values).filter(([, v]) => v !== null && v !== ""));
         const summarySha256 = body.summary ? await snapshotSha256(body.summary) : null;
+        const times = boundPhoneTimes(body, at);
         const columns = {
           answers: JSON.stringify(values),
           summary: body.summary ? JSON.stringify(body.summary) : null,
           summarySha256,
           finalVisit: body.finalVisit,
           phoneRevision: body.revision,
-          arrivedAt: body.arrivedAt,
+          arrivedAt: times.arrivedAt,
           arrivalLat: body.arrivalGps?.lat ?? null,
           arrivalLng: body.arrivalGps?.lng ?? null,
           completionLat: body.completionGps?.lat ?? null,
@@ -429,7 +431,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
               .where("id", "=", recordId)
               .execute();
           } else {
-            await completeRecord(trx, req, { organizationId, recordId, wo, jobId: job.id, finalVisit: body.finalVisit, completedAt: body.completedAt ? new Date(body.completedAt) : at, at, pumpOut: body.pumpOut });
+            await completeRecord(trx, req, { organizationId, recordId, wo, jobId: job.id, finalVisit: body.finalVisit, completedAt: times.completedAt ? new Date(times.completedAt) : at, at, pumpOut: body.pumpOut });
+            if (times.adjusted.length) await audit(trx, req, { action: "work.clock_adjusted", entityType: "work_record", entityId: recordId, changes: { adjusted: times.adjusted } });
           }
         }
         return { kind: "record" as const, id: recordId };

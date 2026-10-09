@@ -71,6 +71,9 @@ const emit = (s: SyncState) => {
   for (const fn of listeners) fn(s);
 };
 
+const SEND_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
+
 /** Thrown when the request never got a usable answer; the op stays queued. */
 class RetryLater extends Error {
   constructor(readonly reason: "offline" | "signed_out" | "server" | "read_only" | "other_account") {
@@ -83,7 +86,9 @@ const errorCode = async (res: Response) => ((await res.clone().json().catch(() =
 async function send(store: { tenant: Tenant }, url: string, init: RequestInit & { headers?: Record<string, string> }): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(url, { ...init, headers: { ...init.headers, ...tenantHeader(store.tenant) }, credentials: "same-origin", cache: "no-store" });
+    // A request that hangs on a weak connection is given up and sent again later; a photo gets longer.
+    const signal = AbortSignal.timeout(init.body instanceof Blob ? UPLOAD_TIMEOUT_MS : SEND_TIMEOUT_MS);
+    res = await fetch(url, { ...init, headers: { ...init.headers, ...tenantHeader(store.tenant) }, credentials: "same-origin", cache: "no-store", signal });
   } catch {
     throw new RetryLater("offline");
   }
@@ -143,6 +148,13 @@ async function runOp(store: TenantStore, op: QueuedOp, ops: QueuedOp[], inspecti
     body: JSON.stringify(payload(insp, photosQueued)),
   });
   if (!res.ok) return failOp(op, await message(res));
+  if (res.status === 202) {
+    // Held for the office (the visit changed while the phone was offline): the server has it, and
+    // the office decides. Photos still queued go up and are kept with it.
+    const held = (await res.json()) as { conflictId: string; reason: "reassigned" | "cancelled" | "office_completed"; status: "held" | "attached" | "dismissed" };
+    await store.markHeld(insp.jobId, { conflictId: held.conflictId, reason: held.reason, status: held.status });
+    return removeOp(op.seq);
+  }
   const server = (await res.json()) as { id: string; status: "draft" | "completed"; validationStatus: string; validationProblems: { key: string; message: string }[] };
   await acknowledgeSync(op, insp, { id: server.id, status: server.status, validationStatus: server.validationStatus, problems: server.validationProblems }, insp.status === "completed" && !photosQueued);
 }

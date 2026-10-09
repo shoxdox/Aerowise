@@ -2,29 +2,30 @@ import type { Database } from "@aerowise/db";
 import { AWAITING_SIGNATURE, labTestStatuses } from "@aerowise/compliance";
 import {
   addDays,
-  estimateLabel,
   CONTRACT_EXPIRED_WINDOW_DAYS,
   CONTRACT_EXPIRING_DAYS,
-  FILING_OPEN_STATUSES,
-  LAB_ANALYTE_LABELS,
-  id,
-  inbox,
-  INVOICE_LATE_DAYS,
-  invoiceNumberLabel,
-  PAYMENT_FAILED_WINDOW_DAYS,
-  ISSUE_LABELS,
-  issueResolveInput,
-  sortExceptions,
-  UNCONFIRMED_AFTER_DAYS,
+  estimateLabel,
   type ExceptionSeverity,
-  type InboxException,
-  type ValidationProblem,
-  RENEWAL_STATUS_LABELS,
-  SERVICE_REQUEST_LABELS,
+  FILING_OPEN_STATUSES,
   formatGallons,
   formatPhone,
-  workOrderLabel,
+  id,
+  inbox,
+  type InboxException,
+  INSPECTION_CONFLICT_REASON_LABELS,
+  INVOICE_LATE_DAYS,
+  invoiceNumberLabel,
+  ISSUE_LABELS,
+  issueResolveInput,
+  LAB_ANALYTE_LABELS,
+  PAYMENT_FAILED_WINDOW_DAYS,
+  RENEWAL_STATUS_LABELS,
+  SERVICE_REQUEST_LABELS,
   SERVICE_TYPE_LABELS,
+  sortExceptions,
+  UNCONFIRMED_AFTER_DAYS,
+  type ValidationProblem,
+  workOrderLabel,
   type WorkOrderStatus,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -107,6 +108,32 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       site: site(r),
       customer: customer(r),
       target: { type: "inspection", id: r.id },
+    }));
+  }
+
+  /** Inspections a phone sent for a visit the office changed meanwhile: accept them or set them aside. */
+  async function heldInspectionExceptions(organizationId: string): Promise<InboxException[]> {
+    const rows = await db
+      .selectFrom("inspectionSyncConflicts as ic")
+      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "ic.siteId").onRef("s.organizationId", "=", "ic.organizationId"))
+      .innerJoin("customers as cu", (j) => j.onRef("cu.id", "=", "s.customerId").onRef("cu.organizationId", "=", "s.organizationId"))
+      .innerJoin("users as u", "u.id", "ic.technicianUserId")
+      .select(["ic.id", "ic.reason", "ic.createdAt", sql<string | null>`ic.payload ->> 'status'`.as("phoneStatus"), "s.id as siteId", "s.addressLine1", "s.city", "cu.id as customerId", "cu.displayName", "u.name as technicianName"])
+      .where("ic.organizationId", "=", organizationId)
+      .where("ic.status", "=", "held")
+      .orderBy("ic.createdAt")
+      .limit(PER_KIND)
+      .execute();
+    return rows.map((r) => ({
+      site: site(r),
+      customer: customer(r),
+      target: { type: "inspection_conflict" as const, id: r.id },
+      dueOn: null,
+      key: `inspection_held:${r.id}`,
+      kind: "inspection_held" as const,
+      severity: "high" as const,
+      title: `${r.technicianName}'s inspection is held: ${INSPECTION_CONFLICT_REASON_LABELS[r.reason].toLowerCase()} while the phone was offline`,
+      detail: `${r.phoneStatus === "completed" ? "Finished on the phone" : "Not finished on the phone"} and sent ${r.createdAt.toISOString().slice(0, 10)}. Accept it as the visit's inspection, or set it aside with a reason; its photos are kept either way.`,
     }));
   }
 
@@ -964,6 +991,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           serviceCycleVisits(organizationId, today),
           incompleteInspections(organizationId),
           filingExceptions(organizationId, today),
+          heldInspectionExceptions(organizationId),
           lateNextVisits(organizationId, today),
           labTestItems(organizationId, today),
           correctiveReports(organizationId, today),

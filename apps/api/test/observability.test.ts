@@ -1,7 +1,7 @@
 import { Writable } from "node:stream";
 import { TestReporter } from "@aerowise/observability";
 import { SUBMIT_FILING } from "@aerowise/compliance";
-import { AlertThrottle, checkQueue, enqueue, runNextTask } from "@aerowise/tasks";
+import { AlertThrottle, checkQueue, claimNext, enqueue, extendLock, markDone, runNextTask } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { createOrg, createUser, login, PASSWORD, setupTestApp } from "./helpers.ts";
@@ -83,5 +83,21 @@ describe("queue alerts", () => {
     expect(throttle.due(q.alerts, ctx.now)).toHaveLength(1);
     expect(throttle.due(q.alerts, new Date(ctx.now.getTime() + 5 * MIN))).toHaveLength(0);
     expect(throttle.due(q.alerts, new Date(ctx.now.getTime() + 61 * MIN))).toHaveLength(1);
+  });
+});
+
+describe("task locks", () => {
+  it("are renewed by the worker running the task, so a slow task is not taken by a second worker", async () => {
+    await enqueue(ctx.db, { kind: "email.send", organizationId: null, payload: {}, runAt: ctx.now });
+    const task = await claimNext(ctx.db, "w1", ctx.now);
+    expect(task).not.toBeNull();
+    // Eleven minutes on, the lock would have timed out; the heartbeat kept it fresh.
+    const later = new Date(ctx.now.getTime() + 11 * 60_000);
+    expect(await extendLock(ctx.db, task!.id, "w1", later)).toBe(true);
+    expect(await claimNext(ctx.db, "w2", later)).toBeNull();
+    // Only the worker holding the lock can renew it, and a finished task is not renewed.
+    expect(await extendLock(ctx.db, task!.id, "w2", later)).toBe(false);
+    await markDone(ctx.db, task!.id, later);
+    expect(await extendLock(ctx.db, task!.id, "w1", later)).toBe(false);
   });
 });

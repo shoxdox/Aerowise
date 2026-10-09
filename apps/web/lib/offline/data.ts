@@ -6,12 +6,36 @@ import { activeStore, type CachedRoute, type Gps, type Tenant, type TenantStore 
 import { tenantHeader } from "./sync";
 import type { WorkStore } from "./work";
 
+/**
+ * A read that has not answered in this long is treated as no signal, and the copy saved on
+ * the phone is used: a weak connection can hold a request open for a minute or more.
+ */
+const READ_TIMEOUT_MS = 10_000;
+
+/** While set, reads do not try the network at all: the session check just found none. */
+let offlineAssumed = false;
+
+/**
+ * Runs `fn` with every read answering "offline" at once. Used by the app's start-up after the
+ * session check timed out, so the route, template and work are opened from the phone's copy
+ * in one go instead of each waiting out its own timeout.
+ */
+export async function assumingOffline<T>(fn: () => Promise<T>): Promise<T> {
+  offlineAssumed = true;
+  try {
+    return await fn();
+  } finally {
+    offlineAssumed = false;
+  }
+}
+
 export type Fetched<T> = { ok: true; data: T } | { ok: false; reason: "offline" | "signed_out" | "other_account" | "error" };
 
 /** `tenant`: the sign-in the answer is for; the server refuses it if the session is now someone else's. */
 async function fetchJson<T>(path: string, tenant?: Tenant): Promise<Fetched<T>> {
+  if (offlineAssumed) return { ok: false, reason: "offline" };
   try {
-    const res = await fetch(`/api${path}`, { credentials: "same-origin", cache: "no-store", headers: tenant ? tenantHeader(tenant) : undefined });
+    const res = await fetch(`/api${path}`, { credentials: "same-origin", cache: "no-store", headers: tenant ? tenantHeader(tenant) : undefined, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
     if (res.status === 401) return { ok: false, reason: "signed_out" };
     if (res.status === 409 && ((await res.json().catch(() => ({}))) as { error?: string }).error === "tenant_mismatch") return { ok: false, reason: "other_account" };
     if (!res.ok) return { ok: false, reason: "error" };
@@ -40,6 +64,7 @@ export async function accessEnded(organizationId: string, demoTicket?: string): 
       body: JSON.stringify({ organizationId, demoTicket }),
       credentials: "same-origin",
       cache: "no-store",
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     return ((await res.json()) as { state?: string }).state === "ended";

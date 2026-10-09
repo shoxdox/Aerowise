@@ -3,6 +3,7 @@ import { amountDue, invoiceSnapshot, platformFeeCents } from "@aerowise/domain";
 import type { PaymentProvider } from "@aerowise/payments";
 import { billingEmail, payUrlFor } from "@aerowise/tasks";
 import { sql, type Transaction } from "kysely";
+import type { FastifyBaseLogger } from "fastify";
 import { HttpError, unprocessable } from "./errors.ts";
 
 /** Reuse an open checkout page only if it stays payable for at least this long. */
@@ -118,4 +119,34 @@ export async function openCheckout(
       .execute();
     return { url: session.url };
   });
+}
+
+/**
+ * Marks an invoice's open checkout pages expired, under the invoice lock the caller holds.
+ * Called by anything that lowers what is due (a payment recorded by the office, a void), so a
+ * page the customer left open cannot charge an amount that is no longer owed. Returns the
+ * provider's session ids for `expireAtProvider`, once the transaction has committed.
+ */
+export async function closeOpenCheckouts(trx: Transaction<DB>, organizationId: string, invoiceId: string) {
+  return trx
+    .updateTable("checkoutSessions")
+    .set({ status: "expired" })
+    .where("organizationId", "=", organizationId)
+    .where("invoiceId", "=", invoiceId)
+    .where("status", "=", "open")
+    .returning("providerSessionId")
+    .execute();
+}
+
+/**
+ * Closes those pages at the provider too. A failure is logged, not thrown: the local record
+ * already refuses the page, and a payment that still comes in shows as money to refund.
+ */
+export async function expireAtProvider(db: Database, provider: PaymentProvider | null, log: FastifyBaseLogger, organizationId: string, sessions: { providerSessionId: string }[]) {
+  if (!provider || sessions.length === 0) return;
+  const org = await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
+  if (!org.stripeAccountId) return;
+  for (const s of sessions) {
+    await provider.expireCheckout({ organizationId, accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => log.warn({ err }, "could not expire checkout"));
+  }
 }

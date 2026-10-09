@@ -14,7 +14,7 @@ import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
-import { currentPosition, fetchInspectionForJob, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
+import { assumingOffline, currentPosition, fetchInspectionForJob, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
@@ -132,8 +132,14 @@ export default function TechApp() {
     setMe(m);
     const store = activeStore();
     const work = workStoreFor(store.tenant);
-    const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(work)]);
-    const p = await loadPumpingField(work, !!w?.items.some((s) => s.requiresDisposalRecord));
+    // No signal (or a connection that answers nothing): open the phone's copies at once rather
+    // than waiting out a timeout on each of the day's reads in turn.
+    const load = async () => {
+      const [r, t, w] = await Promise.all([loadRoute(store), loadActiveTemplate(store), loadWorkRoute(work)]);
+      const p = await loadPumpingField(work, !!w?.items.some((s) => s.requiresDisposalRecord));
+      return { r, t, w, p };
+    };
+    const { r, t, w, p } = session.kind === "cached" && session.reason === "offline" ? await assumingOffline(load) : await load();
     setPumpingField(p);
     setRoute(r.route ?? null);
     setWorkStops(w?.items ?? []);

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import {
   amountDue,
@@ -17,7 +18,7 @@ import {
   type InvoiceLineInput,
   parseSnapshotOptions,
 } from "@aerowise/domain";
-import { depositLink, dollars, invoiceEvent, paymentOnTimeline, recalcInvoice } from "@aerowise/payments";
+import { depositLink, dollars, invoiceEvent, paymentOnTimeline, pushReservedRefund, recalcInvoice } from "@aerowise/payments";
 import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import { activatePaidRenewals } from "@aerowise/renewals";
@@ -25,6 +26,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
+import { closeOpenCheckouts, expireAtProvider } from "../lib/checkout.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import {
   applyView,
@@ -503,23 +505,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (wo) await afterCoveredInvoiceVoided(trx, req, organizationId, wo, inv.id, at);
         await audit(trx, req, { action: "invoice.voided", entityType: "invoice", entityId: inv.id, changes: { reason: req.body.reason } });
         await queueQuickBooksSync(trx, organizationId, at);
-        return trx
-          .updateTable("checkoutSessions")
-          .set({ status: "expired" })
-          .where("organizationId", "=", organizationId)
-          .where("invoiceId", "=", inv.id)
-          .where("status", "=", "open")
-          .returning("providerSessionId")
-          .execute();
+        return closeOpenCheckouts(trx, organizationId, inv.id);
       });
-      // Close any payable page the customer still has open. If this fails, a payment that
-      // still comes in shows as money to refund on a void invoice.
-      const org = await db.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
-      if (payments.provider && org.stripeAccountId) {
-        for (const s of openSessions) {
-          await payments.provider.expireCheckout({ organizationId, accountId: org.stripeAccountId, sessionId: s.providerSessionId }).catch((err: Error) => req.log.warn({ err }, "could not expire checkout"));
-        }
-      }
+      // Close any payable page the customer still has open.
+      await expireAtProvider(db, payments.provider, req.log, organizationId, openSessions);
       return detail(organizationId, req.params.id);
     },
   );
@@ -558,7 +547,7 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
-      await db.transaction().execute(async (trx) => {
+      const openSessions = await db.transaction().execute(async (trx) => {
         const at = now();
         const inv = await trx
           .selectFrom("invoices")
@@ -600,7 +589,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await paymentOnTimeline(trx, { organizationId, invoiceId: inv.id, amountCents: req.body.amountCents, method: req.body.method, actorUserId: userId, at });
         await audit(trx, req, { action: "payment.recorded", entityType: "invoice", entityId: inv.id, changes: { paymentId: p.id, ...req.body } });
         await queueQuickBooksSync(trx, organizationId, at);
+        // A checkout page the customer still has open would charge what is no longer due.
+        return closeOpenCheckouts(trx, organizationId, inv.id);
       });
+      await expireAtProvider(db, payments.provider, req.log, organizationId, openSessions);
       // A renewal waiting on this payment becomes the next contract.
       await activatePaidRenewals(db, { organizationId, invoiceId: req.params.id }, now());
       return detail(organizationId, req.params.id);
@@ -622,7 +614,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
-      const invoiceId = await db.transaction().execute(async (trx) => {
+      // Reserve first, commit, then ask the provider (as deposit refunds do): the reservation
+      // carries the idempotency key, so a lost answer is asked again with the same key by the
+      // reconcile task, and a retry here can never refund twice.
+      const { invoiceId, reserved } = await db.transaction().execute(async (trx) => {
         const at = now();
         const p = await trx.selectFrom("payments").selectAll().where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
         if (!p) throw notFound("Payment");
@@ -633,62 +628,58 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (await depositLink(trx, organizationId, p.invoiceId)) throw new HttpError(409, "deposit_payment", "This is a deposit payment. Refund it from the estimate's deposit.");
         const prior = await trx
           .selectFrom("refunds")
-          .select([sql<number>`count(*)::int`.as("n"), sql<number>`coalesce(sum(amount_cents) filter (where status <> 'failed'), 0)::int`.as("committed")])
+          .select(sql<number>`coalesce(sum(amount_cents) filter (where status <> 'failed'), 0)::int`.as("committed"))
           .where("paymentId", "=", p.id)
           .executeTakeFirstOrThrow();
         const refundable = p.amountCents - prior.committed;
         if (req.body.amountCents > refundable) throw unprocessable(`At most ${dollars(refundable)} of this payment can be refunded`);
 
-        let refund: { providerRefundId: string | null; status: "pending" | "succeeded" | "failed"; failureReason: string | null };
-        if (p.source === "stripe") {
+        const stripe = p.source === "stripe";
+        if (stripe) {
           const org = await trx.selectFrom("organizations").select("stripeAccountId").where("id", "=", organizationId).executeTakeFirstOrThrow();
           if (!payments.provider || !org.stripeAccountId) throw unprocessable("Online payments are not set up, so this payment cannot be refunded from here");
-          const r = await payments.provider.createRefund({
-            organizationId,
-            accountId: org.stripeAccountId,
-            // The same refund request always gets the same key, so a retry cannot refund twice.
-            idempotencyKey: `refund-${p.id}-${prior.n + 1}`,
-            paymentIntentId: p.providerPaymentId!,
-            amountCents: req.body.amountCents,
-            metadata: { organizationId, invoiceId: p.invoiceId, paymentId: p.id },
-          });
-          refund = { providerRefundId: r.refundId, status: r.status, failureReason: r.failureReason };
-        } else {
-          refund = { providerRefundId: null, status: "succeeded", failureReason: null };
         }
-        const values = {
-          organizationId,
-          paymentId: p.id,
-          amountCents: req.body.amountCents,
-          status: refund.status,
-          intent: req.body.intent,
-          providerRefundId: refund.providerRefundId,
-          reason: req.body.reason,
-          failureReason: refund.failureReason,
-          createdBy: userId,
-          createdAt: at,
-          updatedAt: at,
-        };
-        // Stripe's webhook for this refund may have arrived first; then keep its status and add who and why.
+        const rowId = randomUUID();
         await trx
           .insertInto("refunds")
-          .values(values)
-          .onConflict((oc) => oc.column("providerRefundId").doUpdateSet({ reason: req.body.reason, intent: req.body.intent, createdBy: userId }))
+          .values({
+            id: rowId,
+            organizationId,
+            paymentId: p.id,
+            amountCents: req.body.amountCents,
+            // A check or cash refund is handed back by the office and settles at once.
+            status: stripe ? "pending" : "succeeded",
+            intent: req.body.intent,
+            providerRefundId: null,
+            reason: req.body.reason,
+            failureReason: null,
+            createdBy: userId,
+            idempotencyKey: stripe ? `aerowise-refund-${rowId}` : null,
+            createdAt: at,
+            updatedAt: at,
+          })
           .execute();
         await recalcInvoice(trx, organizationId, p.invoiceId, at);
         const how = req.body.intent === "reverse" ? " to reverse the payment (owed again)" : "";
-        const summary =
-          refund.status === "succeeded"
-            ? `Refunded ${dollars(req.body.amountCents)}${how}: ${req.body.reason}`
-            : refund.status === "pending"
-              ? `Refund of ${dollars(req.body.amountCents)}${how} started: ${req.body.reason}`
-              : `Refund of ${dollars(req.body.amountCents)} failed: ${refund.failureReason ?? "declined"}`;
-        await invoiceEvent(trx, { organizationId, invoiceId: p.invoiceId, eventType: `refund_${refund.status}`, summary, actorUserId: userId, paymentId: p.id, at });
-        await audit(trx, req, { action: "payment.refunded", entityType: "invoice", entityId: p.invoiceId, changes: { paymentId: p.id, ...req.body, status: refund.status } });
+        await invoiceEvent(trx, {
+          organizationId,
+          invoiceId: p.invoiceId,
+          eventType: stripe ? "refund_pending" : "refund_succeeded",
+          summary: stripe ? `Refund of ${dollars(req.body.amountCents)}${how} started: ${req.body.reason}` : `Refunded ${dollars(req.body.amountCents)}${how}: ${req.body.reason}`,
+          actorUserId: userId,
+          paymentId: p.id,
+          at,
+        });
+        await audit(trx, req, { action: "payment.refunded", entityType: "invoice", entityId: p.invoiceId, changes: { paymentId: p.id, ...req.body, status: stripe ? "pending" : "succeeded" } });
         // A refund lowers the payment QuickBooks has.
-        if (refund.status === "succeeded") await queueQuickBooksSync(trx, organizationId, at);
-        return p.invoiceId;
+        if (!stripe) await queueQuickBooksSync(trx, organizationId, at);
+        return { invoiceId: p.invoiceId, reserved: stripe ? rowId : null };
       });
+      if (reserved && payments.provider) {
+        await pushReservedRefund(db, payments.provider, organizationId, reserved, now).catch((err: Error) => req.log.warn({ err, refundId: reserved }, "refund request did not finish; the reconcile task asks again"));
+        const r = await db.selectFrom("refunds").select("status").where("id", "=", reserved).executeTakeFirstOrThrow();
+        if (r.status === "succeeded") await db.transaction().execute((trx) => queueQuickBooksSync(trx, organizationId, now()));
+      }
       return detail(organizationId, invoiceId);
     },
   );

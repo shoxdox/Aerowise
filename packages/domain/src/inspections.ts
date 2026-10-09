@@ -416,6 +416,48 @@ export const inspection = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
 });
 
+export const INSPECTION_CONFLICT_REASONS = ["reassigned", "cancelled", "office_completed"] as const;
+export type InspectionConflictReason = (typeof INSPECTION_CONFLICT_REASONS)[number];
+export const INSPECTION_CONFLICT_REASON_LABELS: Record<InspectionConflictReason, string> = {
+  reassigned: "The visit was given to another technician",
+  cancelled: "The visit was unscheduled",
+  office_completed: "The visit was completed by the office",
+};
+
+/**
+ * The answer to a sync the server holds for the office (HTTP 202) instead of refusing: the
+ * visit changed while the phone was offline. The phone stops editing and shows why.
+ */
+export const inspectionSyncHeld = z.object({
+  outcome: z.literal("held_for_review"),
+  conflictId: id,
+  clientId: z.string(),
+  reason: z.enum(INSPECTION_CONFLICT_REASONS),
+  status: z.enum(["held", "attached", "dismissed"]),
+});
+export type InspectionSyncHeld = z.infer<typeof inspectionSyncHeld>;
+
+/** A held inspection as the office sees it. */
+export const inspectionSyncConflict = z.object({
+  id,
+  clientId: z.string(),
+  jobId: id,
+  siteId: id,
+  site: z.object({ addressLine1: z.string(), city: z.string() }),
+  customerName: z.string(),
+  technician: z.object({ id, name: z.string() }),
+  reason: z.enum(INSPECTION_CONFLICT_REASONS),
+  status: z.enum(["held", "attached", "dismissed"]),
+  /** Whether the technician finished it on the phone, and when. */
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+  photoCount: z.number().int(),
+  resolutionNote: z.string().nullable(),
+  resolvedAt: z.iso.datetime({ offset: true }).nullable(),
+  attachedInspectionId: id.nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type InspectionSyncConflict = z.infer<typeof inspectionSyncConflict>;
+
 export const templateInput = z.object({ name: z.string().trim().min(1).max(200), definition: templateDefinition });
 export const overrideInput = z.object({ reason: z.string().trim().min(3).max(2000) });
 

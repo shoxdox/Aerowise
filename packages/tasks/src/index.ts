@@ -2,7 +2,7 @@ import type { PaymentProvider } from "@aerowise/payments";
 import { OutboxTransport, prepareFiling, SUBMIT_FILING, submitFiling, type ComplianceContext, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
-import { claimNext, enqueue, markDone, markFailed, type Task } from "./queue.ts";
+import { LOCK_HEARTBEAT_MS, claimNext, enqueue, extendLock, markDone, markFailed, type Task } from "./queue.ts";
 import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
 import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
@@ -241,6 +241,10 @@ export async function runNextTask(ctx: TaskContext, workerId: string, observer: 
   const task = await claimNext(ctx.db, workerId, ctx.now(), organizationId);
   if (!task) return false;
   const started = Date.now();
+  // A long task (a big export, a QuickBooks sync, a report batch) keeps its lock fresh while
+  // it runs, so a second worker never starts the same task after the lock timeout.
+  const heartbeat = setInterval(() => void extendLock(ctx.db, task.id, workerId, ctx.now()).catch(() => {}), LOCK_HEARTBEAT_MS);
+  heartbeat.unref?.();
   try {
     await run(ctx, task);
     await markDone(ctx.db, task.id, ctx.now());
@@ -248,6 +252,8 @@ export async function runNextTask(ctx: TaskContext, workerId: string, observer: 
   } catch (err) {
     const gaveUp = await markFailed(ctx.db, task, (err as Error).stack ?? String(err), ctx.now());
     observer.failed?.(task, err, gaveUp);
+  } finally {
+    clearInterval(heartbeat);
   }
   return true;
 }

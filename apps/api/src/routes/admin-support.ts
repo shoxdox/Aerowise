@@ -1,9 +1,8 @@
-import type { Database, DB } from "@aerowise/db";
+import type { Database } from "@aerowise/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import type { FastifyRequest } from "fastify";
-import type { Transaction } from "kysely";
 import { z } from "zod";
 import { createSupportSession, SUPPORT_SESSION_COOKIE, supportViewUser } from "../auth/support-sessions.ts";
+import { endOpenSupportSessions } from "../lib/support.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
 import { platformAudit } from "../lib/platform-audit.ts";
 
@@ -15,25 +14,6 @@ import { platformAudit } from "../lib/platform-audit.ts";
 export const adminSupportRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean }> = async (app, { db, production }) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
-  /** Ends an admin's open support sessions, auditing each one in both logs. */
-  async function endOpenSessions(trx: Transaction<DB>, req: FastifyRequest, adminId: string, why: "ended" | "replaced") {
-    const ended = await trx
-      .updateTable("supportSessions")
-      .set({ endedAt: new Date() })
-      .where("adminId", "=", adminId)
-      .where("endedAt", "is", null)
-      .where("expiresAt", ">", new Date())
-      .returning(["id", "organizationId"])
-      .execute();
-    for (const s of ended) {
-      await platformAudit(trx, req, { adminId, action: "support.ended", entityType: "support_session", entityId: s.id, organizationId: s.organizationId, changes: { why } });
-      await trx
-        .insertInto("auditEvents")
-        .values({ organizationId: s.organizationId, actorUserId: null, action: "support.ended", entityType: "support_session", entityId: s.id, changes: JSON.stringify({ why }), requestId: req.id })
-        .execute();
-    }
-    return ended.length;
-  }
 
   app.post(
     "/admin/organizations/:id/support",
@@ -58,7 +38,7 @@ export const adminSupportRoutes: FastifyPluginAsyncZod<{ db: Database; productio
       }
       const session = await db.transaction().execute(async (trx) => {
         // One support view at a time: opening another company ends the previous one.
-        await endOpenSessions(trx, req, adminId, "replaced");
+        await endOpenSupportSessions(trx, req, adminId, "replaced");
         const s = await createSupportSession(trx, { adminId, organizationId, reason: req.body.reason });
         const changes = { reason: req.body.reason, expiresAt: s.expiresAt.toISOString() };
         await platformAudit(trx, req, { adminId, action: "support.started", entityType: "support_session", entityId: s.id, organizationId, changes });
@@ -81,7 +61,7 @@ export const adminSupportRoutes: FastifyPluginAsyncZod<{ db: Database; productio
     },
     async (req, reply) => {
       const { adminId } = req.requireAdmin();
-      await db.transaction().execute((trx) => endOpenSessions(trx, req, adminId, "ended"));
+      await db.transaction().execute((trx) => endOpenSupportSessions(trx, req, adminId, "ended"));
       reply.clearCookie(SUPPORT_SESSION_COOKIE, cookieOptions);
       return reply.status(204).send();
     },

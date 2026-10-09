@@ -434,7 +434,10 @@ export interface AttachmentsTable {
   id: Generated<string>;
   organizationId: string;
   offlineClientId: string;
-  inspectionId: string;
+  /** Null while the photo belongs to a held inspection (inspection_sync_conflicts) the office has not accepted yet. */
+  inspectionId: string | null;
+  /** The phone's id of the inspection the photo belongs to; set for photos uploaded while held. */
+  inspectionClientId: ColumnType<string | null, string | null | undefined, string | null>;
   photoKey: string;
   storageKey: string;
   contentType: string;
@@ -1766,6 +1769,7 @@ export interface DB {
   jobAssignments: JobAssignmentsTable;
   workRecords: WorkRecordsTable;
   workSyncConflicts: WorkSyncConflictsTable;
+  inspectionSyncConflicts: InspectionSyncConflictsTable;
   workAttachments: WorkAttachmentsTable;
   vehicles: VehiclesTable;
   disposalFacilities: DisposalFacilitiesTable;
@@ -1820,6 +1824,28 @@ export interface WorkRecordsTable {
   completionLat: number | null;
   completionLng: number | null;
   attachedBy: string | null;
+  createdAt: CreatedAt;
+  updatedAt: Timestamp;
+}
+
+export type InspectionConflictReason = "reassigned" | "cancelled" | "office_completed";
+
+/** An inspection the phone sent for a visit the office changed meanwhile (0061). */
+export interface InspectionSyncConflictsTable {
+  id: Generated<string>;
+  organizationId: string;
+  offlineClientId: string;
+  jobId: string;
+  jobType: Generated<"inspection">;
+  siteId: string;
+  technicianUserId: string;
+  reason: InspectionConflictReason;
+  status: Generated<"held" | "attached" | "dismissed">;
+  payload: ColumnType<unknown, string, string>;
+  resolutionNote: string | null;
+  resolvedAt: Timestamp | null;
+  resolvedBy: string | null;
+  attachedInspectionId: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }

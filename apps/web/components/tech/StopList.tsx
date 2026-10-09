@@ -6,6 +6,7 @@ import type { LocalInspection } from "@/lib/offline/db";
 import { clock, day } from "@/lib/format";
 
 export function stopStatus(stop: Stop, insp: LocalInspection | undefined): { label: string; tone: "" | "ok" | "warn" } {
+  if (insp?.held) return insp.held.status === "attached" ? { label: "Done", tone: "ok" } : { label: "Held for the office", tone: "warn" };
   if (insp?.status === "completed") return insp.server?.status === "completed" ? { label: "Done", tone: "ok" } : { label: "Done · not sent yet", tone: "warn" };
   if (stop.status === "completed") return { label: "Done", tone: "ok" };
   if (insp) return { label: "In progress", tone: "warn" };

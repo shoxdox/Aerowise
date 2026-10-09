@@ -104,6 +104,19 @@ describe("read-only support access", () => {
     expect((await ctx.db.selectFrom("platformAuditEvents").select("action").where("action", "=", "support.ended").execute())).toHaveLength(1);
   });
 
+  it("ends when the admin signs out of /admin, so the support cookie cannot outlive the sign-in", async () => {
+    const t = await createTenant(ctx, "Org A");
+    await createAdmin(ctx);
+    const { admin, support } = await openSupport(ctx, t.org.id);
+    expect((await client(ctx.app, support).get("/auth/me")).statusCode).toBe(200);
+    const out = await ctx.app.inject({ method: "POST", url: "/admin/auth/logout", headers: { cookie: admin }, payload: {} });
+    expect(out.statusCode).toBe(204);
+    expect(out.cookies.find((k) => k.name === "aw_support_session")?.value).toBe("");
+    expect((await client(ctx.app, support).get("/auth/me")).statusCode).toBe(401);
+    const ended = await ctx.db.selectFrom("platformAuditEvents").select("changes").where("action", "=", "support.ended").execute();
+    expect(ended.map((e) => (e.changes as { why: string }).why)).toEqual(["signed_out"]);
+  });
+
   it("expires after an hour, and stops when the admin is deactivated", async () => {
     const t = await createTenant(ctx, "Org A");
     const founder = await createAdmin(ctx);

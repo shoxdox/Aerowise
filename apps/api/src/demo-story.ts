@@ -403,7 +403,8 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     for (const [n, visit] of history.entries()) {
       // Done ten days before it was due, mid-afternoon.
       const day = addDays(visit.dueOn, -10);
-      clockAt = new Date(`${day}T19:00:00Z`);
+      // The server's clock sits just after that afternoon's work, as a phone syncing at the end of the stop would find it.
+      clockAt = new Date(`${day}T19:45:00Z`);
       const done = await inspectVisit(visit, day, {
         times: ["19:00", "19:10", "19:35"],
         chlorine: [1.5, 2.0, 1.0, 2.5][n % 4]!,

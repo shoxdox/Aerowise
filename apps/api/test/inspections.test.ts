@@ -63,6 +63,24 @@ describe("recording an inspection", () => {
     expect((await s.api.get(`/jobs/${s.job.jobId}/inspection`)).json().id).toBe(done.json().id);
   });
 
+  it("keeps the inspection on the server's clock when the phone's is a year out", async () => {
+    const s = await setup(ctx);
+    const clientId = payload(s).clientId;
+    // The phone says it arrived next year and finished last year: neither stamp can set a county deadline.
+    await s.techApi.put("/inspections/sync", payload(s, { arrivedAt: "2027-03-01T15:00:00Z" }));
+    await uploadRequiredPhotos(s, clientId);
+    const done = await s.techApi.put("/inspections/sync", payload(s, { status: "completed", arrivedAt: "2027-03-01T15:00:00Z", completedAt: "2025-03-01T15:40:00Z", values: completeValues() }));
+    expect(done.statusCode, done.body).toBe(200);
+    expect(done.json()).toMatchObject({ status: "completed", arrivedAt: ctx.now.toISOString(), completedAt: ctx.now.toISOString() });
+    const adjusted = await ctx.db.selectFrom("auditEvents").select("changes").where("action", "=", "inspection.clock_adjusted").executeTakeFirstOrThrow();
+    expect((adjusted.changes as { adjusted: { field: string }[] }).adjusted.map((a) => a.field)).toEqual(["arrivedAt", "completedAt"]);
+    // A stamp a few minutes ahead (ordinary clock drift) is kept as it is.
+    const other = await setup(ctx, "Org B");
+    const soon = new Date(ctx.now.getTime() + 5 * 60_000).toISOString();
+    const draft = await other.techApi.put("/inspections/sync", payload(other, { arrivedAt: soon }));
+    expect(draft.json().arrivedAt).toBe(soon);
+  });
+
   it("keeps a failed completion as a draft and lists what is missing", async () => {
     const s = await setup(ctx);
     const values = { ...completeValues(), aerator: "fail" } as Record<string, unknown>;
@@ -91,20 +109,27 @@ describe("recording an inspection", () => {
     expect(res.statusCode).toBe(422);
   });
 
-  it("only lets the assigned technician record the inspection", async () => {
+  it("holds, for the office, an inspection sent by someone the visit is not assigned to", async () => {
     const s = await setup(ctx);
     const other = await createUser(ctx.db, s.org.id, "technician");
     const otherApi = client(ctx.app, await login(ctx.app, other.email));
-    expect((await otherApi.put("/inspections/sync", payload(s))).statusCode).toBe(403);
+    // Not refused, not written to the visit: held for the office to accept or set aside.
+    const held = await otherApi.put("/inspections/sync", payload(s));
+    expect(held.statusCode).toBe(202);
+    expect(held.json()).toMatchObject({ outcome: "held_for_review", reason: "reassigned" });
+    expect((await s.api.get(`/jobs/${s.job.jobId}/inspection`)).statusCode).toBe(404);
+    // Someone else again, with the same client id, is refused: the held copy is its sender's.
     const office = await createUser(ctx.db, s.org.id, "office");
     const officeApi = client(ctx.app, await login(ctx.app, office.email));
     expect((await officeApi.put("/inspections/sync", payload(s))).statusCode).toBe(403);
   });
 
-  it("refuses to record an inspection for a job the office unscheduled", async () => {
+  it("holds, for the office, an inspection for a job the office unscheduled", async () => {
     const s = await setup(ctx);
     await s.api.post(`/jobs/${s.job.jobId}/cancel`, { reason: "Customer rescheduled" });
-    expect((await s.techApi.put("/inspections/sync", payload(s))).statusCode).toBe(409);
+    const held = await s.techApi.put("/inspections/sync", payload(s));
+    expect(held.statusCode).toBe(202);
+    expect(held.json()).toMatchObject({ reason: "cancelled" });
   });
 });
 
