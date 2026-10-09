@@ -12,8 +12,9 @@ async function signIn(page: Page) {
 
 test("the office adds a service item, bills a work order by the hour from it, and gets one invoice", async ({ page }) => {
   await signIn(page);
-  // The office menu links the catalog once the deployment says service items are on.
-  await expect(page.locator('#office-nav a[href="/settings/service-items"]')).toHaveCount(1);
+  // The settings index lists the catalog once the deployment says service items are on.
+  await page.goto("/settings");
+  await expect(page.getByTestId("settings-list").locator('a[href="/settings/service-items"]')).toHaveCount(1);
   // Earlier specs may have reset the demo company, so this does not rely on the story's catalog.
   await page.goto("/settings/service-items");
   await page.getByLabel("Name").fill("Diagnostic hour");

@@ -25,7 +25,11 @@ a { color: var(--accent); }
 .spacer { flex: 1; }
 
 .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.topbar nav { display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.topbar nav { display: flex; gap: 4px 12px; flex-wrap: wrap; align-items: center; }
+/* The office menu's groups: a thin divider between them on a wide screen, a heading on a phone. */
+.topbar nav .nav-group { display: inline-flex; gap: 4px 8px; flex-wrap: wrap; align-items: center; }
+.topbar nav .nav-group + .nav-group { border-left: 1px solid var(--border); padding-left: 12px; }
+.topbar nav .nav-group-label { display: none; }
 .topbar nav a { text-decoration: none; padding: 4px 8px; border-radius: 6px; }
 .topbar nav a.active { background: var(--bg); font-weight: 600; }
 .page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
@@ -80,6 +84,8 @@ table.compact th, table.compact td { padding: 6px 10px; }
 .schedule > section:first-child { max-height: 75vh; overflow-y: auto; padding-right: 4px; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .card.tight { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.settings-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.settings-list a { font-weight: 600; }
 .overdue-card { border-left: 3px solid var(--error); }
 .restriction { color: var(--warn-text); }
 .stop-number { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 0.8rem; font-weight: 600; }
@@ -261,7 +267,9 @@ button.danger { background: var(--error); border-color: var(--error); color: #ff
   .topbar.office .current-page { display: inline; flex: 1; color: var(--muted); }
   .topbar.office .menu-toggle { display: inline-block; min-height: 44px; }
   .topbar.office nav, .topbar.office .account, .topbar.office .spacer { display: none; }
-  .topbar.office.menu-open nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; }
+  .topbar.office.menu-open nav { display: block; width: 100%; }
+  .topbar.office.menu-open nav .nav-group { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; border-left: 0; padding-left: 0; margin-top: 4px; }
+  .topbar.office.menu-open nav .nav-group-label { display: block; grid-column: 1 / -1; padding: 8px 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
   .topbar.office.menu-open nav a { padding: 10px 8px; }
   .topbar.office.menu-open .account { display: flex; width: 100%; justify-content: space-between; padding: 8px 8px 4px; border-top: 1px solid var(--border); }
   .topbar.office .account button.link { min-height: 44px; }
