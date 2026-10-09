@@ -8,6 +8,8 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ["apps/web/public/sw.js"], languageOptions: { globals: globals.serviceworker } },
+  // SW-12 drill scripts run in node and drive a phone browser (page.evaluate bodies use browser globals).
+  { files: ["apps/web/drills/**/*.mjs"], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
   // A CommonJS script run with node on the staging host during the walkthrough.
   {
     files: ["docs/engineering/staging-walkthrough-2026-10/inspect-outbox.js"],
