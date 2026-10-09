@@ -14,11 +14,14 @@ import { CensusGeocoder, TestGeocoder } from "@aerowise/routing";
 import { RedirectingSmsProvider, TestSmsProvider, TwilioSmsProvider } from "@aerowise/sms";
 import { LocalDiskStore } from "@aerowise/storage";
 import { DemoGatedBilling, DemoGatedGeocoder, DemoGatedPayments, DemoGatedQuickBooks, DemoGatedSms, DemoGatedTransport, demoLiveServicesFromEnv, demoModeFromEnv, providersFromEnv } from "@aerowise/tasks";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { playDemoStory } from "../src/demo-story.ts";
 import { testDatabaseUrl } from "./db-url.ts";
 import { createOrg, setupTestApp } from "./helpers.ts";
+
+// The demo story plays a year of inspections, reports and filings (about 25 seconds); tests that play it need longer than the default.
+vi.setConfig({ testTimeout: 180_000 });
 
 const ctx = setupTestApp();
 
@@ -242,13 +245,27 @@ describe("demo reseed", () => {
     expect(untouched).toEqual({ attempts: 0, completedAt: null, lockedBy: null });
     expect(await playDemoStory({ db: ctx.db, store })).toBe(false); // already played
 
-    const filings = await ctx.db.selectFrom("filings").select(["organizationId", "inspectionId", "status", "confirmationReference"]).where("inspectionId", "is not", null).execute();
-    expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
-    // The fictional county's rules don't hold a filing for the MP's signature (the page says so).
-    for (const f of filings) expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(false);
-    expect(filings.find((f) => f.status === "confirmed")?.confirmationReference).toBe("EC-DEMO-0042");
+    // Yesterday's two (one confirmed with the county's reference, one sent) and the year's history
+    // before them: every report filing is sent or confirmed, none waiting on the office.
+    const filings = await ctx.db
+      .selectFrom("filings as f")
+      .innerJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
+      .select(["f.organizationId", "f.inspectionId", "f.status", "f.confirmationReference", "j.key"])
+      .where("f.inspectionId", "is not", null)
+      .execute();
+    expect(filings.length).toBeGreaterThan(2);
+    expect(new Set(filings.map((f) => f.status))).toEqual(new Set(["confirmed", "sent"]));
+    expect(filings.filter((f) => f.confirmationReference === "EC-DEMO-0042")).toHaveLength(1);
+    // The fictional county's rules don't hold a filing for the MP's signature (the page says so); LCRA's do, and the story signed those.
+    for (const f of filings.filter((f) => f.key === "tx-example-county")) expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(false);
+    for (const f of filings.filter((f) => f.key === "tx-lcra-ossf")) expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(true);
+    expect(new Set(filings.map((f) => f.key))).toEqual(new Set(["tx-example-county", "tx-lcra-ossf"]));
+    // Blanco stays in the fictional county; the Lake Travis sites are in their real counties, assigned to LCRA.
     const counties = await ctx.db.selectFrom("sites").select("county").distinct().execute();
-    expect(counties).toEqual([{ county: "Example County" }]);
+    expect(counties.map((c) => c.county).filter(Boolean).sort()).toEqual(["Burnet", "Example County", "Travis"]);
+    const contractFilings = await ctx.db.selectFrom("filings").select("status").where("kind", "=", "contract").execute();
+    expect(contractFilings.length).toBeGreaterThan(0);
+    expect(new Set(contractFilings.map((f) => f.status))).toEqual(new Set(["sent"]));
     const renewals = await ctx.db.selectFrom("renewals").select("status").execute();
     expect(renewals.map((r) => r.status)).toContain("sent");
     const payments = await ctx.db.selectFrom("payments").select("status").execute();
@@ -277,7 +294,7 @@ describe("demo reseed", () => {
     ]);
     expect(orders[0]!.completedWithoutRecordReason).toMatch(/^Fictional:/);
     const organizationId = orders[0]!.organizationId;
-    // The pump-out's visit is billed; the inspections' filings are the story's two, nothing more.
+    // The pump-out's visit is billed; every inspection (the year's history and yesterday's two) has its one filing.
     const billed = await ctx.db
       .selectFrom("invoiceLines as l")
       .innerJoin("jobs as j", "j.id", "l.jobId")
@@ -285,7 +302,9 @@ describe("demo reseed", () => {
       .where("l.organizationId", "=", organizationId)
       .execute();
     expect(billed).toEqual([{ type: "work" }]);
-    expect((await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "is not", null).execute()).length).toBe(2);
+    const inspected = (await ctx.db.selectFrom("inspections").select("id").where("organizationId", "=", organizationId).execute()).length;
+    expect(inspected).toBeGreaterThan(2);
+    expect((await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("inspectionId", "is not", null).execute()).length).toBe(inspected);
 
     await reseedDemo(ctx.db, { filesDir: files });
     for (const table of ["workOrders", "workOrderEvents", "workOrderLines", "workOrderNotes"] as const) {

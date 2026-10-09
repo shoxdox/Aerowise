@@ -29,7 +29,6 @@ test("an inspection started on one phone is continued, not duplicated, on anothe
     // Phone 1: start the first stop, answer a few things, and let it reach the office.
     await signInAsTech(page);
     const card = page.locator(".stop-card", { hasText: "To do" }).first();
-    const customer = await card.locator("strong").innerText();
     await card.click();
     await page.getByRole("button", { name: "Arrive and start inspection" }).click();
     await expect(page.getByRole("group", { name: "Aerator" })).toBeVisible();
@@ -38,15 +37,17 @@ test("an inspection started on one phone is continued, not duplicated, on anothe
     await page.getByLabel("Add photo: Overview of the unit").setInputFiles({ name: "overview.png", mimeType: "image/png", buffer: PNG });
     await expect(page.locator('[data-photo="overview"]')).toContainText("1 taken");
     await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
-    const jobId = (await db.query("select job_id from inspections where status = 'draft'")).rows[0]?.job_id as string;
-    expect(jobId).toBeTruthy();
+    // The stop is found by its address below: the seed repeats customer names across sites.
+    const started = (await db.query("select i.job_id, s.address_line1 from inspections i join sites s on s.id = i.site_id where i.status = 'draft' order by i.created_at desc limit 1")).rows[0] as { job_id: string; address_line1: string };
+    expect(started).toBeTruthy();
+    const jobId = started.job_id;
     await page.context().close();
 
     // Phone 2: a fresh browser profile, nothing of phone 1 on it.
     const phone2 = await browser.newContext({ geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"] });
     const p2 = await phone2.newPage();
     await signInAsTech(p2);
-    const stop = p2.locator(".stop-card", { hasText: customer });
+    const stop = p2.locator(".stop-card", { hasText: started.address_line1 });
     await expect(stop).toContainText("In progress · on another phone");
     await stop.click();
     await p2.getByRole("button", { name: "Continue inspection" }).click();
@@ -65,7 +66,7 @@ test("an inspection started on one phone is continued, not duplicated, on anothe
     await p2.getByRole("group", { name: "Pumping needed" }).getByRole("button", { name: "No" }).click();
     await p2.getByLabel("Add photo: Chlorinator").setInputFiles({ name: "chlorinator.png", mimeType: "image/png", buffer: PNG });
     await p2.getByRole("button", { name: "Finish inspection" }).click();
-    await expect(p2.locator(".stop-card", { hasText: customer })).toContainText("Done", { timeout: 30_000 });
+    await expect(p2.locator(".stop-card", { hasText: started.address_line1 })).toContainText("Done", { timeout: 30_000 });
     await expect(p2.getByTestId("sync-status")).toHaveText("All changes sent");
 
     // Exactly one inspection for the job, completed, with both phones' photos.

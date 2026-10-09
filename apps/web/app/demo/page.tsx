@@ -27,8 +27,9 @@ export default function TryTheDemoPage() {
       <section className="card stack">
         <h1>Try Aerowise</h1>
         <p>
-          You get a fictional aerobic maintenance company of your own, with customers, sites, contracts and a day&apos;s work already done: two inspections filed with
-          the county, a renewal sent and invoices paid and unpaid. You start as its owner and can look around as the office manager or the technician.
+          You get a fictional aerobic maintenance company of your own, with customers, sites, contracts and a year of work already in it: inspections filed
+          with LCRA and with a fictional county, their reports and proof on each site, a renewal sent and invoices paid and unpaid. You start as its owner
+          and can look around as the office manager or the technician.
         </p>
         <p className="muted small">Nothing is emailed, texted, filed or charged. Your demo company is private to you and is deleted after a day.</p>
         {error && (

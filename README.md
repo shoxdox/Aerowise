@@ -25,7 +25,7 @@ Software for Texas septic maintenance and service providers: customers, sites an
 - Renewals, homeowner signatures, invoicing, Stripe Connect and Aerowise subscription billing, customer portal, imports and exports.
 - General work orders, offline work records, service items and fractional quantities, estimates/deposits/refunds, frozen plan versions/options/coverage, pumping/disposal, conventional service and installation summaries, non-aerobic service cycles, mixed-service maps and authority CSV exports.
 - One-way QuickBooks sync, SMS workflows and configurable file/email providers. Real-service validation still depends on configured accounts and controlled integration checks.
-- Demo organization isolation enforced by API and worker, synthetic contacts, watermarked exports, guided data and first-run help.
+- Demo organization isolation enforced by API and worker, synthetic contacts, watermarked exports, guided data and first-run help. The demo company's Lake Travis sites report to LCRA (a real authority, assigned with evidence marked fictional) and its Blanco sites to the fictional Example County; a year of inspections, reports, signatures and filings is played through the API on the story's own clock, so every site has real history.
 - Passwordless visitor demos lasting 24 hours, per-address/global creation limits, role switching and platform-created expiring prospect demos. A trial starts as a new company without synthetic customers.
 - Draft jurisdiction coverage, per-field evidence/confirmation and preparation of proposed new immutable rule versions. Saving an answer never publishes a rule or verifies an authority.
 

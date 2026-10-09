@@ -23,14 +23,29 @@ test("an Example County filing exported as CSV carries the demo column, stays un
   await db.connect();
 
   try {
-    // Tess finishes an inspection on the phone.
+    // A Blanco site of its own (the seed keeps Blanco in the fictional Example County; its Lake
+    // Travis sites report to LCRA), under contract, with a visit on Tess's route today.
+    const office = (await browser.newContext()).request;
+    expect((await office.post("/api/auth/login", { data: { email: "owner@example.com", password: "aerowise-dev" } })).ok()).toBe(true);
+    const customer = await (await office.post("/api/customers", { data: { displayName: "Row 16 CSV check" } })).json();
+    const site = await (await office.post(`/api/customers/${customer.id}/sites`, { data: { addressLine1: "16 Fixture Rd", city: "Blanco", state: "TX", postalCode: "78606", county: "Example County", permitNumber: "DEMO-016016" } })).json();
+    expect((await office.post(`/api/sites/${site.id}/systems`, { data: { manufacturer: "Acme", chlorinationMethod: "tablet" } })).status()).toBe(201);
+    const plan = ((await (await office.get("/api/plans")).json()).items as { id: string; name: string }[]).find((p) => p.name === "Residential annual")!;
+    const { today } = (await (await office.get("/api/obligations/due?limit=1")).json()) as { today: string };
+    const contracted = await office.post(`/api/sites/${site.id}/contracts`, { data: { planId: plan.id, startOn: today } });
+    expect(contracted.status(), await contracted.text()).toBe(201);
+    const contract = await contracted.json();
+    const tess = ((await (await office.get("/api/technicians")).json()).items as { id: string; name: string }[]).find((t) => t.name === "Tess Tech")!;
+    expect((await office.post("/api/jobs", { data: { obligationId: contract.obligations[0].id, technicianId: tess.id, scheduledDate: today } })).status()).toBe(201);
+
+    // Tess finishes that inspection on the phone.
     const phone = await (await browser.newContext({ geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"] })).newPage();
     await phone.goto("/login");
     await phone.getByLabel("Email").fill("tech@example.com");
     await phone.getByLabel("Password").fill("aerowise-dev");
     await phone.getByRole("button", { name: "Sign in" }).click();
     await phone.waitForURL("**/tech");
-    await phone.locator(".stop-card", { hasText: "To do" }).first().click();
+    await phone.locator(".stop-card", { hasText: "16 Fixture Rd" }).click();
     await phone.getByRole("button", { name: "Arrive and start inspection" }).click();
     await expect(phone.getByRole("group", { name: "Aerator" })).toBeVisible();
     for (const pass of await phone.getByRole("button", { name: "Pass", exact: true }).all()) await pass.click();
@@ -94,7 +109,6 @@ test("an Example County filing exported as CSV carries the demo column, stays un
 
     // Confirmed only when the office records the authority's acknowledgment.
     const ack = page.locator("form", { hasText: "The authority acknowledged it" });
-    const { today } = await (await page.request.get("/api/obligations/due?limit=1")).json();
     await ack.getByLabel("Received on").fill(today);
     await ack.getByLabel(/Their reference/).fill("ACK-ROW16");
     await ack.getByRole("button", { name: "Record acknowledgment" }).click();

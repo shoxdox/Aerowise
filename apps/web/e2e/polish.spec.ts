@@ -65,9 +65,10 @@ test("on a phone the office menu folds away, tables scroll in place, and owner-o
 
 test("second walk: a demo filing reads consistently and fits a phone", async ({ page }) => {
   await signIn(page, "office@example.com");
-  await page.goto("/filings");
-  await page.getByRole("button", { name: "All" }).click();
-  await page.locator("table tbody tr a[href^='/filings/']").first().click();
+  // One of yesterday's Example County report filings (the demo also holds LCRA contract and report filings).
+  const filings = (await (await page.request.get("/api/filings?view=all&kind=inspection_report")).json()).items as { id: string; jurisdiction: { key: string } | null }[];
+  const example = filings.find((f) => f.jurisdiction?.key === "tx-example-county")!;
+  await page.goto(`/filings/${example.id}`);
   // R1: the fictional county's rules don't wait for the signature, and the panel says so.
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "Maintenance provider signature" }) });
   await expect(panel).toContainText("example county rules don't hold the filing");

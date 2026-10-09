@@ -21,13 +21,18 @@ export const DEMO_PLATFORM_ADMIN = { name: "Pat Platform", email: "admin@example
 const FIRST = ["James", "Maria", "Robert", "Linda", "Carlos", "Patricia", "David", "Rosa", "Michael", "Karen", "Jose", "Susan", "Daniel", "Lupe", "Thomas", "Nancy"];
 const LAST = ["Hartley", "Gonzales", "Whitfield", "Ramirez", "Calloway", "Nguyen", "Brennan", "Salinas", "Dorsey", "Medina", "Pruitt", "Castillo", "Langford", "Villarreal"];
 const STREETS = ["Cedar Ridge Rd", "Live Oak Ln", "Bluebonnet Trl", "Mesquite Dr", "Old Mill Rd", "Pecan Hollow", "County Road 214", "Ranch Road 1863", "Deer Creek Dr", "Limestone Way"];
-// Every site is in the fictional Example County, whose made-up rules let the demo reach a
-// filing; its towns are only for the map. No site claims a real county's permit.
+// Real Central Texas geography. Spicewood (Burnet County), Lago Vista and Jonestown (Travis
+// County) are on Lake Travis, where the Lower Colorado River Authority runs the OSSF program: a
+// real authority whose draft rules (filing by email with LCRA's own cover sheet) have been in
+// force long enough to carry a year of history. Blanco stays in the fictional Example County,
+// whose made-up rules let the demo reach an automatic email filing and the CSV path. The demo
+// story assigns LCRA to its sites (apps/api/src/demo-story.ts), labelled as a fictional
+// assignment. No site claims a real permit.
 const PLACES = [
-  { city: "Dripping Springs", county: "Example County", zip: "78620", lat: 30.19, lng: -98.09 },
-  { city: "Wimberley", county: "Example County", zip: "78676", lat: 30.0, lng: -98.1 },
   { city: "Blanco", county: "Example County", zip: "78606", lat: 30.1, lng: -98.42 },
-  { city: "Spicewood", county: "Example County", zip: "78669", lat: 30.47, lng: -98.16 },
+  { city: "Spicewood", county: "Burnet", zip: "78669", lat: 30.47, lng: -98.16 },
+  { city: "Lago Vista", county: "Travis", zip: "78645", lat: 30.46, lng: -97.98 },
+  { city: "Jonestown", county: "Travis", zip: "78645", lat: 30.49, lng: -97.92 },
 ];
 const MAKERS = [
   { manufacturer: "Acme Aerobic", models: ["AA-500", "AA-750"] },
@@ -147,7 +152,12 @@ export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {
     for (let i = 0; i < 50; i++) {
       const first = r.pick(FIRST);
       const last = r.pick(LAST);
-      const place = r.pick(PLACES);
+      const drawn = r.pick(PLACES);
+      // Today's and tomorrow's route (the first nine sites) cycles through every place, starting in
+      // Blanco, so the technician's day shows each authority. The deliberately overdue sites (20 to
+      // 24) are in Blanco too, so the story's "yesterday" inspections file with the fictional
+      // county's automatic email and one is acknowledged.
+      const place = i < 9 ? PLACES[i % PLACES.length]! : i >= 20 && i < 25 ? PLACES[0]! : drawn;
       const street = `${100 + r.int(9800)} ${r.pick(STREETS)}`;
       const customer = await trx
         .insertInto("customers")
@@ -265,8 +275,9 @@ export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {
         continue; // A few sites whose contract has lapsed.
       }
       const schedule = buildTermSchedule(startOn, plan.termMonths, plan.visitsPerTerm);
-      // Visits whose due date has passed were done on time, except the deliberately overdue ones.
-      const keepOverdue = i >= 20 && i < 25;
+      // Every visit starts open. The demo story (apps/api/src/demo-story.ts) plays the ones due
+      // before last week as inspections done on their day, with reports and filings, so a site's
+      // compliance history is real; the deliberately overdue ones (sites 20 to 24) stay open.
       const contract = await trx
         .insertInto("contracts")
         .values({
@@ -301,9 +312,7 @@ export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {
             windowStart: v.windowStart,
             windowEnd: v.windowEnd,
             dueOn: v.dueOn,
-            ...(v.dueOn < today && !keepOverdue
-              ? { status: "completed" as const, completedAt: new Date(`${addDays(v.dueOn, -10)}T16:00:00Z`) }
-              : { completedAt: null }),
+            completedAt: null,
           })),
         )
         .returning(["id", "sequence"])

@@ -1,11 +1,14 @@
 import { DEMO_PASSWORD, seedDemoCompany } from "@aerowise/db";
 import { sql } from "kysely";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
 import { DEMO_VISIT_HOURS } from "../src/routes/demo-visits.ts";
 import { claimNext, checkQueue, runNextTask } from "@aerowise/tasks";
 import { setTimeout as pause } from "node:timers/promises";
 import { createOrg, createUser, login, setupTestApp } from "./helpers.ts";
+
+// The demo story plays a year of inspections, reports and filings (about 25 seconds); tests that play it need longer than the default.
+vi.setConfig({ testTimeout: 180_000 });
 
 // "Try the demo" (W10.2): each visitor gets a demo company of their own, signed in as its
 // owner, with no password anyone could share; limits per visitor and overall; gone after a day.
@@ -35,11 +38,16 @@ describe("visitor demos", () => {
   it("finishes the story when the deployed worker has already claimed its first report", async () => {
     const a = await app();
     const put = ctx.store.put.bind(ctx.store);
-    let photos = 0;
     let competing: Promise<boolean> | undefined;
     ctx.store.put = async (key, body, contentType) => {
       if (contentType === "application/pdf") await pause(1000);
-      if (contentType === "image/jpeg" && ++photos === 4) {
+      // The first photo uploaded while a report is waiting to be made (yesterday's second
+      // inspection, after the first one completed): the deployed worker grabs that report.
+      const waiting =
+        contentType === "image/jpeg" && !competing
+          ? await ctx.db.selectFrom("backgroundTasks").select("id").where("kind", "=", "reports.generate").where("completedAt", "is", null).where("lockedAt", "is", null).executeTakeFirst()
+          : undefined;
+      if (waiting) {
         competing = runNextTask({ db: ctx.db, store: ctx.store, now: () => ctx.now }, "competing-worker");
         for (let n = 0; n < 100; n++) {
           const locked = await ctx.db.selectFrom("backgroundTasks").select("id").where("lockedBy", "=", "competing-worker").executeTakeFirst();
@@ -52,9 +60,10 @@ describe("visitor demos", () => {
     };
     try {
       const res = await start(a);
-      expect(res.statusCode).toBe(200);
+      expect(res.statusCode, res.body).toBe(200);
       const filings = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", res.json().organizationId).where("inspectionId", "is not", null).execute();
-      expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
+      expect(filings.length).toBeGreaterThan(2);
+      expect(new Set(filings.map((f) => f.status))).toEqual(new Set(["confirmed", "sent"]));
       expect(await competing).toBe(true);
     } finally {
       await competing;
@@ -101,7 +110,8 @@ describe("visitor demos", () => {
     expect(me.organization.id).toBe(organizationId);
     expect(me.legalDue).toEqual([]);
     const filings = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", organizationId).where("inspectionId", "is not", null).execute();
-    expect(filings.map((f) => f.status).sort()).toEqual(["confirmed", "sent"]);
+    expect(filings.length).toBeGreaterThan(2);
+    expect(new Set(filings.map((f) => f.status))).toEqual(new Set(["confirmed", "sent"]));
     expect((await a.inject({ method: "GET", url: "/app-info", headers: { cookie } })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: true, features: [] });
 
     // A second visitor gets a different company and cannot see the first.

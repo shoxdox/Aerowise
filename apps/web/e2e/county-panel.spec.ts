@@ -8,8 +8,11 @@ test("the site panel shows the authority's interval, deadline, channel, contract
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/inbox");
 
-  const sites = await (await page.request.get("/api/sites?limit=1")).json();
-  await page.goto(`/sites/${sites.items[0].id}`);
+  // A Blanco site: the seed keeps those in the fictional Example County (Manor, Del Valle and
+  // Spicewood sites are assigned to Travis County and LCRA by the demo story).
+  const sites = await (await page.request.get("/api/sites?q=Blanco&limit=50")).json();
+  const blanco = sites.items.find((s: { city: string }) => s.city === "Blanco");
+  await page.goto(`/sites/${blanco.id}`);
   const panel = page.locator("dl").filter({ hasText: "Reports to" });
   await expect(panel.getByText("Example rules for the demo; no real authority.")).toBeVisible();
   await expect(panel.getByText("At least every 4 months.")).toBeVisible();

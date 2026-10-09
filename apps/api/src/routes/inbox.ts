@@ -115,6 +115,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     const rows = await sites(organizationId)
       .innerJoin("filings as f", (j) => j.onRef("f.siteId", "=", "s.id").onRef("f.organizationId", "=", "s.organizationId"))
       .leftJoin("jurisdictions as jr", "jr.id", "f.jurisdictionId")
+      .leftJoin("jurisdictionRulesets as rs", "rs.id", "f.rulesetId")
       .select([
         "f.id",
         "f.status",
@@ -125,6 +126,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         "f.reviewReason",
         "f.rejectionReason",
         "jr.authorityName",
+        sql<string | null>`rs.rules -> 'confirmation' ->> 'mode'`.as("confirmationMode"),
         "s.id as siteId",
         "s.addressLine1",
         "s.city",
@@ -168,7 +170,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       title: r.deliveryStatus === "complained" ? `${authority(r.authorityName)} marked the filing email as spam` : `Filing email to ${authority(r.authorityName)} did not arrive`,
       detail: `${r.recipient}: ${r.deliveryStatus}${r.deliveryDetail ? ` (${r.deliveryDetail})` : ""}. File it another way and record it.`,
     }));
-    const items = rows.map((r) => {
+    const items = rows.map((r): InboxException | null => {
       const overdue = r.deadlineOn !== null && r.deadlineOn < today;
       const base = { site: site(r), customer: customer(r), target: { type: "filing" as const, id: r.id }, dueOn: r.deadlineOn };
       switch (r.status) {
@@ -182,6 +184,9 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           }
           return { ...base, key: `filing_needs_review:${r.id}`, kind: "filing_needs_review", severity: "high", title: "Filing needs review", detail: r.reviewReason };
         case "sent":
+          // An authority that publishes no acknowledgment is never chased for one: sent is as far
+          // as that filing goes unless the authority answers on its own, which the office records.
+          if (r.confirmationMode === "none_published") return null;
           return {
             ...base,
             key: `filing_unconfirmed:${r.id}`,
@@ -201,8 +206,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
             detail: `Not sent to ${authority(r.authorityName)} yet`,
           };
       }
-    }) satisfies InboxException[];
-    return [...bouncedItems, ...items];
+    });
+    return [...bouncedItems, ...items.filter((i): i is InboxException => i !== null)];
   }
 
   /**

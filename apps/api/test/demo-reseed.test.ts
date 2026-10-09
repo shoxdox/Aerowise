@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { DEMO_ORG_NAME, DEMO_PASSWORD, reseedDemo } from "@aerowise/db";
 import { LocalDiskStore } from "@aerowise/storage";
 import { sql } from "kysely";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
 import { adminLogin, client, createAdmin, createTenant, setupTestApp } from "./helpers.ts";
+
+// The demo story plays a year of inspections, reports and filings (about 25 seconds); tests that play it need longer than the default.
+vi.setConfig({ testTimeout: 180_000 });
 
 // The nightly reset of the hosted demo (STG-01) refreshes only its public part: the shared demo
 // company and visitors' own. A prospect's demo, promised for days, and a real company trying

@@ -95,6 +95,14 @@ describe("exception inbox", () => {
     ctx.now = new Date("2026-03-20T18:00:00Z");
     expect(await kinds(s)).toContain("filing_unconfirmed");
     const filing = (await s.api.get("/filings?view=sent")).json().items[0];
+    // An authority that publishes no acknowledgment (LCRA, say) is never chased for one: sent is
+    // as far as that filing goes. The filing's recorded ruleset stands in for LCRA's here.
+    const lcra = await ctx.db.selectFrom("jurisdictionRulesets as rs").innerJoin("jurisdictions as j", "j.id", "rs.jurisdictionId").select("rs.id").where("j.key", "=", "tx-lcra-ossf").orderBy("rs.version", "desc").executeTakeFirstOrThrow();
+    const example = await ctx.db.selectFrom("filings").select("rulesetId").where("id", "=", filing.id).executeTakeFirstOrThrow();
+    await ctx.db.updateTable("filings").set({ rulesetId: lcra.id }).where("id", "=", filing.id).execute();
+    expect(await kinds(s)).not.toContain("filing_unconfirmed");
+    await ctx.db.updateTable("filings").set({ rulesetId: example.rulesetId }).where("id", "=", filing.id).execute();
+    expect(await kinds(s)).toContain("filing_unconfirmed");
     await s.api.post(`/filings/${filing.id}/confirm`, { reference: "EC-9" });
     expect(await kinds(s)).not.toContain("filing_unconfirmed");
 

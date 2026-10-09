@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
-import { OutboxTransport } from "@aerowise/compliance";
+import { openContractFiling, OutboxTransport, prepareFilingById } from "@aerowise/compliance";
 import { DEMO_ORG_NAME, type Database } from "@aerowise/db";
 import { addDays, addMonths, DEFAULT_TEMPLATE, parseFeatures, snapshotSha256, type Feature } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
-import { drainTasks } from "@aerowise/tasks";
+import { complianceContext, drainTasks } from "@aerowise/tasks";
 import { buildApp, type App } from "./app.ts";
 import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 
@@ -15,6 +15,13 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //
 //   - The owner's MP license and the technician's registration on file, the owner as the
 //     company's responsible MP (so reports can be signed and filings released).
+//   - The Spicewood, Lago Vista and Jonestown sites report to LCRA, assigned by the office with an
+//     evidence note that says the assignment is fictional, and a fictional LCRA application number
+//     on each; the Blanco sites stay with the fictional Example County. Every active contract on
+//     an LCRA site has a (fictional) signed copy on file and its contract filing emailed.
+//   - The year so far: every visit due before last week was inspected on its day, on the story's
+//     own clock, so reports were made, signed by the MP and filed when they would have been
+//     (by email: the office presses Send for LCRA, the example county sends by itself). Sites have real history.
 //   - Yesterday, the technician finished two overdue inspections. Their reports were made
 //     and filed with the (fictional) Example County by email; the outbox keeps the proof.
 //     The county answered one, so it is confirmed with a reference; the other waits.
@@ -41,6 +48,28 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     the Gold and Platinum tiers ask at online signing. No real terms or coverage are promised.
 //
 // Today's and tomorrow's route is left alone for the visitor to work through.
+
+/** A one-page PDF standing in for a signed maintenance contract: the demo files it with the real authorities. */
+const CONTRACT_PDF = (() => {
+  const text = "FICTIONAL signed maintenance contract for the Aerowise demo. Not a real agreement.";
+  const content = `BT /F1 14 Tf 72 720 Td (${text}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+})();
 
 const PHOTOS = {
   overview: readFileSync(new URL("./demo-assets/demo-overview.jpg", import.meta.url)),
@@ -165,7 +194,12 @@ const afternoon = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00Z`
  * there is no such demo company or the story was already played there.
  */
 export async function playDemoStory(opts: { db: Database; store: ObjectStore; organizationId?: string; now?: () => Date; log?: (msg: string) => void; features?: ReadonlySet<Feature> }): Promise<boolean> {
-  const { db, store, now = () => new Date(), log = () => {}, features = parseFeatures(process.env.AEROWISE_FEATURES) } = opts;
+  const { db, store, now: realNow = () => new Date(), log = () => {}, features = parseFeatures(process.env.AEROWISE_FEATURES) } = opts;
+  // The story's clock. The year's history is played on its own days (a job scheduled, an
+  // inspection completed, its report made, signed and filed when they would have been), then the
+  // clock returns to the present for yesterday's work and everything after it.
+  let clockAt: Date | null = null;
+  const now = () => clockAt ?? realNow();
   const work = features.has("work_orders");
   const catalog = work && features.has("service_items");
   const tiers = features.has("plan_builder");
@@ -220,57 +254,203 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     const owner = await signIn(app, db, org.id, ownerId);
     const office = await signIn(app, db, org.id, officeId);
     const tech = await signIn(app, db, org.id, techId);
-    const today = chicagoDate(now());
+    const today = chicagoDate(realNow());
     const yesterday = addDays(today, -1);
-
-    // ---- Licenses on file ----
-    const mp = await owner.post("/credentials", { userId: ownerId, holderName: "Olivia Owner", kind: "tceq_maintenance_provider", number: "MP-DEMO-0001", verifiedOn: addDays(today, -30), verificationSource: "Fictional: demo company" });
-    await owner.post("/credentials", { userId: techId, holderName: "Tess Tech", kind: "tceq_maintenance_technician", number: "MT-DEMO-0001", expiresOn: addDays(today, 365) });
-    await owner.put("/settings/responsible-provider", { credentialId: mp.id });
-
-    // ---- Yesterday: two overdue visits inspected and filed ----
-    const overdue = await db
-      .selectFrom("serviceObligations as o")
-      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
-      .select(["o.id", "o.siteId", "s.lat", "s.lng"])
-      .where("o.organizationId", "=", org.id)
-      .where("o.serviceType", "=", "aerobic_inspection")
-      .where("o.status", "=", "open")
-      .where("o.dueOn", "<", today)
-      .orderBy("o.dueOn")
-      .limit(2)
-      .execute();
     const template = await tech.get("/inspection-template");
-    const inspections: string[] = [];
-    for (const [n, visit] of overdue.entries()) {
-      const job = await office.post("/jobs", { obligationId: visit.id, technicianId: techId, scheduledDate: yesterday });
+
+    /** One visit inspected on the phone that day: started, photographed, completed through the API. */
+    const inspectVisit = async (
+      visit: { id: string; siteId: string; lat: number | null; lng: number | null },
+      day: string,
+      o: { times: [string, string, string]; chlorine: number; airPressure: number; notes: string; pumping?: boolean; issues?: { clientId: string; type: string; severity: string; description: string }[] },
+    ) => {
+      const job = await office.post("/jobs", { obligationId: visit.id, technicianId: techId, scheduledDate: day });
       const clientId = randomUUID();
-      const arrivedAt = afternoon(yesterday, n === 0 ? "19:00" : "20:30");
-      const base = { clientId, jobId: job.jobId, templateId: template.id, arrivedAt, arrivalGps: { lat: visit.lat ?? 30.19, lng: visit.lng ?? -98.09, accuracyM: 8 } };
+      const base = { clientId, jobId: job.jobId, templateId: template.id, arrivedAt: afternoon(day, o.times[0]), arrivalGps: { lat: visit.lat ?? 30.19, lng: visit.lng ?? -98.09, accuracyM: 8 } };
       await tech.put("/inspections/sync", { ...base, status: "draft", values: { aerator: "pass" } });
       for (const key of ["overview", "chlorinator"] as const) {
-        await tech.photo(`/inspections/${clientId}/photos/${randomUUID()}`, PHOTOS[key], { "x-photo-key": key, "x-captured-at": afternoon(yesterday, n === 0 ? "19:10" : "20:40") });
+        await tech.photo(`/inspections/${clientId}/photos/${randomUUID()}`, PHOTOS[key], { "x-photo-key": key, "x-captured-at": afternoon(day, o.times[1]) });
       }
       const values: Record<string, string | number | boolean> = {};
       for (const f of DEFAULT_TEMPLATE.definition.fields) if (f.type === "pass_fail") values[f.key] = "pass";
       Object.assign(values, {
         // Every demo unit has a tablet or liquid chlorinator (seed.ts), and it was working.
         chlorinator: "working",
-        chlorine_level: n === 0 ? 1.5 : 2.0,
+        chlorine_level: o.chlorine,
         chlorine_added: 2,
-        air_pressure: n === 0 ? 4.5 : 3.8,
+        air_pressure: o.airPressure,
         odor: "none",
-        pumping_needed: n === 1,
-        notes: n === 1 ? "Sludge is near the top of the pretreatment tank; pumping recommended before the next visit." : "Everything working. Tablets topped up.",
+        pumping_needed: o.pumping ?? false,
+        // The report fields some authorities ask for (form v2), so any authority's check passes.
+        pump_tank_sludge: 6,
+        pump_tank_ph: 7.2,
+        spray_area: "acceptable",
+        unauthorized_alterations: "none_found",
+        notes: o.notes,
       });
-      // What the technician noted for the office to follow up, when there is work to turn it into.
-      const issues = !work
-        ? []
-        : n === 0
-          ? [{ clientId: randomUUID(), type: "repair_needed", severity: "medium", description: "Alarm light flickers; float switch wiring looks loose." }]
-          : [{ clientId: randomUUID(), type: "pump_out", severity: "high", description: "Sludge near the top of the pretreatment tank." }];
-      const done = await tech.put("/inspections/sync", { ...base, status: "completed", completedAt: afternoon(yesterday, n === 0 ? "19:40" : "21:05"), values, issues });
+      const done = await tech.put("/inspections/sync", { ...base, status: "completed", completedAt: afternoon(day, o.times[2]), values, issues: o.issues ?? [] });
       if (done.status !== "completed") throw new Error(`demo story: inspection did not complete: ${JSON.stringify(done.validationProblems ?? done)}`);
+      return done as { id: string };
+    };
+
+    const filingOfInspection = async (inspectionId: string) =>
+      (await db.selectFrom("filings").select("id").where("organizationId", "=", org.id).where("inspectionId", "=", inspectionId).executeTakeFirstOrThrow()).id;
+
+    /**
+     * Files a filing the way its authority takes it. A report is first signed by the MP
+     * (30 TAC 285.7(b)(3)); then the office presses Send for an email authority, or records a
+     * filing by hand with the reference the portal gave. The example county's automatic email
+     * needs nothing. Returns the filing, or null when it could not be filed (left for the inbox).
+     */
+    const fileFiling = async (filingId: string, reference: string) => {
+      const read = () => db.selectFrom("filings").select(["id", "status", "submissionMethod", "kind", "inspectionId"]).where("organizationId", "=", org.id).where("id", "=", filingId).executeTakeFirstOrThrow();
+      let f = await read();
+      if (["queued", "submitting", "sent", "confirmed"].includes(f.status)) return f;
+      if (f.kind === "inspection_report" && f.inspectionId) {
+        await owner.post(`/inspections/${f.inspectionId}/signature`, { typedName: "Olivia Owner" });
+        f = await read();
+      }
+      if (f.status !== "ready") return null;
+      if (f.submissionMethod === "email") {
+        await office.post(`/filings/${f.id}/submit`);
+        await worker();
+      } else if (f.submissionMethod === "manual_export") {
+        await office.post(`/filings/${f.id}/mark-sent`, { reference, note: "Fictional: recorded for the demo as filed by hand on the authority's portal." });
+      } else {
+        return null;
+      }
+      return read();
+    };
+
+    // ---- Licenses on file ----
+    // Verified well before the year's history, so the MP can sign every report in it.
+    const mp = await owner.post("/credentials", { userId: ownerId, holderName: "Olivia Owner", kind: "tceq_maintenance_provider", number: "MP-DEMO-0001", verifiedOn: addDays(today, -420), verificationSource: "Fictional: demo company" });
+    await owner.post("/credentials", { userId: techId, holderName: "Tess Tech", kind: "tceq_maintenance_technician", number: "MT-DEMO-0001", expiresOn: addDays(today, 365) });
+    await owner.put("/settings/responsible-provider", { credentialId: mp.id });
+
+    // ---- A real authority for the Lake Travis sites, as a fictional assignment ----
+    // LCRA is assigned by a person (its rules say so: it covers part of Burnet and Travis
+    // counties); the demo's office did that, and said in the evidence that the sites are made up.
+    // LCRA's cover sheet needs the site's application number, so each gets a fictional one.
+    const AUTHORITY_FOR_COUNTY: Record<string, string> = { Travis: "tx-lcra-ossf", Burnet: "tx-lcra-ossf" };
+    clockAt = new Date(`${addDays(today, -400)}T15:00:00Z`);
+    const sites = await db.selectFrom("sites").select(["id", "county"]).where("organizationId", "=", org.id).orderBy("createdAt").execute();
+    let assigned = 0;
+    for (const [n, site] of sites.entries()) {
+      const key = AUTHORITY_FOR_COUNTY[site.county ?? ""];
+      if (!key) continue;
+      const { candidates } = (await office.get(`/sites/${site.id}/jurisdiction`)) as { candidates: { id: string; key: string }[] };
+      const match = candidates.find((c) => c.key === key);
+      if (!match) continue;
+      if (key === "tx-lcra-ossf") {
+        await office.put(`/sites/${site.id}/authority-identifiers/lcra_ossf_application_number`, { jurisdictionId: match.id, value: `LCRA-DEMO-${10000 + n}`, sourceNote: "Fictional: made up for the demo, not from a permit." });
+      }
+      await office.put(`/sites/${site.id}/jurisdiction`, {
+        jurisdictionId: match.id,
+        evidenceKind: "other",
+        evidenceReference: "Fictional demo company: assigned for the walkthrough",
+        evidenceNote: "This site is made up, so this is not a determination. A real site's authority is checked against its permit or the authority's own map, and that evidence is recorded here.",
+      });
+      assigned++;
+    }
+
+    // ---- Contracts on file with LCRA ----
+    // LCRA asks for the signed maintenance contract. Each active contract on its sites has a
+    // fictional signed copy on file and its contract filing emailed the day after it started.
+    const compliance = complianceContext({ db, store, now, mail, appUrl });
+    const realCountyContracts = await db
+      .selectFrom("contracts as c")
+      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
+      .select(["c.id", "c.startOn"])
+      .where("c.organizationId", "=", org.id)
+      .where("c.status", "=", "active")
+      .where("c.serviceType", "=", "aerobic_inspection")
+      .where("s.county", "in", Object.keys(AUTHORITY_FOR_COUNTY))
+      .orderBy("c.startOn")
+      .execute();
+    // First every contract's copy on file and its filing opened and checked, each on its own
+    // day (the worker's sweep would otherwise open the rest all at once); then each one sent.
+    const contractFilings: { filingId: string; startOn: string }[] = [];
+    for (const c of realCountyContracts) {
+      clockAt = new Date(`${addDays(c.startOn, 1)}T16:00:00Z`);
+      await office.post(`/contracts/${c.id}/document`, { filename: "signed-maintenance-contract-demo.pdf", contentBase64: CONTRACT_PDF.toString("base64"), signedOn: c.startOn });
+      const opened = await db.transaction().execute((trx) => openContractFiling(trx, { organizationId: org.id, contractId: c.id, actorUserId: officeId, at: now() }));
+      const filingId = opened?.id ?? (await db.selectFrom("filings").select("id").where("organizationId", "=", org.id).where("contractId", "=", c.id).executeTakeFirst())?.id;
+      if (!filingId) continue;
+      await prepareFilingById(compliance, org.id, filingId, officeId);
+      contractFilings.push({ filingId, startOn: c.startOn });
+    }
+    let contractsFiled = 0;
+    for (const [n, cf] of contractFilings.entries()) {
+      clockAt = new Date(`${addDays(cf.startOn, 1)}T17:00:00Z`);
+      const filed = await fileFiling(cf.filingId, `DEMO-C-${1001 + n}`);
+      if (filed?.status === "sent") contractsFiled++;
+    }
+
+    // ---- The year so far: past visits inspected on their day, reported and filed ----
+    const history = await db
+      .selectFrom("serviceObligations as o")
+      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
+      .select(["o.id", "o.siteId", "o.dueOn", "s.lat", "s.lng", "s.county"])
+      .where("o.organizationId", "=", org.id)
+      .where("o.serviceType", "=", "aerobic_inspection")
+      .where("o.status", "=", "open")
+      // Older than a week: the deliberately overdue visits (one to five days) are left for the inbox.
+      .where("o.dueOn", "<", addDays(today, -6))
+      .orderBy("o.dueOn")
+      .execute();
+    let historyConfirmed = 0;
+    for (const [n, visit] of history.entries()) {
+      // Done ten days before it was due, mid-afternoon.
+      const day = addDays(visit.dueOn, -10);
+      clockAt = new Date(`${day}T19:00:00Z`);
+      const done = await inspectVisit(visit, day, {
+        times: ["19:00", "19:10", "19:35"],
+        chlorine: [1.5, 2.0, 1.0, 2.5][n % 4]!,
+        airPressure: [4.5, 3.8, 4.1, 4.9][n % 4]!,
+        notes: ["Everything working. Tablets topped up.", "Working well; spray heads cleared.", "Filter rinsed; tablets topped up.", "Everything working."][n % 4]!,
+      });
+      await worker();
+      const filing = await fileFiling(await filingOfInspection(done.id), `DEMO-R-${1001 + n}`);
+      // The example county replies to filings (LCRA publishes no acknowledgment): three days on,
+      // the office recorded its reference.
+      if (filing?.status === "sent" && visit.county === "Example County") {
+        clockAt = new Date(`${addDays(day, 3)}T15:00:00Z`);
+        await office.post(`/filings/${filing.id}/confirm`, { reference: `EC-DEMO-${1001 + n}`, note: "Fictional: the county clerk replied by email." });
+        historyConfirmed++;
+      }
+    }
+    clockAt = null;
+
+    // ---- Yesterday: two overdue visits inspected and filed ----
+    // Blanco sites, so the fictional county's automatic email files them and one is confirmed.
+    const overdue = await db
+      .selectFrom("serviceObligations as o")
+      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
+      .select(["o.id", "o.siteId", "s.lat", "s.lng", "s.county"])
+      .where("o.organizationId", "=", org.id)
+      .where("o.serviceType", "=", "aerobic_inspection")
+      .where("o.status", "=", "open")
+      .where("o.dueOn", "<", today)
+      .where("s.county", "=", "Example County")
+      .orderBy("o.dueOn")
+      .limit(2)
+      .execute();
+    const inspections: string[] = [];
+    for (const [n, visit] of overdue.entries()) {
+      const done = await inspectVisit(visit, yesterday, {
+        times: n === 0 ? ["19:00", "19:10", "19:40"] : ["20:30", "20:40", "21:05"],
+        chlorine: n === 0 ? 1.5 : 2.0,
+        airPressure: n === 0 ? 4.5 : 3.8,
+        pumping: n === 1,
+        notes: n === 1 ? "Sludge is near the top of the pretreatment tank; pumping recommended before the next visit." : "Everything working. Tablets topped up.",
+        // What the technician noted for the office to follow up, when there is work to turn it into.
+        issues: !work
+          ? []
+          : n === 0
+            ? [{ clientId: randomUUID(), type: "repair_needed", severity: "medium", description: "Alarm light flickers; float switch wiring looks loose." }]
+            : [{ clientId: randomUUID(), type: "pump_out", severity: "high", description: "Sludge near the top of the pretreatment tank." }],
+      });
       inspections.push(done.id);
     }
     if (inspections.length === 0) throw new Error("demo story: no visits from yesterday to inspect (was the demo seeded today?)");
@@ -505,7 +685,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
         cycleOrders++;
       }
     }
-    log(`demo story: ${inspections.length} inspections filed (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates${tiers ? `, ${tierCount} fictional plan tiers` : ""}${cycles ? `, a pumping-only contract with ${cycleOrders} visit booked` : ""}`);
+    log(`demo story: ${assigned} sites assigned to real authorities, ${contractsFiled} contracts filed, ${history.length} past inspections filed (${historyConfirmed} confirmed), ${inspections.length} inspections filed yesterday (one confirmed), ${ending ? 1 : 0} renewal sent, ${invoiced.length} invoices (one paid), ${workOrders} work orders, ${estimates} estimates${tiers ? `, ${tierCount} fictional plan tiers` : ""}${cycles ? `, a pumping-only contract with ${cycleOrders} visit booked` : ""}`);
     return true;
   } finally {
     // The story's own sign-ins end with it.
