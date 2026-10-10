@@ -182,8 +182,10 @@ export async function buildApp({
   // Fictional rules (the example county) are for development, tests and the demo only.
   await syncRulesets(db, undefined, { includeFictional: !production || demo });
   const signer = new UrlSigner(fileSigningSecret ?? "aerowise-development-only-signing-secret");
-  // Pay and renewal links are signed under the same secret; the worker configures it too.
-  configureLinkTokens(fileSigningSecret);
+  // Pay and renewal links are signed under the same secret; the worker configures it too. Only a
+  // real secret is set: the demo story builds an in-process app without one, which must not
+  // downgrade the API process to the development secret.
+  if (fileSigningSecret) configureLinkTokens(fileSigningSecret);
 
   const app = Fastify({
     logger,

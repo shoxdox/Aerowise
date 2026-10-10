@@ -20,6 +20,10 @@ const securityHeaders = [
 const config: NextConfig = {
   transpilePackages: ["@aerowise/domain"],
   poweredByHeader: false,
+  // Starting a visitor demo seeds a company and plays a year of its history through the API,
+  // which takes about a minute on the staging server; Next's proxy gives up at 30 seconds by
+  // default and answers 500 while the API is still working.
+  experimental: { proxyTimeout: 180_000 },
   async headers() {
     return [{ source: "/((?!api/).*)", headers: securityHeaders }];
   },

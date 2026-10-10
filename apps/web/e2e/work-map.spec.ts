@@ -146,7 +146,15 @@ test.describe("technician map with work", () => {
       const marker = page.locator(`.map-stop[data-stop="${pump.jobId}"]`);
       await expect(marker).toHaveText(pumpNumber);
       await expect(marker).toHaveAttribute("data-kind", "pumping");
-      for (const n of inspectionNumbers) await expect(page.locator('.map-stop[data-kind="inspection"]', { hasText: new RegExp(`^${n}$`) })).toHaveCount(1);
+      // Every inspection stop whose site is on the map has its numbered marker. A stop another
+      // spec booked at a site with no coordinates (no worker geocodes sites here) is listed but,
+      // as the count above says, has no marker.
+      const locatedInspections = new Set(route.filter((s) => s.site.lat !== null).map((s) => s.jobId));
+      for (const [i, s] of order.entries()) {
+        if (!locatedInspections.has(s.id)) continue;
+        await expect(page.locator('.map-stop[data-kind="inspection"]', { hasText: new RegExp(`^${i + 1}$`) })).toHaveCount(1);
+      }
+      expect(inspectionNumbers.length).toBeGreaterThanOrEqual(locatedInspections.size);
 
       // Tapping the work marker opens the work visit.
       await marker.click();
