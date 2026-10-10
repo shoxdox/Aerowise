@@ -1,7 +1,7 @@
 import type { Database, DB } from "@aerowise/db";
 import { amountDue, invoiceSnapshot, platformFeeCents } from "@aerowise/domain";
 import type { PaymentProvider } from "@aerowise/payments";
-import { billingEmail, payUrlFor } from "@aerowise/tasks";
+import { billingEmail, linkTokenId, payUrlFor } from "@aerowise/tasks";
 import { sql, type Transaction } from "kysely";
 import type { FastifyBaseLogger } from "fastify";
 import { HttpError, unprocessable } from "./errors.ts";
@@ -33,14 +33,20 @@ const payable = (ex: Database | Transaction<DB>) =>
       "o.platformFeeBps",
     ]);
 
-/** An open invoice by its pay-link token, with what checkout needs. */
-export async function invoiceByToken(db: Database, token: string) {
-  const inv = await payable(db).where("i.publicToken", "=", token).executeTakeFirst();
+/** An open invoice by id, with what checkout needs. */
+export async function openInvoiceById(db: Database, invoiceId: string) {
+  const inv = await payable(db).where("i.id", "=", invoiceId).executeTakeFirst();
   // A void invoice's link stops working.
   if (!inv || inv.status !== "open") throw notFoundLink();
   return inv;
 }
-export type PayableInvoice = Awaited<ReturnType<typeof invoiceByToken>>;
+/** An open invoice by its signed pay-link token (`links.ts`); a token that does not verify is not found. */
+export async function invoiceByToken(db: Database, token: string) {
+  const id = linkTokenId("pay", token);
+  if (!id) throw notFoundLink();
+  return openInvoiceById(db, id);
+}
+export type PayableInvoice = Awaited<ReturnType<typeof openInvoiceById>>;
 
 /**
  * Why a deposit invoice no longer takes payment: its estimate was cancelled (or the deposit
@@ -69,7 +75,7 @@ export const canPayOnline = (provider: PaymentProvider | null, inv: PayableInvoi
  */
 export async function openCheckout(
   db: Database,
-  opts: { provider: PaymentProvider | null; appUrl: string; token: string; inv: PayableInvoice; now: Date; successUrl?: string },
+  opts: { provider: PaymentProvider | null; appUrl: string; inv: PayableInvoice; now: Date; successUrl?: string },
 ): Promise<{ url: string }> {
   const { provider } = opts;
   const at = opts.now;
@@ -101,7 +107,7 @@ export async function openCheckout(
     if (open) return { url: open.url };
     const s = invoiceSnapshot.parse(inv.snapshot);
     const n = await trx.selectFrom("checkoutSessions").select(sql<number>`count(*)::int`.as("n")).where("invoiceId", "=", inv.id).executeTakeFirstOrThrow();
-    const payPage = payUrlFor(opts.appUrl, opts.token);
+    const payPage = payUrlFor(opts.appUrl, inv.id);
     const session = await provider.createCheckout({
       accountId: inv.stripeAccountId!,
       idempotencyKey: `checkout-${inv.id}-${n.n + 1}-${due}`,

@@ -5,11 +5,10 @@ import { invoiceSnapshot } from "@aerowise/domain";
 import { dollars, invoiceEvent, type Executor } from "@aerowise/payments";
 import { renderInvoice } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
+import { payUrlFor } from "./links.ts";
 
 export const RENDER_INVOICE = "invoices.render";
 export const SEND_INVOICE = "invoices.send";
-
-export const payUrlFor = (appUrl: string, token: string) => `${appUrl.replace(/\/$/, "")}/pay/${token}`;
 
 /**
  * Where an invoice goes: the customer's billing contact, else their primary contact,
@@ -36,15 +35,15 @@ export async function billingEmail(db: Executor, organizationId: string, custome
 export async function renderInvoicePdf(db: Database, store: ObjectStore, organizationId: string, invoiceId: string, appUrl: string) {
   const inv = await db
     .selectFrom("invoices")
-    .select(["id", "status", "number", "snapshot", "publicToken", "pdfStorageKey"])
+    .select(["id", "status", "number", "snapshot", "pdfStorageKey"])
     .where("organizationId", "=", organizationId)
     .where("id", "=", invoiceId)
     .executeTakeFirst();
   if (!inv) throw new Error(`invoice ${invoiceId} not found`);
   if (inv.pdfStorageKey) return inv.pdfStorageKey;
-  if (inv.status === "draft" || !inv.snapshot || !inv.publicToken) throw new Error(`invoice ${invoiceId} is not issued`);
+  if (inv.status === "draft" || !inv.snapshot) throw new Error(`invoice ${invoiceId} is not issued`);
   const snapshot = invoiceSnapshot.parse(inv.snapshot);
-  const pdf = await renderInvoice(snapshot, { payUrl: inv.status === "open" ? payUrlFor(appUrl, inv.publicToken) : null });
+  const pdf = await renderInvoice(snapshot, { payUrl: inv.status === "open" ? payUrlFor(appUrl, inv.id) : null });
   const sha256 = createHash("sha256").update(pdf).digest("hex");
   const key = `${organizationId}/invoices/${invoiceId}/${snapshot.number}-${sha256.slice(0, 12)}.pdf`;
   await store.put(key, pdf, "application/pdf");
@@ -75,7 +74,7 @@ export async function sendInvoice(
   const inv = await db
     .selectFrom("invoices as i")
     .innerJoin("organizations as o", "o.id", "i.organizationId")
-    .select(["i.id", "i.status", "i.customerId", "i.snapshot", "i.publicToken", "o.name as orgName", "o.phone as orgPhone", "o.email as orgEmail"])
+    .select(["i.id", "i.status", "i.customerId", "i.snapshot", "o.name as orgName", "o.phone as orgPhone", "o.email as orgEmail"])
     .where("i.organizationId", "=", organizationId)
     .where("i.id", "=", invoiceId)
     .executeTakeFirst();
@@ -89,7 +88,7 @@ export async function sendInvoice(
   const key = await renderInvoicePdf(db, ctx.store, organizationId, invoiceId, ctx.appUrl);
   const pdf = await ctx.store.get(key);
   if (!pdf) throw new Error(`invoice PDF ${key} is missing from storage`);
-  const payUrl = payUrlFor(ctx.appUrl, inv.publicToken!);
+  const payUrl = payUrlFor(ctx.appUrl, inv.id);
   const contact = [inv.orgPhone, inv.orgEmail].filter(Boolean).join(" or ");
   const result = await ctx.mail.send({
     organizationId,

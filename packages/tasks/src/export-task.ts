@@ -28,7 +28,7 @@ export const EXPORT_TABLES: { file: string; table: string; omit?: string[] }[] =
   { file: "jobs.csv", table: "jobs" },
   { file: "inspections.csv", table: "inspections" },
   { file: "inspection_values.csv", table: "inspection_values" },
-  { file: "invoices.csv", table: "invoices", omit: ["public_token"] },
+  { file: "invoices.csv", table: "invoices" },
   { file: "invoice_lines.csv", table: "invoice_lines" },
   { file: "payments.csv", table: "payments" },
   { file: "work_types.csv", table: "work_types" },

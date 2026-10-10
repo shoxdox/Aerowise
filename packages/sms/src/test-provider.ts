@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { signatureMatches, SmsSendError, UNSUBSCRIBED_CODE, webhookSignature, type SmsProvider, type SmsSendInput } from "./provider.ts";
 
 const TEST_AUTH_TOKEN = "aerowise_test_sms_auth_token";
@@ -22,6 +22,16 @@ export class TestSmsProvider implements SmsProvider {
   readonly kind = "test";
   /** Every text "sent", newest last. Tests read it. */
   readonly sent: (SmsSendInput & { providerMessageId: string })[] = [];
+  private readonly authToken: string;
+
+  /**
+   * `secret`: the deployment's signing secret, when it has one. The webhook token is derived
+   * from it, so on a hosted demo a reply cannot be forged from a constant in this source.
+   * Without one (tests, local development) the constant is used.
+   */
+  constructor(opts: { secret?: string | null } = {}) {
+    this.authToken = opts.secret ? createHash("sha256").update(`sms-webhook:${opts.secret}`).digest("hex") : TEST_AUTH_TOKEN;
+  }
 
   async send(input: SmsSendInput) {
     if (input.to === TEST_NUMBERS.invalid) throw new SmsSendError(`The 'To' number ${input.to} is not a valid phone number.`, "21211", true);
@@ -33,12 +43,12 @@ export class TestSmsProvider implements SmsProvider {
   }
 
   verifyWebhook(url: string, params: Record<string, string>, signature: string) {
-    return signatureMatches(TEST_AUTH_TOKEN, url, params, signature);
+    return signatureMatches(this.authToken, url, params, signature);
   }
 
   /** The signature header Twilio would send with this webhook. */
   sign(url: string, params: Record<string, string>) {
-    return webhookSignature(TEST_AUTH_TOKEN, url, params);
+    return webhookSignature(this.authToken, url, params);
   }
 
   /** A made-up sending number for an organization trying texts out (555 numbers ring nowhere). */

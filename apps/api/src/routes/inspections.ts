@@ -37,6 +37,7 @@ import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { boundPhoneTimes } from "../lib/clock.ts";
 import { forbidden, HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 import type { ObjectStore } from "@aerowise/storage";
 import { readForDownload } from "../lib/demo.ts";
@@ -69,7 +70,8 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
   now: () => Date;
   store: ObjectStore;
   signer: UrlSigner;
-}> = async (app, { db, now, store, signer }) => {
+  linkLimits: PublicLinkLimits;
+}> = async (app, { db, now, store, signer, linkLimits }) => {
   // Raw photo bodies. Scoped to this plugin, so other routes still only parse JSON.
   app.addContentTypeParser(Object.keys(PHOTO_TYPES), { parseAs: "buffer", bodyLimit: MAX_PHOTO_BYTES }, (_req, body, done) =>
     done(null, body),
@@ -203,6 +205,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
       arrivalLng: row.arrivalLng,
       completionLat: row.completionLat,
       completionLng: row.completionLng,
+      locationStatus: (row.locationStatus as Inspection["locationStatus"]) ?? null,
       accessIssue: row.accessIssue,
       values: Object.fromEntries(values.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])),
       issues: issues as Inspection["issues"],
@@ -471,6 +474,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
       completionLat: body.completionGps?.lat ?? null,
       completionLng: body.completionGps?.lng ?? null,
       completionAccuracyM: body.completionGps?.accuracyM ?? null,
+      locationStatus: body.locationStatus ?? (body.arrivalGps ? "recorded" : null),
       accessIssue: body.accessIssue ?? null,
       validationStatus: "pending" as const,
       validationProblems: "[]",
@@ -591,10 +595,13 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
           .executeTakeFirst();
         if (existing) {
           if (existing.jobId !== body.jobId) throw conflict("client_id_reused", "This clientId belongs to another inspection");
-          if (existing.technicianUserId !== userId) throw forbidden();
-          // Final: a retry of the completing sync, or a stale draft arriving late.
-          if (existing.status === "completed" || existing.lockedAt) return { kind: "inspection" as const, id: existing.id };
-          if (existing.templateId !== body.templateId) throw conflict("template_changed", "An inspection keeps the template it started with");
+          if (existing.technicianUserId === userId) {
+            // Final: a retry of the completing sync, or a stale draft arriving late.
+            if (existing.status === "completed" || existing.lockedAt) return { kind: "inspection" as const, id: existing.id };
+            if (existing.templateId !== body.templateId) throw conflict("template_changed", "An inspection keeps the template it started with");
+          }
+          // Someone else's now: the visit was given to another technician while this phone was
+          // out of signal, and the inspection went with it. Decided below from the job.
         }
 
         const job = await trx
@@ -609,6 +616,8 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         if (!job) throw notFound("Job");
 
         const live = job.technicianUserId === userId && job.status !== "cancelled" && job.status !== "completed";
+        // The visit is this technician's but its inspection is not: nothing supported leads here.
+        if (live && existing && existing.technicianUserId !== userId) throw forbidden();
         if (!live) {
           // The visit changed while the phone was offline (given to someone else, unscheduled
           // or completed by the office): held for the office rather than refused, so nothing
@@ -935,8 +944,9 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
     "/files/:id",
     {
       // Authorized by the signature instead of a session, so links work in <img> tags,
-      // reports and emails. The signature is bound to the file's own organization.
-      config: { public: true },
+      // reports and emails. The signature is bound to the file's own organization. A page
+      // of photos loads many at once, so the per-address limit is generous.
+      config: { public: true, rateLimit: perAddress("file", linkLimits.files) },
       schema: { tags: ["files"], summary: "Download a file through a signed link", params, querystring: z.object({ exp: z.coerce.number().int(), sig: z.string().max(100) }) },
     },
     async (req, reply) => {

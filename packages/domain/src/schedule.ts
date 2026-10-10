@@ -72,7 +72,19 @@ export function buildTermSchedule(startOn: string, termMonths: number, visitsPer
 }
 
 /** The last day of a term starting on `startOn`. */
-export const termEndOn = (startOn: string, termMonths: number) => addDays(addMonths(startOn, termMonths), -1);
+/**
+ * The last day of a term: the day before the start date `termMonths` on. When that date does
+ * not exist (a term from Jan 31 or Feb 29), the term runs to the end of the month it lands in
+ * instead of stopping a day short of it: Jan 31 + 1 month ends Feb 28, not Feb 27, and Feb 29,
+ * 2024 + 12 months ends Feb 28, 2025, so the renewal starts Mar 1 and the chain never drifts.
+ */
+export function termEndOn(startOn: string, termMonths: number): string {
+  const d = parse(startOn);
+  const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + termMonths, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  if (d.getUTCDate() > lastDay) return format(new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), lastDay)));
+  return addDays(addMonths(startOn, termMonths), -1);
+}
 
 /** Visits counted from the contract's start, for authorities that set them that way (Hays 10.V.2). */
 export interface ContractVisitRule {

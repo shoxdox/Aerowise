@@ -10,12 +10,12 @@ import {
   usersOverview,
 } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import type { FastifyRequest } from "fastify";
 import { sql } from "kysely";
 import { z } from "zod";
 import { createSession, SESSION_COOKIE } from "../auth/sessions.ts";
 import { audit } from "../lib/audit.ts";
 import { forbidden, HttpError, notFound } from "../lib/errors.ts";
+import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import {
   createInvitation,
   emailInvitation,
@@ -29,14 +29,14 @@ import { loadMe, meResponse } from "./auth.ts";
 
 const params = z.object({ id: z.uuid() });
 const tokenParams = z.object({ token: z.string().min(16).max(200) });
-// Per IP and token, like the other public links.
-const publicLimit = { max: 20, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => `${req.ip}:${(req.params as { token?: string }).token ?? ""}` };
 const iso = (d: Date) => d.toISOString();
 
-export const userRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; production: boolean; invitations: InvitationMail }> = async (
+export const userRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; production: boolean; invitations: InvitationMail; linkLimits: PublicLinkLimits }> = async (
   app,
-  { db, now, production, invitations },
+  { db, now, production, invitations, linkLimits },
 ) => {
+  // Per address, like the other public links (lib/rate-limits.ts).
+  const publicLimit = perAddress("invitation", linkLimits.actions);
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
   async function inviterName(userId: string) {

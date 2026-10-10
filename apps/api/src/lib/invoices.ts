@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import {
   addDays,
@@ -11,6 +10,8 @@ import {
   type InvoiceLineInput,
   type InvoiceListItem,
   type InvoiceSnapshot,
+  INVOICE_LIMIT_MESSAGE,
+  MAX_CENTS,
 } from "@aerowise/domain";
 import { recalcInvoice, type PaymentProvider } from "@aerowise/payments";
 import { billingEmail, enqueue, payUrlFor, RENDER_INVOICE, SEND_INVOICE } from "@aerowise/tasks";
@@ -117,6 +118,7 @@ export async function writeDraftLines(
   });
   await trx.insertInto("invoiceLines").values(rows).execute();
   const totals = invoiceTotals(rows, pricing.discountCents, pricing.taxRateBps);
+  if (totals.subtotalCents > MAX_CENTS || totals.totalCents > MAX_CENTS) throw unprocessable(INVOICE_LIMIT_MESSAGE);
   await trx
     .updateTable("invoices")
     .set({ ...totals, discountCents: totals.discountCents, taxRateBps: pricing.taxRateBps, updatedAt: now })
@@ -207,7 +209,6 @@ export async function issueDraft(
       number,
       issuedOn,
       dueOn,
-      publicToken: randomBytes(24).toString("base64url"),
       snapshot: JSON.stringify(snapshot),
       sendCount: opts.send ? 1 : 0,
       updatedAt: opts.now,
@@ -293,7 +294,6 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
       "i.taxCents",
       "i.voidedAt",
       "i.voidReason",
-      "i.publicToken",
       "i.pdfStorageKey",
       "i.snapshot",
       "i.customerId as cid",
@@ -343,7 +343,7 @@ export async function invoiceDetail(db: Database, organizationId: string, invoic
     voidedAt: row.voidedAt?.toISOString() ?? null,
     voidReason: row.voidReason,
     billToEmail: snapshot?.billTo.email ?? (row.status === "draft" ? await billingEmail(db, organizationId, row.cid) : null),
-    payUrl: row.status === "open" && row.publicToken ? payUrlFor(appUrl, row.publicToken) : null,
+    payUrl: row.status === "open" ? payUrlFor(appUrl, invoiceId) : null,
     pdfReady: !!row.pdfStorageKey,
     lines: lines.map((l) => ({
       id: l.id,

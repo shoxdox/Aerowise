@@ -10,6 +10,26 @@ import { GENERATE_REPORTS } from "./report-task.ts";
  */
 export const FILING_TASK_KINDS = [GENERATE_REPORTS, CONTRACT_FILINGS, SUBMIT_FILING];
 
+/** How long finished tasks stay: the queue is not an archive (the audit log and each record's own events are). */
+export const DONE_TASK_RETENTION_DAYS = 30;
+/** Failed tasks stay longer: their last error is part of working out what went wrong. */
+export const FAILED_TASK_RETENTION_DAYS = 90;
+
+/**
+ * Deletes tasks that finished long enough ago, so `background_tasks` does not grow for ever.
+ * Every task is safe to run again, so a dedupe key freed this way can only cause idempotent work.
+ */
+export async function pruneTasks(db: Database, now: Date, opts: { doneDays?: number; failedDays?: number } = {}): Promise<number> {
+  const day = 86_400_000;
+  const doneBefore = new Date(now.getTime() - (opts.doneDays ?? DONE_TASK_RETENTION_DAYS) * day);
+  const failedBefore = new Date(now.getTime() - (opts.failedDays ?? FAILED_TASK_RETENTION_DAYS) * day);
+  const res = await db
+    .deleteFrom("backgroundTasks")
+    .where((eb) => eb.or([eb("completedAt", "<", doneBefore), eb.and([eb("completedAt", "is", null), eb("failedAt", "<", failedBefore)])]))
+    .executeTakeFirst();
+  return Number(res.numDeletedRows ?? 0);
+}
+
 export interface QueueAlert {
   /** Stable for as long as the cause lasts, so the same alert is not sent over and over. */
   key: string;

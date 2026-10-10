@@ -43,7 +43,6 @@ export async function createDepositInvoice(
       totalCents: 0,
       issuedOn: null,
       dueOn: null,
-      publicToken: null,
       pdfStorageKey: null,
       pdfSha256: null,
       pdfByteSize: null,

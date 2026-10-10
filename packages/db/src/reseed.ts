@@ -69,7 +69,7 @@ export async function reseedDemo(db: Database, opts: { filesDir?: string; log?: 
     }
     log(`removed the stored files of ${result.removed.length} companies from ${opts.filesDir}`);
   }
-  await seed(db, log);
+  await seed(db, log, { besideRealCompanies: true });
   return result;
 }
 

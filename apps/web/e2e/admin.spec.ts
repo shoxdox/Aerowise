@@ -49,6 +49,12 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await erase.getByLabel(/to confirm/).fill("Brazos");
   await expect(erase.getByRole("button", { name: "Delete all data" })).toBeDisabled();
   await erase.getByLabel(/to confirm/).fill("Brazos Aerobic Co");
+  // And the admin's own password, checked again: a wrong one deletes nothing.
+  await expect(erase.getByRole("button", { name: "Delete all data" })).toBeDisabled();
+  await erase.getByLabel("Your password").fill("not-the-password");
+  await erase.getByRole("button", { name: "Delete all data" }).click();
+  await expect(erase.getByText("Your password is incorrect. Enter the password you signed in with to confirm.")).toBeVisible();
+  await erase.getByLabel("Your password").fill("aerowise-dev");
   await erase.getByRole("button", { name: "Delete all data" }).click();
   await expect(page.getByRole("status")).toHaveText(/^Deleted the data of Brazos Aerobic Co: \d+ records, 0 users and 0 files\.$/);
   await expect(row.getByText(/^Data deleted /)).toBeVisible();

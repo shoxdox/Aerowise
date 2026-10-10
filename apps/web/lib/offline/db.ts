@@ -6,6 +6,8 @@ import type { InspectionValues, Stop } from "@aerowise/domain";
 // the day's route, the template, inspections in progress, photos, and an outbox of
 // changes waiting to reach the server.
 
+import type { LocationStatus } from "@aerowise/domain";
+
 export interface Gps {
   lat: number;
   lng: number;
@@ -40,6 +42,8 @@ export interface LocalInspection {
   completedAt: string | null;
   arrivalGps: Gps | null;
   completionGps: Gps | null;
+  /** Why there is no arrival location; absent on records from before it was asked. */
+  locationStatus?: LocationStatus | null;
   accessIssue: string | null;
   values: InspectionValues;
   issues: LocalIssue[];

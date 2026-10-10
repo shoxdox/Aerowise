@@ -13,6 +13,7 @@ import {
 } from "fastify-type-provider-zod";
 import { authPlugin } from "./auth/plugin.ts";
 import { HttpError } from "./lib/errors.ts";
+import { DEFAULT_PUBLIC_LINK_LIMITS, type PublicLinkLimits } from "./lib/rate-limits.ts";
 import { adminRoutes } from "./routes/admin.ts";
 import { adminEvidenceRoutes } from "./routes/admin-evidence.ts";
 import { authorityConfirmationRoutes } from "./routes/authority-confirmation.ts";
@@ -62,7 +63,7 @@ import { pumpingRoutes } from "./routes/pumping.ts";
 import { completionRoutes } from "./routes/completion.ts";
 import { UrlSigner } from "./storage/signed-urls.ts";
 import { LocalDiskStore, type ObjectStore } from "@aerowise/storage";
-import { checkHeartbeat, checkQueue, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
+import { checkHeartbeat, checkQueue, configureLinkTokens, DEFAULT_APP_URL, enqueue, type HeartbeatOptions } from "@aerowise/tasks";
 import { NoopReporter, type ErrorReporter } from "@aerowise/observability";
 import { TestPaymentProvider, type PaymentProvider } from "@aerowise/payments";
 import { TestQuickBooksProvider, TokenCipher } from "@aerowise/quickbooks";
@@ -84,6 +85,8 @@ export interface AppOptions {
   loginRateLimit?: number;
   /** Password reset requests allowed per IP and email per minute. */
   passwordResetRateLimit?: number;
+  /** Per-address limits on public-link actions and signed file links (`lib/rate-limits.ts`); tests raise them. */
+  publicLinkRateLimit?: Partial<PublicLinkLimits>;
   /**
    * Which proxies in front of the API to believe about the client's address (Fastify's
    * `trustProxy`: true, or the proxies' addresses and ranges). Rate limits key on that
@@ -153,6 +156,7 @@ export async function buildApp({
   logger = false,
   loginRateLimit = 10,
   passwordResetRateLimit = 5,
+  publicLinkRateLimit,
   trustProxy = false,
   reporter = new NoopReporter(),
   now = () => new Date(),
@@ -178,6 +182,8 @@ export async function buildApp({
   // Fictional rules (the example county) are for development, tests and the demo only.
   await syncRulesets(db, undefined, { includeFictional: !production || demo });
   const signer = new UrlSigner(fileSigningSecret ?? "aerowise-development-only-signing-secret");
+  // Pay and renewal links are signed under the same secret; the worker configures it too.
+  configureLinkTokens(fileSigningSecret);
 
   const app = Fastify({
     logger,
@@ -235,6 +241,7 @@ export async function buildApp({
 
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
+  const linkLimits: PublicLinkLimits = { ...DEFAULT_PUBLIC_LINK_LIMITS, ...publicLinkRateLimit };
 
   if (!production) {
     await app.register(swagger, {
@@ -288,8 +295,8 @@ export async function buildApp({
   await app.register(authorityConfirmationRoutes, { db });
   await app.register(adminSupportRoutes, { db, production });
   await app.register(adminDemoRoutes, { db, store, now, production, appUrl, subscription, features });
-  await app.register(userRoutes, { db, now, production, invitations });
-  await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit });
+  await app.register(userRoutes, { db, now, production, invitations, linkLimits });
+  await app.register(passwordResetRoutes, { db, now, rateLimit: passwordResetRateLimit, linkLimits });
   await app.register(organizationRoutes, { db, store });
   await app.register(onboardingRoutes, { db, now });
   await app.register(customerRoutes, { db, now });
@@ -303,8 +310,8 @@ export async function buildApp({
   await app.register(workSyncRoutes, { db, now, store, signer, features });
   await app.register(pumpingRoutes, { db, now, store, signer, features });
   await app.register(completionRoutes, { db, now });
-  await app.register(estimateRoutes, { db, now, features, appUrl, payments: { provider: payments, appUrl } });
-  await app.register(inspectionRoutes, { db, now, store, signer });
+  await app.register(estimateRoutes, { db, now, features, appUrl, payments: { provider: payments, appUrl }, linkLimits });
+  await app.register(inspectionRoutes, { db, now, store, signer, linkLimits });
   await app.register(reportRoutes, { db, now, store, signer });
   await app.register(inboxRoutes, { db, now });
   await app.register(importRoutes, { db, now });
@@ -314,8 +321,8 @@ export async function buildApp({
   await app.register(billingRoutes, { db, now, provider: billing, config: subscription });
   await app.register(subscriptionRoutes, { db, now, provider: billing, config: subscription, appUrl });
   await app.register(paymentRoutes, { db, now, store, payments: { provider: payments, appUrl }, testCheckout: !production || demo });
-  await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl }, features });
-  await app.register(portalRoutes, { db, now, store, appUrl });
+  await app.register(renewalRoutes, { db, now, store, payments: { provider: payments, appUrl }, features, linkLimits });
+  await app.register(portalRoutes, { db, now, store, appUrl, linkLimits });
   await app.register(quickbooksRoutes, { db, now, quickbooks, appUrl });
   await app.register(smsRoutes, { db, now, sms });
   await app.register(routingRoutes, { db, now, geocoder });

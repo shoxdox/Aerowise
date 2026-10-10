@@ -1,5 +1,5 @@
 import { depositBalances, recalcInvoice, reversedOn, TestPaymentProvider } from "@aerowise/payments";
-import { reconcileRefunds } from "@aerowise/tasks";
+import { linkToken, reconcileRefunds } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
@@ -143,7 +143,7 @@ describe("deposits", () => {
     expect(acc.statusCode, acc.body).toBe(200);
     const pub = (await ctx.app.inject({ method: "GET", url: `/estimate/${token}` })).json();
     expect(pub.deposit).toMatchObject({ amountCents: 20000, paymentStatus: "unpaid" });
-    expect(pub.deposit.payUrl).toMatch(/\/pay\/[A-Za-z0-9_-]+$/);
+    expect(pub.deposit.payUrl).toMatch(/\/pay\/[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);
     const detail = (await t.api.get(`/estimates/${est.id}`)).json();
     const d = await ctx.db.selectFrom("invoices").selectAll().where("id", "=", detail.deposit.invoice.id).executeTakeFirstOrThrow();
     // H-DEP-1: an untaxed prepayment, never tied to the work order's own invoice.
@@ -528,7 +528,7 @@ describe("deposits", () => {
     const t = await tenant(ctx);
     const a = await accepted(t, 20000, 10000);
     const anon = (method: "GET" | "POST", url: string, payload?: object) => ctx.app.inject({ method, url, ...(payload ? { payload } : {}) });
-    const { publicToken } = await ctx.db.selectFrom("invoices").select("publicToken").where("id", "=", a.depositId).executeTakeFirstOrThrow();
+    const publicToken = linkToken("pay", a.depositId);
     // The office recorded part of the deposit; the homeowner opened the card page for the rest.
     expect((await t.api.post(`/invoices/${a.depositId}/payments`, { amountCents: 4000, method: "check", receivedOn: "2026-03-01" })).statusCode).toBe(200);
     const opened = await anon("POST", `/pay/${publicToken}/checkout`, {});
@@ -561,7 +561,7 @@ describe("deposits", () => {
     for (const outcome of ["ach_clears", "ach_fails"] as const) {
       const t = await tenant(ctx, `Org ${outcome}`);
       const a = await accepted(t, 20000, 10000);
-      const { publicToken } = await ctx.db.selectFrom("invoices").select("publicToken").where("id", "=", a.depositId).executeTakeFirstOrThrow();
+      const publicToken = linkToken("pay", a.depositId);
       const opened = await ctx.app.inject({ method: "POST", url: `/pay/${publicToken}/checkout`, payload: {} });
       const sessionId = new URL(opened.json().url).searchParams.get("session")!;
       expect((await ctx.app.inject({ method: "POST", url: `/pay/${publicToken}/test-checkout`, payload: { sessionId, outcome: "ach_pending" } })).statusCode).toBe(200);
@@ -585,11 +585,11 @@ describe("deposits", () => {
 
   it("opens checkout from the invoice as it is under its lock, never from a copy read before a payment, void or cancellation landed", async () => {
     const t = await tenant(ctx);
-    const open = (inv: Awaited<ReturnType<typeof invoiceByToken>>, token: string) => openCheckout(ctx.db, { provider: payments, appUrl: "https://app.example.test", token, inv, now: ctx.now });
+    const open = (inv: Awaited<ReturnType<typeof invoiceByToken>>, _token: string) => openCheckout(ctx.db, { provider: payments, appUrl: "https://app.example.test", inv, now: ctx.now });
     const fresh = async () => {
       const a = await accepted(t, 20000, 10000);
-      const { publicToken } = await ctx.db.selectFrom("invoices").select("publicToken").where("id", "=", a.depositId).executeTakeFirstOrThrow();
-      return { ...a, token: publicToken!, stale: await invoiceByToken(ctx.db, publicToken!) };
+      const publicToken = linkToken("pay", a.depositId);
+      return { ...a, token: publicToken, stale: await invoiceByToken(ctx.db, publicToken) };
     };
     const sessions = (invoiceId: string) => ctx.db.selectFrom("checkoutSessions").select(["amountCents", "status"]).where("invoiceId", "=", invoiceId).orderBy("createdAt").execute();
 

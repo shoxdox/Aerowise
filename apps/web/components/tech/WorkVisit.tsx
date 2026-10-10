@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  LOCATION_STATUS_PHONE_TEXT,
   formatEntered,
   pumpOutProblems,
   signatureProblems,
@@ -203,6 +204,23 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     },
     [store],
   );
+  useEffect(() => {
+    // The phone going to the lock screen, the camera or another app can end this page without
+    // unmounting it: save at once instead of waiting out the debounce.
+    const flush = () => {
+      if (!timer.current) return;
+      clearTimeout(timer.current);
+      timer.current = null;
+      void saveOrReport(() => store.saveWork(latest.current)).catch(() => {});
+    };
+    const onVisibility = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [store]);
 
   if (form === undefined) return <p className="muted">Loading form…</p>;
   if (form === null) return <p className="error">The form for this visit is not on this phone. Open the app once with signal.</p>;
@@ -235,16 +253,24 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
       let clientId: string | null = null;
       try {
         const { blob, contentType } = await preparePhoto(file);
-        const gps = await currentPosition(3000);
         clientId = crypto.randomUUID();
+        // The photo goes to the phone's database first; its position is added after, so a few
+        // seconds waiting on GPS cannot lose a photo the phone is holding only in memory.
         const next: LocalWork = {
           ...latest.current,
-          photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: gps?.lat ?? null, lng: gps?.lng ?? null, uploaded: false }],
+          photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false }],
         };
         latest.current = next;
         setRec(next);
         await persist(next, { photo: { clientId, recordClientId: next.clientId, blob, contentType } satisfies WorkBlob });
         setProblems((ps) => ps.filter((p) => p.key !== photoKey));
+        const gps = await currentPosition(3000);
+        if (gps && latest.current.photos.some((p) => p.clientId === clientId)) {
+          const located = { ...latest.current, photos: latest.current.photos.map((p) => (p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p)) };
+          latest.current = located;
+          setRec(located);
+          await persist(located);
+        }
       } catch (err) {
         // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
         if (clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
@@ -318,6 +344,11 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
       {rec.resolved && (
         <p className="muted" role="status">
           {rec.resolved.resolution === "attached" ? "The office accepted this record." : "The office set this record aside. Its photos and signature are kept."}
+        </p>
+      )}
+      {rec.locationStatus && rec.locationStatus !== "recorded" && (
+        <p className="muted small" role="status" data-testid="work-location">
+          {LOCATION_STATUS_PHONE_TEXT[rec.locationStatus]}
         </p>
       )}
       {problems.length > 0 && (

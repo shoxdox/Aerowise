@@ -31,6 +31,10 @@ const app = await buildApp({
   production,
   // Sign-ins per minute per address and email (default 10). The e2e suite raises it: it signs the same demo users in from one address.
   loginRateLimit: process.env.LOGIN_RATE_LIMIT ? Number(process.env.LOGIN_RATE_LIMIT) : undefined,
+  publicLinkRateLimit: {
+    ...(process.env.PUBLIC_LINK_ACTIONS_PER_MINUTE ? { actions: Number(process.env.PUBLIC_LINK_ACTIONS_PER_MINUTE) } : {}),
+    ...(process.env.SIGNED_FILES_PER_MINUTE ? { files: Number(process.env.SIGNED_FILES_PER_MINUTE) } : {}),
+  },
   demo: providers.demo,
   // JSON lines: each request's lines carry its reqId, and organizationId and userId once signed in.
   logger: { level: process.env.LOG_LEVEL ?? "info" },

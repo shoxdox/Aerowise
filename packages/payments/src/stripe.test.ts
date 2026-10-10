@@ -65,6 +65,8 @@ describe("StripeProvider checkout", () => {
     expect(refund).toEqual({ refundId: "re_1", status: "pending", failureReason: null });
     expect(calls[0]!.headers.get("stripe-account")).toBe("acct_123");
     expect(calls[0]!.headers.get("idempotency-key")).toBe("refund-1");
+    // Aerowise's fee on the refunded amount is returned with it.
+    expect(calls[0]!.body.get("refund_application_fee")).toBe("true");
     expect(calls[0]!.body.get("payment_intent")).toBe("pi_1");
   });
 });

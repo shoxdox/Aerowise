@@ -4,7 +4,7 @@ import { checkConfig, createDb, migrate, requireDatabaseUrl } from "@aerowise/db
 import { storeFromEnv } from "@aerowise/storage";
 import { createLogger, reporterFromEnv } from "@aerowise/observability";
 import { subscriptionConfigFromEnv } from "@aerowise/domain";
-import { AlertThrottle, checkQueue, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleBillingRuns, scheduleRefundReconcile, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
+import { AlertThrottle, checkQueue, configureLinkTokens, pruneTasks, heartbeatFromEnv, providersFromEnv, runNextTask, scheduleBillingRuns, scheduleRefundReconcile, scheduleContractFilingSweeps, scheduleQuickBooksSyncs, scheduleRenewalSweeps, scheduleSiteLocating, scheduleSmsSweeps, writeHeartbeat } from "@aerowise/tasks";
 
 // Runs background tasks (report PDFs, filing submissions, contract filings, invoices, QuickBooks sync, renewal campaigns, texts, site locations, Aerowise billing) from the Postgres queue.
 // In production, refuse to start without the secrets and providers it needs (names them all).
@@ -18,6 +18,8 @@ const db = createDb(url);
 const production = process.env.NODE_ENV === "production";
 // Cloudflare R2 when R2_* is set; local disk (FILE_STORAGE_DIR) otherwise.
 const store = storeFromEnv(process.env);
+// Pay and renewal links in emails and texts are signed under the API's secret, so they verify there.
+configureLinkTokens(process.env.FILE_SIGNING_SECRET);
 // The same outside services as the API; DEMO_MODE=true makes every one a test stand-in,
 // except those DEMO_LIVE_SERVICES switches to their real test-mode accounts.
 // Emails go through Resend when RESEND_API_KEY is set, and to the outbox in file storage otherwise.
@@ -125,6 +127,8 @@ while (!stopping) {
     if (Date.now() >= nextQueueCheck) {
       nextQueueCheck = Date.now() + queueCheckEveryMs;
       const health = await checkQueue(db, new Date());
+      const pruned = await pruneTasks(db, new Date());
+      if (pruned) log.info({ pruned }, "removed finished tasks");
       for (const a of alerts.due(health.alerts, new Date())) {
         log.error({ alert: a.kind, organizationId: a.organizationId, ...a.details }, a.message);
         reporter.captureMessage(a.message, "error", { organizationId: a.organizationId, tags: { alert: a.kind }, extra: a.details });

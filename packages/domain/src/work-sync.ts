@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
 import { signatureCapture } from "./forms.ts";
-import { validationProblem } from "./inspections.ts";
+import { validationProblem, locationStatus } from "./inspections.ts";
 import { COVERAGE_EFFECTS } from "./plans.ts";
 import { pumpOutInput } from "./pumping.ts";
 import { WORK_CATEGORIES } from "./work.ts";
@@ -29,6 +29,8 @@ export const workSync = z.object({
   completedAt: datetime.nullish(),
   arrivalGps: gps.nullish(),
   completionGps: gps.nullish(),
+  /** Why there is no arrival location, when there is none. */
+  locationStatus: locationStatus.optional(),
   values: z.record(z.string(), answer),
   /** The summary the customer signed, when the form asks for a signature. */
   summary: workSummary.nullish(),

@@ -14,7 +14,7 @@ import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, saveInspection, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
-import { assumingOffline, currentPosition, fetchInspectionForJob, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
+import { assumingOffline, locate, fetchInspectionForJob, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
@@ -46,6 +46,7 @@ function adoptInspection(server: Inspection): LocalInspection {
     completedAt: null,
     arrivalGps: server.arrivalLat !== null && server.arrivalLng !== null ? { lat: server.arrivalLat, lng: server.arrivalLng } : null,
     completionGps: null,
+    locationStatus: server.locationStatus,
     accessIssue: server.accessIssue,
     values: server.values,
     issues: server.issues.map(({ clientId, type, severity, description }) => ({ clientId, type, severity, description })),
@@ -185,6 +186,7 @@ export default function TechApp() {
         }
         insp = adoptInspection(fetched.data);
       } else {
+        const arrival = await locate();
         insp = {
           clientId: crypto.randomUUID(),
           jobId: stop.jobId,
@@ -192,8 +194,9 @@ export default function TechApp() {
           status: "draft",
           arrivedAt: new Date().toISOString(),
           completedAt: null,
-          arrivalGps: await currentPosition(),
+          arrivalGps: arrival.gps,
           completionGps: null,
+          locationStatus: arrival.status,
           accessIssue: null,
           values: {},
           issues: [],
@@ -212,6 +215,7 @@ export default function TechApp() {
     const tenant = activeTenant();
     if (!tenant || !stop.templateId) return;
     if (!works.has(stop.jobId)) {
+      const arrival = await locate();
       const rec: LocalWork = {
         clientId: crypto.randomUUID(),
         jobId: stop.jobId,
@@ -221,8 +225,9 @@ export default function TechApp() {
         revision: 0,
         arrivedAt: new Date().toISOString(),
         completedAt: null,
-        arrivalGps: await currentPosition(),
+        arrivalGps: arrival.gps,
         completionGps: null,
+        locationStatus: arrival.status,
         values: {},
         finalVisit: true,
         summary: null,

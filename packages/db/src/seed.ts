@@ -61,12 +61,23 @@ function todayInChicago(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
-export async function seed(db: Database, log: (msg: string) => void = () => {}) {
+/**
+ * `besideRealCompanies`: the hosted demo's nightly reset replaces the public demo company in a
+ * database that also holds prospect demos and real trials; only that caller may say so.
+ */
+export async function seed(db: Database, log: (msg: string) => void = () => {}, opts: { besideRealCompanies?: boolean } = {}) {
+  // The live shared company: the nightly reset leaves earlier ones as ended tombstones.
+  const existing = await db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null).executeTakeFirst();
+  // Development sign-ins with a published password never go into a database that already
+  // holds a real company, whatever NODE_ENV says: that is a production database. Checked
+  // before anything is written, the development admin included.
+  if (!existing && !opts.besideRealCompanies) {
+    const real = await db.selectFrom("organizations").select("id").where("demo", "=", false).limit(1).executeTakeFirst();
+    if (real) throw new Error("refusing to seed: this database already holds a company that is not a demo; seed only empty development databases");
+  }
   await seedPlatformAdmin(db, log);
   const forms = await ensureBuiltInForms(db);
   if (forms) log(`added ${forms} built-in form version(s)`);
-  // The live shared company: the nightly reset leaves earlier ones as ended tombstones.
-  const existing = await db.selectFrom("organizations").select("id").where("name", "=", DEMO_ORG_NAME).where("demoExpiresAt", "is", null).executeTakeFirst();
   if (existing) {
     log(`demo organization already exists (${existing.id}); nothing to do`);
     return;
@@ -353,6 +364,12 @@ async function seedPlatformAdmin(db: Database, log: (msg: string) => void) {
   }
   const existing = await db.selectFrom("platformAdmins").select("id").where("email", "=", DEMO_PLATFORM_ADMIN.email).executeTakeFirst();
   if (existing) return;
+  // An admin made with the CLI means a real deployment: no admin with a published password beside it.
+  const anyAdmin = await db.selectFrom("platformAdmins").select("id").limit(1).executeTakeFirst();
+  if (anyAdmin) {
+    log("platform admins already exist; the development admin is not added");
+    return;
+  }
   await createPlatformAdmin(db, { ...DEMO_PLATFORM_ADMIN, password: DEMO_PASSWORD });
   log(`platform admin for /admin: ${DEMO_PLATFORM_ADMIN.email} with password "${DEMO_PASSWORD}"`);
 }

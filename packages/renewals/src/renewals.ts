@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
 import { addDays, buildIntervalSchedule, contractInstallments, parseServiceCycles, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
@@ -11,8 +11,6 @@ type Executor = Database | Transaction<DB>;
 export { canonicalJson } from "@aerowise/domain";
 
 export const sha256Hex = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
-
-export const newRenewalToken = () => randomBytes(24).toString("base64url");
 
 /** A change the system made (a campaign run, a customer through their link): no signed-in user. */
 export async function systemAudit(
@@ -202,7 +200,6 @@ export async function createRenewal(trx: Transaction<DB>, organizationId: string
       contractId: c.id,
       siteId: c.siteId,
       customerId: c.customerId,
-      publicToken: newRenewalToken(),
       ...terms,
       sentAt: null,
       lastReminderDays: null,

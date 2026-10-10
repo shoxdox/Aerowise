@@ -2,7 +2,7 @@
 
 Software for Texas septic maintenance and service providers: customers, sites and contracts, recurring inspections, an offline technician app, reporting and filing evidence, renewals, invoices, payments and the customer portal.
 
-**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. Staging runs `a444be2` (migration `0060`, all eight workflow flags on). Main is ahead: the October 9 [outside review](docs/engineering/REVIEW-2026-10-09.md) and its three P1 fixes (`c733c22`), then a demo with a year of real LCRA history and grouped office navigation (`f871bee` and after); staging shows these once redeployed. Physical-phone, real-provider/accounting/legal and authority acceptance remain separate gates. Production is unchanged.
+**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. Staging runs `a444be2` (migration `0060`, all eight workflow flags on). Main is ahead: the October 9 [outside review](docs/engineering/REVIEW-2026-10-09.md) with its P1, P2 and P3 lists fixed (migrations 0061 to 0064), a demo with a year of real LCRA history and grouped office navigation; staging shows these once redeployed. What comes next is outside the code: [the gates](docs/NEXT-GATES.md). Physical-phone, real-provider/accounting/legal and authority acceptance remain separate gates. Production is unchanged.
 
 ## Start here
 

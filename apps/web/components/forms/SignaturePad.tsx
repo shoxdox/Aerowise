@@ -14,10 +14,15 @@ export function SignaturePad({ onChange }: { onChange: (png: string | null) => v
   useEffect(() => {
     const c = canvas.current;
     if (!c) return;
-    c.width = c.clientWidth;
-    c.height = c.clientHeight;
+    // The bitmap has the screen's own pixels (two or three per CSS pixel on a phone), so the
+    // stroke, and the PNG that goes on the agreement or report, are not drawn at a third of the
+    // screen's resolution and then blown up. Drawing coordinates stay in CSS pixels.
+    const scale = Math.max(1, Math.min(window.devicePixelRatio || 1, 4));
+    c.width = Math.round(c.clientWidth * scale);
+    c.height = Math.round(c.clientHeight * scale);
     const ctx = c.getContext("2d");
     if (ctx) {
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
       ctx.lineWidth = 2.5;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -54,7 +59,8 @@ export function SignaturePad({ onChange }: { onChange: (png: string | null) => v
   }
   function clear() {
     const c = canvas.current;
-    c?.getContext("2d")?.clearRect(0, 0, c.width, c.height);
+    // In CSS pixels, like the strokes: the transform set above scales them to the bitmap.
+    c?.getContext("2d")?.clearRect(0, 0, c.clientWidth, c.clientHeight);
     setEmpty(true);
     onChange(null);
   }

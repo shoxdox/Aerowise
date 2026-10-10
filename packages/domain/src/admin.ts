@@ -59,7 +59,8 @@ export const subscriptionDefaults = z.object({
 });
 
 /** Deleting an organization's data: the admin types the organization's name to confirm. */
-export const organizationErasureInput = z.object({ confirmName: z.string().trim().min(1).max(200) });
+/** The admin types the organization's name and their own password: a signed-in console is not enough to erase a company. */
+export const organizationErasureInput = z.object({ confirmName: z.string().trim().min(1).max(200), password: z.string().min(1).max(200) });
 export type OrganizationErasureInput = z.infer<typeof organizationErasureInput>;
 
 export const organizationErasure = z.object({

@@ -126,7 +126,10 @@ export async function responsesForInspection(db: Executor, organizationId: strin
     .executeTakeFirst();
   let since: Date | null = previous?.completedAt ?? null;
   if (!since) {
-    const day = completedAt.toISOString().slice(0, 10);
+    // The inspection's day where the company works, not in UTC: an evening inspection on a
+    // contract's last day is still inside that contract.
+    const org = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
+    const day = dateInZone(completedAt, org.timezone);
     const contract = await db
       .selectFrom("contracts")
       .select("startOn")

@@ -6,26 +6,28 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
 import { HttpError } from "../lib/errors.ts";
+import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 
 /** At most one reset email per person in this window, however often it is asked for. */
 const EMAIL_EVERY_MS = 15 * 60_000;
 const tokenParams = z.object({ token: z.string().min(16).max(200) });
 const invalidLink = () => new HttpError(404, "invalid_reset_link", "This reset link is not valid or has expired. Ask for a new one.");
 
-export const passwordResetRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; rateLimit: number }> = async (app, { db, now, rateLimit }) => {
-  const perAddress = {
+export const passwordResetRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; rateLimit: number; linkLimits: PublicLinkLimits }> = async (app, { db, now, rateLimit, linkLimits }) => {
+  const perEmail = {
     // After the body is parsed, so the key really includes the email.
     hook: "preHandler" as const,
     max: rateLimit,
     timeWindow: "1 minute",
     keyGenerator: (req: FastifyRequest) => `reset:${req.ip}:${String((req.body as { email?: unknown } | undefined)?.email ?? "").trim().toLowerCase()}`,
   };
-  const perLink = { max: 20, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => `reset:${req.ip}:${(req.params as { token?: string }).token ?? ""}` };
+  // Per address only: a per-link key would give every guessed token its own allowance.
+  const perLink = perAddress("reset-link", linkLimits.actions);
 
   app.post(
     "/auth/password-reset",
     {
-      config: { public: true, rateLimit: perAddress },
+      config: { public: true, rateLimit: perEmail },
       schema: {
         tags: ["auth"],
         summary: "Email a password reset link",

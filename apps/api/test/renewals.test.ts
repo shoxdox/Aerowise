@@ -1,7 +1,7 @@
 import type { EmailMessage, EmailResult, EmailTransport } from "@aerowise/compliance";
 import { agreementContent } from "@aerowise/domain";
 import { canonicalJson, sha256Hex } from "@aerowise/renewals";
-import { drainTasks } from "@aerowise/tasks";
+import { drainTasks, linkToken } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, setupTestApp, type TestContext } from "./helpers.ts";
@@ -90,7 +90,7 @@ describe("renewal campaign", () => {
     const email = [...mail.delivered.values()].find((m) => m.idempotencyKey === `renewal-${list.items[0].id}-send-1`)!;
     expect(email.to).toBe("billing@orga.test");
     expect(email.subject).toContain("Renew your septic maintenance plan");
-    expect(email.text).toMatch(/https:\/\/app\.example\.test\/renew\/[A-Za-z0-9_-]{32}/);
+    expect(email.text).toMatch(/https:\/\/app\.example\.test\/renew\/[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}/);
 
     // Reminders at 30 and 7 days out, never twice for the same mark.
     ctx.now = new Date("2026-03-05T18:00:00Z");
@@ -334,5 +334,19 @@ describe("the office", () => {
     expect((await techApi.get(`/renewals/${r.id}`)).statusCode).toBe(200);
     expect((await techApi.post(`/renewals/${r.id}/send`, {})).statusCode).toBe(403);
     expect((await techApi.post("/renewals/campaign", {})).statusCode).toBe(403);
+  });
+});
+
+describe("renewal links are signed, not stored", () => {
+  it("opens only with the signature the server made for that renewal", async () => {
+    const t = await renewalTenant(ctx);
+    const r = await startRenewal(t);
+    expect((await client(ctx.app).get(`/renew/${r.token}`)).statusCode).toBe(200);
+    const [id] = r.token.split(".");
+    for (const forged of [`${id}.${"A".repeat(43)}`, linkToken("pay", r.id), linkToken("renew", t.contract.id)]) {
+      expect((await client(ctx.app).get(`/renew/${forged}`)).statusCode, forged).toBe(404);
+      expect((await client(ctx.app).post(`/renew/${forged}/decline`, {})).statusCode, forged).toBe(404);
+    }
+    expect((await client(ctx.app).get(`/renew/${"b".repeat(32)}`)).statusCode).toBe(404);
   });
 });

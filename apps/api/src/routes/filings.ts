@@ -48,6 +48,7 @@ import {
   type Jurisdiction,
   type RulesetRules,
   siteScheduleProblem,
+  type LocationStatus,
 } from "@aerowise/domain";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -320,6 +321,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         "f.feeBasis",
         "i.id as inspectionId",
         "i.completedAt",
+        "i.locationStatus",
         "s.id as siteId",
         "s.addressLine1",
         "s.city",
@@ -347,7 +349,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     reviewReason: r.reviewReason,
     lastError: r.lastError,
     attemptCount: Number(r.attemptCount ?? 0),
-    inspection: r.inspectionId ? { id: r.inspectionId, completedAt: r.completedAt?.toISOString() ?? null } : null,
+    inspection: r.inspectionId ? { id: r.inspectionId, completedAt: r.completedAt?.toISOString() ?? null, locationStatus: (r.locationStatus as LocationStatus | null) ?? null } : null,
     contract: r.contractId && r.contractStartOn && r.contractEndOn && r.contractPlanName ? { id: r.contractId, startOn: r.contractStartOn, endOn: r.contractEndOn, planName: r.contractPlanName } : null,
     deadlineBasis: r.deadlineBasis,
     site: { id: r.siteId, addressLine1: r.addressLine1, city: r.city, permitNumber: r.permitNumber },

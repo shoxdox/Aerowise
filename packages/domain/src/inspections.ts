@@ -334,6 +334,29 @@ const value = z.union([z.string().max(5000), z.number(), z.boolean(), z.null()])
 const gps = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracyM: z.number().min(0).max(100000).optional() });
 
 /**
+ * What the phone found out when it asked for its location at arrival. `recorded` goes with
+ * coordinates; the rest say why there are none, so a visit without GPS is never silent.
+ */
+export const LOCATION_STATUSES = ["recorded", "denied", "unavailable", "timeout", "unsupported"] as const;
+export type LocationStatus = (typeof LOCATION_STATUSES)[number];
+export const locationStatus = z.enum(LOCATION_STATUSES);
+/** For the office: why a visit has no location. */
+export const LOCATION_STATUS_TEXT: Record<LocationStatus, string> = {
+  recorded: "Recorded",
+  denied: "Not recorded: location is turned off for Aerowise on the technician's phone",
+  unavailable: "Not recorded: the technician's phone could not find its position",
+  timeout: "Not recorded: the technician's phone had no GPS fix at arrival",
+  unsupported: "Not recorded: the technician's browser has no location service",
+};
+/** For the technician, on the phone. */
+export const LOCATION_STATUS_PHONE_TEXT: Record<Exclude<LocationStatus, "recorded">, string> = {
+  denied: "Location is off for Aerowise on this phone, so this visit is recorded without GPS. Allow location for this site in the phone's settings before the next stop.",
+  unavailable: "The phone could not find its position, so this visit is recorded without GPS.",
+  timeout: "No GPS fix when you arrived, so this visit is recorded without a location.",
+  unsupported: "This browser has no location service, so visits are recorded without GPS.",
+};
+
+/**
  * What the phone app sends. The same payload is sent again after every edit and on every
  * retry; `clientId` (generated on the phone) makes it idempotent.
  */
@@ -346,6 +369,8 @@ export const inspectionSync = z.object({
   completedAt: z.iso.datetime({ offset: true }).nullish(),
   arrivalGps: gps.nullish(),
   completionGps: gps.nullish(),
+  /** Why there is no arrival location, when there is none; absent on payloads from before it was asked. */
+  locationStatus: locationStatus.optional(),
   accessIssue: z.string().trim().max(500).nullish(),
   values: z.record(z.string(), value),
   issues: z
@@ -408,6 +433,7 @@ export const inspection = z.object({
   arrivalLng: z.number().nullable(),
   completionLat: z.number().nullable(),
   completionLng: z.number().nullable(),
+  locationStatus: locationStatus.nullable(),
   accessIssue: z.string().nullable(),
   values: z.record(z.string(), value),
   issues: z.array(z.object({ id, clientId: z.string(), type: z.enum(ISSUE_TYPES), severity: z.enum(ISSUE_SEVERITIES), description: z.string(), status: z.string() })),

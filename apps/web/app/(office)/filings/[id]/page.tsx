@@ -1,6 +1,6 @@
 "use client";
 
-import { CONFIRMATION_EVIDENCE_KINDS, CONFIRMATION_EVIDENCE_LABELS, type FilingDetail } from "@aerowise/domain";
+import { CONFIRMATION_EVIDENCE_KINDS, CONFIRMATION_EVIDENCE_LABELS, LOCATION_STATUS_TEXT, type FilingDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -84,6 +84,12 @@ export default function FilingPage() {
           <>
             <dt>Inspected</dt>
             <dd>{when(f.inspection.completedAt)}</dd>
+            {f.inspection.locationStatus && f.inspection.locationStatus !== "recorded" && (
+              <>
+                <dt>Location</dt>
+                <dd data-testid="inspection-location">{LOCATION_STATUS_TEXT[f.inspection.locationStatus]}</dd>
+              </>
+            )}
           </>
         )}
         {f.contract && (

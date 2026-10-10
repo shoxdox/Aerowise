@@ -84,7 +84,9 @@ export class StripeProvider implements PaymentProvider {
 
   async createRefund(input: RefundInput) {
     const refund = await this.stripe.refunds.create(
-      { payment_intent: input.paymentIntentId, amount: input.amountCents, metadata: input.metadata },
+      // The platform fee on the refunded part goes back too, so the provider's balance is not
+      // short Aerowise's fee on money it returned.
+      { payment_intent: input.paymentIntentId, amount: input.amountCents, metadata: input.metadata, refund_application_fee: true },
       { stripeAccount: input.accountId, idempotencyKey: input.idempotencyKey },
     );
     return { refundId: refund.id, status: refundStatusOf(refund.status), failureReason: refund.failure_reason ?? null };

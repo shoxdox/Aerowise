@@ -4,10 +4,9 @@ import { addDays, amountDue, dateInZone, nextSmsTime, PAYMENT_REMINDER_DAYS, PAY
 import { dollars } from "@aerowise/payments";
 import { deliverSms, recordSkip, resolveRecipient, smsKindOn, smsSettingsOf, type ComposedSms, type SmsConfig, type SmsRequest } from "@aerowise/sms";
 import { sql, type Transaction } from "kysely";
-import { payUrlFor } from "./invoice-task.ts";
+import { payUrlFor, renewUrlFor } from "./links.ts";
 import { createPortalLink, portalUrlFor } from "./portal-task.ts";
 import { enqueue } from "./queue.ts";
-import { renewUrlFor } from "./renewal-task.ts";
 
 export const SEND_SMS = "sms.send";
 export const SMS_SWEEP = "sms.sweep";
@@ -88,24 +87,24 @@ export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Da
         const r = await db
           .selectFrom("renewals as r")
           .innerJoin("contracts as c", "c.id", "r.contractId")
-          .select(["r.status", "r.publicToken", "c.endOn"])
+          .select(["r.id", "r.status", "c.endOn"])
           .where("r.organizationId", "=", organizationId)
           .where("r.id", "=", req.relatedId)
           .executeTakeFirst();
         if (!r || !(SIGNABLE_STATUSES as readonly string[]).includes(r.status)) return null;
-        return text(`your septic maintenance plan ends ${shortDay(r.endOn)}. Renew online in a couple of minutes: ${renewUrlFor(ctx.appUrl, r.publicToken)}`);
+        return text(`your septic maintenance plan ends ${shortDay(r.endOn)}. Renew online in a couple of minutes: ${renewUrlFor(ctx.appUrl, r.id)}`);
       }
       case "payment_reminder": {
         const inv = await db
           .selectFrom("invoices")
-          .select(["status", "number", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "publicToken"])
+          .select(["id", "status", "number", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.relatedId)
           .executeTakeFirst();
-        if (!inv || inv.status !== "open" || !inv.publicToken || !inv.dueOn || amountDue(inv) === 0) return null;
+        if (!inv || inv.status !== "open" || !inv.dueOn || amountDue(inv) === 0) return null;
         const org = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
         const late = inv.dueOn < dateInZone(ctx.now(), org.timezone);
-        return text(`invoice ${inv.number} for ${dollars(amountDue(inv))} ${late ? "was" : "is"} due ${shortDay(inv.dueOn)}. Pay online: ${payUrlFor(ctx.appUrl, inv.publicToken)}`);
+        return text(`invoice ${inv.number} for ${dollars(amountDue(inv))} ${late ? "was" : "is"} due ${shortDay(inv.dueOn)}. Pay online: ${payUrlFor(ctx.appUrl, inv.id)}`);
       }
     }
   };

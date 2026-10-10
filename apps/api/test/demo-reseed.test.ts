@@ -6,7 +6,7 @@ import { LocalDiskStore } from "@aerowise/storage";
 import { sql } from "kysely";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
-import { adminLogin, client, createAdmin, createTenant, setupTestApp } from "./helpers.ts";
+import { adminLogin, client, createAdmin, createTenant, PASSWORD, setupTestApp } from "./helpers.ts";
 
 // The demo story plays a year of inspections, reports and filings (about 25 seconds); tests that play it need longer than the default.
 vi.setConfig({ testTimeout: 180_000 });
@@ -274,7 +274,7 @@ describe("the nightly demo reset", () => {
     expect((await w.trial.api.post(`/sites/${w.trial.site.id}/contracts`, { planId: plan.id, startOn })).statusCode).toBe(201);
     await activateRenewal(w.app, w.trial.api);
     const otherBefore = await snapshot(other.org.id);
-    const res = await w.admin.post(`/admin/organizations/${w.trial.org.id}/erase`, { confirmName: "Clean Trial Septic" });
+    const res = await w.admin.post(`/admin/organizations/${w.trial.org.id}/erase`, { confirmName: "Clean Trial Septic", password: PASSWORD });
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json().tables).toMatchObject({ renewals: 1, signed_documents: 1 });
     expect(await ctx.db.selectFrom("contracts").select("id").where("organizationId", "=", w.trial.org.id).execute()).toEqual([]);

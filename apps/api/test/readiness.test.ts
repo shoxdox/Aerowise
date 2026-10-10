@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { bundledRulesets, contractDeadline, ensurePackage, explainSite, loadCatalog, loadFiling, submitFiling, type ResolvedJurisdiction } from "@aerowise/compliance";
+import { bundledRulesets, contractDeadline, ensurePackage, explainSite, loadCatalog, loadFiling, responsesForInspection, submitFiling, type ResolvedJurisdiction } from "@aerowise/compliance";
 import { complianceContext, drainTasks, runContractFilings } from "@aerowise/tasks";
 import { contractFilingRequired, mayAutoSubmit, profileStatus, type ContractFilingBasis, type RulesetRules } from "@aerowise/domain";
 import { sql } from "kysely";
@@ -1001,5 +1001,18 @@ describe("readiness access", () => {
     expect((await officeApi.post(`/service-requests/${r.id}/classify`, { classification: "owner_complaint" })).statusCode).toBe(200);
     expect((await s.techApi.post(`/service-requests/${r.id}/classify`, { classification: "not_reportable" })).statusCode).toBe(403);
     expect((await s.techApi.get("/credentials")).statusCode).toBe(403);
+  });
+});
+
+describe("the complaint period's contract", () => {
+  it("is the one in force on the inspection's local day, not its UTC day", async () => {
+    const s = await lcraSetup(ctx);
+    const insp = await complete(s);
+    // 8 pm on March 1 in Texas is already March 2 in UTC; the contract ends March 1.
+    await sql`update inspections set completed_at = '2026-03-02T02:00:00Z' where id = ${insp.id}`.execute(ctx.db);
+    await sql`update contracts set end_on = '2026-03-01' where id = ${s.contract.id}`.execute(ctx.db);
+    const r = await responsesForInspection(ctx.db, s.org.id, insp.id);
+    // The period starts the day before the contract did (2025-12-01), so the contract was found.
+    expect(r.since).toBe("2025-11-30T00:00:00.000Z");
   });
 });

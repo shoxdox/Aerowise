@@ -414,6 +414,8 @@ export interface InspectionsTable {
   completionLat: number | null;
   completionLng: number | null;
   completionAccuracyM: number | null;
+  /** Why there is no arrival location (`LOCATION_STATUSES`); null before it was asked. */
+  locationStatus: string | null;
   accessIssue: string | null;
   lockedAt: Timestamp | null;
   /** Always 'inspection': with job_id it keys to an inspection job, so no inspection belongs to a work job. */
@@ -887,7 +889,6 @@ export interface InvoicesTable {
   refundedCents: Generated<number>;
   issuedOn: string | null;
   dueOn: string | null;
-  publicToken: string | null;
   snapshot: ColumnType<unknown, string | null | undefined, string | null>;
   pdfStorageKey: string | null;
   pdfSha256: string | null;
@@ -1182,7 +1183,6 @@ export interface RenewalsTable {
   siteId: string;
   customerId: string;
   status: Generated<RenewalStatus>;
-  publicToken: string;
   version: Generated<number>;
   planId: string | null;
   planName: string;
@@ -1823,6 +1823,7 @@ export interface WorkRecordsTable {
   arrivalLng: number | null;
   completionLat: number | null;
   completionLng: number | null;
+  locationStatus: string | null;
   attachedBy: string | null;
   createdAt: CreatedAt;
   updatedAt: Timestamp;

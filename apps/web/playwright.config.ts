@@ -25,7 +25,7 @@ export default defineConfig({
       // Demo mode, as on the hosted demo: every outside service is a test stand-in and the banner shows.
       // Work orders, service items, field work on the phone, estimates, deposits, plan versions, pumping and service cycles on, as staging will run them (SW-1, SW-2, SW-3, SW-5, SW-8, SW-6, SW-9); the flag-off
       // paths are covered by the API tests.
-      env: { DATABASE_URL: databaseUrl, API_PORT: "4000", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true", LOGIN_RATE_LIMIT: "100", AEROWISE_FEATURES: "work_orders,service_items,field_work,estimates,deposits,plan_builder,pumping,service_cycles" },
+      env: { DATABASE_URL: databaseUrl, API_PORT: "4000", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files", DEMO_MODE: "true", LOGIN_RATE_LIMIT: "100", PUBLIC_LINK_ACTIONS_PER_MINUTE: "1000", SIGNED_FILES_PER_MINUTE: "10000", AEROWISE_FEATURES: "work_orders,service_items,field_work,estimates,deposits,plan_builder,pumping,service_cycles" },
       timeout: 120_000,
       stdout: "pipe",
     },

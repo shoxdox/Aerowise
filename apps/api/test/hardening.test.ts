@@ -1,5 +1,7 @@
 import { checkConfig, ConfigError, configProblems, createPlatformAdmin } from "@aerowise/db";
 import { FEATURES } from "@aerowise/domain";
+import { linkToken } from "@aerowise/tasks";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { createOrg, createUser, PASSWORD, setupTestApp } from "./helpers.ts";
@@ -176,5 +178,21 @@ describe("rate limits", () => {
     expect((await attempt(proxied, "203.0.113.1")).statusCode).toBe(429);
     expect((await attempt(proxied, "203.0.113.9")).statusCode).toBe(401);
     await Promise.all([direct.close(), proxied.close()]);
+  });
+});
+
+describe("public links are limited per address, not per token", () => {
+  it("counts every guessed token against the same address, and file links too", async () => {
+    const app = await buildApp({ db: ctx.db, publicLinkRateLimit: { actions: 2, files: 1 } });
+    const decline = (ip: string) => app.inject({ method: "POST", url: `/renew/${linkToken("renew", randomUUID())}/decline`, payload: {}, remoteAddress: ip });
+    // Three different (made-up) links from one address: the third is refused before any lookup.
+    expect((await decline("198.51.100.7")).statusCode).toBe(404);
+    expect((await decline("198.51.100.7")).statusCode).toBe(404);
+    expect((await decline("198.51.100.7")).statusCode).toBe(429);
+    expect((await decline("198.51.100.8")).statusCode).toBe(404);
+    const file = (ip: string) => app.inject({ method: "GET", url: `/files/${randomUUID()}?exp=1&sig=x`, remoteAddress: ip });
+    expect((await file("198.51.100.9")).statusCode).toBe(404);
+    expect((await file("198.51.100.9")).statusCode).toBe(429);
+    await app.close();
   });
 });

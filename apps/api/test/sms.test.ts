@@ -283,7 +283,7 @@ describe("payment reminders", () => {
     await sweep();
     await sweep();
     expect(textsTo(MOBILE)).toHaveLength(1);
-    expect(textsTo(MOBILE)[0]!.body).toMatch(new RegExp(`^Org A: invoice ${inv.number} for \\$45\\.00 was due \\w+ \\d+\\. Pay online: https://app\\.example\\.test/pay/[\\w-]+ Reply STOP to opt out\\.$`));
+    expect(textsTo(MOBILE)[0]!.body).toMatch(new RegExp(`^Org A: invoice ${inv.number} for \\$45\\.00 was due \\w+ \\d+\\. Pay online: https://app\\.example\\.test/pay/[\\w.-]+ Reply STOP to opt out\\.$`));
     ctx.now = at(14);
     await sweep();
     expect(textsTo(MOBILE)).toHaveLength(2);
@@ -334,7 +334,7 @@ describe("renewal reminders", () => {
     expect((await t.api.post("/renewals/campaign", {})).json().reminded).toBe(1);
     await runWorker(ctx);
     expect(textsTo(MOBILE).map((m) => m.body)).toEqual([
-      expect.stringMatching(/^Org A: your septic maintenance plan ends Mar 31\. Renew online in a couple of minutes: https:\/\/app\.example\.test\/renew\/[\w-]+ Reply STOP to opt out\.$/),
+      expect.stringMatching(/^Org A: your septic maintenance plan ends Mar 31\. Renew online in a couple of minutes: https:\/\/app\.example\.test\/renew\/[\w.-]+ Reply STOP to opt out\.$/),
     ]);
   });
 });

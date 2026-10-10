@@ -26,6 +26,8 @@ x-app: &app
     # Requests reach the API through Caddy and the web app, both on this server's private Docker
     # networks; Caddy replaces any X-Forwarded-For a client sends, so the address it adds is the client's.
     TRUST_PROXY: uniquelocal
+    PUBLIC_LINK_ACTIONS_PER_MINUTE: ${PUBLIC_LINK_ACTIONS_PER_MINUTE:-}
+    SIGNED_FILES_PER_MINUTE: ${SIGNED_FILES_PER_MINUTE:-}
     FILING_EMAIL_FROM: ${FILING_EMAIL_FROM:-}
     INVOICE_EMAIL_FROM: ${INVOICE_EMAIL_FROM:-}
     ACCOUNT_EMAIL_FROM: ${ACCOUNT_EMAIL_FROM:-}

@@ -1,6 +1,6 @@
 "use client";
 
-import type { InspectionValues, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
+import type { InspectionValues, LocationStatus, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
 import { done, openDb, openExisting, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
@@ -46,6 +46,8 @@ export interface LocalWork {
   completedAt: string | null;
   arrivalGps: Gps | null;
   completionGps: Gps | null;
+  /** Why there is no arrival location; absent on records from before it was asked. */
+  locationStatus?: LocationStatus | null;
   values: InspectionValues;
   /** False when another visit is needed. */
   finalVisit: boolean;

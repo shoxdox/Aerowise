@@ -28,6 +28,7 @@ import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
+import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import { readForDownload } from "../lib/demo.ts";
 import { completedWorkOrders, completionSummaryPdf } from "../lib/completion.ts";
 
@@ -46,14 +47,15 @@ const requestLimit = {
   hook: "preHandler" as const,
   keyGenerator: (req: FastifyRequest) => `${req.ip}:${String((req.body as { email?: unknown } | undefined)?.email ?? "").trim().toLowerCase()}`,
 };
-const actionLimit = { max: 10, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => `${req.ip}:${(req.params as { token?: string }).token ?? ""}` };
 const REQUEST_EMAIL_EVERY_MS = 10 * 60_000;
 const notFoundLink = () => new HttpError(404, "not_found", "This link is not valid or has expired. Ask for a new one below.");
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 const cityLine = (city: string, state: string | null, postal: string | null) => [city, [state, postal].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 
-export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; appUrl: string }> = async (app, { db, now, store, appUrl }) => {
+export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; appUrl: string; linkLimits: PublicLinkLimits }> = async (app, { db, now, store, appUrl, linkLimits }) => {
+  // Writes through a portal link: a few per address (lib/rate-limits.ts).
+  const actionLimit = perAddress("portal-action", linkLimits.actions);
   /** The link a token opens, if it is still good. Every portal read goes through this. */
   async function linkFor(t: string) {
     const link = await db
@@ -161,7 +163,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           ? []
           : db
               .selectFrom("renewals")
-              .select(["siteId", "contractId", "status", "startOn", "publicToken", "createdAt"])
+              .select(["id", "siteId", "contractId", "status", "startOn", "createdAt"])
               .where("organizationId", "=", organizationId)
               .where("siteId", "in", siteIds)
               .orderBy("createdAt", "desc")
@@ -202,7 +204,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           .execute(),
         db
           .selectFrom("invoices")
-          .select(["number", "issuedOn", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "paymentStatus", "publicToken"])
+          .select(["id", "number", "issuedOn", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "paymentStatus"])
           .where("organizationId", "=", organizationId)
           .where("customerId", "=", customerId)
           .where("status", "=", "open")
@@ -305,7 +307,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               }
             : null,
           contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0), visitProgress: progressOf(k.id) } : null,
-          renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.publicToken) } : null,
+          renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.id) } : null,
           nextVisit: next
             ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate, label: null }
             : nextCycle
@@ -326,7 +328,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       });
 
       const items = invoices
-        .filter((i) => i.publicToken && i.number !== null && i.issuedOn && i.dueOn)
+        .filter((i) => i.number !== null && i.issuedOn && i.dueOn)
         .map((i) => {
           const due = amountDue(i);
           return {
@@ -337,7 +339,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             amountDueCents: due,
             paymentStatus: i.paymentStatus,
             overdue: due > 0 && i.dueOn! < today,
-            payUrl: payUrlFor(appUrl, i.publicToken!),
+            payUrl: payUrlFor(appUrl, i.id),
           };
         });
 

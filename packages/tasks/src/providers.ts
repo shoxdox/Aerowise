@@ -95,7 +95,7 @@ export function providersFromEnv(opts: { db: Database; store: ObjectStore; env: 
   const standIns = {
     payments: new TestPaymentProvider(),
     quickbooks: new TestQuickBooksProvider(db, now),
-    sms: new TestSmsProvider(),
+    sms: new TestSmsProvider({ secret: opts.env.FILE_SIGNING_SECRET }),
     billing: new TestBillingProvider(),
   };
   return {
@@ -127,7 +127,7 @@ function configuredProviders(opts: { db: Database; store: ObjectStore; env: Env;
       quickbooks: live.has("quickbooks")
         ? quickBooksFromEnv(db, env, production, now)
         : { provider: new TestQuickBooksProvider(db, now), cipher: new TokenCipher(env.QUICKBOOKS_TOKEN_KEY || undefined) },
-      sms: live.has("sms") ? smsFromEnv(env, production) : { provider: new TestSmsProvider(), webhookBaseUrl: smsWebhookBaseUrl(env) },
+      sms: live.has("sms") ? smsFromEnv(env, production) : { provider: new TestSmsProvider({ secret: env.FILE_SIGNING_SECRET }), webhookBaseUrl: smsWebhookBaseUrl(env) },
       geocoder: new TestGeocoder(),
       billing: new TestBillingProvider(),
     };

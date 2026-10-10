@@ -4,6 +4,7 @@ import {
   applyRequirements,
   INSPECTION_CONFLICT_REASON_LABELS,
   ISSUE_LABELS,
+  LOCATION_STATUS_PHONE_TEXT,
   ISSUE_SEVERITIES,
   ISSUE_TYPES,
   validateInspection,
@@ -71,6 +72,23 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     },
     [],
   );
+  useEffect(() => {
+    // The phone going to the lock screen, the camera or another app can end this page without
+    // unmounting it: save at once instead of waiting out the debounce.
+    const flush = () => {
+      if (!timer.current) return;
+      clearTimeout(timer.current);
+      timer.current = null;
+      void saveOrReport(() => saveInspection(latest.current)).catch(() => {});
+    };
+    const onVisibility = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   if (template === undefined) return <p className="muted">Loading form…</p>;
   if (template === null) return <p className="error">The form for this inspection is not on this phone. Open the app once with signal.</p>;
@@ -102,16 +120,24 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
       let clientId: string | null = null;
       try {
         const { blob, contentType } = await preparePhoto(file);
-        const gps = await currentPosition(3000);
         clientId = crypto.randomUUID();
+        // The photo goes to the phone's database first; its position is added after, so a few
+        // seconds waiting on GPS cannot lose a photo the phone is holding only in memory.
         const next: LocalInspection = {
           ...latest.current,
-          photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: gps?.lat ?? null, lng: gps?.lng ?? null, uploaded: false }],
+          photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false }],
         };
         latest.current = next;
         setInsp(next);
         await persist(next, { clientId, inspectionClientId: next.clientId, blob, contentType });
         setProblems((ps) => ps.filter((p) => p.key !== photoKey));
+        const gps = await currentPosition(3000);
+        if (gps && latest.current.photos.some((p) => p.clientId === clientId)) {
+          const located = { ...latest.current, photos: latest.current.photos.map((p) => (p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p)) };
+          latest.current = located;
+          setInsp(located);
+          await persist(located);
+        }
       } catch (err) {
         // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
         if (clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
@@ -163,6 +189,11 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
           </p>
         )}
         {readOnly && !insp.held && <p className="badge ok">Finished on this phone</p>}
+        {insp.locationStatus && insp.locationStatus !== "recorded" && (
+          <p className="muted small" role="status" data-testid="inspection-location">
+            {LOCATION_STATUS_PHONE_TEXT[insp.locationStatus]}
+          </p>
+        )}
       </div>
 
       {problems.length > 0 && (

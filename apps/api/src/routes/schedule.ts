@@ -183,7 +183,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
   const lockJob = async (trx: Transaction<DB>, organizationId: string, jobId: string) => {
     const row = await trx
       .selectFrom("jobs")
-      .select(["status", "technicianUserId", "scheduledDate"])
+      .select(["type", "status", "technicianUserId", "scheduledDate"])
       .where("organizationId", "=", organizationId)
       .where("id", "=", jobId)
       .forUpdate()
@@ -350,7 +350,16 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     "/jobs/:id",
     {
       config: { permission: "schedule:write" },
-      schema: { tags: ["schedule"], summary: "Move a scheduled job to another technician or day", params, body: reschedulePatch, response: { 200: stop } },
+      schema: {
+        tags: ["schedule"],
+        summary: "Move a scheduled job to another technician or day; an inspection in progress to another technician",
+        description:
+          "An inspection visit already started on a phone can still be given to another technician on the same day: the inspection in progress goes with it, " +
+          "the new technician's phone continues it, and anything the first phone sends later is held for the office. A work visit in progress cannot be moved.",
+        params,
+        body: reschedulePatch,
+        response: { 200: stop },
+      },
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
@@ -361,7 +370,16 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         .where("id", "=", req.params.id)
         .executeTakeFirst();
       if (!job) throw notFound("Job");
-      if (job.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${job.status.replace("_", " ")} job cannot be moved`);
+      /** Scheduled jobs move freely; an inspection in progress only to another technician, on its day. */
+      const movable = (j: { type: string; status: string; scheduledDate: string }) => {
+        if (j.status === "scheduled") return;
+        if (j.status !== "in_progress") throw new HttpError(409, "not_reschedulable", `A ${j.status.replace("_", " ")} job cannot be moved`);
+        if (j.type !== "inspection") throw new HttpError(409, "not_reschedulable", "A work visit in progress cannot be moved; the technician finishes it or the office unschedules it");
+        if (req.body.scheduledDate !== undefined && req.body.scheduledDate !== j.scheduledDate) {
+          throw new HttpError(409, "not_reschedulable", "An inspection in progress can go to another technician, not to another day");
+        }
+      };
+      movable(job);
       // Only the fields sent are checked here; they don't depend on the job's current values.
       if (req.body.scheduledDate !== undefined && job.obligationId) await assertWithinService(organizationId, job.obligationId, req.body.scheduledDate);
       if (req.body.technicianId) await assertAssignable(organizationId, req.body.technicianId);
@@ -373,7 +391,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         // not the one read before another dispatcher's change.
         const wo = job.type === "work" && job.workOrderId ? await lockWorkOrder(trx, organizationId, job.workOrderId) : null;
         const current = await lockJob(trx, organizationId, job.id);
-        if (current.status !== "scheduled") throw new HttpError(409, "not_reschedulable", `A ${current.status.replace("_", " ")} job cannot be moved`);
+        movable(current);
         const technicianId = req.body.technicianId ?? current.technicianUserId;
         const scheduledDate = req.body.scheduledDate ?? current.scheduledDate;
         const moved = technicianId !== current.technicianUserId || scheduledDate !== current.scheduledDate;
@@ -391,6 +409,22 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .where("id", "=", job.id)
           .execute();
         await audit(trx, req, { action: "job.rescheduled", entityType: "job", entityId: job.id, changes: req.body });
+        if (current.status === "in_progress" && technicianId !== current.technicianUserId) {
+          // The inspection started on the first phone follows the visit: the route names it, so the
+          // new technician's phone continues it under the same id, and the first phone's later
+          // sync is held for the office (PUT /inspections/sync) instead of being refused.
+          const followed = await trx
+            .updateTable("inspections")
+            .set({ technicianUserId: technicianId, updatedAt: new Date() })
+            .where("organizationId", "=", organizationId)
+            .where("jobId", "=", job.id)
+            .where("status", "=", "draft")
+            .returning("id")
+            .execute();
+          for (const f of followed) {
+            await audit(trx, req, { action: "inspection.reassigned", entityType: "inspection", entityId: f.id, changes: { from: current.technicianUserId, to: technicianId } });
+          }
+        }
         if (wo && moved) {
           await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "visit_moved", summary: `Visit moved to ${scheduledDate}`, details: { technicianId, scheduledDate }, homeownerVisible: true, at: new Date() });
         }

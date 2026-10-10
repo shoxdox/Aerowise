@@ -797,7 +797,6 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
               totalCents: 0,
               issuedOn: null,
               dueOn: null,
-              publicToken: null,
               pdfStorageKey: null,
               pdfSha256: null,
               pdfByteSize: null,

@@ -91,6 +91,8 @@ export default function SchedulePage() {
     const reason = window.prompt("Why is this visit being unscheduled?", "Rescheduling");
     if (reason) void run(() => api(`/jobs/${s.jobId}/cancel`, { method: "POST", body: { reason } }));
   };
+  /** Another technician takes the stop; an inspection already started on a phone goes with it (the API holds the first phone's later work for the office). */
+  const giveTo = (s: Stop, technicianId: string) => run(() => api(`/jobs/${s.jobId}`, { method: "PATCH", body: { technicianId } }));
   const move = (s: Stop, stops: Stop[], delta: number) => {
     const ids = stops.map((x) => x.jobId);
     const i = ids.indexOf(s.jobId);
@@ -321,6 +323,19 @@ export default function SchedulePage() {
                         <SafetyBadges flags={s.site.safetyFlags} />
                         {s.site.schedulingNotes && <div className="small restriction">⚠ {s.site.schedulingNotes}</div>}
                         {s.site.lat === null && <div className="small muted">Not on the map yet</div>}
+                        {editable && (s.status === "scheduled" || (s.status === "in_progress" && !s.workOrder)) && (techs.data?.items.length ?? 0) > 1 && (
+                          <label className="small">
+                            Technician{" "}
+                            <select aria-label={`Technician for ${s.site.addressLine1}`} value={s.technicianId} onChange={(e) => void giveTo(s, e.target.value)}>
+                              {techs.data!.items.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                            {s.status === "in_progress" && <span className="muted"> · started on a phone; it continues on the new technician&apos;s</span>}
+                          </label>
+                        )}
                         {editable && (
                           <button className="link small" onClick={() => unschedule(s)}>
                             Unschedule

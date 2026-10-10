@@ -1,6 +1,6 @@
 import type { EmailMessage, EmailResult, EmailTransport } from "@aerowise/compliance";
 import { TestPaymentProvider } from "@aerowise/payments";
-import { drainTasks, reconcileRefunds } from "@aerowise/tasks";
+import { drainTasks, linkToken, linkTokenId, reconcileRefunds } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
@@ -72,7 +72,7 @@ describe("drafts and issuing", () => {
     ctx.now = new Date("2026-03-02T18:00:00Z");
     const first = (await t.api.post(`/invoices/${draft.id}/issue`, { send: false })).json();
     expect(first).toMatchObject({ status: "open", number: 1001, issuedOn: "2026-03-02", dueOn: "2026-03-17", paymentStatus: "unpaid", amountDueCents: edited.totalCents });
-    expect(first.payUrl).toMatch(/^http:\/\/localhost:3000\/pay\/[A-Za-z0-9_-]{32}$/);
+    expect(first.payUrl).toMatch(/^http:\/\/localhost:3000\/pay\/[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);
     const second = await issued(t, LINES, false);
     expect(second.number).toBe(1002);
 
@@ -498,5 +498,43 @@ describe("access", () => {
     const inbox = (await t.api.get("/inbox")).json();
     expect(inbox.counts).toMatchObject({ unpaidInvoices: 2, unpaidCents: 65000 });
     expect(inbox.items.find((i: { kind: string }) => i.kind === "invoice_overdue")).toMatchObject({ target: { type: "invoice", id: older.id }, dueOn: older.dueOn });
+  });
+});
+
+describe("pay links are signed, not stored", () => {
+  it("opens only with the signature the server made for that invoice", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    const anon = client(ctx.app);
+    expect((await anon.get(`/pay/${inv.token}`)).statusCode).toBe(200);
+    expect(linkTokenId("pay", inv.token)).toBe(inv.id);
+    // The id with another invoice's signature, a made-up signature, or a renewal signature: not found.
+    const other = await issued(t);
+    const [id] = inv.token.split(".");
+    for (const forged of [`${id}.${other.token.split(".")[1]}`, `${id}.${"A".repeat(43)}`, linkToken("renew", inv.id)]) {
+      expect((await anon.get(`/pay/${forged}`)).statusCode, forged).toBe(404);
+      expect((await anon.post(`/pay/${forged}/checkout`, {})).statusCode, forged).toBe(404);
+    }
+    // A link of the old shape (a stored random token) is not found either.
+    expect((await anon.get(`/pay/${"a".repeat(32)}`)).statusCode).toBe(404);
+    // The same link appears everywhere the invoice is offered, and nothing in the database makes it.
+    expect((await t.api.get(`/invoices/${inv.id}`)).json().payUrl).toBe(inv.payUrl);
+    const column = await sql<{ n: string }>`select count(*) as n from information_schema.columns where table_name in ('invoices', 'renewals') and column_name = 'public_token'`.execute(ctx.db);
+    expect(column.rows[0]!.n).toBe("0");
+  });
+});
+
+describe("invoice amounts stay within 32-bit cents", () => {
+  it("refuses a line or an invoice over $1,000,000 with a message instead of a database error", async () => {
+    const t = await billingTenant(ctx);
+    const line = await t.api.post("/invoices", { customerId: t.customer.id, siteId: t.site.id, lines: [{ description: "Whole plant", quantity: 10_000, unitPriceCents: 100_000_000 }] });
+    expect(line.statusCode).toBe(400);
+    expect(JSON.stringify(line.json())).toContain("A line can come to at most $1,000,000");
+    const million = { description: "Plant", quantity: 1, unitPriceCents: 100_000_000 };
+    const total = await t.api.post("/invoices", { customerId: t.customer.id, siteId: t.site.id, lines: [million, million] });
+    expect(total.statusCode).toBe(422);
+    expect(total.json().message).toBe("An invoice can come to at most $1,000,000");
+    // Exactly the limit on one line is fine.
+    expect((await t.api.post("/invoices", { customerId: t.customer.id, siteId: t.site.id, lines: [million] })).statusCode).toBe(201);
   });
 });

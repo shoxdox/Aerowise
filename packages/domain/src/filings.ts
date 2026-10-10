@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { locationStatus } from "./inspections.ts";
 import { id, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, type SiteUseCategory } from "./crm.ts";
 import type { TemplateDefinition } from "./inspections.ts";
 import { labTestRule, type LabTestRule } from "./lab-tests.ts";
@@ -759,7 +760,7 @@ export const filingListItem = z.object({
   reviewReason: z.string().nullable(),
   lastError: z.string().nullable(),
   attemptCount: z.number().int(),
-  inspection: z.object({ id, completedAt: z.iso.datetime({ offset: true }).nullable() }).nullable(),
+  inspection: z.object({ id, completedAt: z.iso.datetime({ offset: true }).nullable(), locationStatus: locationStatus.nullable() }).nullable(),
   contract: z.object({ id, startOn: isoDate, endOn: isoDate, planName: z.string() }).nullable(),
   deadlineBasis: z.string().nullable(),
   site: z.object({ id, addressLine1: z.string(), city: z.string(), permitNumber: z.string().nullable() }),

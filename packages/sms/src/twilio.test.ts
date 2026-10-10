@@ -21,6 +21,16 @@ describe("Twilio request signatures", () => {
     expect(sms.verifyWebhook(`${url}?x=1`, params, sig)).toBe(false);
     expect(sms.verifyWebhook(url, params, "nope")).toBe(false);
   });
+
+  it("on a deployment with a secret, are not the ones the source constant would make", () => {
+    const url = "https://staging.example.test/api/webhooks/sms/inbound";
+    const params = { From: "+15125550123", Body: "STOP" };
+    const plain = new TestSmsProvider();
+    const hosted = new TestSmsProvider({ secret: "a-long-random-deployment-secret" });
+    expect(hosted.verifyWebhook(url, params, plain.sign(url, params))).toBe(false);
+    expect(hosted.verifyWebhook(url, params, hosted.sign(url, params))).toBe(true);
+    expect(new TestSmsProvider({ secret: "another-secret" }).verifyWebhook(url, params, hosted.sign(url, params))).toBe(false);
+  });
 });
 
 describe("TwilioSmsProvider", () => {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id } from "./crm.ts";
+import { LINE_LIMIT_MESSAGE, withinLineLimit } from "./invoices.ts";
 import { formKey } from "./forms.ts";
 import type { ISSUE_TYPES } from "./inspections.ts";
 import type { ServiceRequestKind } from "./portal.ts";
@@ -135,6 +136,8 @@ export const workOrderLineInput = z.object({
   /** Priced per gallon: at invoicing the quantity is the work order's recorded pump-out volume, cited on the line (SW-6). */
   billPumpedVolume: z.boolean().default(false),
 });
+/** As on invoices: amounts are 32-bit integers, so one line stays within $1,000,000. */
+const workOrderLineChecked = workOrderLineInput.refine(withinLineLimit, { message: LINE_LIMIT_MESSAGE, path: ["unitPriceCents"] });
 export const workOrderLine = z.object({
   id,
   position: z.number().int(),
@@ -163,7 +166,7 @@ export const workOrderInput = z.object({
   requestedOn: date.nullish(),
   /** Saved as a draft instead of ready to schedule. */
   draft: z.boolean().default(false),
-  lines: z.array(workOrderLineInput).max(100).default([]),
+  lines: z.array(workOrderLineChecked).max(100).default([]),
 });
 export const workOrderFields = z.object({
   title: title.optional(),
@@ -174,7 +177,7 @@ export const workOrderFields = z.object({
   /** Moves a draft to ready to schedule. */
   ready: z.literal(true).optional(),
   /** Replaces the planned lines. */
-  lines: z.array(workOrderLineInput).max(100).optional(),
+  lines: z.array(workOrderLineChecked).max(100).optional(),
   billingStatus: z.enum(["unbilled", "no_charge"]).optional(),
 });
 export const workOrderCancelInput = z.object({ reason: z.string().trim().min(1).max(2000) });

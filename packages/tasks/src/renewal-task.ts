@@ -8,6 +8,7 @@ import { renderAgreement } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction } from "kysely";
 import { billingEmail } from "./invoice-task.ts";
+import { renewUrlFor } from "./links.ts";
 import { enqueue } from "./queue.ts";
 import { queueSms } from "./sms-task.ts";
 
@@ -16,8 +17,6 @@ export const RENEWAL_AGREEMENT = "renewals.agreement";
 export const RENEWAL_SWEEP = "renewals.sweep";
 
 type Executor = Database | Transaction<DB>;
-
-export const renewUrlFor = (appUrl: string, token: string) => `${appUrl.replace(/\/$/, "")}/renew/${token}`;
 
 const longDay = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
@@ -75,7 +74,7 @@ export async function sendRenewalEmail(
     .innerJoin("contracts as c", "c.id", "r.contractId")
     .innerJoin("customers as cu", "cu.id", "r.customerId")
     .innerJoin("organizations as o", "o.id", "r.organizationId")
-    .select(["r.status", "r.publicToken", "r.customerId", "r.planName", "r.priceCents", "r.startOn", "r.endOn", "c.endOn as contractEndOn", "cu.displayName", "o.name as orgName", "o.phone as orgPhone", "o.email as orgEmail"])
+    .select(["r.status", "r.customerId", "r.planName", "r.priceCents", "r.startOn", "r.endOn", "c.endOn as contractEndOn", "cu.displayName", "o.name as orgName", "o.phone as orgPhone", "o.email as orgEmail"])
     .where("r.organizationId", "=", organizationId)
     .where("r.id", "=", renewalId)
     .executeTakeFirst();
@@ -83,7 +82,7 @@ export async function sendRenewalEmail(
   if (!(SIGNABLE_STATUSES as readonly string[]).includes(r.status)) return;
   const to = await billingEmail(db, organizationId, r.customerId);
   if (!to) throw new Error("No email address on file for this customer");
-  const link = renewUrlFor(ctx.appUrl, r.publicToken);
+  const link = renewUrlFor(ctx.appUrl, renewalId);
   const contact = [r.orgPhone, r.orgEmail].filter(Boolean).join(" or ");
   await ctx.mail.send({
     organizationId,

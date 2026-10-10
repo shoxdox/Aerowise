@@ -2,7 +2,7 @@ import { z } from "zod";
 import { id } from "./crm.ts";
 import { signatureCapture } from "./forms.ts";
 import { depositView } from "./deposits.ts";
-import { invoiceTotals, MAX_CENTS, MAX_TAX_RATE_BPS, type InvoiceTotals } from "./invoices.ts";
+import { invoiceTotals, LINE_LIMIT_MESSAGE, MAX_CENTS, MAX_TAX_RATE_BPS, withinLineLimit, type InvoiceTotals } from "./invoices.ts";
 import { quantity } from "./work.ts";
 
 // Estimates (SW-5 part 1; service workflows plan §3.3–§3.5). The office drafts an estimate,
@@ -80,6 +80,8 @@ export const estimateLineInput = z.object({
   /** Whether an optional line starts selected. Ignored on a required line. */
   selectedByDefault: z.boolean().default(true),
 });
+/** As on invoices: amounts are 32-bit integers, so one line stays within $1,000,000. */
+const estimateLineChecked = estimateLineInput.refine(withinLineLimit, { message: LINE_LIMIT_MESSAGE, path: ["unitPriceCents"] });
 export type EstimateLineInput = z.input<typeof estimateLineInput>;
 
 /** A line as frozen in a sent version, and as the homeowner sees it. */
@@ -129,7 +131,7 @@ export const estimateInput = z.object({
   workTypeId: id.nullish(),
   /** "Estimate" plus the kind of work when left out. */
   title: title.optional(),
-  lines: z.array(estimateLineInput).min(1).max(100),
+  lines: z.array(estimateLineChecked).min(1).max(100),
   taxRateBps: z.number().int().min(0).max(MAX_TAX_RATE_BPS).optional(),
   discountCents: cents.default(0),
   /** The company's default terms when left out. */
@@ -144,7 +146,7 @@ export type EstimateInput = z.input<typeof estimateInput>;
 export const estimateFields = z.object({
   workTypeId: id.nullish(),
   title: title.optional(),
-  lines: z.array(estimateLineInput).min(1).max(100).optional(),
+  lines: z.array(estimateLineChecked).min(1).max(100).optional(),
   taxRateBps: z.number().int().min(0).max(MAX_TAX_RATE_BPS).optional(),
   discountCents: cents.optional(),
   termsText: terms.optional(),
@@ -155,7 +157,7 @@ export const estimateFields = z.object({
 
 export const estimateFromSourceInput = z.object({
   /** Lines to start the draft with; the office edits it afterwards. */
-  lines: z.array(estimateLineInput).max(100).default([]),
+  lines: z.array(estimateLineChecked).max(100).default([]),
 });
 
 export const estimateReasonInput = z.object({ reason: z.string().trim().min(1).max(2000) });

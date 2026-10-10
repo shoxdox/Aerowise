@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { drainTasks } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
-import { adminLogin, client, createAdmin, setupTestApp, type TestContext } from "./helpers.ts";
+import { adminLogin, client, createAdmin, PASSWORD, setupTestApp, type TestContext } from "./helpers.ts";
 import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
@@ -75,12 +75,20 @@ describe("deleting an organization's data", () => {
     const admin = client(ctx.app, await adminLogin(ctx));
 
     // The name must be typed exactly; nothing is deleted otherwise.
-    const wrong = await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: "Hill Country" });
+    const wrong = await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: "Hill Country", password: PASSWORD });
     expect(wrong.statusCode).toBe(422);
-    expect((await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: "Org B" })).statusCode).toBe(422);
+    expect((await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: "Org B", password: PASSWORD })).statusCode).toBe(422);
     expect(await rowsByTable(ctx, demo.id)).toEqual(before);
 
-    const res = await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: demo.name });
+    // And the admin's own password, checked again: a console left open cannot erase a company.
+    const noPassword = await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: demo.name });
+    expect(noPassword.statusCode).toBe(400);
+    const wrongPassword = await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: demo.name, password: "not it" });
+    expect(wrongPassword.statusCode).toBe(403);
+    expect(wrongPassword.json()).toMatchObject({ error: "reauth_failed" });
+    expect(await rowsByTable(ctx, demo.id)).toEqual(before);
+
+    const res = await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: demo.name, password: PASSWORD });
     expect(res.statusCode, res.body).toBe(200);
     const body = res.json();
     expect(body.organization).toMatchObject({ id: demo.id, name: demo.name, plan: { state: "read_only" } });
@@ -103,14 +111,15 @@ describe("deleting an organization's data", () => {
 
     // The audit record lives outside the deleted data and says what went.
     const audit = await ctx.db.selectFrom("platformAuditEvents").select(["action", "changes"]).where("organizationId", "=", demo.id).orderBy("occurredAt").execute();
-    expect(audit.map((a) => a.action)).toEqual(["organization.data_deleted", "organization.files_deleted"]);
-    expect(audit[0]!.changes).toMatchObject({ name: demo.name, tables: { customers: before.customers } });
+    expect(audit.map((a) => a.action)).toEqual(["organization.data_delete_refused", "organization.data_deleted", "organization.files_deleted"]);
+    expect(audit[0]!.changes).toEqual({ reason: "password" });
+    expect(audit[1]!.changes).toMatchObject({ name: demo.name, tables: { customers: before.customers } });
 
     // Append-only tables still refuse deletes afterwards.
     await expect(sql`delete from audit_events where organization_id = ${other.org.id}`.execute(ctx.db)).rejects.toThrow(/append-only/);
 
     // Done once; the plan and invitations cannot bring it back.
-    expect((await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: demo.name })).statusCode).toBe(409);
+    expect((await admin.post(`/admin/organizations/${demo.id}/erase`, { confirmName: demo.name, password: PASSWORD })).statusCode).toBe(409);
     expect((await admin.put(`/admin/organizations/${demo.id}/plan`, { state: "active", startsOn: "2026-03-01", endsOn: null, pricePerContractCentsOverride: null, monthlyMinimumCentsOverride: null })).statusCode).toBe(409);
     expect((await admin.post(`/admin/organizations/${demo.id}/invitations`, { email: "new@example.com" })).statusCode).toBe(409);
     // The other organization still works.

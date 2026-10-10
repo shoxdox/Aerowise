@@ -159,7 +159,12 @@ export const invoiceLineInput = z.object({
 });
 export type InvoiceLineInput = z.input<typeof invoiceLineInput>;
 
-const linesInput = z.array(invoiceLineInput).min(1).max(100);
+/** The most one line, and one invoice, may come to; amounts are stored as 32-bit integers. */
+export const LINE_LIMIT_MESSAGE = "A line can come to at most $1,000,000";
+export const INVOICE_LIMIT_MESSAGE = "An invoice can come to at most $1,000,000";
+export const withinLineLimit = (l: { quantity: number; unitPriceCents: number }) => l.quantity * l.unitPriceCents <= MAX_CENTS;
+
+const linesInput = z.array(invoiceLineInput.refine(withinLineLimit, { message: LINE_LIMIT_MESSAGE, path: ["unitPriceCents"] })).min(1).max(100);
 
 const invoiceFields = z.object({
   siteId: id.nullable(),

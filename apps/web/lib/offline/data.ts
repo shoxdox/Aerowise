@@ -2,6 +2,7 @@
 
 import type { FormTemplate, Inspection, InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
 import type { Me } from "../session";
+import type { LocationStatus } from "@aerowise/domain";
 import { activeStore, type CachedRoute, type Gps, type Tenant, type TenantStore } from "./db";
 import { tenantHeader } from "./sync";
 import type { WorkStore } from "./work";
@@ -135,23 +136,30 @@ export async function loadPumpingField(store: WorkStore, pumpingVisits: boolean)
 /** The exact work form version a visit uses, from the phone. */
 export const workFormById = (store: WorkStore, id: string) => store.kvGet<FormTemplate>(`form:${id}`);
 
-export function currentPosition(timeoutMs = 8000): Promise<Gps | null> {
-  if (!("geolocation" in navigator)) return Promise.resolve(null);
+/**
+ * The phone's position, and why there is none when there is none. A denied permission is
+ * told to the technician and sent to the office with the visit (`locationStatus`), instead of
+ * looking the same as a phone that simply had no fix.
+ */
+export function locate(timeoutMs = 8000): Promise<{ gps: Gps | null; status: LocationStatus }> {
+  if (typeof navigator === "undefined" || !("geolocation" in navigator)) return Promise.resolve({ gps: null, status: "unsupported" });
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), timeoutMs + 500);
+    const timer = setTimeout(() => resolve({ gps: null, status: "timeout" }), timeoutMs + 500);
     navigator.geolocation.getCurrentPosition(
       (p) => {
         clearTimeout(timer);
-        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracyM: Math.min(p.coords.accuracy, 100000) });
+        resolve({ gps: { lat: p.coords.latitude, lng: p.coords.longitude, accuracyM: Math.min(p.coords.accuracy, 100000) }, status: "recorded" });
       },
-      () => {
+      (err) => {
         clearTimeout(timer);
-        resolve(null);
+        resolve({ gps: null, status: err.code === err.PERMISSION_DENIED ? "denied" : err.code === err.TIMEOUT ? "timeout" : "unavailable" });
       },
       { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60_000 },
     );
   });
 }
+
+export const currentPosition = async (timeoutMs = 8000): Promise<Gps | null> => (await locate(timeoutMs)).gps;
 
 const UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 

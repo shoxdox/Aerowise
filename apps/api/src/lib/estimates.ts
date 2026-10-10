@@ -11,6 +11,7 @@ import {
   type EstimateAcceptanceKind,
   type EstimateLine,
   type EstimateStatus,
+  MAX_CENTS,
 } from "@aerowise/domain";
 import { sha256Hex, systemAudit } from "@aerowise/renewals";
 import { sql, type Kysely, type Transaction, type Updateable } from "kysely";
@@ -108,6 +109,7 @@ export async function freezeVersion(trx: Trx, e: LockedEstimate, at: Date, sentB
   const lines = await draftLines(trx, e.organizationId, e.id);
   if (!lines.length) throw unprocessable("Add at least one line before sending the estimate");
   const totals = estimateTotals(lines, e.discountCents, e.taxRateBps);
+  if (totals.subtotalCents > MAX_CENTS) throw unprocessable("An estimate can come to at most $1,000,000");
   // A version without a deposit hashes exactly as before deposits existed.
   const snapshot = {
     estimate: estimateLabel(e.number),

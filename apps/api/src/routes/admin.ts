@@ -392,7 +392,8 @@ export const adminRoutes: FastifyPluginAsyncZod<{
         tags: ["admin"],
         summary: "Delete all of an organization's data, on its request",
         description:
-          "Deletes every record and stored file of the organization and signs its people out. The organization row stays, emptied, so the platform audit log keeps naming it. Cannot be undone.",
+          "Deletes every record and stored file of the organization and signs its people out. The organization row stays, emptied, so the platform audit log keeps naming it. Cannot be undone. " +
+          "The admin confirms with the organization's exact name and their own password, entered again: a console left open cannot erase a company.",
         params: z.object({ id: z.uuid() }),
         body: organizationErasureInput,
         response: { 200: organizationErasure },
@@ -401,6 +402,13 @@ export const adminRoutes: FastifyPluginAsyncZod<{
     async (req) => {
       const { adminId } = req.requireAdmin();
       const organizationId = req.params.id;
+      // Re-authentication: the password is checked every time, and a wrong one is recorded.
+      const self = await db.selectFrom("platformAdmins").select(["passwordHash", "active"]).where("id", "=", adminId).executeTakeFirst();
+      if (!self?.active || !(await verifyPassword(req.body.password, self.passwordHash))) {
+        await platformAudit(db, req, { adminId, action: "organization.data_delete_refused", entityType: "organization", entityId: organizationId, organizationId, changes: { reason: "password" } });
+        // 403, not 401: the admin is still signed in; it is the confirmation that failed (a 401 would send the console to its sign-in page).
+        throw new HttpError(403, "reauth_failed", "Your password is incorrect. Enter the password you signed in with to confirm.");
+      }
       const result = await db.transaction().execute(async (trx) => {
         const org = await trx.selectFrom("organizations").select(["id", "name", "dataDeletedAt"]).where("id", "=", organizationId).forUpdate().executeTakeFirst();
         if (!org) throw notFound("Organization");

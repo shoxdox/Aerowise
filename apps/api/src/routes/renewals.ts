@@ -35,24 +35,24 @@ import {
 import { invoiceEvent } from "@aerowise/payments";
 import { activateRenewal, agreementCycles, canonicalJson, coverageLines, createRenewal, loadPlanVersion, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
 import type { ObjectStore } from "@aerowise/storage";
-import { enqueue, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
+import { enqueue, linkTokenId, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
-import { canPayOnline, invoiceByToken, openCheckout } from "../lib/checkout.ts";
+import { canPayOnline, openCheckout, openInvoiceById } from "../lib/checkout.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import { issueDraft, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
 import { definedOnly } from "../lib/json.ts";
 import { organizationToday } from "../lib/today.ts";
 import { readForDownload } from "../lib/demo.ts";
 
 const params = z.object({ id });
-const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
+// Any shape is looked at: a token that is not a signed link is simply not found (`linkTokenId`).
+const token = z.object({ token: z.string().min(1).max(200) });
 const publicLimit = { max: 30, timeWindow: "1 minute" };
-// Signing, declining and paying: a few tries per link and address.
-const actionLimit = { max: 10, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => `${req.ip}:${(req.params as { token?: string }).token ?? ""}` };
 const notFoundLink = () => new HttpError(404, "not_found", "This renewal link is not valid. Contact your service provider for a new one.");
 
 const joinAddress = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join(", ");
@@ -122,7 +122,6 @@ interface RenewalRow {
   siteId: string;
   customerId: string;
   status: RenewalStatus;
-  publicToken: string;
   version: number;
   planId: string | null;
   planName: string;
@@ -156,10 +155,12 @@ interface RenewalRow {
  * Renewals: the office's pipeline, campaign settings and add-on catalog, plus the link a
  * homeowner opens without signing in to confirm their details, sign and pay.
  */
-export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; features?: ReadonlySet<Feature> }> = async (
+export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; features?: ReadonlySet<Feature>; linkLimits: PublicLinkLimits }> = async (
   app,
-  { db, now, store, payments, features = new Set() },
+  { db, now, store, payments, features = new Set(), linkLimits },
 ) => {
+  // Signing, declining and paying: a few tries per address (lib/rate-limits.ts).
+  const actionLimit = perAddress("renew-action", linkLimits.actions);
   const { provider, appUrl } = payments;
   const planBuilder = features.has("plan_builder");
   const serviceCycles = features.has("service_cycles");
@@ -393,7 +394,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       ...toListItem(row),
       version: r.version,
       terms: termsOf(r),
-      link: renewUrlFor(appUrl, r.publicToken),
+      link: renewUrlFor(appUrl, r.id),
       sendCount: r.sendCount,
       autoRenewContract: contract.autoRenew,
       selectedAddons: r.selectedAddons as ChosenAddon[],
@@ -614,8 +615,14 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
 
   // ---- The homeowner's link (no sign-in; the link is the key) ----
 
+  /** The renewal a signed link token names (`links.ts`); a token that does not verify is not found. */
+  const renewalIdOf = (t: string) => {
+    const id = linkTokenId("renew", t);
+    if (!id) throw notFoundLink();
+    return id;
+  };
   async function byToken(t: string) {
-    const r = await db.selectFrom("renewals").selectAll().where("publicToken", "=", t).executeTakeFirst();
+    const r = await db.selectFrom("renewals").selectAll().where("id", "=", renewalIdOf(t)).executeTakeFirst();
     if (!r) throw notFoundLink();
     return r;
   }
@@ -637,7 +644,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           ? db.selectFrom("renewalAddons").select(["id", "name", "description", "priceCents", "taxable"]).where("organizationId", "=", organizationId).where("active", "=", true).orderBy("name").execute()
           : Promise.resolve(r.selectedAddons as ChosenAddon[]),
         r.signedDocumentId ? db.selectFrom("signedDocuments").select(["signerName", "signedAt", "pdfStorageKey", "content"]).where("id", "=", r.signedDocumentId).executeTakeFirst() : undefined,
-        r.invoiceId ? db.selectFrom("invoices").select(["publicToken"]).where("id", "=", r.invoiceId).where("status", "=", "open").executeTakeFirst() : undefined,
+        r.invoiceId ? db.selectFrom("invoices").select(["id"]).where("id", "=", r.invoiceId).where("status", "=", "open").executeTakeFirst() : undefined,
       ]);
       const terms = termsOf(r);
       // What the plan adds to the offer (SW-8): from the signed agreement once signed, from the
@@ -647,9 +654,9 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const options = signedContent ? (signedContent.options ?? []) : offer ? offer.options : parsePlanOptions(r.selectedOptions);
       const coverage = signedContent ? (signedContent.coverage ?? []) : offer ? await coverageLines(db, organizationId, offer.coverage) : [];
       let pay: PublicRenewal["pay"] = null;
-      if (inv?.publicToken) {
-        const payable = await invoiceByToken(db, inv.publicToken);
-        if (amountDue(payable) > 0) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl: payUrlFor(appUrl, inv.publicToken) };
+      if (inv) {
+        const payable = await openInvoiceById(db, inv.id);
+        if (amountDue(payable) > 0) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl: payUrlFor(appUrl, inv.id) };
       }
       return {
         status: r.status,
@@ -732,7 +739,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const b = req.body;
       const meta = clientMeta(req);
       const result = await db.transaction().execute(async (trx) => {
-        const r = await trx.selectFrom("renewals").selectAll().where("publicToken", "=", req.params.token).forUpdate().executeTakeFirst();
+        const r = await trx.selectFrom("renewals").selectAll().where("id", "=", renewalIdOf(req.params.token)).forUpdate().executeTakeFirst();
         if (!r) throw notFoundLink();
         const organizationId = r.organizationId;
         if (!isSignable(r.status)) throw new HttpError(409, "not_signable", CLOSED_MESSAGE[r.status] ?? "This renewal can no longer be signed");
@@ -864,7 +871,6 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
               totalCents: 0,
               issuedOn: null,
               dueOn: null,
-              publicToken: null,
               pdfStorageKey: null,
               pdfSha256: null,
               pdfByteSize: null,
@@ -942,7 +948,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       await db.transaction().execute(async (trx) => {
-        const r = await trx.selectFrom("renewals").selectAll().where("publicToken", "=", req.params.token).forUpdate().executeTakeFirst();
+        const r = await trx.selectFrom("renewals").selectAll().where("id", "=", renewalIdOf(req.params.token)).forUpdate().executeTakeFirst();
         if (!r) throw notFoundLink();
         if (!isSignable(r.status)) throw new HttpError(409, "not_signable", CLOSED_MESSAGE[r.status] ?? "This renewal can no longer be changed");
         await decline(trx, r, req.body.reason ?? null, now(), null, req.id);
@@ -959,15 +965,13 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       const r = await byToken(req.params.token);
-      const inv = r.invoiceId ? await db.selectFrom("invoices").select("publicToken").where("id", "=", r.invoiceId).executeTakeFirst() : undefined;
-      if (!inv?.publicToken) throw unprocessable("Nothing is due on this renewal");
+      if (!r.invoiceId) throw unprocessable("Nothing is due on this renewal");
       return openCheckout(db, {
         provider,
         appUrl,
-        token: inv.publicToken,
-        inv: await invoiceByToken(db, inv.publicToken),
+        inv: await openInvoiceById(db, r.invoiceId),
         now: now(),
-        successUrl: `${renewUrlFor(appUrl, req.params.token)}?paid=1`,
+        successUrl: `${renewUrlFor(appUrl, r.id)}?paid=1`,
       });
     },
   );

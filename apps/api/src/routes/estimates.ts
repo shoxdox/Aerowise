@@ -40,6 +40,7 @@ import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
+import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import {
   acceptAndConvert,
   cancellationBlocker,
@@ -67,7 +68,6 @@ type Trx = Transaction<DB>;
 const params = z.object({ id });
 const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
 const publicLimit = { max: 30, timeWindow: "1 minute" };
-const actionLimit = { max: 10, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => `${req.ip}:${(req.params as { token?: string }).token ?? ""}` };
 const notFoundLink = () => new HttpError(404, "not_found", "This estimate link is not valid. Contact your service provider for a new one.");
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 const joinAddress = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join(", ");
@@ -87,7 +87,12 @@ const clientMeta = (req: FastifyRequest) => {
   return { ipAddress: (chain ? `${chain} (via ${req.ip})` : req.ip).slice(0, 300), userAgent: (req.headers["user-agent"] ?? "").slice(0, 500) || null };
 };
 
-export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; features: ReadonlySet<Feature>; appUrl: string; payments: PaymentsConfig }> = async (app, { db, now, features, appUrl, payments }) => {
+export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; features: ReadonlySet<Feature>; appUrl: string; payments: PaymentsConfig; linkLimits: PublicLinkLimits }> = async (
+  app,
+  { db, now, features, appUrl, payments, linkLimits },
+) => {
+  // Accepting and declining: a few tries per address (lib/rate-limits.ts).
+  const actionLimit = perAddress("estimate-action", linkLimits.actions);
   const enabled = features.has("estimates");
   const requireFeature = () => {
     if (!enabled) throw estimatesOff();
@@ -238,7 +243,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     const d = await db
       .selectFrom("estimateInvoices as ei")
       .innerJoin("invoices as i", (k) => k.onRef("i.id", "=", "ei.invoiceId").onRef("i.organizationId", "=", "ei.organizationId"))
-      .select(["i.totalCents", "i.paymentStatus", "i.status", "i.publicToken"])
+      .select(["i.id", "i.totalCents", "i.paymentStatus", "i.status"])
       .where("ei.organizationId", "=", organizationId)
       .where("ei.estimateId", "=", estimateId)
       .where("ei.role", "=", "deposit")
@@ -247,7 +252,7 @@ export const estimateRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     if (!d) return null;
     // A cancelled estimate asks for no more deposit money.
     const owed = !cancelled && d.status === "open" && (d.paymentStatus === "unpaid" || d.paymentStatus === "partial");
-    return { amountCents: d.totalCents, paymentStatus: d.paymentStatus, payUrl: owed && d.publicToken ? payUrlFor(appUrl, d.publicToken) : null };
+    return { amountCents: d.totalCents, paymentStatus: d.paymentStatus, payUrl: owed ? payUrlFor(appUrl, d.id) : null };
   }
 
   async function loadDetail(organizationId: string, estimateId: string): Promise<EstimateDetail> {

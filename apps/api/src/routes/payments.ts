@@ -1,7 +1,7 @@
 import type { Database } from "@aerowise/db";
 import { amountDue, billingSettings, billingSettingsInput, invoiceSnapshot, publicInvoice, type BillingSettings, type PublicInvoice } from "@aerowise/domain";
 import { applyStripeEvent, TestPaymentProvider, WebhookSignatureError, type WebhookEvent } from "@aerowise/payments";
-import { DemoGatedPayments, providerFor, queueQuickBooksSync } from "@aerowise/tasks";
+import { DemoGatedPayments, linkTokenId, providerFor, queueQuickBooksSync } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import { activatePaidRenewals } from "@aerowise/renewals";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -12,7 +12,8 @@ import { canPayOnline, depositClosedReason, invoiceByToken, notFoundLink, openCh
 import type { PaymentsConfig } from "../lib/invoices.ts";
 import { readForDownload } from "../lib/demo.ts";
 
-const token = z.object({ token: z.string().min(20).max(64).regex(/^[A-Za-z0-9_-]+$/) });
+// Any shape is looked at: a token that is not a signed link is simply not found (`linkTokenId`).
+const token = z.object({ token: z.string().min(1).max(200) });
 const publicLimit = { max: 30, timeWindow: "1 minute" };
 
 /**
@@ -186,7 +187,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         response: { 200: z.object({ url: z.string() }) },
       },
     },
-    async (req) => openCheckout(db, { provider, appUrl, token: req.params.token, inv: await byToken(req.params.token), now: now() }),
+    async (req) => openCheckout(db, { provider, appUrl, inv: await byToken(req.params.token), now: now() }),
   );
 
   // ---- Stripe webhook ----
@@ -251,12 +252,15 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         },
       },
       async (req) => {
-        const inv = await db
-          .selectFrom("invoices as i")
-          .innerJoin("organizations as o", "o.id", "i.organizationId")
-          .select(["i.id", "i.organizationId", "o.stripeAccountId", "o.demo"])
-          .where("i.publicToken", "=", req.params.token)
-          .executeTakeFirst();
+        const invoiceId = linkTokenId("pay", req.params.token);
+        const inv = invoiceId
+          ? await db
+              .selectFrom("invoices as i")
+              .innerJoin("organizations as o", "o.id", "i.organizationId")
+              .select(["i.id", "i.organizationId", "o.stripeAccountId", "o.demo"])
+              .where("i.id", "=", invoiceId)
+              .executeTakeFirst()
+          : undefined;
         if (!inv?.stripeAccountId || (gated && !inv.demo)) throw notFoundLink();
         const session = await db
           .selectFrom("checkoutSessions")

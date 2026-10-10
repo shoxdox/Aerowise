@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { addMonths, anchoredVisitsWithin, buildAnchoredSchedule, buildTermSchedule, contractState, termEndOn, visitsWithin } from "./schedule.ts";
 
+describe("termEndOn", () => {
+  it("ends the day before the anniversary", () => {
+    expect(termEndOn("2026-03-01", 12)).toBe("2027-02-28");
+    expect(termEndOn("2026-08-31", 24)).toBe("2028-08-30");
+    expect(termEndOn("2026-11-15", 3)).toBe("2027-02-14");
+  });
+  it("runs to the month's end when the anniversary date does not exist, so a renewal chain never drifts", () => {
+    expect(termEndOn("2024-02-29", 12)).toBe("2025-02-28");
+    expect(termEndOn("2025-03-01", 12)).toBe("2026-02-28");
+    expect(termEndOn("2026-01-31", 1)).toBe("2026-02-28");
+    expect(termEndOn("2026-01-31", 3)).toBe("2026-04-30");
+    expect(termEndOn("2028-01-31", 1)).toBe("2028-02-29");
+  });
+});
+
 describe("addMonths", () => {
   it("clamps to the end of shorter months", () => {
     expect(addMonths("2026-01-31", 1)).toBe("2026-02-28");

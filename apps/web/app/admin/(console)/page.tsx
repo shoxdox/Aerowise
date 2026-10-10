@@ -200,9 +200,10 @@ function PlanEditor({
   );
 }
 
-/** Deleting an organization's data on its request: the admin types its name to confirm. */
+/** Deleting an organization's data on its request: the admin types its name and their own password to confirm. */
 function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: (result: OrganizationErasure) => void; onCancel: () => void }) {
   const [typed, setTyped] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -211,7 +212,7 @@ function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: 
     setBusy(true);
     setError(null);
     try {
-      onDone(await api<OrganizationErasure>(`/admin/organizations/${org.id}/erase`, { method: "POST", body: { confirmName: typed } }));
+      onDone(await api<OrganizationErasure>(`/admin/organizations/${org.id}/erase`, { method: "POST", body: { confirmName: typed, password } }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete the data");
       setBusy(false);
@@ -236,9 +237,13 @@ function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: 
         </span>
         <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
       </label>
+      <label>
+        <span>Your password</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+      </label>
       {error && <p className="error">{error}</p>}
       <div className="row">
-        <button type="submit" className="danger" disabled={busy || typed.trim() !== org.name.trim()}>
+        <button type="submit" className="danger" disabled={busy || typed.trim() !== org.name.trim() || password.length === 0}>
           {busy ? "Deleting…" : "Delete all data"}
         </button>
         <button type="button" className="link" onClick={onCancel}>

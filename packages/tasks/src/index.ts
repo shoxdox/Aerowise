@@ -35,7 +35,6 @@ export {
   RENEWAL_EMAIL,
   RENEWAL_SWEEP,
   renderSignedAgreement,
-  renewUrlFor,
   runRenewalSweep,
   scheduleRenewalSweeps,
   sendRenewalEmail,
@@ -62,7 +61,8 @@ export {
   queueEstimateExpiry,
   sendEstimateEmail,
 } from "./estimate-task.ts";
-export { billingEmail, payUrlFor, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
+export { configureLinkTokens, LINK_TOKEN_PATTERN, linkToken, linkTokenId, payUrlFor, renewUrlFor, type LinkKind } from "./links.ts";
+export { billingEmail, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
 
 export interface TaskContext {
   db: Database;
