@@ -22,12 +22,14 @@ test("a visit started with location denied says so on the phone and reaches the 
     await page.waitForURL("**/tech");
     await expect(page.locator(".stop-card").first()).toBeVisible();
 
-    // A stop of its own on Tess's route today, so the seeded route is left as it is.
+    // A stop of its own on Tess's route today, so the seeded route is left as it is. It has
+    // coordinates (no worker geocodes sites in these tests) because the map specs expect every
+    // stop on the route to have a marker.
     const office = (await browser.newContext()).request;
     expect((await office.post("/api/auth/login", { data: { email: "owner@example.com", password: "aerowise-dev" } })).ok()).toBe(true);
     const customer = await (await office.post("/api/customers", { data: { displayName: "Location denied check" } })).json();
     const address = "78 Fixture Rd";
-    const site = await (await office.post(`/api/customers/${customer.id}/sites`, { data: { addressLine1: address, city: "Blanco", state: "TX", postalCode: "78606", county: "Example County", permitNumber: "DEMO-078078" } })).json();
+    const site = await (await office.post(`/api/customers/${customer.id}/sites`, { data: { addressLine1: address, city: "Blanco", state: "TX", postalCode: "78606", county: "Example County", permitNumber: "DEMO-078078", lat: 30.1, lng: -98.42 } })).json();
     expect((await office.post(`/api/sites/${site.id}/systems`, { data: { manufacturer: "Acme", chlorinationMethod: "tablet" } })).status()).toBe(201);
     const plan = ((await (await office.get("/api/plans")).json()).items as { id: string; name: string }[]).find((p) => p.name === "Residential annual")!;
     const { today } = (await (await office.get("/api/obligations/due?limit=1")).json()) as { today: string };
