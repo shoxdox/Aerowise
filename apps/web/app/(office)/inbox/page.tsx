@@ -240,9 +240,11 @@ function HeldInspectionAction({ e, onDone }: { e: InboxException; onDone: () => 
   }
   return (
     <span className="row">
-      <button onClick={() => void accept()} disabled={busy}>
-        {busy ? "Accepting…" : "Accept as the inspection"}
-      </button>
+      {e.canAccept !== false && (
+        <button onClick={() => void accept()} disabled={busy}>
+          {busy ? "Accepting…" : "Accept as the inspection"}
+        </button>
+      )}
       <button className="secondary" onClick={() => setAside(true)}>
         Set aside
       </button>

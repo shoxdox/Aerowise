@@ -1,7 +1,7 @@
 "use client";
 
 import type { Inspection, InspectionTemplate, PumpingFieldData, Stop, WorkStop } from "@aerowise/domain";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IntroCard } from "@/components/Intro";
 import { InspectionForm } from "@/components/tech/InspectionForm";
 import { DisposalScreen } from "@/components/tech/PumpOut";
@@ -170,6 +170,40 @@ export default function TechApp() {
     });
   }, [refresh, refreshLocal, showEnded]);
 
+  // "Sign in again" is only ever a past answer: a send refused under an earlier sign-in, or a page
+  // the phone kept from before a sign-out and shows again on Back or Forward (Android's
+  // back/forward cache restores it as it was, with no new load). Whenever the page is shown again,
+  // or comes back to the front while it still asks for a sign-in, the server is asked again; a valid
+  // session clears the banner, switches to whoever is signed in now and sends what waits.
+  const needsSignInRef = useRef(needsSignIn);
+  useEffect(() => {
+    needsSignInRef.current = needsSignIn;
+  }, [needsSignIn]);
+  const checking = useRef(false);
+  const recheck = useCallback(async () => {
+    if (checking.current) return;
+    checking.current = true;
+    try {
+      await refresh();
+    } finally {
+      checking.current = false;
+    }
+  }, [refresh]);
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void recheck();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && needsSignInRef.current) void recheck();
+    };
+    window.addEventListener("pageshow", onShow);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pageshow", onShow);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [recheck]);
+
   async function start(stop: Stop) {
     if (!template) return;
     setStartNotice(null);
@@ -314,7 +348,7 @@ export default function TechApp() {
           Sign out
         </button>
       </header>
-      <SyncBanner state={sync} failures={failures} needsSignIn={needsSignIn} onRetry={() => void syncNow()} onRetryFailed={() => void retryFailed().then(refreshLocal)} />
+      <SyncBanner state={sync} failures={failures} needsSignIn={needsSignIn} onRetry={() => void (needsSignIn ? recheck() : syncNow())} onRetryFailed={() => void retryFailed().then(refreshLocal)} />
       {(others.length > 0 || endedElsewhere.length > 0) && (
         <div className="sync-area" data-testid="other-sign-ins">
           {others.map(({ tenant, pending }) => (

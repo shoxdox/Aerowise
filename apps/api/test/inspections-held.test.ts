@@ -69,6 +69,7 @@ describe("inspections held for the office", () => {
     const done = await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values: completeValues() }));
     expect(done.statusCode).toBe(202);
     const conflictId = done.json().conflictId as string;
+    expect((await s.api.get("/inbox")).json().items.find((i: { kind: string }) => i.kind === "inspection_held")).toMatchObject({ canAccept: true });
 
     // With no booking for the visit, there is nothing to accept it onto.
     const refused = await s.api.post(`/inspections/conflicts/${conflictId}/attach`, {});
@@ -98,6 +99,10 @@ describe("inspections held for the office", () => {
     expect(held.statusCode).toBe(202);
     expect(held.json()).toMatchObject({ reason: "office_completed" });
     const conflictId = held.json().conflictId as string;
+    // The inbox offers only "Set aside" (phone test of October 12, finding 2).
+    const item = (await s.api.get("/inbox")).json().items.find((i: { kind: string }) => i.kind === "inspection_held");
+    expect(item).toMatchObject({ canAccept: false, target: { id: conflictId } });
+    expect(item.detail).toContain("already has another inspection");
     // Accepting would duplicate the visit's inspection; it is set aside instead, and the reason is kept.
     expect((await s.api.post(`/inspections/conflicts/${conflictId}/attach`, {})).json().error).toBe("visit_has_inspection");
     expect((await s.api.post(`/inspections/conflicts/${conflictId}/dismiss`, { reason: "Duplicate of the other technician's visit" })).json()).toMatchObject({ status: "dismissed", resolutionNote: "Duplicate of the other technician's visit" });

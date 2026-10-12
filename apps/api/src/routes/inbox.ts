@@ -118,7 +118,9 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "ic.siteId").onRef("s.organizationId", "=", "ic.organizationId"))
       .innerJoin("customers as cu", (j) => j.onRef("cu.id", "=", "s.customerId").onRef("cu.organizationId", "=", "s.organizationId"))
       .innerJoin("users as u", "u.id", "ic.technicianUserId")
-      .select(["ic.id", "ic.reason", "ic.createdAt", sql<string | null>`ic.payload ->> 'status'`.as("phoneStatus"), "s.id as siteId", "s.addressLine1", "s.city", "cu.id as customerId", "cu.displayName", "u.name as technicianName"])
+      // The visit's own inspection, when it is another one: then this copy can only be set aside (attach answers 409).
+      .leftJoin("inspections as vi", (j) => j.onRef("vi.jobId", "=", "ic.jobId").onRef("vi.organizationId", "=", "ic.organizationId").onRef("vi.offlineClientId", "!=", "ic.offlineClientId"))
+      .select(["vi.id as otherInspectionId", "ic.id", "ic.reason", "ic.createdAt", sql<string | null>`ic.payload ->> 'status'`.as("phoneStatus"), "s.id as siteId", "s.addressLine1", "s.city", "cu.id as customerId", "cu.displayName", "u.name as technicianName"])
       .where("ic.organizationId", "=", organizationId)
       .where("ic.status", "=", "held")
       .orderBy("ic.createdAt")
@@ -133,7 +135,12 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "inspection_held" as const,
       severity: "high" as const,
       title: `${r.technicianName}'s inspection is held: ${INSPECTION_CONFLICT_REASON_LABELS[r.reason].toLowerCase()} while the phone was offline`,
-      detail: `${r.phoneStatus === "completed" ? "Finished on the phone" : "Not finished on the phone"} and sent ${r.createdAt.toISOString().slice(0, 10)}. Accept it as the visit's inspection, or set it aside with a reason; its photos are kept either way.`,
+      detail: `${r.phoneStatus === "completed" ? "Finished on the phone" : "Not finished on the phone"} and sent ${r.createdAt.toISOString().slice(0, 10)}. ${
+        r.otherInspectionId
+          ? "The visit already has another inspection, so set this one aside with a reason; its photos are kept."
+          : "Accept it as the visit's inspection, or set it aside with a reason; its photos are kept either way."
+      }`,
+      canAccept: !r.otherInspectionId,
     }));
   }
 

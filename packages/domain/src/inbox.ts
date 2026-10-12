@@ -74,6 +74,8 @@ export const inboxException = z.object({
   target: z.object({ type: z.enum(["filing", "inspection", "inspection_conflict", "issue", "obligation", "contract", "site", "invoice", "quickbooks", "renewal", "service_request", "sms_message"]), id }),
   /** An issue or request already turned into a work order: its link instead of "Turn into work order". */
   workOrder: workOrderLink.nullable().optional(),
+  /** A held inspection: false when the visit already has another inspection, so it can only be set aside. */
+  canAccept: z.boolean().optional(),
 });
 export type InboxException = z.infer<typeof inboxException>;
 
