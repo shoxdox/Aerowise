@@ -37,7 +37,18 @@ export const COVERAGE = {
 };
 
 export const PRICING = {
-  title: "Design-partner pricing",
+  title: "Pricing",
+  /** Shown beside the configured price. The founder rate is set per company in /admin when it starts paying. */
+  founder: "The first five companies pay $0.25 per active contract per month, same minimum, for as long as they stay.",
+  note: "No card to start. Your data is yours to download at any time, including the day you leave.",
+};
+
+export const ABOUT = {
+  title: "Who's behind this",
+  body: "I'm Justin. I build software, I'm in Texas, and I'm not from the septic industry. I built Aerowise because the rules for aerobic maintenance here are specific enough that general scheduling software doesn't handle them, and the companies that live by them are small enough that the big vendors won't bother. No maintenance company has used it yet; the first few will shape it, and I do the setup for them. Call or write any time.",
+  phone: "(504) 435-6246",
+  phoneHref: "tel:+15044356246",
+  email: "justin@deshain.com",
 };
 
 export const RESPONSIBILITY =
@@ -63,7 +74,6 @@ export const DEMO = {
  */
 export const DATA_HANDLING = {
   title: "How Aerowise handles your data",
-  draftNote: "Draft: this page is a placeholder. The final statement is still being written.",
   sections: [
     {
       id: "what",
@@ -83,7 +93,7 @@ export const DATA_HANDLING = {
     {
       id: "contact",
       title: "Questions",
-      body: "Contact details will be listed here.",
+      body: "Justin, (504) 435-6246, justin@deshain.com. Questions about your data, an export or a deletion go to that address.",
     },
   ],
 };

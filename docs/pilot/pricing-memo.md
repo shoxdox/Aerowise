@@ -1,6 +1,6 @@
 # Pricing decision memo
 
-Written October 12, 2026, for Justin. Nothing in the code or the environment has been changed; the last section says exactly what changes once you choose.
+Written October 12, 2026, for Justin. **Decided the same evening: option A.** The defaults in `packages/domain/src/subscription.ts` are now 50 and 5000 cents, the homepage shows the founder offer, and the decision is in `docs/DECISIONS.md`. The memo is kept as written for the reasoning.
 
 ## The numbers on the table
 

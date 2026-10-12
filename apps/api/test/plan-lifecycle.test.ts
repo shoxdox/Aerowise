@@ -80,7 +80,7 @@ describe("plan reminders", () => {
     expect(sent.map((m) => m.to)).not.toContain(formerOwner.email);
     expect(sent[0]).toMatchObject({ organizationId: a.org.id, from: "accounts@example.com" });
     expect(sent[0]!.text).toContain("Org A's Aerowise trial ends in 14 days, on 2026-03-31.");
-    expect(sent[0]!.text).toContain("$1.50 per active contract per month, with a $99.00 monthly minimum");
+    expect(sent[0]!.text).toContain("$0.50 per active contract per month, with a $50.00 monthly minimum");
     expect(sent[0]!.text).toContain("Add a payment method before then");
     expect(sent[0]!.text).toContain("https://app.example.com/settings/subscription");
     // Still a trial: reminders never change the plan.

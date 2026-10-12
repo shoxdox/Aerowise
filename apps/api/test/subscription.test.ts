@@ -40,7 +40,7 @@ describe("plans in /admin", () => {
     expect(created.map((e) => (e.changes as { plan: { state: string } }).plan.state).sort()).toEqual(["design_partner", "trial"]);
 
     const list = (await admin.get("/admin/organizations")).json();
-    expect(list.defaults).toEqual({ trialDays: 30, designPartnerDays: 90, pricePerContractCents: 150, monthlyMinimumCents: 9900, pastDueGraceDays: 14 });
+    expect(list.defaults).toEqual({ trialDays: 30, designPartnerDays: 90, pricePerContractCents: 50, monthlyMinimumCents: 5000, pastDueGraceDays: 14 });
     expect(list.items.map((o: { plan: { state: string } }) => o.plan.state)).toEqual(["trial", "design_partner"]);
   });
 
@@ -147,14 +147,14 @@ describe("read-only organizations", () => {
 
 describe("subscription configuration", () => {
   it("reads prices and free-period lengths from the environment", () => {
-    expect(subscriptionConfigFromEnv({})).toEqual({ trialDays: 30, designPartnerDays: 90, pricePerContractCents: 150, monthlyMinimumCents: 9900, pastDueGraceDays: 14 });
+    expect(subscriptionConfigFromEnv({})).toEqual({ trialDays: 30, designPartnerDays: 90, pricePerContractCents: 50, monthlyMinimumCents: 5000, pastDueGraceDays: 14 });
     expect(
       subscriptionConfigFromEnv({ AEROWISE_TRIAL_DAYS: "14", AEROWISE_PRICE_PER_CONTRACT_CENTS: "200", AEROWISE_MONTHLY_MINIMUM_CENTS: "", AEROWISE_PAST_DUE_GRACE_DAYS: "7" }),
     ).toEqual({
       trialDays: 14,
       designPartnerDays: 90,
       pricePerContractCents: 200,
-      monthlyMinimumCents: 9900,
+      monthlyMinimumCents: 5000,
       pastDueGraceDays: 7,
     });
     expect(() => subscriptionConfigFromEnv({ AEROWISE_MONTHLY_MINIMUM_CENTS: "99.00" })).toThrow(/whole number/);
@@ -174,7 +174,7 @@ describe("owner subscription page", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       plan: { state: "trial", startsOn: "2026-03-01", endsOn: "2026-03-31", daysLeft: 30, readOnly: false },
-      price: { pricePerContractCents: 150, monthlyMinimumCents: 4900, founder: true },
+      price: { pricePerContractCents: 50, monthlyMinimumCents: 4900, founder: true },
       estimate: { countedOn: "2026-03-01", activeContracts: 1, amountCents: 4900, charged: false },
       paymentMethod: null,
       provider: "test",
@@ -233,9 +233,9 @@ describe("owner subscription page", () => {
         startsOn: "2026-03-01",
         endsOn: "2026-03-31",
         activeContracts: 1,
-        pricePerContractCents: 150,
-        monthlyMinimumCents: 9900,
-        amountCents: 9900,
+        pricePerContractCents: 50,
+        monthlyMinimumCents: 5000,
+        amountCents: 5000,
         status: "open",
         hostedInvoiceUrl: expect.stringMatching(/^https:\/\/invoice\.stripe\.test\//),
       },

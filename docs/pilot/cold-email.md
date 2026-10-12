@@ -32,7 +32,7 @@ Subject: `Re: [County] four-month reports`
 
 One follow-up, then I'll leave you alone.
 
-Two things I didn't say last week. The first few companies get a founder price that doesn't go up, and the first real [County] report goes out only after you've read it against one the county already accepted. If the county won't take it, you've lost an hour.
+Two things I didn't say last week. After the free ninety days it's $0.50 per contract a month, and the first five companies pay $0.25 for as long as they stay. And the first real [County] report goes out only after you've read it against one the county already accepted. If the county won't take it, you've lost an hour.
 
 What I need back: a technician using the phone app for about an hour a week, and you reading the report and contract wording once.
 
@@ -44,11 +44,11 @@ Justin
 [phone]
 ```
 
-(104 words.)
+(114 words.)
 
 ## Notes
 
 - One-line adjustment after a phone call: replace the first sentence of email 1 with "Good talking to you this morning." and cut the last paragraph.
 - Do not attach the one-pager to the first email; offer it in the follow-up only if they replied.
-- "Founder price that doesn't go up" is a promise. Decide the number in [pricing-memo.md](pricing-memo.md) before sending email 2 to anyone.
+- The $0.25 founder rate is a promise for as long as they stay; it is set per company in `/admin` when they start paying. Ready-to-send versions for the prospects with a published business email are in [cold-emails-ready.md](cold-emails-ready.md).
 - The demo link is the staging site, which CI redeploys on every green push to `main` (`aee751a`, with the technician app's sign-in banner fix, went live October 12).

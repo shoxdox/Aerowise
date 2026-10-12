@@ -4,7 +4,7 @@ import type { PublicOverview } from "@aerowise/domain";
 import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { DemoRequestForm } from "@/components/marketing/DemoRequestForm";
-import { COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO } from "@/components/marketing/copy";
+import { ABOUT, COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO } from "@/components/marketing/copy";
 import { useLoad } from "@/components/useLoad";
 import { useDemoMode } from "@/lib/demo";
 import { money } from "@/lib/format";
@@ -100,8 +100,19 @@ export default function MarketingPage() {
                 After that, {money(data.pricing.pricePerContractCents)} per active contract per month, with a {money(data.pricing.monthlyMinimumCents)} monthly
                 minimum.
               </p>
+              <p>{PRICING.founder}</p>
+              <p className="muted">{PRICING.note}</p>
             </div>
           )}
+        </section>
+
+        <section className="stack" aria-labelledby="about">
+          <h2 id="about">{ABOUT.title}</h2>
+          <p>{ABOUT.body}</p>
+          <p className="row">
+            <a href={ABOUT.phoneHref}>{ABOUT.phone}</a>
+            <a href={`mailto:${ABOUT.email}`}>{ABOUT.email}</a>
+          </p>
         </section>
 
         <section className="stack" id="demo" aria-labelledby="demo-title">

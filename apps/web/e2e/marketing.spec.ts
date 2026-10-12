@@ -23,7 +23,10 @@ test("the marketing page shows signed out, with coverage from the rulesets and c
 
   // The defaults from the subscription config (the e2e API sets none).
   await expect(page.getByText("Free for 90 days")).toBeVisible();
-  await expect(page.getByText("$1.50 per active contract per month, with a $99.00 monthly minimum.")).toBeVisible();
+  await expect(page.getByText("$0.50 per active contract per month, with a $50.00 monthly minimum.")).toBeVisible();
+  await expect(page.getByText(/first five companies pay \$0\.25/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Who's behind this" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "justin@deshain.com" })).toBeVisible();
 
   await page.getByRole("link", { name: "How we handle your data" }).click();
   await expect(page).toHaveURL(/\/data-handling$/);

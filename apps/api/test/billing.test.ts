@@ -75,9 +75,9 @@ describe("monthly active-contract count", () => {
       countedOn: "2026-03-01",
       activeContracts: 2,
       subscriptionState: "active",
-      pricePerContractCents: 150,
-      monthlyMinimumCents: 9900,
-      amountCents: 9900,
+      pricePerContractCents: 50,
+      monthlyMinimumCents: 5000,
+      amountCents: 5000,
     });
     expect(rowB.activeContracts).toBe(1);
   });
@@ -126,10 +126,10 @@ describe("monthly amount", () => {
     expect(org.billingCustomerId).toBe(provider.customers[0]?.customerId);
 
     const [invoice] = provider.invoices;
-    expect(invoice).toMatchObject({ description: "Aerowise, March 2026", totalCents: 9900, metadata: { organizationId: a.org.id } });
+    expect(invoice).toMatchObject({ description: "Aerowise, March 2026", totalCents: 5000, metadata: { organizationId: a.org.id } });
     expect(invoice?.lines).toEqual([
-      { description: "Active maintenance contracts at $1.50 each", quantity: 2, unitAmountCents: 150 },
-      { description: "Monthly minimum of $99.00", quantity: 1, unitAmountCents: 9600 },
+      { description: "Active maintenance contracts at $0.50 each", quantity: 2, unitAmountCents: 50 },
+      { description: "Monthly minimum of $50.00", quantity: 1, unitAmountCents: 4900 },
     ]);
     const [period] = await periods(ctx);
     expect(period).toMatchObject({ status: "open", provider: "test", providerInvoiceId: invoice?.invoiceId, hostedInvoiceUrl: expect.stringContaining(invoice!.invoiceId) });

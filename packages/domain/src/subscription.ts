@@ -55,8 +55,8 @@ export interface SubscriptionConfig {
 export const DEFAULT_SUBSCRIPTION_CONFIG: SubscriptionConfig = {
   trialDays: 30,
   designPartnerDays: 90,
-  pricePerContractCents: 150,
-  monthlyMinimumCents: 9900,
+  pricePerContractCents: 50,
+  monthlyMinimumCents: 5000,
   pastDueGraceDays: 14,
 };
 

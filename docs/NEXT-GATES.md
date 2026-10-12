@@ -51,7 +51,7 @@ Offer the first five: ninety days free, their spreadsheet imported for them, and
 
 What to have ready for that call, all of it on staging after gate 1: the demo, a prospect demo in their county (`/admin`, prospect demos), and a one-page answer to "how do I file in my county with this" for their county.
 
-## 5. Decide pricing (a decision, then ten minutes of configuration) — memo in [pilot/pricing-memo.md](pilot/pricing-memo.md)
+## 5. Decide pricing (a decision, then ten minutes of configuration) — done October 12: option A, see [pilot/pricing-memo.md](pilot/pricing-memo.md) and the decisions log
 
 Fieldbase On-Site, the direct competitor, is $50 a month for up to 100 contracts (Solo) and $50 plus $0.50 per active contract (Teams). Aerowise's page says $1.50 per contract with a $99 minimum: three times the incumbent for a product no provider has used.
 
