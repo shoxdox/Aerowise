@@ -19,6 +19,12 @@ export const coverageItem = z.object({
    * document or a published rule never shows here.
    */
   confirmedWithAuthority: z.array(z.string()),
+  /**
+   * How a report reaches this authority from Aerowise: `email` (sent when the office presses
+   * Send), `portal` (prepared for the office to upload on the authority's own page), or
+   * `prepared` (no provider channel published; prepared for the office to send as it does today).
+   */
+  filing: z.enum(["email", "portal", "prepared"]),
 });
 export type CoverageItem = z.infer<typeof coverageItem>;
 

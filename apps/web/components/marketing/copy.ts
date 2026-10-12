@@ -9,6 +9,15 @@ export const HERO = {
   body: "Aerowise keeps each maintenance contract's visits on the county's schedule, puts the inspection on your technician's phone (no signal needed), and prepares the report with your licence on it. You read it and press Send.",
   /** Three plain facts under the buttons. Each must stay true; the first is counted from the rulesets. */
   facts: ["Texas authorities' rules built in", "Works with no signal on the phone", "Free for 90 days, no card"],
+  /** The real inspection form, captured from the demo company. */
+  shot: { src: "/marketing/phone-inspection.png", alt: "The technician's inspection form on a phone: Aeration section with Aerator pass, air pressure, air filter and diffuser", caption: "The inspection form on the technician's phone, from the demo company." },
+};
+
+/** The office screens, captured from the demo company. */
+export const OFFICE = {
+  title: "The office side",
+  body: "One list of what is due, by county. Each finished inspection becomes a report with the authority's required fields and your licence, and the filing is not done until the authority's acknowledgment is recorded.",
+  shot: { src: "/marketing/office-due.png", alt: "The office's Due page: visits and reports due, each with its county deadline", caption: "The Due list in the office, from the demo company." },
 };
 
 export const PROBLEM = {
@@ -43,7 +52,12 @@ export const STEPS = {
 
 export const COVERAGE = {
   title: "County coverage",
-  intro: "Each authority's rules are built from its own published order and marked in progress until that authority has confirmed them. Where one publishes an inbox, Aerowise emails the report when you press Send; everywhere else it prepares the report for you to send as you do today, and keeps the record.",
+  intro: "Each authority's rules are built from its own published order, and marked in progress until that authority has confirmed them. What happens to a finished report depends on what the authority publishes:",
+  groups: {
+    email: { label: "Emailed when you press Send", note: "The authority publishes an inbox for reports." },
+    portal: { label: "You upload it on the authority's page", note: "Aerowise prepares the file and records the upload." },
+    prepared: { label: "Prepared for you to send as you do today", note: "No provider channel is published; Aerowise keeps the record." },
+  },
   draftLabel: "In progress",
   draftNote: "Built from public sources; being confirmed with the authority.",
   confirmedLabel: "Confirmed with the authority so far",
@@ -61,9 +75,10 @@ export const PRICING = {
   note: "No card to start. Your data is yours to download at any time, including the day you leave.",
 };
 
-export const ABOUT = {
-  title: "Who's behind this",
-  body: "I'm Justin. I build software, I'm in Texas, and I'm not from the septic industry. I built Aerowise because the rules for aerobic maintenance here are specific enough that general scheduling software doesn't handle them, and the companies that live by them are small enough that the big vendors won't bother. No maintenance company has used it yet; the first few will shape it, and I do the setup for them. Call or write any time.",
+/** Who to call. Shown with the demo form and in the footer, not as a section of its own. */
+export const CONTACT = {
+  line: "Or call Justin, who built it:",
+  footer: "Built in Texas by Justin. No maintenance company has used it yet; the first few will shape it.",
   phone: "(504) 435-6246",
   phoneHref: "tel:+15044356246",
   email: "justin@deshain.com",
@@ -79,7 +94,7 @@ export const TRY_DEMO = {
 
 export const DEMO = {
   title: "Ask for a demo",
-  intro: "Tell me about your company and I'll set up a walkthrough with your own counties, or call the number above.",
+  intro: "Tell me about your company and I'll set up a walkthrough with your own counties.",
   button: "Ask for a demo",
   thanks: "Thanks. We got your request and will be in touch soon.",
   tooMany: "We already have a few requests from you. We will be in touch soon.",

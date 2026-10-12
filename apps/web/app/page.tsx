@@ -1,22 +1,26 @@
 "use client";
 
-import type { PublicOverview } from "@aerowise/domain";
+import type { CoverageItem, PublicOverview } from "@aerowise/domain";
 import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { DemoRequestForm } from "@/components/marketing/DemoRequestForm";
-import { ABOUT, COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO } from "@/components/marketing/copy";
+import { CONTACT, COVERAGE, DEMO, HERO, OFFICE, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO } from "@/components/marketing/copy";
 import { useLoad } from "@/components/useLoad";
 import { useDemoMode } from "@/lib/demo";
 import { money } from "@/lib/format";
 
+const FILING_GROUPS = ["email", "portal", "prepared"] as const;
+
 // The public marketing page. Signed-in users go straight to /inbox from sign-in; anyone
 // who lands here can reach the office with "Sign in". The county list and the prices come
-// from the API, so the page never claims coverage or a price the deployment does not have.
+// from the API, so the page never claims coverage or a price the deployment does not have,
+// and the screenshots are captures of the demo company, not mock-ups.
 export default function MarketingPage() {
   const { data, error } = useLoad<PublicOverview>("/public/overview");
   // /demo only answers on the demo deployment, so the link is shown only there, and first.
   const tryDemo = useDemoMode();
   const authorities = data?.coverage.length ?? 0;
+  const groups = FILING_GROUPS.map((filing) => ({ filing, items: (data?.coverage ?? []).filter((c) => c.filing === filing) })).filter((g) => g.items.length > 0);
   return (
     <div className="marketing">
       <header className="topbar">
@@ -27,25 +31,31 @@ export default function MarketingPage() {
         <Link href="/login">Sign in</Link>
       </header>
       <main className="page stack">
-        <section className="hero stack">
-          <p className="eyebrow">{HERO.eyebrow}</p>
-          <h1>{HERO.title}</h1>
-          <p className="lead">{HERO.body}</p>
-          <div className="cta-row">
-            {tryDemo && (
-              <a className="button cta" href="/demo" data-testid="try-demo">
-                {TRY_DEMO.button}
+        <section className="hero">
+          <div className="hero-text stack">
+            <p className="eyebrow">{HERO.eyebrow}</p>
+            <h1>{HERO.title}</h1>
+            <p className="lead">{HERO.body}</p>
+            <div className="cta-row">
+              {tryDemo && (
+                <a className="button cta" href="/demo" data-testid="try-demo">
+                  {TRY_DEMO.button}
+                </a>
+              )}
+              <a className={`button cta${tryDemo ? " secondary" : ""}`} href="#demo">
+                {DEMO.button}
               </a>
-            )}
-            <a className={`button cta${tryDemo ? " secondary" : ""}`} href="#demo">
-              {DEMO.button}
-            </a>
+            </div>
+            <ul className="facts" aria-label="In short">
+              {HERO.facts.map((f, i) => (
+                <li key={f}>{i === 0 && authorities > 0 ? `${authorities} ${f}` : f}</li>
+              ))}
+            </ul>
           </div>
-          <ul className="facts" aria-label="In short">
-            {HERO.facts.map((f, i) => (
-              <li key={f}>{i === 0 && authorities > 0 ? `${authorities} ${f}` : f}</li>
-            ))}
-          </ul>
+          <figure className="shot phone">
+            <img src={HERO.shot.src} alt={HERO.shot.alt} width={390} height={780} />
+            <figcaption className="muted small">{HERO.shot.caption}</figcaption>
+          </figure>
         </section>
 
         <section className="stack" aria-labelledby="problem">
@@ -70,15 +80,24 @@ export default function MarketingPage() {
           <h2 id="how">{STEPS.title}</h2>
           <ol className="how-steps">
             {STEPS.items.map((s, i) => (
-              <li key={s.title} className="card stack">
+              <li key={s.title} className="stack">
                 <span className="step-number" aria-hidden="true">
                   {i + 1}
                 </span>
                 <strong>{s.title}</strong>
-                <span>{s.body}</span>
+                <span className="muted">{s.body}</span>
               </li>
             ))}
           </ol>
+        </section>
+
+        <section className="stack" aria-labelledby="office">
+          <h2 id="office">{OFFICE.title}</h2>
+          <p className="lead-small">{OFFICE.body}</p>
+          <figure className="shot wide">
+            <img src={OFFICE.shot.src} alt={OFFICE.shot.alt} width={1280} height={595} />
+            <figcaption className="muted small">{OFFICE.shot.caption}</figcaption>
+          </figure>
         </section>
 
         <section className="stack" aria-labelledby="coverage">
@@ -89,29 +108,22 @@ export default function MarketingPage() {
           <p className="muted">{COVERAGE.intro}</p>
           {error && <p className="error">{error}</p>}
           {data && data.coverage.length === 0 && <p>{COVERAGE.empty}</p>}
-          {data && data.coverage.length > 0 && (
-            <ul className="coverage" aria-label="Authorities covered">
-              {data.coverage.map((c) => (
-                <li key={c.key} data-key={c.key}>
-                  <span className="county">{c.counties.length === 1 ? `${c.counties[0]} County` : `${c.counties.join(", ")} counties`}</span>
-                  <strong>{c.authorityName}</strong>
-                  <span className="badges">
-                    {c.verified ? (
-                      <VerifiedBadge verified={c.verified} />
-                    ) : (
-                      <span className="badge warn" title={COVERAGE.draftNote}>
-                        {COVERAGE.draftLabel}
-                      </span>
-                    )}
-                  </span>
-                  {c.confirmedWithAuthority.length > 0 && (
-                    <span className="small">
-                      {COVERAGE.confirmedLabel}: {c.confirmedWithAuthority.map((l, i) => (i === 0 ? l : l.toLowerCase())).join(", ")}
-                    </span>
-                  )}
-                </li>
+          {groups.length > 0 && (
+            <div className="coverage-groups" id="coverage-groups">
+              {groups.map((g) => (
+                <div key={g.filing} className={`coverage-group stack ${g.filing}`}>
+                  <h3>
+                    {COVERAGE.groups[g.filing].label} <span className="muted count">({g.items.length})</span>
+                  </h3>
+                  <p className="muted small">{COVERAGE.groups[g.filing].note}</p>
+                  <ul className="coverage" aria-label={`Authorities covered: ${COVERAGE.groups[g.filing].label.toLowerCase()}`}>
+                    {g.items.map((c) => (
+                      <CoverageRow key={c.key} item={c} />
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
           <p className="muted small">{COVERAGE.notYours}</p>
         </section>
@@ -136,28 +148,25 @@ export default function MarketingPage() {
           )}
         </section>
 
-        <section className="stack" aria-labelledby="about">
-          <h2 id="about">{ABOUT.title}</h2>
-          <div className="card stack about">
-            <p>{ABOUT.body}</p>
-            <p className="row">
-              <a className="button secondary" href={ABOUT.phoneHref}>
-                {ABOUT.phone}
+        <section className="stack demo-section" id="demo" aria-labelledby="demo-title">
+          <h2 id="demo-title">{DEMO.title}</h2>
+          <p className="muted">{DEMO.intro}</p>
+          <div className="demo-grid">
+            <DemoRequestForm />
+            <div className="stack contact">
+              <p className="muted">{CONTACT.line}</p>
+              <a className="button secondary" href={CONTACT.phoneHref}>
+                {CONTACT.phone}
               </a>
-              <a className="button secondary" href={`mailto:${ABOUT.email}`}>
-                {ABOUT.email}
+              <a className="button secondary" href={`mailto:${CONTACT.email}`}>
+                {CONTACT.email}
               </a>
-            </p>
+            </div>
           </div>
         </section>
 
-        <section className="stack" id="demo" aria-labelledby="demo-title">
-          <h2 id="demo-title">{DEMO.title}</h2>
-          <p className="muted">{DEMO.intro}</p>
-          <DemoRequestForm />
-        </section>
-
         <footer className="muted small stack">
+          <span>{CONTACT.footer}</span>
           <span>{RESPONSIBILITY}</span>
           <span className="row">
             <Link href="/terms">Terms of service</Link>
@@ -167,5 +176,28 @@ export default function MarketingPage() {
         </footer>
       </main>
     </div>
+  );
+}
+
+function CoverageRow({ item: c }: { item: CoverageItem }) {
+  return (
+    <li data-key={c.key}>
+      <span className="county">{c.counties.length === 1 ? `${c.counties[0]} County` : `${c.counties.join(", ")} counties`}</span>
+      <strong>{c.authorityName}</strong>
+      <span className="badges">
+        {c.verified ? (
+          <VerifiedBadge verified={c.verified} />
+        ) : (
+          <span className="badge warn" title={COVERAGE.draftNote}>
+            {COVERAGE.draftLabel}
+          </span>
+        )}
+      </span>
+      {c.confirmedWithAuthority.length > 0 && (
+        <span className="small">
+          {COVERAGE.confirmedLabel}: {c.confirmedWithAuthority.map((l, i) => (i === 0 ? l : l.toLowerCase())).join(", ")}
+        </span>
+      )}
+    </li>
   );
 }

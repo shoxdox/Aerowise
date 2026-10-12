@@ -16,7 +16,9 @@ test("the marketing page shows signed out, with coverage from the rulesets and c
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
 
-  const coverage = page.getByRole("list", { name: "Authorities covered" });
+  // Grouped by how a report reaches the authority; every real authority appears exactly once across the groups.
+  const coverage = page.locator("#coverage-groups");
+  await expect(coverage.getByRole("list", { name: /^Authorities covered/ }).first()).toBeVisible();
   await expect(coverage.getByRole("listitem")).toHaveCount(new Set(authorities).size);
   for (const name of authorities) await expect(coverage.getByText(name, { exact: true })).toBeVisible();
   await expect(coverage.getByText(/fictional/)).toHaveCount(0);
@@ -25,8 +27,12 @@ test("the marketing page shows signed out, with coverage from the rulesets and c
   await expect(page.getByText("Free for 90 days", { exact: true })).toBeVisible();
   await expect(page.getByText("$0.50 per active contract per month, with a $50.00 monthly minimum.")).toBeVisible();
   await expect(page.getByText(/first five companies pay \$0\.25/)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Who's behind this" })).toBeVisible();
   await expect(page.getByRole("link", { name: "justin@deshain.com" })).toBeVisible();
+  // The product screenshots are real captures shipped with the app, so they must load.
+  for (const img of await page.locator(".marketing .shot img").all()) {
+    await expect(img).toBeVisible();
+    expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
+  }
 
   await page.getByRole("link", { name: "How we handle your data" }).click();
   await expect(page).toHaveURL(/\/data-handling$/);

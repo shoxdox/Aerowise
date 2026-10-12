@@ -32,6 +32,8 @@ export const publicRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         const status = profileStatus(rs.rules);
         if (status === "fictional") continue;
         const verified = verifiedWith(rs.rules);
+        const reports = rs.rules.inspectionReports?.submission === "supported";
+        const filing = reports && rs.rules.submission.method === "email" ? "email" : reports && rs.rules.submission.portalUrl ? "portal" : "prepared";
         coverage.push({
           key: entry.jurisdiction.key,
           authorityName: entry.jurisdiction.authorityName,
@@ -46,6 +48,7 @@ export const publicRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
             : confirmationsFor(confirmations, entry.jurisdiction.id)
                 .filter((f) => f.state === "authority_confirmed")
                 .map((f) => f.label),
+          filing,
         });
       }
       // Verified authorities first, then by name.
