@@ -26,7 +26,7 @@ Two ways, pick one:
 
 Either way: merge nothing further without a green run, and move the local-run notes in the brief to "superseded by CI" once the first run is green.
 
-## 3. A physical-phone test (half a day, two phones)
+## 3. A physical-phone test (half a day, two phones) — done October 12, see [PHONE-TEST-2026-10-12.md](engineering/PHONE-TEST-2026-10-12.md)
 
 No real phone has run the technician app. Do this on staging after gate 1, with an iPhone (Safari, added to the home screen) and a cheap Android (Chrome), as `tech@example.com` in the demo.
 

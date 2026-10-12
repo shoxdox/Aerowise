@@ -1,6 +1,6 @@
 # Aerowise — demo and pilot status
 
-Current as of October 9, 2026. This page says what is live, what is open, and what Justin needs to do. The dated checkpoints that used to live here are in [HANDOFF-HISTORY-2026-10.md](engineering/HANDOFF-HISTORY-2026-10.md); the delivery record is [ROADMAP.md](engineering/ROADMAP.md); the independent review of October 9 is [REVIEW-2026-10-09.md](engineering/REVIEW-2026-10-09.md).
+Current as of October 12, 2026. This page says what is live, what is open, and what Justin needs to do. The dated checkpoints that used to live here are in [HANDOFF-HISTORY-2026-10.md](engineering/HANDOFF-HISTORY-2026-10.md); the delivery record is [ROADMAP.md](engineering/ROADMAP.md); the independent review of October 9 is [REVIEW-2026-10-09.md](engineering/REVIEW-2026-10-09.md).
 
 ## What is live
 
@@ -10,7 +10,7 @@ Current as of October 9, 2026. This page says what is live, what is open, and wh
 
 ## What is open
 
-- **No real provider, phone or authority has used it.** Physical-phone camera, lock-screen, airplane-mode and restart tests; a real provider alongside their current process; one authority confirming it accepts a sample report. These are the gates, not more features.
+- **No real provider or authority has used it.** The physical-phone test is done ([PHONE-TEST-2026-10-12.md](engineering/PHONE-TEST-2026-10-12.md)): an iPhone and an Android passed all eight steps (offline finish, reconnect, lock screen, swipe-away, force-stop, the two-phone handoff with the held copy, photo orientation, the location-denied reason), with one bug to fix before a technician sees it (a stale "sign in again" banner on Android after back/forward navigation) and three smaller findings. A real provider alongside their current process and one authority confirming it accepts a sample report remain the gates.
 - **The review's P2 and P3 lists are fixed on main.** P2 (after `a024615`): the stale Checkout double charge, refund idempotency, the support cookie on admin logout, phone clock bounds, technician-app timeouts on a stalled connection, task lock renewal, migration checksums, and inspections held for the office instead of refused when a visit changed while the phone was offline (migration 0061). P3 (after `4bda258`): signed pay and renewal links instead of stored tokens (0062), public-link rate limits per address, the admin's password asked again before erasing a company, 32-bit amount limits, Stripe refunds returning the platform fee, the signature pad at the screen's resolution, service-worker cache pruning, saves on `pagehide`, a reason recorded when a visit has no GPS (0063), finished tasks pruned (0064), and month-end term dates. The office can also give an inspection in progress to another technician. What the review listed and was left, with reasons, is in the decisions log for October 9; the gates below are now the work.
 - **County coverage.** Twenty-one authority profiles are drafts built from public sources; none is confirmed by its authority. Five file by email (Brazoria, Denton County, Harris, LCRA, Williamson); the rest file by hand through the product's download-and-record path; Travis County publishes no channel. Fort Bend's 27-column bulk-upload schema is documented at [fort-bend-bulk-upload-2026-10-09.md](jurisdictions/research/fort-bend-bulk-upload-2026-10-09.md) and is the first adapter worth building once one call settles its unknowns.
 - **Market.** Fieldbase On-Site sells the same thesis to the same customer at $50 plus $0.50 per contract per month; Aerowise's page says $1.50. Pricing needs a decision before any provider sees it.
@@ -22,7 +22,7 @@ Current as of October 9, 2026. This page says what is live, what is open, and wh
 2. Restore CI (public repository or a self-hosted runner), then merge nothing further without it.
 3. Pick the first provider. County maintenance-provider directories and the TCEQ license search list every candidate; the [pilot worksheet](PILOT-CALL-SHEET.md) says what to ask for. Ask the provider, not the county, how they file today.
 4. Decide pricing with Fieldbase's number on the table.
-5. Arrange a physical-phone test on an iPhone and a cheap Android before any provider relies on the technician app.
+5. Done October 12: the physical-phone test. Fix its Android banner finding before a provider's technician uses the app.
 
 Nothing on this page authorizes a new feature phase, a deployment, a contact with an authority, a real filing or a charge. A demo is not authority acceptance.
 
