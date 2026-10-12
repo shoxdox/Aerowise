@@ -2,7 +2,7 @@
 
 Written October 9, 2026, after the review's P1, P2 and P3 lists were fixed on `main`. Each gate below is something only Justin can do or decide. The order is the order they unblock each other: nothing after the first two is worth doing on a staging that still runs `a444be2` without checks.
 
-## 1. Redeploy staging from `main` (an hour)
+## 1. Redeploy staging from `main` (an hour) — done October 12: CI deploys `main` to staging on every green run; `aee751a` is live
 
 Staging runs `a444be2`, migration `0060`. `main` carries migrations 0061 to 0064, the P1, P2 and P3 fixes, the LCRA demo history and the grouped navigation. Nothing on this list can be shown to anyone until it is live.
 
@@ -15,7 +15,7 @@ Staging runs `a444be2`, migration `0060`. `main` carries migrations 0061 to 0064
 3. After the deploy, walk the demo once: a Lake Travis site's compliance history, a Blanco filing, the technician route, a renewal link from the office, and `/admin` (the erase form now asks for your password). Ten minutes.
 4. Compare the nightly reseed time; the brief says about 25 seconds.
 
-## 2. Restore continuous integration (an afternoon)
+## 2. Restore continuous integration (an afternoon) — done October 12: the repository is public and run 38301484907 was green
 
 GitHub Actions has not run since early October: the private repository is out of minutes, every run fails in three seconds, and every "tests pass" since is an agent's local run written into a document.
 
@@ -43,7 +43,7 @@ For each phone, in this order, writing down what happened:
 
 Anything that fails here is a P1 by definition, ahead of any feature.
 
-## 4. Pick the first provider (two weeks of calls)
+## 4. Pick the first provider (two weeks of calls) — prepared October 12 in [pilot/](pilot/)
 
 The review's method stands: county environmental-health pages publish registered maintenance providers, and TCEQ's licence search lists every licensed maintenance provider by county. Call providers with 200 to 1,000 contracts in the counties where the rules are deepest (Hays, Williamson, LCRA's lake area), and ask three questions before any demo: what software they use today, what they hate about filing, and what would make them switch. The [pilot worksheet](PILOT-CALL-SHEET.md) lists what to collect from the provider before any authority is contacted.
 
@@ -51,7 +51,7 @@ Offer the first five: ninety days free, their spreadsheet imported for them, and
 
 What to have ready for that call, all of it on staging after gate 1: the demo, a prospect demo in their county (`/admin`, prospect demos), and a one-page answer to "how do I file in my county with this" for their county.
 
-## 5. Decide pricing (a decision, then ten minutes of configuration)
+## 5. Decide pricing (a decision, then ten minutes of configuration) — memo in [pilot/pricing-memo.md](pilot/pricing-memo.md)
 
 Fieldbase On-Site, the direct competitor, is $50 a month for up to 100 contracts (Solo) and $50 plus $0.50 per active contract (Teams). Aerowise's page says $1.50 per contract with a $99 minimum: three times the incumbent for a product no provider has used.
 
