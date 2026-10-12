@@ -40,7 +40,7 @@ test("a platform admin creates an organization in /admin, and the office sign-in
   await editor.getByRole("button", { name: "Save plan" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved the plan for Brazos Aerobic Co.");
   await expect(row.getByRole("cell").nth(6)).toHaveText("Read-only");
-  await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $99.00 min (founder); 2.5% fee on payments");
+  await expect(row.getByRole("cell").nth(7)).toHaveText("$1.00/contract, $50.00 min (founder); 2.5% fee on payments");
 
   // The company asks for its data to be deleted: the name has to be typed to confirm.
   await page.getByRole("button", { name: "Delete the data of Brazos Aerobic Co" }).click();

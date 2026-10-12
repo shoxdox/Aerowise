@@ -68,10 +68,15 @@ export function useDemoCompany(): boolean {
   return useDemoInfo().demoCompany;
 }
 
-/** Shown at the top of every screen in the hosted demo, and to anyone in a demo company. */
+/**
+ * Shown at the top of every screen in the hosted demo, and to anyone in a demo company. Not on
+ * the marketing page: a prospect landing there is not in any company yet, and the strip was the
+ * first thing they read.
+ */
 export function DemoBanner() {
   const { demoCompany, demoVisitor } = useDemoInfo();
-  if (!demoCompany) return null;
+  const pathname = usePathname();
+  if (!demoCompany || pathname === "/") return null;
   return (
     <div className="demo-banner" role="note">
       {DEMO_NOTICE}

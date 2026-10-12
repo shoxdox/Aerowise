@@ -1,6 +1,6 @@
 # Ready-to-send first emails, one per prospect with a published business email
 
-Written October 12, 2026. Drafts; nothing sent. These are the companies in [prospects.md](prospects.md) whose own website publishes a business email address. The rest publish only a phone number, or an address on a personal mail domain on a county list, and are calls, not emails ([call-script.md](call-script.md)).
+Written October 12, 2026. Drafts; nothing sent. **Superseded in scope by [email-list.md](email-list.md)** (151 companies in three tiers with five email bodies by county); the five fully personalized emails below are still the first five to send. These are the companies in [prospects.md](prospects.md) whose own website publishes a business email address. The rest publish only a phone number, or an address on a personal mail domain on a county list, and are calls, not emails ([call-script.md](call-script.md)).
 
 Rules for sending: plain text, from justin@deshain.com, one at a time, subject as given. Each email has one line taken from the company's own site, so it does not read as a blast. Before sending, open the company's site once to confirm the address is still there. The follow-up a week later is email 2 in [cold-email.md](cold-email.md) with the county filled in. Read [questions-before-the-first-call.md](questions-before-the-first-call.md) question 9 first: these count toward the twenty conversations only if someone replies.
 

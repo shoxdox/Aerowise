@@ -287,3 +287,52 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .empty-state p { margin: 0; }
 /* Work order visits on the schedule (SW-1). */
 .badge.work { background: #efe8fb; color: #4b2a86; border-color: transparent; text-decoration: none; }
+
+/* Marketing page (October 2026): a landing page, not a document. */
+.marketing .page { gap: 48px; padding-bottom: 48px; }
+.marketing .hero { padding-top: 32px; gap: 16px; }
+.marketing .hero h1 { font-size: 2.4rem; line-height: 1.15; max-width: 22ch; }
+.marketing .eyebrow { margin: 0; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
+.marketing .lead { font-size: 1.15rem; max-width: 56ch; color: var(--muted); }
+.marketing .cta-row { margin-top: 8px; }
+.marketing a.button { display: inline-flex; align-items: center; text-decoration: none; }
+.marketing a.button.secondary { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
+.marketing .facts { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 0.95rem; }
+.marketing .facts li::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+.marketing h2 { font-size: 1.35rem; }
+.marketing h2 .count { font-size: 0.95rem; font-weight: 500; }
+.marketing .compare { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.marketing .compare-head, .marketing .compare-row { display: contents; }
+.marketing .compare-head span { padding: 10px 16px; font-size: 0.85rem; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--bg); }
+.marketing .compare-row span { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.marketing .compare-row span:first-child { border-right: 1px solid var(--border); }
+.marketing .compare-row:last-child span { border-bottom: none; }
+.marketing .how-steps { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+.marketing .how-steps .card { position: relative; padding-top: 20px; }
+.marketing .step-number { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; }
+.marketing .coverage { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; }
+.marketing .coverage li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.marketing .coverage .county { font-weight: 600; }
+.marketing .coverage strong { font-weight: 400; font-size: 0.85rem; color: var(--muted); }
+.marketing .coverage .badges { font-size: 0.8rem; }
+.marketing .price-card { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; padding: 24px; align-items: start; }
+.marketing .price-main { display: flex; flex-direction: column; gap: 8px; }
+.marketing .price { font-size: 1.8rem; }
+.marketing .price-founder { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+.marketing .price-founder .badge { align-self: flex-start; background: var(--accent); color: var(--accent-text); }
+.marketing .about { max-width: 720px; }
+.marketing .about .row a.button { font-size: 0.95rem; }
+@media (max-width: 640px) {
+  .marketing .hero { padding-top: 16px; }
+  .marketing .hero h1 { font-size: 1.8rem; }
+  .marketing .lead { font-size: 1.05rem; }
+  .marketing .page { gap: 36px; }
+  .marketing .compare { grid-template-columns: 1fr; }
+  .marketing .compare-head { display: none; }
+  .marketing .compare-row span:first-child { border-right: none; border-bottom: none; padding-bottom: 4px; font-size: 0.9rem; }
+  .marketing .compare-row span:first-child::before { content: "Today: "; font-weight: 600; }
+  .marketing .compare-row span:last-child::before { content: "With Aerowise: "; font-weight: 600; color: var(--accent); }
+  .marketing .price-card { grid-template-columns: 1fr; }
+  .marketing .coverage { grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+  .marketing .coverage strong { font-size: 0.8rem; }
+}

@@ -4,41 +4,59 @@
 // or price.
 
 export const HERO = {
-  title: "Aerobic septic maintenance, run in one place.",
-  body: "Aerowise schedules your Texas aerobic maintenance visits, walks technicians through each inspection on their phone, and keeps each county report and its deadline in view until the authority acknowledges it.",
+  eyebrow: "For Texas aerobic maintenance companies",
+  title: "Every four-month visit and every county report, on time.",
+  body: "Aerowise keeps each maintenance contract's visits on the county's schedule, puts the inspection on your technician's phone (no signal needed), and prepares the report with your licence on it. You read it and press Send.",
+  /** Three plain facts under the buttons. Each must stay true; the first is counted from the rulesets. */
+  facts: ["Texas authorities' rules built in", "Works with no signal on the phone", "Free for 90 days, no card"],
 };
 
 export const PROBLEM = {
-  title: "The problem",
-  points: [
-    "Every county and river authority wants a different form, deadline and way of sending it.",
-    "Visits, contracts and reports live in paper, spreadsheets and inboxes, so a missed visit or late report is easy to miss too.",
-    "Renewals and invoices are chased by hand, one customer at a time.",
+  title: "What changes",
+  todayLabel: "Today",
+  afterLabel: "With Aerowise",
+  pairs: [
+    {
+      today: "Which sites are due this month lives in a spreadsheet and in someone's head.",
+      after: "The due list comes from the contracts: every visit, every report deadline and every renewal, by county.",
+    },
+    {
+      today: "The technician fills in a paper form; the office retypes it into the county's report.",
+      after: "The technician answers the form on the phone, photos included, and the report writes itself with your licence number on it.",
+    },
+    {
+      today: "Every county and river authority wants a different form, deadline and inbox.",
+      after: "Each authority's rules are built in from its published order. Where one publishes an inbox, Aerowise emails the report when you press Send.",
+    },
   ],
 };
 
 export const STEPS = {
   title: "How it works",
   items: [
-    { title: "Bring your customers", body: "Import your spreadsheet of customers, sites and contracts. Aerowise works out who is due and when." },
-    { title: "Run the route", body: "Technicians get the day's stops on their phone and fill in each inspection, offline if they need to." },
-    { title: "File on time", body: "Aerowise prepares each report with the fields the authority's rules ask for, and fills in the official form where an authority has one (LCRA's cover sheet so far). Your licensed maintenance provider reviews and signs every report before it is sent." },
-    { title: "Get paid and renew", body: "Invoices, renewals and a customer portal follow from the same records." },
+    { title: "Bring your customers", body: "Send your spreadsheet, however messy. Aerowise works out which column is which and who is due when; for the first companies, we import it for you." },
+    { title: "Run the route", body: "Technicians get the day's stops on their phone and fill in each inspection where they stand, offline if they need to. Photos and GPS come with it." },
+    { title: "File on time", body: "The report is prepared with the fields the authority asks for and the official form where there is one. Your licensed provider reviews it; nothing goes to a county on its own." },
+    { title: "Get paid and renew", body: "Invoices, renewals signed on the homeowner's phone, and a customer portal follow from the same records." },
   ],
 };
 
 export const COVERAGE = {
   title: "County coverage",
-  intro: "Each authority's rules are built from its own published sources. Verified means we confirmed them with the authority directly.",
+  intro: "Each authority's rules are built from its own published order and marked in progress until that authority has confirmed them. Where one publishes an inbox, Aerowise emails the report when you press Send; everywhere else it prepares the report for you to send as you do today, and keeps the record.",
   draftLabel: "In progress",
   draftNote: "Built from public sources; being confirmed with the authority.",
   confirmedLabel: "Confirmed with the authority so far",
   empty: "Coverage is being added. Ask us about your county.",
+  notYours: "Your county not here? Say which one in the demo request and it goes next.",
 };
 
 export const PRICING = {
   title: "Pricing",
+  perContract: "per active contract per month",
+  minimum: "monthly minimum",
   /** Shown beside the configured price. The founder rate is set per company in /admin when it starts paying. */
+  founderLabel: "Founder offer",
   founder: "The first five companies pay $0.25 per active contract per month, same minimum, for as long as they stay.",
   note: "No card to start. Your data is yours to download at any time, including the day you leave.",
 };
@@ -61,7 +79,7 @@ export const TRY_DEMO = {
 
 export const DEMO = {
   title: "Ask for a demo",
-  intro: "Tell us about your company and we will set up a walkthrough with your own counties.",
+  intro: "Tell me about your company and I'll set up a walkthrough with your own counties, or call the number above.",
   button: "Ask for a demo",
   thanks: "Thanks. We got your request and will be in touch soon.",
   tooMany: "We already have a few requests from you. We will be in touch soon.",
