@@ -382,6 +382,11 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
         const definition = template.definition as TemplateDefinition;
         const unknown = unknownKeys(definition, body.values);
         if (unknown.length) throw unprocessable(`Unknown fields: ${unknown.join(", ")}`);
+        if (body.removedPhotoClientIds?.length) {
+          const removed = await trx.deleteFrom("workAttachments").where("organizationId", "=", organizationId).where("recordClientId", "=", body.clientId)
+            .where("offlineClientId", "in", body.removedPhotoClientIds).returning("id").execute();
+          if (removed.length) await audit(trx, req, { action: "work_record.draft_photos_removed", entityType: "work_record", entityId: record?.id ?? body.clientId, changes: { attachmentIds: removed.map(p => p.id) } });
+        }
         const check = body.status === "completed" ? await completionCheck(trx, organizationId, body.clientId, definition, body.values, body.summary, { workOrderId: job.workOrderId, pumpOut: body.pumpOut, finalVisit: body.finalVisit }) : null;
         const values = check?.values ?? Object.fromEntries(Object.entries(body.values).filter(([, v]) => v !== null && v !== ""));
         const summarySha256 = body.summary ? await snapshotSha256(body.summary) : null;

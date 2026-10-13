@@ -17,9 +17,12 @@ import {
   type TemplateDefinition,
   type ValidationProblem,
   type WorkStop,
+  type SignatureCapture,
 } from "@aerowise/domain";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
+import { PhotoField } from "./PhotoField";
+import { focusProblems, FormNavigation, LocalSaveStatus, sectionId, type LocalSaveState } from "./FormStatus";
 import { TemplateSections } from "@/components/forms/TemplateFields";
 import { currentPosition, preparePhoto, workFormById } from "@/lib/offline/data";
 import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
@@ -66,6 +69,8 @@ export function WorkVisit({
   record,
   failed,
   onStart,
+  starting = false,
+  notice,
   onSaved,
   onFinished,
 }: {
@@ -74,6 +79,8 @@ export function WorkVisit({
   record: LocalWork | undefined;
   failed: boolean;
   onStart: () => void;
+  starting?: boolean;
+  notice?: string | null;
   onSaved: () => void;
   onFinished: () => void;
 }) {
@@ -111,14 +118,15 @@ export function WorkVisit({
           )}
         </dl>
       )}
+      {notice && <p role="alert" className="error">{notice}</p>}
       {record ? (
         <WorkForm key={record.clientId} stop={stop} store={store} initial={record} onSaved={onSaved} onFinished={onFinished} />
       ) : stop.record ? (
         // Recorded from another phone, or before this phone's data was cleared.
         <p className="muted">{stop.record.status === "completed" ? "This visit's record is already with the office." : "This visit was started on another phone. Finish it there."}</p>
       ) : stop.templateId ? (
-        <button className="big" onClick={onStart}>
-          Arrive and start work
+        <button className="big" onClick={onStart} disabled={starting} aria-busy={starting}>
+          {starting ? "Starting…" : "Arrive and start work"}
         </button>
       ) : (
         <p className="muted">This kind of work has no form on the phone. Tell the office how it went; they record it.</p>
@@ -160,9 +168,13 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   useEffect(() => {
     if (!storageFull) setPhotoError((e) => (e === STORAGE_FULL_MESSAGE ? null : e));
   }, [storageFull]);
+  const [localSave, setLocalSave] = useState<LocalSaveState>("saved");
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [signing, setSigning] = useState(false);
   const [busy, setBusy] = useState(false);
   const latest = useRef(rec);
+  const editVersion = useRef(0);
+  const saveAttempt = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // What sending has recorded since the form opened (photos sent, the server's answer) shows here too.
@@ -183,12 +195,17 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   const persist = async (next: LocalWork, extra?: Parameters<WorkStore["saveWork"]>[1]) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    await saveOrReport(() => store.saveWork(next, extra));
-    onSaved();
+    const version = editVersion.current;
+    const attempt = ++saveAttempt.current;
+    setLocalSave("saving");
+    try { await saveOrReport(() => store.saveWork(next, extra)); if (editVersion.current === version && saveAttempt.current === attempt) setLocalSave("saved"); onSaved(); }
+    catch (err) { if (saveAttempt.current === attempt) setLocalSave("failed"); throw err; }
   };
   const update = (next: LocalWork) => {
+    editVersion.current++;
     latest.current = next;
     setRec(next);
+    setLocalSave("saving");
     if (timer.current) clearTimeout(timer.current);
     // A save that does not fit is reported on screen; the edit stays there for the next save.
     timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
@@ -200,7 +217,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
       // The pending save runs now and its timer never fires against the closed form; a full phone is reported on screen.
       clearTimeout(timer.current);
       timer.current = null;
-      void saveOrReport(() => store.saveWork(latest.current)).catch(() => {});
+      void persist(latest.current).catch(() => {});
     },
     [store],
   );
@@ -211,7 +228,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
-      void saveOrReport(() => store.saveWork(latest.current)).catch(() => {});
+      void persist(latest.current).catch(() => {});
     };
     const onVisibility = () => document.visibilityState === "hidden" && flush();
     window.addEventListener("pagehide", flush);
@@ -226,7 +243,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   if (form === null) return <p className="error">The form for this visit is not on this phone. Open the app once with signal.</p>;
 
   const def = form.definition;
-  const readOnly = rec.status === "completed" || !!rec.held || !!rec.resolved;
+  const readOnly = rec.status === "completed" || rec.server?.status === "completed" || !!rec.held || !!rec.resolved;
   const fields = visibleFields(def, rec.values);
   const photos = visiblePhotos(def, rec.values);
   const counts: Record<string, number> = {};
@@ -245,36 +262,45 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== key));
   };
 
-  async function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>) {
+  async function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>, replaceId?: string) {
+    if (readOnly || photoBusy || busy) return;
+    setPhotoBusy(true);
     const files = [...(e.target.files ?? [])];
     e.target.value = "";
     setPhotoError(null);
     for (const file of files) {
       let clientId: string | null = null;
+      let photoSaved = false;
+      const beforePhoto = latest.current;
       try {
-        const { blob, contentType } = await preparePhoto(file);
+        const { blob, contentType, preview } = await preparePhoto(file);
         clientId = crypto.randomUUID();
         // The photo goes to the phone's database first; its position is added after, so a few
         // seconds waiting on GPS cannot lose a photo the phone is holding only in memory.
         const next: LocalWork = {
           ...latest.current,
-          photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false }],
+          photos: [...latest.current.photos.filter(p => p.clientId !== replaceId), { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false, preview }],
+          removedPhotoClientIds: replaceId ? [...new Set([...(latest.current.removedPhotoClientIds ?? []), replaceId])] : latest.current.removedPhotoClientIds,
         };
         latest.current = next;
-        setRec(next);
         await persist(next, { photo: { clientId, recordClientId: next.clientId, blob, contentType } satisfies WorkBlob });
+        photoSaved = true;
+        setRec(latest.current);
+        replaceId = undefined;
         setProblems((ps) => ps.filter((p) => p.key !== photoKey));
-        const gps = await currentPosition(3000);
-        if (gps && latest.current.photos.some((p) => p.clientId === clientId)) {
-          const located = { ...latest.current, photos: latest.current.photos.map((p) => (p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p)) };
-          latest.current = located;
-          setRec(located);
-          await persist(located);
-        }
+        // Position is optional metadata added after the durable photo save. It never blocks the next photo.
+        void currentPosition(3000).then(async gps => {
+          if (gps && latest.current.status === "draft" && !latest.current.held && latest.current.photos.some(p => p.clientId === clientId)) {
+            const located = { ...latest.current, photos: latest.current.photos.map(p => p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p) };
+            latest.current = located;
+            setRec(located);
+            await persist(located);
+          }
+        }).catch(() => {});
       } catch (err) {
         // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
-        if (clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
-          const without = { ...latest.current, photos: latest.current.photos.filter((p) => p.clientId !== clientId) };
+        if (!photoSaved && clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
+          const without = { ...latest.current, photos: [...latest.current.photos.filter(p => p.clientId !== clientId), ...beforePhoto.photos.filter(p => !latest.current.photos.some(x => x.clientId === p.clientId))], removedPhotoClientIds: beforePhoto.removedPhotoClientIds };
           latest.current = without;
           setRec(without);
         }
@@ -282,22 +308,36 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
         if (isStorageFull()) break;
       }
     }
+    setPhotoBusy(false);
+  }
+
+  async function removePhoto(clientId: string) {
+    if (readOnly || photoBusy || busy) return;
+    setPhotoBusy(true);
+    const before = latest.current;
+    const next = { ...before, photos: before.photos.filter(p => p.clientId !== clientId), removedPhotoClientIds: [...new Set([...(before.removedPhotoClientIds ?? []), clientId])] };
+    latest.current = next;
+    try { await persist(next); setRec(latest.current); }
+    catch (err) { latest.current = before; setPhotoError((err as Error).message); }
+    finally { setPhotoBusy(false); }
   }
 
   /** Checks the form; with a sign-off on the form, shows the summary to sign next. */
   function review() {
+    if (busy || photoBusy || readOnly) return;
     const found = [...validateInspection(def, latest.current.values, counts), ...pumpOutProblems(stop.requiresDisposalRecord, sendablePumpOut(latest.current.pumpOut))];
     setProblems(found);
     if (found.length) {
-      document.querySelector(".problems")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      requestAnimationFrame(focusProblems);
       return;
     }
-    if (signatures.length > 0) setSigning(true);
+    if (signatures.length > 0) { setSigning(true); requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="work-signoff"]')?.focus()); }
     else void finish(null);
   }
 
   /** Finishes the visit, with the customer's signature on the summary if one was given. */
-  async function finish(signed: { requirementKey: string; signerName: string; image: string } | null) {
+  async function finish(signed: { requirementKey: string; signerName: string; capture: SignatureCapture } | null) {
+    if (busy || photoBusy || readOnly) return;
     setBusy(true);
     const base = latest.current;
     const summary = signed ? workSummary(stop, def, base.values, base.finalVisit, base.pumpOut) : null;
@@ -307,7 +347,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
             clientId: crypto.randomUUID(),
             requirementKey: signed.requirementKey,
             signerName: signed.signerName,
-            capture: { kind: "drawn", image: signed.image },
+            capture: signed.capture,
             summarySha256: await snapshotSha256(summary),
             consentText: CONSENT,
             signedAt: new Date().toISOString(),
@@ -351,8 +391,10 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
           {LOCATION_STATUS_PHONE_TEXT[rec.locationStatus]}
         </p>
       )}
+      {!readOnly && <LocalSaveStatus state={localSave} retry={() => void persist(latest.current).catch(() => {})} />}
+      {!readOnly && !signing && <FormNavigation fields={fields} values={rec.values} photoRequired={photos.reduce((n, p) => n + p.minCount, 0)} photoDone={photos.reduce((n, p) => n + Math.min(p.minCount, counts[p.key] ?? 0), 0)} actionLabel="Review and finish" />}
       {problems.length > 0 && (
-        <div className="card problems" role="alert">
+        <div className="card problems" role="alert" tabIndex={-1}>
           <strong>Before you can finish:</strong>
           <ul>
             {problems.map((p) => (
@@ -389,24 +431,9 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
             )}
 
             {photos.length > 0 && (
-              <section className="card stack">
+              <section className="card stack" id={sectionId("Photos")} tabIndex={-1}>
                 <h2>Photos</h2>
-                {photos.map((p) => (
-                  <div key={p.key} className={`field ${problemFor(p.key) ? "has-problem" : ""}`} data-photo={p.key}>
-                    <span className="field-title">
-                      {p.label}
-                      {p.minCount > 0 && <span className="req"> *</span>}
-                    </span>
-                    <span className="muted small">
-                      {counts[p.key] ?? 0} taken{p.minCount > 0 ? `, ${p.minCount} needed` : ""}
-                      {rec.photos.some((x) => x.photoKey === p.key && !x.uploaded) ? " · some not sent yet" : ""}
-                    </span>
-                    <label className={`button secondary photo-button${storageFull ? " disabled" : ""}`} aria-disabled={storageFull}>
-                      Add photo
-                      <input type="file" accept="image/*" capture="environment" multiple hidden disabled={storageFull} onChange={(e) => void addPhoto(p.key, e)} aria-label={`Add photo: ${p.label}`} />
-                    </label>
-                  </div>
-                ))}
+                {photos.map(p => <PhotoField key={p.key} label={p.label} photoKey={p.key} minCount={p.minCount} photos={rec.photos.filter(x => x.photoKey === p.key)} disabled={storageFull || photoBusy || busy} readOnly={readOnly} error={problemFor(p.key)?.message} onAdd={(e, replaceId) => void addPhoto(p.key, e, replaceId)} onRemove={id => void removePhoto(id)} />)}
                 {storageFull ? (
                   <p className="error small" role="alert" data-testid="storage-full">
                     {STORAGE_FULL_MESSAGE}
@@ -437,7 +464,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
             </p>
           )}
           {!readOnly && (
-            <button className="big" onClick={review} disabled={busy}>
+            <button id={sectionId("Review and finish")} className="big" onClick={review} disabled={busy || photoBusy}>
               {signatures.length > 0 ? "Review and sign" : busy ? "Saving…" : "Finish visit"}
             </button>
           )}
@@ -459,14 +486,15 @@ function SignOff({
   requirements: NonNullable<TemplateDefinition["signatures"]>;
   busy: boolean;
   onBack: () => void;
-  onSign: (s: { requirementKey: string; signerName: string; image: string }) => void;
+  onSign: (s: { requirementKey: string; signerName: string; capture: SignatureCapture }) => void;
   onSkip?: () => void;
 }) {
+  const [mode, setMode] = useState<"drawn" | "typed">("drawn");
   const [name, setName] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const requirement = requirements[0]!;
   return (
-    <section className="card stack" data-testid="work-signoff">
+    <section className="card stack" data-testid="work-signoff" tabIndex={-1}>
       <h2>{requirement.label}</h2>
       <p className="muted small">Hand the phone to the customer to read and sign. Once signed, the record can no longer be changed.</p>
       <dl className="details" data-testid="work-summary">
@@ -494,8 +522,9 @@ function SignOff({
         Name of the person signing
         <input value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
       </label>
-      <SignaturePad onChange={setImage} />
-      <button className="big" disabled={busy || !name.trim() || !image} onClick={() => image && onSign({ requirementKey: requirement.key, signerName: name.trim(), image })}>
+      <div className="choice" role="group" aria-label="Signature method"><button type="button" aria-pressed={mode === "drawn"} className={mode === "drawn" ? "chosen" : "secondary"} onClick={() => { setImage(null); setMode("drawn"); }}>Draw signature</button><button type="button" aria-pressed={mode === "typed"} className={mode === "typed" ? "chosen" : "secondary"} onClick={() => setMode("typed")}>Type signature</button></div>
+      {mode === "drawn" ? <SignaturePad onChange={setImage} /> : <p className="card small">By choosing Sign and finish visit, I adopt my typed name as my electronic signature and agree to the summary and consent above. <strong>{name || "Enter your name above."}</strong></p>}
+      <button className="big" disabled={busy || !name.trim() || (mode === "drawn" && !image)} onClick={() => onSign({ requirementKey: requirement.key, signerName: name.trim(), capture: mode === "typed" ? { kind: "typed" } : { kind: "drawn", image: image! } })}>
         {busy ? "Saving…" : "Sign and finish visit"}
       </button>
       <div className="row">

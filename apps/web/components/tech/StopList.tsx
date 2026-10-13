@@ -3,7 +3,7 @@ import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { TechRouteMap } from "@/components/tech/TechRouteMap";
 import type { LocalInspection } from "@/lib/offline/db";
-import { clock, day } from "@/lib/format";
+import { day, today, when } from "@/lib/format";
 
 export function stopStatus(stop: Stop, insp: LocalInspection | undefined): { label: string; tone: "" | "ok" | "warn" } {
   if (insp?.held) return insp.held.status === "attached" ? { label: "Done", tone: "ok" } : { label: "Held for the office", tone: "warn" };
@@ -50,6 +50,8 @@ export function StopList({
     );
   }
   const done = route.items.filter((s) => stopStatus(s, inspections.get(s.jobId)).label.startsWith("Done")).length;
+  const workDone = work?.stops.filter(s => work.done(s.jobId)).length ?? 0;
+  const total = route.items.length + (work?.stops.length ?? 0);
   const mappable = route.items.length + (work?.stops.filter((s) => numbers?.has(s.jobId)).length ?? 0);
   return (
     <div className="stack">
@@ -57,8 +59,8 @@ export function StopList({
         <div>
           <h1>{day(route.date)}</h1>
           <p className="muted small">
-            {done} of {route.items.length} stops done
-            {fetchedAt && ` · route updated ${clock(fetchedAt)}`}
+            {done + workDone} of {total} stops done · {route.items.length} inspections, {work?.stops.length ?? 0} work visits
+            {fetchedAt && ` · route last downloaded ${when(fetchedAt)}`}
           </p>
         </div>
         <span className="spacer" />
@@ -66,6 +68,7 @@ export function StopList({
           Refresh
         </button>
       </div>
+      {route.date !== today() && <p className="card warn" role="status">This is the cached route for {day(route.date)}. Refresh with signal to download today’s work.</p>}
       {route.items.length === 0 && <p className="muted">{mappable > 0 ? "No inspections on your route today." : "No stops on your route today."}</p>}
       {mappable > 0 && onView && (
         <div className="view-toggle" role="group" aria-label="Show the route as">

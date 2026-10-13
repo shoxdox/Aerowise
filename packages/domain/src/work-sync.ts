@@ -31,6 +31,8 @@ export const workSync = z.object({
   completionGps: gps.nullish(),
   /** Why there is no arrival location, when there is none. */
   locationStatus: locationStatus.optional(),
+  /** Explicit draft removals; absent on older phones, whose uploads remain unchanged. */
+  removedPhotoClientIds: z.array(z.uuid()).max(500).optional(),
   values: z.record(z.string(), answer),
   /** The summary the customer signed, when the form asks for a signature. */
   summary: workSummary.nullish(),

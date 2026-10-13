@@ -15,13 +15,17 @@ import {
   type Stop,
   type ValidationProblem,
 } from "@aerowise/domain";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { InspectionRecap } from "./InspectionRecap";
+import { PhotoField } from "./PhotoField";
+import { focusProblems, FormNavigation, LocalSaveStatus, sectionId, type LocalSaveState } from "./FormStatus";
 import { TemplateSections } from "@/components/forms/TemplateFields";
-import { saveInspection, withSentState, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
+import { activeStore, withSentState, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
 import { currentPosition, preparePhoto, templateById } from "@/lib/offline/data";
 import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 
 export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: Stop; initial: LocalInspection; onSaved: () => void; onFinished: () => void }) {
+  const store = useMemo(() => activeStore(), []);
   const [insp, setInsp] = useState(initial);
   const [template, setTemplate] = useState<InspectionTemplate | null | undefined>(undefined);
   const [problems, setProblems] = useState<ValidationProblem[]>(
@@ -33,8 +37,12 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   useEffect(() => {
     if (!storageFull) setPhotoError((e) => (e === STORAGE_FULL_MESSAGE ? null : e));
   }, [storageFull]);
+  const [localSave, setLocalSave] = useState<LocalSaveState>("saved");
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const latest = useRef(insp);
+  const editVersion = useRef(0);
+  const saveAttempt = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // What sending has recorded since the form opened (photos sent, the server's answer) shows here too.
@@ -51,12 +59,20 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   const persist = async (next: LocalInspection, photo?: PhotoBlob) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    await saveOrReport(() => saveInspection(next, photo));
-    onSaved();
+    const version = editVersion.current;
+    const attempt = ++saveAttempt.current;
+    setLocalSave("saving");
+    try {
+      await saveOrReport(() => store.saveInspection(next, photo));
+      if (editVersion.current === version && saveAttempt.current === attempt) setLocalSave("saved");
+      onSaved();
+    } catch (err) { if (saveAttempt.current === attempt) setLocalSave("failed"); throw err; }
   };
   const update = (next: LocalInspection) => {
+    editVersion.current++;
     latest.current = next;
     setInsp(next);
+    setLocalSave("saving");
     if (timer.current) clearTimeout(timer.current);
     // A save that does not fit is reported on screen; the edit stays there for the next save.
     timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
@@ -68,7 +84,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
       // The pending save runs now and its timer never fires against the closed form; a full phone is reported on screen.
       clearTimeout(timer.current);
       timer.current = null;
-      void saveOrReport(() => saveInspection(latest.current)).catch(() => {});
+      void persist(latest.current).catch(() => {});
     },
     [],
   );
@@ -79,7 +95,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
-      void saveOrReport(() => saveInspection(latest.current)).catch(() => {});
+      void persist(latest.current).catch(() => {});
     };
     const onVisibility = () => document.visibilityState === "hidden" && flush();
     window.addEventListener("pagehide", flush);
@@ -95,7 +111,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
 
   // The county's requirements, saved with the route, make extra fields required.
   const def = applyRequirements(template.definition, stop.requirements);
-  const readOnly = insp.status === "completed" || !!insp.held;
+  const readOnly = insp.status === "completed" || insp.server?.status === "completed" || !!insp.held;
   const fields = visibleFields(def, insp.values);
   const photos = visiblePhotos(def, insp.values);
   const counts: Record<string, number> = {};
@@ -112,36 +128,45 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== key));
   };
 
-  async function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>) {
+  async function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>, replaceId?: string) {
+    if (readOnly || photoBusy || finishing) return;
+    setPhotoBusy(true);
     const files = [...(e.target.files ?? [])];
     e.target.value = "";
     setPhotoError(null);
     for (const file of files) {
       let clientId: string | null = null;
+      let photoSaved = false;
+      const beforePhoto = latest.current;
       try {
-        const { blob, contentType } = await preparePhoto(file);
+        const { blob, contentType, preview } = await preparePhoto(file);
         clientId = crypto.randomUUID();
         // The photo goes to the phone's database first; its position is added after, so a few
         // seconds waiting on GPS cannot lose a photo the phone is holding only in memory.
         const next: LocalInspection = {
           ...latest.current,
-          photos: [...latest.current.photos, { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false }],
+          photos: [...latest.current.photos.filter(p => p.clientId !== replaceId), { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false, preview }],
+          removedPhotoClientIds: replaceId ? [...new Set([...(latest.current.removedPhotoClientIds ?? []), replaceId])] : latest.current.removedPhotoClientIds,
         };
         latest.current = next;
-        setInsp(next);
         await persist(next, { clientId, inspectionClientId: next.clientId, blob, contentType });
+        photoSaved = true;
+        setInsp(latest.current);
+        replaceId = undefined;
         setProblems((ps) => ps.filter((p) => p.key !== photoKey));
-        const gps = await currentPosition(3000);
-        if (gps && latest.current.photos.some((p) => p.clientId === clientId)) {
-          const located = { ...latest.current, photos: latest.current.photos.map((p) => (p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p)) };
-          latest.current = located;
-          setInsp(located);
-          await persist(located);
-        }
+        // Position is optional metadata added after the durable photo save. It never blocks the next photo.
+        void currentPosition(3000).then(async gps => {
+          if (gps && latest.current.status === "draft" && !latest.current.held && latest.current.photos.some(p => p.clientId === clientId)) {
+            const located = { ...latest.current, photos: latest.current.photos.map(p => p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p) };
+            latest.current = located;
+            setInsp(located);
+            await persist(located);
+          }
+        }).catch(() => {});
       } catch (err) {
         // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
-        if (clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
-          const without = { ...latest.current, photos: latest.current.photos.filter((p) => p.clientId !== clientId) };
+        if (!photoSaved && clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
+          const without = { ...latest.current, photos: [...latest.current.photos.filter(p => p.clientId !== clientId), ...beforePhoto.photos.filter(p => !latest.current.photos.some(x => x.clientId === p.clientId))], removedPhotoClientIds: beforePhoto.removedPhotoClientIds };
           latest.current = without;
           setInsp(without);
         }
@@ -149,15 +174,28 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         if (isStorageFull()) break;
       }
     }
+    setPhotoBusy(false);
+  }
+
+  async function removePhoto(clientId: string) {
+    if (readOnly || photoBusy || finishing) return;
+    setPhotoBusy(true);
+    const before = latest.current;
+    const next = { ...before, photos: before.photos.filter(p => p.clientId !== clientId), removedPhotoClientIds: [...new Set([...(before.removedPhotoClientIds ?? []), clientId])] };
+    latest.current = next;
+    try { await persist(next); setInsp(latest.current); }
+    catch (err) { latest.current = before; setPhotoError((err as Error).message); }
+    finally { setPhotoBusy(false); }
   }
 
   const setIssues = (issues: LocalInspection["issues"]) => update({ ...latest.current, issues });
 
   async function finish() {
+    if (finishing || photoBusy || readOnly) return;
     const found = validateInspection(def, latest.current.values, counts);
     setProblems(found);
     if (found.length) {
-      document.querySelector(".problems")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      requestAnimationFrame(focusProblems);
       return;
     }
     setFinishing(true);
@@ -174,6 +212,8 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     }
     onFinished();
   }
+
+  if (insp.status === "completed" && !insp.held) return <InspectionRecap stop={stop} inspection={insp} definition={def} />;
 
   return (
     <div className="stack inspection">
@@ -196,8 +236,10 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         )}
       </div>
 
+      {!readOnly && <LocalSaveStatus state={localSave} retry={() => void persist(latest.current).catch(() => {})} />}
+      {!readOnly && <FormNavigation fields={fields} values={insp.values} photoRequired={photos.reduce((n, p) => n + p.minCount, 0)} photoDone={photos.reduce((n, p) => n + Math.min(p.minCount, counts[p.key] ?? 0), 0)} actionLabel="Finish inspection" />}
       {problems.length > 0 && (
-        <div className="card problems" role="alert">
+        <div className="card problems" role="alert" tabIndex={-1}>
           <strong>Before you can finish:</strong>
           <ul>
             {problems.map((p) => (
@@ -210,24 +252,9 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
       <fieldset disabled={readOnly} className="stack plain">
         <TemplateSections fields={fields} values={insp.values} problemFor={problemFor} onChange={setValue} />
 
-        <section className="card stack">
+        <section className="card stack" id={sectionId("Photos")} tabIndex={-1}>
           <h2>Photos</h2>
-          {photos.map((p) => (
-            <div key={p.key} className={`field ${problemFor(p.key) ? "has-problem" : ""}`} data-photo={p.key}>
-              <span className="field-title">
-                {p.label}
-                {p.minCount > 0 && <span className="req"> *</span>}
-              </span>
-              <span className="muted small">
-                {counts[p.key] ?? 0} taken{p.minCount > 0 ? `, ${p.minCount} needed` : ""}
-                {insp.photos.some((x) => x.photoKey === p.key && !x.uploaded) ? " · some not sent yet" : ""}
-              </span>
-              <label className={`button secondary photo-button${storageFull ? " disabled" : ""}`} aria-disabled={storageFull}>
-                Add photo
-                <input type="file" accept="image/*" capture="environment" multiple hidden disabled={storageFull} onChange={(e) => void addPhoto(p.key, e)} aria-label={`Add photo: ${p.label}`} />
-              </label>
-            </div>
-          ))}
+          {photos.map(p => <PhotoField key={p.key} label={p.label} photoKey={p.key} minCount={p.minCount} photos={insp.photos.filter(x => x.photoKey === p.key)} disabled={storageFull || photoBusy || finishing} readOnly={readOnly} error={problemFor(p.key)?.message} onAdd={(e, replaceId) => void addPhoto(p.key, e, replaceId)} onRemove={id => void removePhoto(id)} />)}
           {storageFull ? (
             <p className="error small" role="alert" data-testid="storage-full">
               {STORAGE_FULL_MESSAGE}
@@ -289,7 +316,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         </p>
       )}
       {!readOnly && (
-        <button className="big" onClick={() => void finish()} disabled={finishing}>
+        <button id={sectionId("Finish inspection")} className="big" onClick={() => void finish()} disabled={finishing || photoBusy}>
           {finishing ? "Saving…" : "Finish inspection"}
         </button>
       )}

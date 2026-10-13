@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 import type { SyncState } from "@/lib/offline/sync";
 
@@ -19,8 +20,13 @@ export function SyncBanner({
 }) {
   const waiting = state.waiting ?? 0;
   const storageFull = useStorageFull();
+  const online = useSyncExternalStore(listener => {
+    window.addEventListener("online", listener); window.addEventListener("offline", listener);
+    return () => { window.removeEventListener("online", listener); window.removeEventListener("offline", listener); };
+  }, () => navigator.onLine, () => true);
   return (
     <div className="sync-area">
+      {!online && <p className="sync warn" role="status" data-testid="offline-status">Offline. Saved work stays on this phone; office delivery waits for signal.</p>}
       {needsSignIn && (
         <p className="sync warn" role="status">
           Sign in again to send your changes. They are saved on this phone.{" "}
@@ -52,7 +58,7 @@ export function SyncBanner({
         waiting === 0 &&
         state.failed === 0 && (
           <p className="sync ok" role="status" data-testid="sync-status">
-            All changes sent
+            {storageFull ? "Previously saved changes sent; latest edits may still need a local save." : "All changes sent"}
           </p>
         )
       )}

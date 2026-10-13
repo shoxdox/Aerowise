@@ -21,6 +21,9 @@ export interface LocalPhoto {
   lat: number | null;
   lng: number | null;
   uploaded: boolean;
+  /** Small image kept with the record for offline review after the full upload leaves the phone. */
+  preview?: string;
+  url?: string;
 }
 
 export interface LocalIssue {
@@ -35,6 +38,8 @@ export interface LocalInspection {
   revision?: number;
   clientId: string;
   jobId: string;
+  /** The authorized stop at start, for a read-only recap after it leaves today’s route. */
+  stopSnapshot?: Stop;
   templateId: string;
   /** "completed" here means the technician finished it on the phone. */
   status: "draft" | "completed";
@@ -48,6 +53,7 @@ export interface LocalInspection {
   values: InspectionValues;
   issues: LocalIssue[];
   photos: LocalPhoto[];
+  removedPhotoClientIds?: string[];
   /** What the server last said about it. */
   server: { id: string; status: "draft" | "completed"; validationStatus: string; problems: { key: string; message: string }[] } | null;
   /** Held for the office: the visit changed while the phone was offline. The form is read-only from then on. */
@@ -375,7 +381,8 @@ function deliveredUnmarked(insp: LocalInspection, ops: StoredOp[]): Set<string> 
 export function withSentState(form: LocalInspection, stored: LocalInspection | undefined): LocalInspection {
   if (!stored) return form;
   const sent = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
-  return { ...form, server: stored.server, photos: form.photos.map((p) => (sent.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)) };
+  const invalidCompletion = stored.status === "draft" && stored.server?.validationStatus === "invalid";
+  return { ...form, ...(invalidCompletion ? { status: "draft" as const, completedAt: null } : {}), server: stored.server, held: stored.held, photos: form.photos.map((p) => (sent.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)) };
 }
 
 /** Clears the failed mark on every op in an outbox, keeping each op and its place in the queue. */
@@ -401,6 +408,15 @@ export function storeFor(t: KnownTenant) {
     kvGet: <T>(key: string) => run(["kv"], "readonly", (trx) => done(trx.objectStore("kv").get(key)) as Promise<T | undefined>),
     kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)),
     getInspection: (jobId: string) => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").get(jobId)) as Promise<LocalInspection | undefined>),
+    /** Recheck inside the write transaction: late GPS or a second tab never replaces a draft. */
+    ensureInspection: (proposed: LocalInspection) => run(["inspections", "outbox"], "readwrite", async (trx) => {
+      const inspections = trx.objectStore("inspections");
+      const existing = await done(inspections.get(proposed.jobId)) as LocalInspection | undefined;
+      if (existing) return existing;
+      inspections.put(proposed);
+      trx.objectStore("outbox").add({ kind: "sync", inspectionClientId: proposed.clientId } satisfies OutboxOp);
+      return proposed;
+    }),
     allInspections: () => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").getAll()) as Promise<LocalInspection[]>),
     getPhotoBlob: (clientId: string) => run(["photos"], "readonly", (trx) => done(trx.objectStore("photos").get(clientId)) as Promise<PhotoBlob | undefined>),
     /** Every op in the outbox, including ones only a later version can send. */
@@ -413,9 +429,13 @@ export function storeFor(t: KnownTenant) {
     saveInspection: (insp: LocalInspection, photo?: PhotoBlob) =>
       run(["inspections", "photos", "outbox"], "readwrite", async (trx) => {
         const existing = await done(trx.objectStore("inspections").get(insp.jobId)) as LocalInspection | undefined;
+        if (existing?.held || existing?.server?.status === "completed" || (existing?.status === "completed" && insp.status !== "completed")) return;
         trx.objectStore("inspections").put({ ...withSentState(insp, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         const ops = (await done(outbox.getAll())) as StoredOp[];
+        const removed = new Set(insp.removedPhotoClientIds ?? []);
+        for (const id of removed) trx.objectStore("photos").delete(id);
+        for (const op of ops) if (op.inspectionClientId === insp.clientId && op.kind === "photo" && removed.has((op as QueuedOp & { photoClientId: string }).photoClientId)) outbox.delete(op.seq);
         const mine = ops.filter((o) => o.inspectionClientId === insp.clientId && !o.failed);
         if (photo) {
           trx.objectStore("photos").put(photo);

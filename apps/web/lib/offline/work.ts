@@ -18,6 +18,9 @@ export interface WorkPhotoLocal {
   lat: number | null;
   lng: number | null;
   uploaded: boolean;
+  /** Small image kept with the record for offline review after the full upload leaves the phone. */
+  preview?: string;
+  url?: string;
 }
 
 export interface WorkSignatureLocal {
@@ -54,6 +57,7 @@ export interface LocalWork {
   /** What the customer was shown when signing; fixed once signed. */
   summary: Record<string, unknown> | null;
   photos: WorkPhotoLocal[];
+  removedPhotoClientIds?: string[];
   signatures: WorkSignatureLocal[];
   /** When the server first had this record; photos and signatures can only go after it. */
   draftAckedAt: string | null;
@@ -147,6 +151,7 @@ export function withSentState(form: LocalWork, stored: LocalWork | undefined): L
   const signatures = new Set(stored.signatures.filter((s) => s.uploaded).map((s) => s.clientId));
   return {
     ...form,
+    ...(stored.status === "draft" && stored.server?.validationStatus === "invalid" ? { status: "draft" as const, completedAt: null } : {}),
     server: stored.server,
     draftAckedAt: stored.draftAckedAt,
     held: stored.held,
@@ -268,6 +273,15 @@ export function workStoreFor(t: KnownTenant) {
       }
     },
     kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)),
+    /** Recheck the job in one write transaction before creating a work record. */
+    ensureWork: (proposed: LocalWork) => run(["records", "outbox"], "readwrite", async (trx) => {
+      const records = trx.objectStore("records");
+      const existing = ((await done(records.getAll())) as LocalWork[]).find(r => r.jobId === proposed.jobId);
+      if (existing) return existing;
+      records.put(proposed);
+      await queueSync(trx.objectStore("outbox"), proposed.clientId);
+      return proposed;
+    }),
     allRecords: () => readAll<LocalWork>(t, "records"),
     getBlob: (clientId: string) => run(["blobs"], "readonly", (trx) => done(trx.objectStore("blobs").get(clientId)) as Promise<WorkBlob | undefined>),
     allOps: () => readOps(t),
@@ -282,8 +296,12 @@ export function workStoreFor(t: KnownTenant) {
       run(["records", "blobs", "outbox"], "readwrite", async (trx) => {
         const records = trx.objectStore("records");
         const existing = (await done(records.get(rec.clientId))) as LocalWork | undefined;
+        if (existing?.held || existing?.resolved || existing?.server?.status === "completed" || (existing?.status === "completed" && rec.status !== "completed")) return;
         records.put({ ...withSentState(rec, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
+        const removed = new Set(rec.removedPhotoClientIds ?? []);
+        for (const id of removed) trx.objectStore("blobs").delete(id);
+        for (const op of (await done(outbox.getAll())) as QueuedWorkOp[]) if (op.recordClientId === rec.clientId && op.kind === "work-photo" && removed.has(op.photoClientId)) outbox.delete(op.seq);
         if (extra.photo) {
           trx.objectStore("blobs").put(extra.photo);
           outbox.add({ kind: "work-photo", recordClientId: rec.clientId, photoClientId: extra.photo.clientId } satisfies WorkOp);

@@ -103,6 +103,29 @@ describe("field records from the phone", () => {
     expect(file.rawPayload.equals(JPEG)).toBe(true);
   });
 
+  it("replaces uploaded draft work photos while preserving signature binding, tenant scope and final immutability", async () => {
+    const s = await setup(ctx);
+    const v = visit(s);
+    await v.sync(s.aApi, "draft");
+    await v.photo(s.aApi, 0);
+    await v.photo(s.aApi, 1);
+    const body = { clientId: v.clientId, jobId: s.jobId, templateId: s.form.id, status: "draft", revision: 2, arrivedAt: "2026-03-01T15:00:00Z", values: VALUES, summary: SUMMARY, removedPhotoClientIds: [v.photos[0]] };
+    expect((await s.bApi.put("/work/sync", body)).statusCode).toBe(403);
+    const removed = await s.aApi.put("/work/sync", body);
+    expect(removed.statusCode, removed.body).toBe(200);
+    expect(removed.json().photos).toHaveLength(1);
+    const incomplete = await s.aApi.put("/work/sync", { ...body, status: "completed" });
+    expect(incomplete.json().validationProblems.some((p: { key: string }) => p.key === "before")).toBe(true);
+    const retake = uuid();
+    expect((await s.aApi.putImage(`/work/${v.clientId}/photos/${retake}`, JPEG, { "x-photo-key": "before" })).statusCode).toBe(201);
+    await v.sign(s.aApi);
+    const done = await s.aApi.put("/work/sync", { ...body, status: "completed", revision: 3 });
+    expect(done.json()).toMatchObject({ status: "completed", summarySha256: await snapshotSha256(SUMMARY) });
+    expect(done.json().photos.map((p: { clientId: string }) => p.clientId).sort()).toEqual([v.photos[1], retake].sort());
+    const replay = await s.aApi.put("/work/sync", { ...body, revision: 4, removedPhotoClientIds: [retake] });
+    expect(replay.json().photos).toEqual(done.json().photos);
+  });
+
   it("keeps an incomplete record a draft and lists what is missing", async () => {
     const s = await setup(ctx);
     const v = visit(s);

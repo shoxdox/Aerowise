@@ -13,10 +13,11 @@ import { WorkStopList, workStatus } from "@/components/tech/WorkStops";
 import { WorkVisit } from "@/components/tech/WorkVisit";
 import { api } from "@/lib/api";
 import { setDisplayTimeZone } from "@/lib/format";
-import { activeStore, activeTenant, allInspections, allOps, saveInspection, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
+import { activeStore, activeTenant, allInspections, allOps, sameTenant, storeFor, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
 import { assumingOffline, locate, fetchInspectionForJob, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
 import { discardIfEnded, openTechSession, type EndedAccess } from "@/lib/offline/tenant";
+import { saveOrReport } from "@/lib/offline/storage";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
 import type { Me } from "@/lib/session";
 
@@ -41,16 +42,16 @@ function adoptInspection(server: Inspection): LocalInspection {
     clientId: server.clientId,
     jobId: server.jobId,
     templateId: server.templateId,
-    status: "draft",
+    status: server.status,
     arrivedAt: server.arrivedAt,
-    completedAt: null,
+    completedAt: server.completedAt,
     arrivalGps: server.arrivalLat !== null && server.arrivalLng !== null ? { lat: server.arrivalLat, lng: server.arrivalLng } : null,
     completionGps: null,
     locationStatus: server.locationStatus,
     accessIssue: server.accessIssue,
     values: server.values,
     issues: server.issues.map(({ clientId, type, severity, description }) => ({ clientId, type, severity, description })),
-    photos: server.photos.map((p) => ({ clientId: p.clientId, photoKey: p.photoKey, capturedAt: p.capturedAt ?? server.arrivedAt, lat: p.lat, lng: p.lng, uploaded: true })),
+    photos: server.photos.map((p) => ({ clientId: p.clientId, photoKey: p.photoKey, capturedAt: p.capturedAt ?? server.arrivedAt, lat: p.lat, lng: p.lng, uploaded: true, url: p.url })),
     server: { id: server.id, status: server.status, validationStatus: server.validationStatus, problems: server.validationProblems },
   };
 }
@@ -63,6 +64,8 @@ export default function TechApp() {
   const [inspections, setInspections] = useState<Map<string, LocalInspection>>(new Map());
   const [failures, setFailures] = useState<string[]>([]);
   /** Why a stop could not be opened just now (an inspection started on another phone, with no signal to fetch it). */
+  const startingJobs = useRef(new Set<string>());
+  const [starting, setStarting] = useState<Set<string>>(new Set());
   const [startNotice, setStartNotice] = useState<string | null>(null);
   // Work visits (SW-2): empty unless field work is switched on and the office scheduled some.
   const [workStops, setWorkStops] = useState<WorkStop[]>([]);
@@ -170,6 +173,17 @@ export default function TechApp() {
     });
   }, [refresh, refreshLocal, showEnded]);
 
+  const openedLinkedStop = useRef(false);
+  useEffect(() => {
+    if (loading || openedLinkedStop.current) return;
+    openedLinkedStop.current = true;
+    const jobId = new URLSearchParams(window.location.search).get("jobId");
+    if (!jobId) return;
+    if (workStops.some(s => s.jobId === jobId)) setView({ name: "work", jobId });
+    else if (route?.items.some(s => s.jobId === jobId)) setView({ name: "stop", jobId });
+    else setStartNotice("The linked visit is not on this account’s current route. Refresh with signal or ask the office for the current visit.");
+  }, [loading, route, workStops]);
+
   // "Sign in again" is only ever a past answer: a send refused under an earlier sign-in, or a page
   // the phone kept from before a sign-out and shows again on Back or Forward (Android's
   // back/forward cache restores it as it was, with no new load). Whenever the page is shown again,
@@ -204,78 +218,62 @@ export default function TechApp() {
     };
   }, [recheck]);
 
-  async function start(stop: Stop) {
-    if (!template) return;
+  async function startingJob(jobId: string, fn: () => Promise<void>) {
+    if (startingJobs.current.has(jobId)) return;
+    startingJobs.current.add(jobId);
+    setStarting(new Set(startingJobs.current));
     setStartNotice(null);
-    const existing = inspections.get(stop.jobId);
-    if (!existing) {
-      let insp: LocalInspection;
-      if (stop.inspection?.status === "draft") {
-        // Started on another phone (or here, before this phone's data was cleared): continue the
-        // server's copy under its own id. A second inspection for the job would be refused at sync.
-        const fetched = await fetchInspectionForJob(stop.jobId, activeStore().tenant);
-        if (!fetched.ok) {
-          setStartNotice("This inspection was started on another phone. Open this stop once with signal to continue it here.");
-          return;
+    try { await fn(); }
+    catch (err) { setStartNotice(err instanceof Error ? err.message : "Could not save this visit on the phone. Try again."); }
+    finally { startingJobs.current.delete(jobId); setStarting(new Set(startingJobs.current)); }
+  }
+
+  async function start(stop: Stop) {
+    if (!template && !inspections.has(stop.jobId)) return;
+    const store = activeStore();
+    await startingJob(stop.jobId, async () => {
+      if (!(await store.getInspection(stop.jobId))) {
+        let insp: LocalInspection;
+        if (stop.inspection) {
+          const fetched = await fetchInspectionForJob(stop.jobId, store.tenant);
+          if (!fetched.ok) {
+            setStartNotice("Open this stop with signal to download its recorded inspection. Your saved work stays on this phone.");
+            return;
+          }
+          insp = { ...adoptInspection(fetched.data), stopSnapshot: stop };
+        } else {
+          const arrival = await locate();
+          insp = { clientId: crypto.randomUUID(), jobId: stop.jobId, stopSnapshot: stop, templateId: template!.id, status: "draft", arrivedAt: new Date().toISOString(), completedAt: null,
+            arrivalGps: arrival.gps, completionGps: null, locationStatus: arrival.status, accessIssue: null, values: {}, issues: [], photos: [], server: null };
         }
-        insp = adoptInspection(fetched.data);
-      } else {
-        const arrival = await locate();
-        insp = {
-          clientId: crypto.randomUUID(),
-          jobId: stop.jobId,
-          templateId: template.id,
-          status: "draft",
-          arrivedAt: new Date().toISOString(),
-          completedAt: null,
-          arrivalGps: arrival.gps,
-          completionGps: null,
-          locationStatus: arrival.status,
-          accessIssue: null,
-          values: {},
-          issues: [],
-          photos: [],
-          server: null,
-        };
+        // Atomic recheck after every network/location wait; never replace an existing draft.
+        await saveOrReport(() => store.ensureInspection(insp));
       }
-      await saveInspection(insp);
+      if (!sameTenant(activeTenant(), store.tenant)) return;
       await refreshLocal();
       void syncNow();
-    }
-    setView({ name: "inspect", jobId: stop.jobId });
+      setView({ name: "inspect", jobId: stop.jobId });
+    });
   }
 
   async function startWork(stop: WorkStop) {
     const tenant = activeTenant();
     if (!tenant || !stop.templateId) return;
-    if (!works.has(stop.jobId)) {
-      const arrival = await locate();
-      const rec: LocalWork = {
-        clientId: crypto.randomUUID(),
-        jobId: stop.jobId,
-        templateId: stop.templateId,
-        label: { title: `${stop.workOrderLabel} · ${stop.title}`, customerName: stop.customerName, address: stop.address },
-        status: "draft",
-        revision: 0,
-        arrivedAt: new Date().toISOString(),
-        completedAt: null,
-        arrivalGps: arrival.gps,
-        completionGps: null,
-        locationStatus: arrival.status,
-        values: {},
-        finalVisit: true,
-        summary: null,
-        photos: [],
-        signatures: [],
-        draftAckedAt: null,
-        server: null,
-        held: null,
-        resolved: null,
-      };
-      await workStoreFor(tenant).saveWork(rec);
+    const store = workStoreFor(tenant);
+    await startingJob(stop.jobId, async () => {
+      if (!(await store.allRecords()).some(r => r.jobId === stop.jobId)) {
+        const arrival = await locate();
+        const rec: LocalWork = {
+          clientId: crypto.randomUUID(), jobId: stop.jobId, templateId: stop.templateId!, label: { title: `${stop.workOrderLabel} · ${stop.title}`, customerName: stop.customerName, address: stop.address },
+          status: "draft", revision: 0, arrivedAt: new Date().toISOString(), completedAt: null, arrivalGps: arrival.gps, completionGps: null, locationStatus: arrival.status,
+          values: {}, finalVisit: true, summary: null, photos: [], signatures: [], draftAckedAt: null, server: null, held: null, resolved: null,
+        };
+        await saveOrReport(() => store.ensureWork(rec));
+      }
+      if (!sameTenant(activeTenant(), tenant)) return;
       await refreshLocal();
       void syncNow();
-    }
+    });
   }
 
   async function signOut() {
@@ -329,7 +327,7 @@ export default function TechApp() {
     );
   }
 
-  const stop = view.name === "stop" || view.name === "inspect" ? route?.items.find((s) => s.jobId === view.jobId) : undefined;
+  const stop = view.name === "stop" || view.name === "inspect" ? (route?.items.find((s) => s.jobId === view.jobId) ?? inspections.get(view.jobId)?.stopSnapshot) : undefined;
   const workStop = view.name === "work" ? workStops.find((s) => s.jobId === view.jobId) : undefined;
 
   return (
@@ -368,6 +366,7 @@ export default function TechApp() {
       )}
       <main className="tech-page">
         {view.name === "list" && me && <IntroCard intro="technician" me={me} />}
+        {view.name === "list" && startNotice && <p className="card warn" role="status">{startNotice}</p>}
         {view.name === "list" && (
           <StopList
             route={route}
@@ -382,6 +381,7 @@ export default function TechApp() {
           />
         )}
         {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} numbers={numbers} onOpen={(jobId) => setView({ name: "work", jobId })} />}
+        {view.name === "list" && [...inspections.values()].some(i => i.stopSnapshot && !route?.items.some(s => s.jobId === i.jobId)) && <section className="stack"><h2>Inspections kept on this phone</h2>{[...inspections.values()].filter(i => i.stopSnapshot && !route?.items.some(s => s.jobId === i.jobId)).map(i => <button key={i.clientId} className="secondary" onClick={() => setView({ name: "stop", jobId: i.jobId })}>{i.stopSnapshot!.customer.displayName} · {i.held ? "Held for the office" : i.status === "completed" ? "Completed inspection" : "Saved inspection"}</button>)}</section>}
         {/* Off on the server, /pumping/field answers empty lists: nothing to record a disposal with yet. */}
         {view.name === "list" && pumpingField && (pumpingField.facilities.length > 0 || pumpingField.unloaded.length > 0) && (
           <button className="secondary" data-testid="open-disposal" onClick={() => setView({ name: "disposal" })}>
@@ -406,6 +406,8 @@ export default function TechApp() {
             store={workStore}
             record={works.get(workStop.jobId)}
             failed={!!works.get(workStop.jobId) && failedWork.has(works.get(workStop.jobId)!.clientId)}
+            starting={starting.has(workStop.jobId)}
+            notice={startNotice}
             onStart={() => void startWork(workStop)}
             onSaved={() => {
               void refreshLocal();
@@ -419,7 +421,7 @@ export default function TechApp() {
           />
         )}
         {view.name === "stop" && stop && (
-          <StopDetail stop={stop} inspection={inspections.get(stop.jobId)} canStart={!!template} onStart={() => void start(stop)} notice={startNotice} />
+          <StopDetail stop={stop} inspection={inspections.get(stop.jobId)} canStart={!!template || inspections.has(stop.jobId)} starting={starting.has(stop.jobId)} onStart={() => void start(stop)} notice={startNotice} />
         )}
         {view.name === "inspect" && stop && inspections.get(stop.jobId) && (
           <InspectionForm
