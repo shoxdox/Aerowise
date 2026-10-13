@@ -126,7 +126,7 @@ for (const [route, kind] of [["pay", "invoice"], ["renew", "renewal"], ["estimat
   test(`${kind} distinguishes a temporary failure from missing, expired and revoked access`, async ({ page }) => {
     const path = `/${route}/${"x".repeat(43)}`;
     let response = { status: 503, error: "unavailable", message: "Controlled server failure" };
-    await page.route(`**/api${path}`, (r) => r.fulfill({ status: response.status, json: response }));
+    await page.route((url) => url.pathname === `/api${path}`, (r) => r.fulfill({ status: response.status, json: response }));
     await page.goto(path);
     await expect(page.getByRole("heading", { name: "This page could not load" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
