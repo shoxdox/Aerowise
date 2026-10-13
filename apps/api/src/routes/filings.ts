@@ -368,12 +368,14 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       config: { permission: "filings:read" },
       schema: {
         tags: ["filings"],
-        summary: "Filings, most urgent first",
+        summary: "Filings, most urgent first (or most recent first with `sort=recent`)",
         description:
           "`attention`: failed, rejected or needing review, or open with the deadline warning reached. " +
-          "`open`: not yet sent. `sent`: sent and waiting for the authority's confirmation.",
+          "`open`: not yet sent. `sent`: sent and waiting for the authority's confirmation. " +
+          "`sort`: `deadline` (the default) puts the nearest deadline first; `recent` puts the latest sent or created first.",
         querystring: z.object({
           view: z.enum(VIEWS).default("attention"),
+          sort: z.enum(["deadline", "recent"]).default("deadline"),
           kind: z.enum(["inspection_report", "contract"]).optional(),
           siteId: id.optional(),
           limit: z.coerce.number().int().min(1).max(500).default(50),
@@ -409,7 +411,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           break;
       }
       const [rows, count] = await Promise.all([
-        q.orderBy(sql`f.deadline_on nulls first`).orderBy("f.createdAt").orderBy("f.id").limit(req.query.limit).offset(req.query.offset).execute(),
+        (req.query.sort === "recent" ? q.orderBy(sql`coalesce(f.sent_at, f.created_at) desc`).orderBy("f.id", "desc") : q.orderBy(sql`f.deadline_on nulls first`).orderBy("f.createdAt").orderBy("f.id"))
+          .limit(req.query.limit)
+          .offset(req.query.offset)
+          .execute(),
         q.clearSelect().select(sql<number>`count(*)::int`.as("total")).executeTakeFirstOrThrow(),
       ]);
       return { items: rows.map((r) => toItem(r, today)), today, total: count.total };

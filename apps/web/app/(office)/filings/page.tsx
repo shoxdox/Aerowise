@@ -10,12 +10,14 @@ import { useLoad } from "@/components/useLoad";
 import { day, dayOf } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 
+// All opens first, newest first, so the page is never blank while nothing is wrong; the inbox
+// already carries what needs attention. The working views keep the nearest deadline first.
 const VIEWS = [
-  { key: "attention", label: "Needs attention" },
-  { key: "open", label: "Not sent yet" },
-  { key: "sent", label: "Submitted" },
-  { key: "confirmed", label: "Acknowledgment recorded" },
-  { key: "all", label: "All" },
+  { key: "all", label: "All", sort: "recent" },
+  { key: "attention", label: "Needs attention", sort: "deadline" },
+  { key: "open", label: "Not sent yet", sort: "deadline" },
+  { key: "sent", label: "Submitted", sort: "recent" },
+  { key: "confirmed", label: "Acknowledgment recorded", sort: "recent" },
 ] as const;
 
 const FILINGS_EMPTY: Record<(typeof VIEWS)[number]["key"], string> = {
@@ -38,11 +40,11 @@ function note(f: FilingListItem) {
 }
 
 export default function FilingsPage() {
-  const [selectedView, setView] = useQueryState("view", "attention");
-  const view = VIEWS.find((v) => v.key === selectedView)?.key ?? "attention";
+  const [selectedView, setView] = useQueryState("view", "all");
+  const { key: view, sort } = VIEWS.find((v) => v.key === selectedView) ?? VIEWS[0];
   const [offsetText, setOffset] = useQueryState("offset", "0");
   const offset = Number.isSafeInteger(Number(offsetText)) && Number(offsetText) >= 0 ? Number(offsetText) : 0;
-  const load = useLoad<{ items: FilingListItem[]; today: string; total: number }>(`/filings?view=${view}&limit=50&offset=${offset}`);
+  const load = useLoad<{ items: FilingListItem[]; today: string; total: number }>(`/filings?view=${view}&sort=${sort}&limit=50&offset=${offset}`);
   const { data } = load;
 
   return (
