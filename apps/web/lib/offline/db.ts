@@ -24,6 +24,8 @@ export interface LocalPhoto {
   /** Small image kept with the record for offline review after the full upload leaves the phone. */
   preview?: string;
   url?: string;
+  /** Refreshes a preview even if its signed URL is unchanged within the same server second. */
+  urlVersion?: number;
 }
 
 export interface LocalIssue {
@@ -388,9 +390,9 @@ function deliveredUnmarked(insp: LocalInspection, ops: StoredOp[]): Set<string> 
  */
 export function withSentState(form: LocalInspection, stored: LocalInspection | undefined): LocalInspection {
   if (!stored) return form;
-  const sent = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
+  const storedPhotos = new Map(stored.photos.map(p => [p.clientId, p]));
   const invalidCompletion = stored.status === "draft" && stored.server?.validationStatus === "invalid";
-  return { ...form, ...(invalidCompletion ? { status: "draft" as const, completedAt: null } : {}), server: stored.server, held: stored.held, photos: form.photos.map((p) => (sent.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)) };
+  return { ...form, ...(invalidCompletion ? { status: "draft" as const, completedAt: null } : {}), server: stored.server, held: stored.held, photos: form.photos.map(p => { const saved = storedPhotos.get(p.clientId); return saved ? { ...p, uploaded: p.uploaded || saved.uploaded, url: saved.url ?? p.url, urlVersion: saved.urlVersion ?? p.urlVersion } : p; }) };
 }
 
 /** Clears the failed mark on every op in an outbox, keeping each op and its place in the queue. */
@@ -427,6 +429,14 @@ export function storeFor(t: KnownTenant) {
     }),
     allInspections: () => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").getAll()) as Promise<LocalInspection[]>),
     getPhotoBlob: (clientId: string) => run(["photos"], "readonly", (trx) => done(trx.objectStore("photos").get(clientId)) as Promise<PhotoBlob | undefined>),
+    /** Refresh only ephemeral authorized links; answers, photo ids and immutable completion stay untouched. */
+    refreshPhotoUrls: (jobId: string, clientId: string, urls: { clientId: string; url: string }[]) => run(["inspections"], "readwrite", async trx => {
+      const inspections = trx.objectStore("inspections");
+      const existing = await done(inspections.get(jobId)) as LocalInspection | undefined;
+      if (!existing || existing.clientId !== clientId) return;
+      const byId = new Map(urls.map(p => [p.clientId, p.url]));
+      inspections.put({ ...existing, photos: existing.photos.map(p => byId.has(p.clientId) ? { ...p, url: byId.get(p.clientId), urlVersion: (p.urlVersion ?? 0) + 1 } : p) });
+    }),
     /** Every op in the outbox, including ones only a later version can send. */
     allOps: () => run(["outbox"], "readonly", (trx) => done(trx.objectStore("outbox").getAll()) as Promise<StoredOp[]>),
 

@@ -264,3 +264,82 @@ test("GPS resolving after confirmed demo end cannot recreate its deleted phone d
     await expect(page.locator(".stop-card")).toHaveCount(0);
   } finally { await adminContext.close(); }
 });
+
+test("clean-phone completed photos recover expired links without changing the record and remain truthful offline", async ({ page, context, browser }) => {
+  test.setTimeout(180_000);
+  // A separate fictional company leaves the shared inspection route available to the offline suites.
+  const adminContext = await browser.newContext();
+  const admin = adminContext.request;
+  expect((await admin.post("/api/admin/auth/login", { data: { email: "admin@example.com", password: "aerowise-dev" } })).ok()).toBe(true);
+  const created = await admin.post("/api/admin/prospect-demos", { data: { prospect: "Fictional photo expiry recovery", serviceCounties: ["Travis County"], days: 7 } });
+  expect(created.status()).toBe(201);
+  const { link } = await created.json();
+  const url = new URL(link.url);
+  try {
+    await page.goto(url.pathname + url.hash);
+    await page.waitForURL("**/inbox");
+    expect((await page.request.post("/api/demo/switch", { data: { role: "technician" } })).ok()).toBe(true);
+    await page.goto("/tech");
+    await expect(page.locator(".stop-card").first()).toBeVisible();
+    await page.waitForFunction(async () => !!(await navigator.serviceWorker.ready).active);
+    await page.reload();
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    await page.waitForFunction(async () => (await (await caches.open("aerowise-shell-v1")).keys()).length > 5);
+    const route = await (await page.request.get("/api/route")).json();
+    const stop = route.items.find((s: { status: string; inspection: unknown }) => s.status === "scheduled" && !s.inspection);
+    expect(stop).toBeTruthy();
+    const template = await (await page.request.get("/api/inspection-template")).json();
+    const values: Record<string, string | number | boolean> = { chlorinator: "working", chlorine_level: 1.5, air_pressure: 4, odor: "none", pumping_needed: false, notes: "Completed elsewhere; preserve every answer" };
+    for (const field of template.definition.fields) if (field.type === "pass_fail") values[field.key] = "pass";
+    const clientId = crypto.randomUUID();
+    const body = { clientId, jobId: stop.jobId, templateId: template.id, status: "draft", arrivedAt: new Date().toISOString(), arrivalGps: null, locationStatus: "denied", values };
+    const draft = await page.request.put("/api/inspections/sync", { data: body });
+    expect(draft.ok(), await draft.text()).toBe(true);
+    for (const key of ["overview", "chlorinator"]) {
+      const uploaded = await page.request.put(`/api/inspections/${clientId}/photos/${crypto.randomUUID()}`, { headers: { "content-type": "image/png", "x-photo-key": key }, data: PNG });
+      expect(uploaded.status(), await uploaded.text()).toBe(201);
+    }
+    const completed = await page.request.put("/api/inspections/sync", { data: { ...body, status: "completed", completedAt: new Date().toISOString() } });
+    const receipt = await completed.json();
+    expect(receipt.status, JSON.stringify(receipt)).toBe("completed");
+    const immutable = (r: typeof receipt) => ({ id: r.id, clientId: r.clientId, status: r.status, values: r.values, completedAt: r.completedAt, updatedAt: r.updatedAt, photos: r.photos.map((p: { clientId: string }) => p.clientId).sort() });
+    // The phone has never opened this server-side record, and contains no local photo blob/thumbnail.
+    await page.route("**/api/files/**", r => r.fulfill({ status: 403, headers: { "cache-control": "no-store" }, json: { error: "invalid_link", message: "Expired controlled fixture" } }));
+    await page.reload();
+    await page.locator(".stop-card", { hasText: stop.customer.displayName }).click();
+    await page.getByRole("button", { name: "View completed inspection" }).click();
+    await expect(page.getByTestId("inspection-recap")).toContainText(values.notes as string);
+    await expect(page.getByTestId("photo-preview-unavailable")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: /Replace|Remove|Finish inspection/ })).toHaveCount(0);
+    await page.unroute("**/api/files/**");
+    await page.getByRole("button", { name: "Refresh photo links", exact: true }).click();
+    await expect.poll(() => page.locator('[data-testid="inspection-recap"] img').evaluateAll(images => images.filter(image => (image as HTMLImageElement).naturalWidth > 0).length)).toBe(2);
+    await expect(page.getByTestId("photo-preview-unavailable")).toHaveCount(0);
+
+    // Deterministically age only the ephemeral local links. Never alter answers or completion.
+    await page.evaluate(async (jobId: string) => {
+      const known = JSON.parse(localStorage.getItem("aerowise-tech:tenants")!)[0] as { dbName: string };
+      const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open(known.dbName); r.onsuccess = () => resolve(r.result); });
+      const trx = db.transaction("inspections", "readwrite");
+      const store = trx.objectStore("inspections");
+      const read = store.get(jobId);
+      read.onsuccess = () => store.put({ ...read.result, photos: read.result.photos.map((p: { url: string }) => { const url = new URL(p.url, location.origin); url.searchParams.set("exp", "0"); return { ...p, url: url.pathname + url.search }; }) });
+      await new Promise<void>((resolve, reject) => { trx.oncomplete = () => resolve(); trx.onabort = () => reject(trx.error); });
+      db.close();
+    }, stop.jobId);
+    await context.setOffline(true);
+    await page.reload();
+    await page.locator(".stop-card", { hasText: stop.customer.displayName }).click();
+    await page.getByRole("button", { name: "View completed inspection" }).click();
+    await expect(page.getByTestId("inspection-recap")).toContainText(values.notes as string);
+    await expect(page.getByTestId("photo-preview-unavailable")).toHaveCount(2);
+    await page.getByRole("button", { name: "Refresh photo links", exact: true }).click();
+    await expect(page.getByText("Photo previews could not refresh.", { exact: false })).toBeVisible();
+    await context.setOffline(false);
+    await page.getByRole("button", { name: "‹ Back", exact: true }).click();
+    await page.getByRole("button", { name: "View completed inspection" }).click();
+    await expect.poll(() => page.locator('[data-testid="inspection-recap"] img').evaluateAll(images => images.filter(image => (image as HTMLImageElement).naturalWidth > 0).length)).toBe(2);
+    const after = await (await page.request.get(`/api/jobs/${stop.jobId}/inspection`)).json();
+    expect(immutable(after)).toEqual(immutable(receipt));
+  } finally { await context.setOffline(false); await adminContext.close(); }
+});

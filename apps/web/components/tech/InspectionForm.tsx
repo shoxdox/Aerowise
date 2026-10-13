@@ -24,7 +24,7 @@ import { activeStore, withSentState, type LocalInspection, type PhotoBlob } from
 import { currentPosition, preparePhoto, templateById } from "@/lib/offline/data";
 import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 
-export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: Stop; initial: LocalInspection; onSaved: () => void; onFinished: () => void }) {
+export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPhotos }: { stop: Stop; initial: LocalInspection; onRefreshPhotos: () => Promise<boolean>; onSaved: () => void; onFinished: () => void }) {
   const store = useMemo(() => activeStore(), []);
   const [insp, setInsp] = useState(initial);
   const [template, setTemplate] = useState<InspectionTemplate | null | undefined>(undefined);
@@ -222,7 +222,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     onFinished();
   }
 
-  if (insp.status === "completed" && !insp.held) return <InspectionRecap stop={stop} inspection={insp} definition={def} />;
+  if (insp.status === "completed" && !insp.held) return <InspectionRecap stop={stop} inspection={insp} definition={def} onRefreshPhotos={onRefreshPhotos} />;
 
   return (
     <div className="stack inspection">

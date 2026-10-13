@@ -228,11 +228,26 @@ export default function TechApp() {
     finally { startingJobs.current.delete(jobId); setStarting(new Set(startingJobs.current)); }
   }
 
+  async function refreshPhotoLinks(jobId: string): Promise<boolean> {
+    const store = activeStore();
+    if (!navigator.onLine) return false;
+    const local = await store.getInspection(jobId);
+    if (!local) return false;
+    const fetched = await fetchInspectionForJob(jobId, store.tenant);
+    if (!fetched.ok || fetched.data.clientId !== local.clientId || !sameTenant(activeTenant(), store.tenant)) return false;
+    // Metadata-only update in a transaction reads the newest draft; no downloaded answer replaces local work.
+    await store.refreshPhotoUrls(jobId, local.clientId, fetched.data.photos);
+    if (!sameTenant(activeTenant(), store.tenant)) return false;
+    await refreshLocal();
+    return true;
+  }
+
   async function start(stop: Stop) {
     if (!template && !inspections.has(stop.jobId)) return;
     const store = activeStore();
     await startingJob(stop.jobId, async () => {
-      if (!(await store.getInspection(stop.jobId))) {
+      const existing = await store.getInspection(stop.jobId);
+      if (!existing) {
         let insp: LocalInspection;
         if (stop.inspection) {
           const fetched = await fetchInspectionForJob(stop.jobId, store.tenant);
@@ -250,6 +265,7 @@ export default function TechApp() {
         if (!sameTenant(activeTenant(), store.tenant)) return;
         await saveOrReport(() => store.ensureInspection(insp));
       }
+      if (existing?.photos.some(p => p.uploaded && !p.preview) && navigator.onLine) await refreshPhotoLinks(stop.jobId).catch(() => false);
       if (!sameTenant(activeTenant(), store.tenant)) return;
       await refreshLocal();
       void syncNow();
@@ -430,6 +446,7 @@ export default function TechApp() {
             key={stop.jobId}
             stop={stop}
             initial={inspections.get(stop.jobId)!}
+            onRefreshPhotos={() => refreshPhotoLinks(stop.jobId)}
             onSaved={() => {
               void refreshLocal();
               void syncNow();

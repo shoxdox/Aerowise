@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // Load the actual browser wrappers at runtime without adding DOM globals to the Node API compilation.
 const inspectionModule = new URL("../../web/lib/offline/db.ts", import.meta.url).pathname;
 const workModule = new URL("../../web/lib/offline/work.ts", import.meta.url).pathname;
-const { storeFor } = await import(inspectionModule);
+const { storeFor, withSentState } = await import(inspectionModule);
 const { workStoreFor } = await import(workModule);
 type KnownTenant = { organizationId: string; userId: string; dbName: string; organizationName: string; userName: string };
 
@@ -17,12 +17,22 @@ const work = () => ({ clientId: crypto.randomUUID(), jobId: crypto.randomUUID(),
 afterEach(() => vi.unstubAllGlobals());
 
 describe("forgotten technician account lifecycle", () => {
+  it("merges refreshed photo links while preserving newer draft answers, thumbnails and removals", () => {
+    const photoId = crypto.randomUUID();
+    const local = { ...inspection(), values: { notes: "Latest unsent answer" }, photos: [{ clientId: photoId, photoKey: "overview", uploaded: false, preview: "data:image/png;base64,local" }] };
+    const stored = { ...local, values: { notes: "Older server answer" }, photos: [{ clientId: photoId, photoKey: "overview", uploaded: true, url: "/files/refreshed?exp=123", urlVersion: 2 }, { clientId: crypto.randomUUID(), photoKey: "overview", uploaded: true, url: "/files/removed" }] };
+    const merged = withSentState(local, stored);
+    expect(merged.values).toEqual(local.values);
+    expect(merged.status).toBe("draft");
+    expect(merged.photos).toEqual([{ ...local.photos[0], uploaded: true, url: "/files/refreshed?exp=123", urlVersion: 2 }]);
+  });
+
   it("rejects late inspection/work/GPS/photo writes before opening or recreating either database", async () => {
     const t = tenant(); registry();
     const open = vi.fn(() => { throw new Error("A forgotten database must not open"); });
     vi.stubGlobal("indexedDB", { open });
     const i = storeFor(t); const w = workStoreFor(t);
-    for (const write of [() => i.ensureInspection(inspection()), () => i.saveInspection(inspection()), () => i.photoUploaded(crypto.randomUUID(), crypto.randomUUID()), () => w.ensureWork(work()), () => w.saveWork(work()), () => w.uploaded(crypto.randomUUID(), { photoClientId: crypto.randomUUID() })]) {
+    for (const write of [() => i.ensureInspection(inspection()), () => i.saveInspection(inspection()), () => i.photoUploaded(crypto.randomUUID(), crypto.randomUUID()), () => i.refreshPhotoUrls(crypto.randomUUID(), crypto.randomUUID(), []), () => w.ensureWork(work()), () => w.saveWork(work()), () => w.uploaded(crypto.randomUUID(), { photoClientId: crypto.randomUUID() })]) {
       await expect(write()).rejects.toThrow("no longer kept on this phone");
     }
     expect(open).not.toHaveBeenCalled();
