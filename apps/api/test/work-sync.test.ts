@@ -74,6 +74,23 @@ const count = async (table: string, organizationId: string) =>
   Number((await sql<{ n: string }>`select count(*) as n from ${sql.table(table)} where organization_id = ${organizationId}`.execute(ctx.db)).rows[0]!.n);
 
 describe("field records from the phone", () => {
+  it("scopes and pages more than 200 held field records without hiding older work orders", async () => {
+    const s = await setup(ctx);
+    expect((await s.api.patch(`/jobs/${s.jobId}`, { technicianId: s.b.id })).statusCode).toBe(200);
+    const held = await visit(s).sync(s.aApi);
+    expect(held.statusCode, held.body).toBe(202);
+    const original = await ctx.db.selectFrom("workSyncConflicts").select("id").where("organizationId", "=", s.org.id).executeTakeFirstOrThrow();
+    await sql`insert into work_sync_conflicts select (jsonb_populate_record(null::work_sync_conflicts, to_jsonb(c) || jsonb_build_object('id', gen_random_uuid(), 'offline_client_id', gen_random_uuid()))).* from work_sync_conflicts c cross join generate_series(1,200) n where c.id=${original.id}::uuid`.execute(ctx.db);
+    const first = (await s.api.get(`/work/conflicts?workOrderId=${s.wo.id}&limit=50`)).json();
+    const last = (await s.api.get(`/work/conflicts?workOrderId=${s.wo.id}&limit=50&offset=200`)).json();
+    expect(first.total).toBe(201); expect(first.items).toHaveLength(50); expect(last.items).toHaveLength(1);
+    expect(first.items.every((r: { workOrderId: string }) => r.workOrderId === s.wo.id)).toBe(true);
+    expect(last.items[0].id).not.toBe(first.items[0].id);
+    const other = await createTenant(ctx, "Other held-record fixture");
+    expect((await other.api.get(`/work/conflicts?workOrderId=${s.wo.id}`)).json()).toEqual({ items: [], total: 0 });
+    expect((await s.aApi.get(`/work/conflicts?workOrderId=${s.wo.id}`)).statusCode).toBe(403);
+  });
+
   it("records a visit once: draft, photos, signature, completion, and a replay of every step changes nothing", async () => {
     const s = await setup(ctx);
     const v = visit(s);

@@ -142,5 +142,7 @@ export const portalView = z.object({
   sites: z.array(portalSite),
   invoices: z.array(portalInvoice),
   amountDueCents: z.number().int(),
+  invoiceTotal: z.number().int().min(0),
+  serviceRequestTotal: z.number().int().min(0),
 });
 export type PortalView = z.infer<typeof portalView>;

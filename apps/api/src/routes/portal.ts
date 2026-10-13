@@ -108,7 +108,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
     "/portal/:token",
     {
       config: { public: true, rateLimit: publicLimit },
-      schema: { tags: ["portal"], summary: "Everything a customer sees from their portal link", params: token, response: { 200: portalView } },
+      schema: { tags: ["portal"], summary: "Everything a customer sees from their portal link", params: token, querystring: z.object({ invoiceOffset: z.coerce.number().int().min(0).default(0), requestOffset: z.coerce.number().int().min(0).default(0) }), response: { 200: portalView } },
     },
     async (req): Promise<PortalView> => {
       const link = await linkFor(req.params.token);
@@ -131,8 +131,12 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       const today = dateInZone(at, org.timezone);
       const siteIds = siteRows.map((s) => s.id);
       const none = siteIds.length === 0;
+      const invoiceBase = db.selectFrom("invoices").where("organizationId", "=", organizationId).where("customerId", "=", customerId).where("status", "=", "open")
+        .where("number", "is not", null).where("issuedOn", "is not", null).where("dueOn", "is not", null)
+        .where((eb) => eb.or([eb(sql`total_cents - credited_cents - paid_cents - pending_cents`, ">", 0), eb("issuedOn", ">=", sql<string>`${today}::date - 365`)]));
+      const requestBase = db.selectFrom("serviceRequests").where("organizationId", "=", organizationId).where("customerId", "=", customerId).where("siteId", "in", siteIds.length ? siteIds : ["00000000-0000-0000-0000-000000000000"]);
 
-      const [systems, contracts, renewals, obligations, reports, requests, invoices] = await Promise.all([
+      const [systems, contracts, renewals, obligations, reports, requests, invoices, invoiceTotals, requestTotals] = await Promise.all([
         none
           ? []
           : db
@@ -196,25 +200,14 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               .orderBy("r.inspectionId")
               .orderBy("r.version", "desc")
               .execute(),
-        db
-          .selectFrom("serviceRequests")
-          .select(["id", "siteId", "kind", "description", "status", "resolution", "createdAt", "closedAt"])
-          .where("organizationId", "=", organizationId)
-          .where("customerId", "=", customerId)
-          .orderBy("createdAt", "desc")
-          .limit(50)
-          .execute(),
-        db
-          .selectFrom("invoices")
-          .select(["id", "number", "issuedOn", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "paymentStatus"])
-          .where("organizationId", "=", organizationId)
-          .where("customerId", "=", customerId)
-          .where("status", "=", "open")
-          // Anything still owed, and the last year of the rest.
-          .where((eb) => eb.or([eb(sql`total_cents - credited_cents - paid_cents - pending_cents`, ">", 0), eb("issuedOn", ">=", sql<string>`${today}::date - 365`)]))
-          .orderBy("issuedOn", "desc")
-          .limit(50)
-          .execute(),
+        requestBase.select(["id", "siteId", "kind", "description", "status", "resolution", "createdAt", "closedAt"])
+          .orderBy("createdAt", "desc").orderBy("id").limit(50).offset(req.query.requestOffset).execute(),
+        // Outstanding invoices come first, but totals cover the full applicable ledger on every page.
+        invoiceBase.select(["id", "number", "issuedOn", "dueOn", "totalCents", "paidCents", "pendingCents", "creditedCents", "paymentStatus"])
+          .orderBy(sql`total_cents - credited_cents - paid_cents - pending_cents > 0`, "desc")
+          .orderBy("issuedOn", "desc").orderBy("id").limit(50).offset(req.query.invoiceOffset).execute(),
+        invoiceBase.select([sql<number>`count(*)::int`.as("total"), sql<number>`coalesce(sum(greatest(total_cents - credited_cents - paid_cents - pending_cents, 0)), 0)::bigint`.as("owed")]).executeTakeFirstOrThrow(),
+        requestBase.select(sql<number>`count(*)::int`.as("total")).executeTakeFirstOrThrow(),
       ]);
       // SW-9: a contract with pumping or maintenance visits shows each kind of visit's own
       // progress; an inspection-only contract keeps its one inspection count.
@@ -351,7 +344,9 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         expiresAt: link.expiresAt.toISOString(),
         sites,
         invoices: items,
-        amountDueCents: items.reduce((n, i) => n + i.amountDueCents, 0),
+        amountDueCents: Number(invoiceTotals.owed),
+        invoiceTotal: invoiceTotals.total,
+        serviceRequestTotal: requestTotals.total,
       };
     },
   );
@@ -589,8 +584,8 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       schema: {
         tags: ["portal"],
         summary: "Service requests customers sent from the portal, newest first",
-        querystring: z.object({ customerId: id.optional(), status: z.enum(["open", "closed"]).optional() }),
-        response: { 200: z.object({ items: z.array(serviceRequest) }) },
+        querystring: z.object({ customerId: id.optional(), status: z.enum(["open", "closed"]).optional(), limit: z.coerce.number().int().min(1).max(200).default(50), offset: z.coerce.number().int().min(0).default(0) }),
+        response: { 200: z.object({ items: z.array(serviceRequest), total: z.number().int() }) },
       },
     },
     async (req) => {
@@ -598,8 +593,8 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       let q = requestRows(organizationId);
       if (req.query.customerId) q = q.where("r.customerId", "=", req.query.customerId);
       if (req.query.status) q = q.where("r.status", "=", req.query.status);
-      const rows = await q.orderBy("r.createdAt", "desc").limit(200).execute();
-      return { items: rows.map(toRequest) };
+      const [rows, count] = await Promise.all([q.orderBy("r.createdAt", "desc").orderBy("r.id").limit(req.query.limit).offset(req.query.offset).execute(), q.clearSelect().select(sql<number>`count(*)::int`.as("n")).executeTakeFirstOrThrow()]);
+      return { items: rows.map(toRequest), total: count.n };
     },
   );
 

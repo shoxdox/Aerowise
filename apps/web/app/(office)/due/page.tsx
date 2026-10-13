@@ -108,7 +108,7 @@ export default function DuePage() {
               <td>
                 <Link href={`/customers/${o.customer.id}`}>{o.customer.displayName}</Link>
               </td>
-              <td>#{o.sequence}{editable && <div><Link className="button secondary" href={o.serviceType === "aerobic_inspection" ? `/schedule?obligationId=${o.id}&siteId=${o.site.id}` : `/sites/${o.site.id}#contracts`}>{o.job ? "View scheduled visit" : "Schedule"}</Link></div>}</td>
+              <td>#{o.sequence}{editable && <div><Link className="button secondary" href={o.serviceType === "aerobic_inspection" ? `/schedule?obligationId=${o.id}&siteId=${o.site.id}` : `/sites/${o.site.id}?obligationId=${o.id}#obligation-${o.id}`}>{o.job ? "View scheduled visit" : "Schedule"}</Link></div>}</td>
               <td className="muted small">{o.site.schedulingNotes ?? ""}</td>
             </tr>
           ))}

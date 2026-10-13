@@ -3,8 +3,9 @@
 import { RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type PlanDetail, type RenewalStatus } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ContractFilingStatus } from "@/components/ContractFilingStatus";
+import { useQueryState } from "@/components/useQueryState";
 import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -24,6 +25,14 @@ const STATE_LABEL: Record<ContractDetail["state"], string> = {
 export function SiteContracts({ siteId, editable }: { siteId: string; editable: boolean }) {
   const recordLoad = useLoad<{ items: ContractDetail[] }>(`/sites/${siteId}/contracts`);
   const { data, reload } = recordLoad;
+  const [selectedObligation] = useQueryState("obligationId", "");
+  useEffect(() => {
+    if (!data || !selectedObligation) return;
+    const row = document.getElementById(`obligation-${selectedObligation}`);
+    const disclosure = row?.closest("details");
+    if (disclosure) disclosure.open = true;
+    window.requestAnimationFrame(() => { row?.scrollIntoView({ block: "center" }); row?.focus(); });
+  }, [data, selectedObligation]);
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -326,7 +335,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             </thead>
             <tbody>
               {c.obligations.map((o) => (
-                <tr key={o.id} data-testid={o.serviceType === "aerobic_inspection" ? undefined : "cycle-visit"}>
+                <tr key={o.id} id={`obligation-${o.id}`} tabIndex={o.id === selectedObligation ? -1 : undefined} className={o.id === selectedObligation ? "selected-obligation" : undefined} data-testid={o.serviceType === "aerobic_inspection" ? undefined : "cycle-visit"}>
                   <td>
                     {o.serviceType === "aerobic_inspection" ? "" : `${c.cycles.find((y) => y.cycleKey === o.cycleKey)?.label ?? o.cycleKey} `}#{o.sequence}
                   </td>

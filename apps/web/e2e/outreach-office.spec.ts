@@ -119,5 +119,53 @@ test("a fresh visitor follows actual case records to the report, selected visit,
   await page.getByRole("button", { name: "5. Homeowner", exact: true }).click();
   await page.getByRole("button", { name: `Open ${j.case.customerName}'s homeowner view` }).click();
   await expect(page).toHaveURL(/\/portal\//);
-  await expect(page.getByText(j.case.addressLine1, { exact: false }).first()).toBeVisible();
+  await expect(page.locator("main").getByRole("heading", { name: j.case.addressLine1, exact: false })).toBeVisible();
+});
+
+
+test("a pumping Due action opens and focuses the exact contract visit without booking work", async ({ page }) => {
+  await office(page);
+  const probe = await (await page.request.get("/api/obligations/due?limit=1")).json();
+  const through = new Date(`${probe.today}T00:00:00Z`); through.setUTCDate(through.getUTCDate() + 90);
+  const due = await (await page.request.get(`/api/obligations/due?serviceType=pumping&through=${through.toISOString().slice(0, 10)}&limit=50`)).json();
+  const target = due.items.find((o: { workOrder: unknown }) => !o.workOrder);
+  expect(target).toBeTruthy();
+  await page.goto("/due?range=90&serviceType=pumping");
+  const action = page.locator(`a[href="/sites/${target.site.id}?obligationId=${target.id}#obligation-${target.id}"]`);
+  await expect(action).toBeVisible();
+  await action.click();
+  const row = page.locator(`#obligation-${target.id}`);
+  await expect(row).toBeVisible();
+  await expect(row).toHaveClass(/selected-obligation/);
+  await expect(row).toBeFocused();
+  await expect(row.getByRole("button", { name: "Book work", exact: true })).toBeVisible();
+  expect((await (await page.request.get(`/api/obligations/due?serviceType=pumping&obligationId=${target.id}`)).json()).items[0].workOrder).toBeNull();
+});
+
+test("failed contract paperwork and work detail reads expose recovery without removing the record", async ({ page }) => {
+  await office(page);
+  const due = await (await page.request.get("/api/obligations/due?limit=1")).json();
+  const siteId = due.items[0].site.id;
+  await page.route("**/api/contracts/*/filing-status", r => r.fulfill({ status: 503, json: { message: "Controlled paperwork failure" } }));
+  await page.goto(`/sites/${siteId}`);
+  await expect(page.getByRole("button", { name: "Retry contract paperwork and filing status" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Current record and next action" })).toBeVisible();
+  await page.unroute("**/api/contracts/*/filing-status");
+  await page.getByRole("button", { name: "Retry contract paperwork and filing status" }).first().click();
+  await expect(page.getByRole("button", { name: "Retry contract paperwork and filing status" })).toHaveCount(0);
+  const orders = await (await page.request.get("/api/work-orders?limit=50")).json();
+  let order: { id: string } | undefined;
+  for (const candidate of orders.items) {
+    const detail = await (await page.request.get(`/api/work-orders/${candidate.id}`)).json();
+    if (detail.visits.length > 0 && detail.status !== "cancelled") { order = candidate; break; }
+  }
+  expect(order).toBeTruthy();
+  await page.route("**/api/work-orders/*/coverage", r => r.fulfill({ status: 503, json: { message: "Controlled coverage failure" } }));
+  await page.route("**/api/work/conflicts?**", r => r.fulfill({ status: 503, json: { message: "Controlled held record failure" } }));
+  await page.route("**/api/jobs/*/work-record", r => r.fulfill({ status: 503, json: { message: "Controlled field record failure" } }));
+  await page.goto(`/work/${order!.id}`);
+  await expect(page.getByRole("button", { name: "Retry plan coverage" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry held field records" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry visit field record" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visits", exact: true })).toBeVisible();
 });

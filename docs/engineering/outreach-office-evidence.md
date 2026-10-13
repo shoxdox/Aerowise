@@ -64,3 +64,25 @@ TEST_DATABASE_URL=postgres://aerowise:aerowise@localhost:55433/outreach_office_v
 A setup attempt using database name `outreach_office_verify` was rejected before tests by the repository's mandatory `test` name guard. The corrected disposable name above was used. The guard was preserved; no existing database was touched.
 
 Report-signature module is keyed by the latest authority-report version after correction. Its independent signature read must refresh when a new immutable version replaces the current one; the browser regression asserts the new version in that module, not just the filing's history. This prevents an earlier version's signed status from remaining on a newly corrected report.
+
+## Final independent-review closure — remaining exact targets, caps and detail failures
+
+Review of candidate `89c4eec` found concrete residual acceptance gaps in findings 13, 14 and 19. Pumping/maintenance Due links dropped the obligation ID at the site's generic Contracts anchor. Customer service requests still stopped at 200 without paging; public portal invoices stopped at 50 by newest date and summed only that slice, so an older unpaid invoice could disappear behind recent paid rows. Work-order held records also applied a global 200-row cap before filtering in the component. Contract paperwork, plan coverage and work field/held records still hid failed reads.
+
+The narrow correction retains a cycle obligation in the URL/hash, opens its authorized contract disclosure and focuses/highlights its exact row. Merely opening it books nothing; Book work remains explicit. Public invoice/request and Office customer-request lists now have pages and full counts. Portal balance is a full SQL ledger aggregate independent of invoice page, and outstanding invoices sort first so an older unpaid record is immediately reachable. Current pending-payment deductions remain unchanged. Held field records are filtered by work order before paging, with a full scoped count. Temporary links still use the same bounded public reader, token/expiry/revocation checks and existing rate limits; no staff redirect was added.
+
+Contract paperwork, plan coverage and work field/held records now expose independent bounded loading, stale/error and Retry states. An actual field-record 404 says no record has been received; a 503 no longer silently removes the section. The contract acknowledgment row no longer universally says Not yet; it points to the actual authority process and existing evidence when no acknowledgment has been recorded.
+
+Focused checks:
+
+```bash
+TEST_DATABASE_URL=postgres://aerowise:aerowise@localhost:55433/outreach_office_verify_test pnpm --filter @aerowise/api exec vitest run test/outreach-office.test.ts test/work-sync.test.ts test/portal.test.ts
+TEST_DATABASE_URL=postgres://aerowise:aerowise@localhost:55433/outreach_office_verify_test pnpm --filter @aerowise/api exec vitest run test/outreach-office.test.ts
+pnpm --filter @aerowise/web typecheck
+pnpm --filter @aerowise/api typecheck
+pnpm lint
+```
+
+The three-file API batch passed **42/42** in 33.79 seconds. The final strengthened Office file passed **8/8** in 13.64 seconds, additionally proving the full portal balance with 52 outstanding invoices across multiple pages. Fixtures cover 303 portal invoices, 251 customer requests beyond both old caps, 201 held work records, distinct final pages, tenant/role refusal, invalid offsets and revoked-link refusal. The initial new fixture attempted to backdate an already issued invoice and was correctly refused by the immutable-invoice trigger. The fixture now issues it through the API at its historical test clock; the protection was preserved.
+
+The Office browser spec adds the actual Due-to-exact-cycle click/focus/no-mutation and controlled contract/coverage/field/held read failures. The existing fresh-visitor homeowner assertion was scoped to the visible main heading after its prior selector matched a hidden banner paragraph. These changed browser cases await the parent's final rebuilt suite; API passes and source changes are not recorded as browser verification.

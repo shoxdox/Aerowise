@@ -2,6 +2,7 @@
 
 import { SERVICE_REQUEST_LABELS, type PortalAccess, type ServiceRequest } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { Pagination } from "@/components/Pagination";
 import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -11,7 +12,8 @@ import { when } from "@/lib/format";
 export function CustomerPortal({ customerId, editable }: { customerId: string; editable: boolean }) {
   const recordLoad = useLoad<PortalAccess>(`/customers/${customerId}/portal`);
   const { data: access, reload } = recordLoad;
-  const requestLoad = useLoad<{ items: ServiceRequest[] }>(`/service-requests?customerId=${customerId}`);
+  const [requestOffset, setRequestOffset] = useState(0);
+  const requestLoad = useLoad<{ items: ServiceRequest[]; total: number }>(`/service-requests?customerId=${customerId}&limit=50&offset=${requestOffset}`);
   const { data: requests, reload: reloadRequests } = requestLoad;
   const [url, setUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -102,9 +104,10 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
         )}
       </div>
 
-      {requests && requests.items.length > 0 && (
+      {requests && (requests.total > 0 || requestOffset > 0) && (
         <div className="card stack">
           <h3>Service requests</h3>
+          <Pagination total={requests.total} offset={requestOffset} onChange={setRequestOffset} />
           {requests.items.map((r) => (
             <div key={r.id} className="stack">
               <div className="row">

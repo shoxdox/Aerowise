@@ -4,6 +4,8 @@ import { SERVICE_REQUEST_KINDS, SERVICE_REQUEST_LABELS, type PortalSite, type Po
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Pagination } from "@/components/Pagination";
+import { useQueryState } from "@/components/useQueryState";
 import { usePublicRead } from "@/components/public/usePublicRead";
 import { PublicLinkRecovery } from "@/components/public/PublicLinkRecovery";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -221,7 +223,11 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
 /** A homeowner's account, opened from their magic link. No sign-in: the link is the key. */
 export default function PortalPage() {
   const { token } = useParams<{ token: string }>();
-  const { data: v, error, reload } = usePublicRead<PortalView>(`/portal/${token}`);
+  const [invoicePage, setInvoicePage] = useQueryState("invoiceOffset", "0");
+  const [requestPage, setRequestPage] = useQueryState("requestOffset", "0");
+  const pageOffset = (v: string) => Number.isSafeInteger(Number(v)) && Number(v) >= 0 ? Number(v) : 0;
+  const invoiceOffset = pageOffset(invoicePage); const requestOffset = pageOffset(requestPage);
+  const { data: v, error, reload } = usePublicRead<PortalView>(`/portal/${token}?invoiceOffset=${invoiceOffset}&requestOffset=${requestOffset}`);
 
   if (error) return <PublicLinkRecovery error={error} retry={reload} kind="account" provider={v?.provider} />;
   if (!v) return <p className="muted pad">Loading…</p>;
@@ -241,6 +247,8 @@ export default function PortalPage() {
         {v.amountDueCents > 0 && (
           <section className="card stack">
             <h2>Balance due: {money(v.amountDueCents)}</h2>
+            <p className="muted small">This balance covers every outstanding invoice. Unpaid invoices appear first.</p>
+            {owed.length === 0 && <p>Outstanding invoices are on an earlier page. Return to the first invoice page to review payment.</p>}
             {owed.map((i) => (
               <div key={i.number} className="row">
                 <span>
@@ -260,6 +268,8 @@ export default function PortalPage() {
           <SiteCard key={s.id} site={s} token={token} onRequested={reload} />
         ))}
 
+        <section className="stack" aria-label="Service request history pages"><p className="muted small">Requests shown above by property · {v.serviceRequestTotal} in total.</p><Pagination total={v.serviceRequestTotal} offset={requestOffset} onChange={n => setRequestPage(String(n))} /></section>
+
         {settled.length > 0 && (
           <section className="card stack">
             <h2>Payment history</h2>
@@ -276,6 +286,7 @@ export default function PortalPage() {
           </section>
         )}
 
+        <section aria-label="Invoice history pages"><Pagination total={v.invoiceTotal} offset={invoiceOffset} onChange={n => setInvoicePage(String(n))} /></section>
         <p className="muted small">This link works until {day(v.expiresAt.slice(0, 10))}. Anyone with it can see your account, so please keep it to yourself.</p>
       </div>
     </main>

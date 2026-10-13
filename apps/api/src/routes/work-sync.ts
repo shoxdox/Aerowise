@@ -780,7 +780,7 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
     },
   );
 
-  async function loadConflicts(organizationId: string, where: { id?: string; status?: string }): Promise<WorkSyncConflict[]> {
+  async function loadConflicts(organizationId: string, where: { id?: string; status?: string; workOrderId?: string; limit?: number; offset?: number }): Promise<WorkSyncConflict[]> {
     let q = db
       .selectFrom("workSyncConflicts as c")
       .innerJoin("workOrders as w", (k) => k.onRef("w.id", "=", "c.workOrderId").onRef("w.organizationId", "=", "c.organizationId"))
@@ -806,7 +806,8 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       .where("c.organizationId", "=", organizationId);
     if (where.id) q = q.where("c.id", "=", where.id);
     if (where.status) q = q.where("c.status", "=", where.status as "held");
-    const rows = await q.orderBy("c.createdAt", "desc").limit(200).execute();
+    if (where.workOrderId) q = q.where("c.workOrderId", "=", where.workOrderId);
+    const rows = await q.orderBy("c.createdAt", "desc").orderBy("c.id").limit(where.limit ?? 200).offset(where.offset ?? 0).execute();
     return rows.map((r) => ({
       id: r.id,
       clientId: r.offlineClientId,
@@ -834,11 +835,19 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       schema: {
         tags: ["work"],
         summary: "Field records held for the office because the visit changed while the phone was offline",
-        querystring: z.object({ status: z.enum(["held", "attached", "dismissed"]).optional() }),
-        response: { 200: z.object({ items: z.array(workSyncConflict) }) },
+        querystring: z.object({ status: z.enum(["held", "attached", "dismissed"]).optional(), workOrderId: z.uuid().optional(), limit: z.coerce.number().int().min(1).max(200).default(50), offset: z.coerce.number().int().min(0).default(0) }),
+        response: { 200: z.object({ items: z.array(workSyncConflict), total: z.number().int() }) },
       },
     },
-    async (req) => ({ items: await loadConflicts(req.requireAuth().organizationId, { status: req.query.status }) }),
+    async (req) => {
+      const { organizationId } = req.requireAuth();
+      const f = req.query;
+      let count = db.selectFrom("workSyncConflicts").where("organizationId", "=", organizationId);
+      if (f.status) count = count.where("status", "=", f.status);
+      if (f.workOrderId) count = count.where("workOrderId", "=", f.workOrderId);
+      const [items, total] = await Promise.all([loadConflicts(organizationId, f), count.select(sql<number>`count(*)::int`.as("n")).executeTakeFirstOrThrow()]);
+      return { items, total: total.n };
+    },
   );
 
   app.get(

@@ -49,6 +49,45 @@ describe("office recovery and full-dataset correctness", () => {
     expect((await other.api.get(`/invoices?view=all&customerId=${t.customer.id}`)).json()).toMatchObject({ items: [], total: 0, owedCents: 0 });
   });
 
+  it("keeps older unpaid portal invoices first, aggregates the full ledger and pages all customer requests beyond their caps", async () => {
+    const t = await createTenant(ctx, "Fictional portal paging fixture");
+    const draft = (await t.api.post("/invoices", { customerId: t.customer.id, siteId: t.site.id, lines: [{ description: "Older fictional balance", quantity: 1, unitPriceCents: 2000 }] })).json();
+    const currentTime = ctx.now;
+    ctx.now = new Date("2025-01-01T18:00:00Z");
+    try { expect((await t.api.post(`/invoices/${draft.id}/issue`, { send: false })).statusCode).toBe(200); }
+    finally { ctx.now = currentTime; }
+    await copies("invoices", draft.id, 251, { issued_on: "2026-03-01", due_on: "2026-03-15", paid_cents: 2000, payment_status: "paid" });
+    const link = (await t.api.post(`/customers/${t.customer.id}/portal-link`, { send: false })).json();
+    const path = new URL(link.url).pathname;
+    const request = await client(ctx.app).post(`${path}/service-requests`, { siteId: t.site.id, kind: "alarm", description: "Fictional alarm review" });
+    expect(request.statusCode, request.body).toBe(201);
+    await copies("service_requests", request.json().id, 250);
+    const first = (await client(ctx.app).get(path)).json();
+    expect(first).toMatchObject({ invoiceTotal: 252, amountDueCents: 2000, serviceRequestTotal: 251 });
+    expect(first.invoices).toHaveLength(50);
+    expect(first.invoices[0]).toMatchObject({ issuedOn: "2025-01-01", amountDueCents: 2000 });
+    const last = (await client(ctx.app).get(`${path}?invoiceOffset=250&requestOffset=250`)).json();
+    expect(last.invoices).toHaveLength(2); expect(last.amountDueCents).toBe(2000);
+    expect(last.sites[0].serviceRequests).toHaveLength(1);
+    expect(last.invoices.every((i: { number: string }) => !first.invoices.some((j: { number: string }) => j.number === i.number))).toBe(true);
+    const officeFirst = (await t.api.get(`/service-requests?customerId=${t.customer.id}&limit=50`)).json();
+    const officeLast = (await t.api.get(`/service-requests?customerId=${t.customer.id}&limit=50&offset=250`)).json();
+    expect(officeFirst.total).toBe(251); expect(officeFirst.items).toHaveLength(50); expect(officeLast.items).toHaveLength(1);
+    const other = await createTenant(ctx, "Other fictional portal fixture");
+    expect((await other.api.get(`/service-requests?customerId=${t.customer.id}&limit=50&offset=250`)).json()).toEqual({ items: [], total: 0 });
+    const otherLink = (await other.api.post(`/customers/${other.customer.id}/portal-link`, { send: false })).json();
+    expect((await client(ctx.app).get(new URL(otherLink.url).pathname)).json()).toMatchObject({ amountDueCents: 0, invoiceTotal: 0, serviceRequestTotal: 0 });
+    expect((await client(ctx.app).get(`${path}?invoiceOffset=-1`)).statusCode).toBe(400);
+    // More outstanding rows than one page must not shrink the account balance.
+    await sql`insert into invoices select (jsonb_populate_record(null::invoices, to_jsonb(i) || jsonb_build_object('id', gen_random_uuid(), 'number', 9000 + n, 'public_token', gen_random_uuid()::text))).* from invoices i cross join generate_series(1,51) n where i.id=${draft.id}::uuid`.execute(ctx.db);
+    const enlarged = (await client(ctx.app).get(path)).json();
+    expect(enlarged.amountDueCents).toBe(52 * 2000); expect(enlarged.invoiceTotal).toBe(303);
+    expect(enlarged.invoices).toHaveLength(50); expect(enlarged.invoices.every((i: { amountDueCents: number }) => i.amountDueCents === 2000)).toBe(true);
+    expect((await client(ctx.app).get(`${path}?invoiceOffset=300`)).json()).toMatchObject({ amountDueCents: 52 * 2000, invoiceTotal: 303 });
+    await t.api.post(`/customers/${t.customer.id}/portal-links/revoke`, {});
+    expect((await client(ctx.app).get(`${path}?invoiceOffset=250`)).statusCode).toBe(410);
+  });
+
   it("counts overdue visits beyond 500, pages the last row and finds a target beyond the default horizon", async () => {
     const t = await createTenant(ctx, "Large due fixture");
     const plan = (await t.api.post("/plans", { name: "Fictional annual", termMonths: 12, visitsPerTerm: 3, priceCents: 20000 })).json();
