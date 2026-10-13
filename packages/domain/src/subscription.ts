@@ -60,6 +60,9 @@ export const DEFAULT_SUBSCRIPTION_CONFIG: SubscriptionConfig = {
   pastDueGraceDays: 14,
 };
 
+/** October 12 founder offer; activated explicitly per company by the platform owner. */
+export const FOUNDER_OFFER = { pricePerContractCents: 25, companyLimit: 5 } as const;
+
 /** Reminders go out this many days before a trial or design-partner period ends. */
 export const PLAN_REMINDER_DAYS = [14, 7, 1] as const;
 

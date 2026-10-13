@@ -23,7 +23,7 @@ describe("demo requests", () => {
     const api = await admin();
     const res = await submit(request);
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.json()).toEqual({ ok: true, saved: true, duplicate: false, notification: "provider_accepted" });
 
     const items = (await api.get("/admin/demo-requests")).json().items;
     expect(items).toHaveLength(1);
@@ -53,7 +53,9 @@ describe("demo requests", () => {
   it("keeps the request when the email fails, and says so in /admin", async () => {
     const api = await admin();
     mail.mode = "fail";
-    expect((await submit(request, "198.51.100.3")).statusCode).toBe(202);
+    const saved = await submit(request, "198.51.100.3");
+    expect(saved.statusCode).toBe(202);
+    expect(saved.json()).toMatchObject({ saved: true, notification: "failed" });
     mail.mode = "ok";
     const [item] = (await api.get("/admin/demo-requests")).json().items;
     expect(item).toMatchObject({ notifiedAt: null, notifyError: expect.stringContaining("SMTP 451"), notifyDelivery: null });
@@ -63,7 +65,9 @@ describe("demo requests", () => {
     const app = await buildApp({ db: ctx.db, now: () => ctx.now, store: ctx.store, mail: new OutboxTransport(ctx.store, () => ctx.now) });
     try {
       const api = await admin();
-      expect((await submit(request, "198.51.100.9", app)).statusCode).toBe(202);
+      const saved = await submit(request, "198.51.100.9", app);
+      expect(saved.statusCode).toBe(202);
+      expect(saved.json()).toMatchObject({ saved: true, notification: "simulated" });
       const [item] = (await api.get("/admin/demo-requests")).json().items;
       expect(item).toMatchObject({ notifiedAt: ctx.now.toISOString(), notifyError: null, notifyDelivery: "outbox" });
     } finally {
@@ -78,6 +82,39 @@ describe("demo requests", () => {
     expect(res.statusCode).toBe(202);
     expect((await api.get("/admin/demo-requests")).json().items).toEqual([]);
     expect(mail.delivered.size).toBe(0);
+  });
+
+  it("concurrent submissions and a retry reuse one saved request and one alert", async () => {
+    const api = await admin();
+    mail.mode = "ok";
+    mail.delivered.clear();
+    const body = { ...request, submissionKey: crypto.randomUUID() };
+    const responses = await Promise.all([submit(body, "198.51.100.20"), submit(body, "198.51.100.20")]);
+    expect(responses.map((r) => r.statusCode)).toEqual([202, 202]);
+    expect(responses.map((r) => r.json().duplicate).sort()).toEqual([false, true]);
+    expect((await submit(body, "198.51.100.20")).json()).toMatchObject({ duplicate: true, notification: "provider_accepted" });
+    expect((await api.get("/admin/demo-requests")).json().items).toHaveLength(1);
+    expect(mail.delivered.size).toBe(1);
+  });
+
+  it("failed notification retries preserve the saved lead and do not send again", async () => {
+    const api = await admin();
+    mail.mode = "fail";
+    mail.delivered.clear();
+    const body = { ...request, submissionKey: crypto.randomUUID() };
+    expect((await submit(body, "198.51.100.21")).json()).toMatchObject({ duplicate: false, notification: "failed" });
+    mail.mode = "ok";
+    expect((await submit(body, "198.51.100.21")).json()).toMatchObject({ duplicate: true, notification: "failed" });
+    expect((await api.get("/admin/demo-requests")).json().items).toHaveLength(1);
+    expect(mail.delivered.size).toBe(0);
+  });
+
+  it("refuses changing a saved submission's details without overwriting it", async () => {
+    const api = await admin();
+    const body = { ...request, submissionKey: crypto.randomUUID() };
+    expect((await submit(body, "198.51.100.22")).statusCode).toBe(202);
+    expect((await submit({ ...body, company: "A different company" }, "198.51.100.22")).statusCode).toBe(409);
+    expect((await api.get("/admin/demo-requests")).json().items).toEqual([expect.objectContaining({ company: request.company })]);
   });
 
   it("refuses incomplete requests", async () => {

@@ -1,10 +1,10 @@
 import { deliveryOf, type EmailDelivery, type EmailTransport } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
-import { demoRequest, demoRequestInput, demoRequestStatusInput, id, type DemoRequest } from "@aerowise/domain";
+import { demoRequest, demoRequestInput, demoRequestReceipt, demoRequestStatusInput, id, type DemoRequest, type DemoRequestReceipt } from "@aerowise/domain";
 import type { FastifyBaseLogger } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { notFound } from "../lib/errors.ts";
+import { HttpError, notFound } from "../lib/errors.ts";
 import { platformAudit } from "../lib/platform-audit.ts";
 
 /**
@@ -80,22 +80,30 @@ export const demoRequestRoutes: FastifyPluginAsyncZod<{ db: Database; now: () =>
       schema: {
         tags: ["public"],
         summary: "Ask for a demo",
-        description: "No sign-in. Lands in /admin and emails Aerowise. Rate-limited per client address.",
+        description: "No sign-in. Saves to /admin, reuses a submission key on retries, and reports notification status truthfully. Rate-limited per client address.",
         body: demoRequestInput,
-        response: { 202: z.object({ ok: z.literal(true) }) },
+        response: { 202: demoRequestReceipt },
       },
     },
     async (req, reply) => {
-      const { website, ...input } = req.body;
+      const { website, submissionKey, ...input } = req.body;
       // The spam trap was filled: answer as usual so a bot learns nothing, and keep nothing.
-      if (website?.trim()) return reply.status(202).send({ ok: true });
+      if (website?.trim()) return reply.status(202).send({ ok: true, saved: true, duplicate: false, notification: "pending" });
       const row = await db
         .insertInto("demoRequests")
-        .values({ name: input.name, email: input.email, company: input.company, phone: input.phone ?? null, counties: input.counties ?? null, message: input.message ?? null, createdAt: now() })
+        .values({ submissionKey: submissionKey ?? null, name: input.name, email: input.email, company: input.company, phone: input.phone ?? null, counties: input.counties ?? null, message: input.message ?? null, createdAt: now() })
+        .onConflict((oc) => oc.column("submissionKey").doNothing())
         .returningAll()
-        .executeTakeFirstOrThrow();
-      await notify(row, req.log);
-      return reply.status(202).send({ ok: true });
+        .executeTakeFirst();
+      const saved = row ?? await db.selectFrom("demoRequests").selectAll().where("submissionKey", "=", submissionKey!).executeTakeFirstOrThrow();
+      if (!row && ["name", "email", "company", "phone", "counties", "message"].some((field) => saved[field as keyof Row] !== (input[field as keyof typeof input] ?? null))) {
+        throw new HttpError(409, "submission_changed", "This request was already saved with different details. Start a new request or contact Justin directly.");
+      }
+      // Only the inserting request sends an alert. Concurrent/retried submissions never send twice.
+      if (row) await notify(row, req.log);
+      const current = await db.selectFrom("demoRequests").selectAll().where("id", "=", saved.id).executeTakeFirstOrThrow();
+      const notification: DemoRequestReceipt["notification"] = current.notifyError ? "failed" : current.notifyDelivery === "outbox" ? "simulated" : current.notifyDelivery === "provider" ? "provider_accepted" : "pending";
+      return reply.status(202).send({ ok: true, saved: true, duplicate: !row, notification });
     },
   );
 

@@ -764,6 +764,7 @@ export interface AuthorityEvidenceAnswersTable {
 /** W8.2: platform-wide, no organization_id (a prospect is not an organization yet). */
 export interface DemoRequestsTable {
   id: Generated<string>;
+  submissionKey: ColumnType<string | null, string | null | undefined, string | null>;
   name: string;
   email: string;
   company: string;
