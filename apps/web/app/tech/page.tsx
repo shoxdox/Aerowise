@@ -252,7 +252,7 @@ export default function TechApp() {
       if (!sameTenant(activeTenant(), store.tenant)) return;
       await refreshLocal();
       void syncNow();
-      setView({ name: "inspect", jobId: stop.jobId });
+      setView(current => (current.name === "stop" || current.name === "inspect") && current.jobId === stop.jobId ? { name: "inspect", jobId: stop.jobId } : current);
     });
   }
 

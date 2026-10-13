@@ -271,47 +271,47 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     const files = [...(e.target.files ?? [])];
     e.target.value = "";
     const capture = async () => {
-    setPhotoError(null);
-    for (const file of files) {
-      let clientId: string | null = null;
-      let photoSaved = false;
-      const beforePhoto = latest.current;
-      try {
-        const { blob, contentType, preview } = await preparePhoto(file);
-        clientId = crypto.randomUUID();
-        // The photo goes to the phone's database first; its position is added after, so a few
-        // seconds waiting on GPS cannot lose a photo the phone is holding only in memory.
-        const next: LocalWork = {
-          ...latest.current,
-          photos: [...latest.current.photos.filter(p => p.clientId !== replaceId), { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false, preview }],
-          removedPhotoClientIds: replaceId ? [...new Set([...(latest.current.removedPhotoClientIds ?? []), replaceId])] : latest.current.removedPhotoClientIds,
-        };
-        latest.current = next;
-        await persist(next, { photo: { clientId, recordClientId: next.clientId, blob, contentType } satisfies WorkBlob });
-        photoSaved = true;
-        setRec(latest.current);
-        replaceId = undefined;
-        setProblems((ps) => ps.filter((p) => p.key !== photoKey));
-        // Position is optional metadata added after the durable photo save. It never blocks the next photo.
-        void currentPosition(3000).then(async gps => {
-          if (gps && latest.current.status === "draft" && !latest.current.held && latest.current.photos.some(p => p.clientId === clientId)) {
-            const located = { ...latest.current, photos: latest.current.photos.map(p => p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p) };
-            latest.current = located;
-            setRec(located);
-            await persist(located);
+      setPhotoError(null);
+      for (const file of files) {
+        let clientId: string | null = null;
+        let photoSaved = false;
+        const beforePhoto = latest.current;
+        try {
+          const { blob, contentType, preview } = await preparePhoto(file);
+          clientId = crypto.randomUUID();
+          // The photo goes to the phone's database first; its position is added after, so a few
+          // seconds waiting on GPS cannot lose a photo the phone is holding only in memory.
+          const next: LocalWork = {
+            ...latest.current,
+            photos: [...latest.current.photos.filter(p => p.clientId !== replaceId), { clientId, photoKey, capturedAt: new Date().toISOString(), lat: null, lng: null, uploaded: false, preview }],
+            removedPhotoClientIds: replaceId ? [...new Set([...(latest.current.removedPhotoClientIds ?? []), replaceId])] : latest.current.removedPhotoClientIds,
+          };
+          latest.current = next;
+          await persist(next, { photo: { clientId, recordClientId: next.clientId, blob, contentType } satisfies WorkBlob });
+          photoSaved = true;
+          setRec(latest.current);
+          replaceId = undefined;
+          setProblems((ps) => ps.filter((p) => p.key !== photoKey));
+          // Position is optional metadata added after the durable photo save. It never blocks the next photo.
+          void currentPosition(3000).then(async gps => {
+            if (gps && latest.current.status === "draft" && !latest.current.held && latest.current.photos.some(p => p.clientId === clientId)) {
+              const located = { ...latest.current, photos: latest.current.photos.map(p => p.clientId === clientId ? { ...p, lat: gps.lat, lng: gps.lng } : p) };
+              latest.current = located;
+              setRec(located);
+              await persist(located);
+            }
+          }).catch(() => {});
+        } catch (err) {
+          // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
+          if (!photoSaved && clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
+            const without = { ...latest.current, photos: [...latest.current.photos.filter(p => p.clientId !== clientId), ...beforePhoto.photos.filter(p => !latest.current.photos.some(x => x.clientId === p.clientId))], removedPhotoClientIds: beforePhoto.removedPhotoClientIds };
+            latest.current = without;
+            setRec(without);
           }
-        }).catch(() => {});
-      } catch (err) {
-        // Not saved: take the photo back off the screen, so nothing shows that is not on the phone.
-        if (!photoSaved && clientId && latest.current.photos.some((p) => p.clientId === clientId)) {
-          const without = { ...latest.current, photos: [...latest.current.photos.filter(p => p.clientId !== clientId), ...beforePhoto.photos.filter(p => !latest.current.photos.some(x => x.clientId === p.clientId))], removedPhotoClientIds: beforePhoto.removedPhotoClientIds };
-          latest.current = without;
-          setRec(without);
+          setPhotoError((err as Error).message);
+          if (isStorageFull()) break;
         }
-        setPhotoError((err as Error).message);
-        if (isStorageFull()) break;
       }
-    }
     };
     // A second file-input event joins the queue; no selected photo is silently dropped.
     const queued = photoQueue.current.then(capture, capture);
@@ -321,13 +321,14 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
 
   async function removePhoto(clientId: string) {
     if (readOnly || photoPending.current > 0 || busy) return;
+    photoPending.current++;
     setPhotoBusy(true);
     const before = latest.current;
     const next = { ...before, photos: before.photos.filter(p => p.clientId !== clientId), removedPhotoClientIds: [...new Set([...(before.removedPhotoClientIds ?? []), clientId])] };
     latest.current = next;
     try { await persist(next); setRec(latest.current); }
     catch (err) { latest.current = before; setPhotoError((err as Error).message); }
-    finally { setPhotoBusy(false); }
+    finally { photoPending.current--; if (photoPending.current === 0) setPhotoBusy(false); }
   }
 
   /** Checks the form; with a sign-off on the form, shows the summary to sign next. */
