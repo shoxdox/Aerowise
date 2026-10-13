@@ -7,7 +7,7 @@ test("public and role experiences remain readable on desktop and two phone sizes
     await page.setViewportSize({ width, height: width === 1440 ? 960 : 900 });
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "A clear offer after the pilot" })).toBeVisible();
-    await expect(page.getByText("$0.50", { exact: true }).first()).toBeVisible();
+    await expect(page.locator(".price")).toContainText("$0.50 per active contract per month");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({ path: test.info().outputPath(`homepage-${width}.png`), fullPage: true });
   }

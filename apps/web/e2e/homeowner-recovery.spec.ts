@@ -77,10 +77,18 @@ test("a failed bank attempt is terminal after returning and offers explicit reco
 });
 
 test("returning from a retry never treats the previous failed attempt as the new outcome", async ({ page }) => {
+  test.setTimeout(180_000);
   const inv = await invoice(page);
   expect((await page.request.post(`/api${inv.path}/test-checkout`, { data: { sessionId: inv.sessionId, outcome: "ach_fails" } })).ok()).toBe(true);
   const next = new URL((await (await page.request.post(`/api${inv.path}/checkout`, { data: {} })).json()).url);
   expect(next.searchParams.get("session")).not.toBe(inv.sessionId);
+  // The preceding fake-clock test performs 21 real reads inside a few wall-clock seconds.
+  // Respect the unchanged 30/minute server limit rather than bypassing it for this fixture.
+  const probe = await page.request.get(`/api${inv.path}`);
+  if (probe.status() === 429 || Number(probe.headers()["x-ratelimit-remaining"] ?? 30) < 5) {
+    const seconds = Number(probe.headers()["retry-after"] ?? probe.headers()["x-ratelimit-reset"] ?? 60);
+    await page.waitForTimeout((Math.min(60, Math.max(1, seconds)) + 1) * 1000);
+  }
   await page.goto(`${inv.path}?paid=1`);
   await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Retry payment/ })).toHaveCount(0);
