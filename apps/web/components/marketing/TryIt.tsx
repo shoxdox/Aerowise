@@ -36,7 +36,7 @@ export function TryIt({ coverage }: { coverage: CoverageItem[] }) {
       <div className="try-rules stack">
         <label>
           {TRY_IT.pick}
-          <select value={key} onChange={(e) => setKey(e.target.value)} aria-label={TRY_IT.pick}>
+          <select value={county.key} onChange={(e) => setKey(e.target.value)} aria-label={TRY_IT.pick}>
             {coverage.map((c) => (
               <option key={c.key} value={c.key}>
                 {c.authorityName} · {c.counties.join(", ")}
