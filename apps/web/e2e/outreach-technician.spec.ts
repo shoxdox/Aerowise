@@ -13,9 +13,11 @@ async function login(page: Page) {
   await expect(page.locator(".stop-card").first()).toBeVisible();
 }
 async function answerInspection(page: Page) {
+  await expect(page.getByRole("group", { name: "Aerator", exact: true })).toBeVisible();
   for (const pass of await page.getByRole("button", { name: "Pass", exact: true }).all()) await pass.click();
   await page.getByRole("group", { name: "Chlorine device" }).getByRole("button", { name: "Working" }).click();
   await page.getByLabel("Chlorine level").fill("1.5");
+  await page.getByLabel("Air pressure", { exact: true }).fill("4");
   await page.getByRole("group", { name: "Odor", exact: true }).getByRole("button", { name: "None" }).click();
   await page.getByRole("group", { name: "Pumping needed" }).getByRole("button", { name: "No", exact: true }).click();
 }
@@ -55,7 +57,7 @@ test("delayed GPS starts once and reuses a draft saved during the wait without r
     return clientId;
   });
   await expect(page.getByLabel("Notes for the customer")).toHaveValue("Saved by the other tab while GPS waited");
-  await expect(page.getByTestId("inspection-location")).toContainText("turned off");
+  await expect(page.getByTestId("inspection-location")).toContainText("Location is off");
   await expect(page.getByTestId("local-save-status")).toContainText("Saved on this phone");
   const ids = await page.evaluate(async () => {
     const known = JSON.parse(localStorage.getItem("aerowise-tech:tenants")!)[0] as { dbName: string };
@@ -79,6 +81,10 @@ test("keyboard photo replacement survives offline reload, sends only retained ph
   await card.click();
   await page.getByRole("button", { name: "Arrive and start inspection" }).click();
   await answerInspection(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.screenshot({ path: test.info().outputPath("technician-inspection-375.png") });
+  await page.setViewportSize({ width: 430, height: 932 });
+  await page.screenshot({ path: test.info().outputPath("technician-inspection-430.png") });
   const add = page.getByRole("button", { name: "Add photo: Overview of the unit", exact: true });
   const picker = page.waitForEvent("filechooser");
   await add.focus(); await page.keyboard.press("Enter");
@@ -88,7 +94,9 @@ test("keyboard photo replacement survives offline reload, sends only retained ph
   await page.getByRole("button", { name: "Replace or retake Overview of the unit, photo 1" }).focus(); await page.keyboard.press("Enter");
   await (await replacement).setFiles({ name: "retake.png", mimeType: "image/png", buffer: PNG });
   await expect(page.locator('[data-photo="overview"]')).toContainText("1 taken");
+  await expect(page.getByLabel("Add photo: Chlorinator", { exact: true })).toBeEnabled();
   await page.getByLabel("Add photo: Chlorinator", { exact: true }).setInputFiles({ name: "chlorinator.png", mimeType: "image/png", buffer: PNG });
+  await expect(page.locator('[data-photo="chlorinator"]')).toContainText("1 taken");
   await expect(page.getByTestId("local-save-status")).toContainText("Saved on this phone");
   await page.reload();
   await page.locator(".stop-card", { hasText: customer }).click();
@@ -100,6 +108,7 @@ test("keyboard photo replacement survives offline reload, sends only retained ph
   await page.getByRole("button", { name: "View completed inspection" }).click();
   await expect(page.getByTestId("inspection-recap")).toContainText("waiting to send");
   await expect(page.getByTestId("inspection-recap")).toContainText("1.5");
+  await page.screenshot({ path: test.info().outputPath("technician-completed-offline.png"), fullPage: true });
   await expect(page.getByRole("button", { name: "Remove Overview" })).toHaveCount(0);
   await context.setOffline(false);
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });
@@ -146,12 +155,16 @@ test("typed work signature uses the consent and exact summary binding and mixed 
     await page.getByLabel("Work performed").fill("Fictional float replaced");
     await page.getByRole("group", { name: "Follow-up visit needed" }).getByRole("button", { name: "No", exact: true }).click();
     await page.getByLabel("Add photo: Before the repair", { exact: true }).setInputFiles({ name: "before.png", mimeType: "image/png", buffer: PNG });
+    await expect(page.locator('[data-photo="before"]')).toContainText("1 taken");
+    await expect(page.getByLabel("Add photo: After the repair", { exact: true })).toBeEnabled();
     await page.getByLabel("Add photo: After the repair", { exact: true }).setInputFiles({ name: "after.png", mimeType: "image/png", buffer: PNG });
+    await expect(page.locator('[data-photo="after"]')).toContainText("1 taken");
     await page.getByRole("button", { name: "Review and sign", exact: true }).click();
     await expect(page.getByTestId("work-signoff")).toBeFocused();
     await page.getByLabel("Name of the person signing").fill("Fictional Keyboard Customer");
     await page.getByRole("button", { name: "Type signature", exact: true }).focus(); await page.keyboard.press("Enter");
     await expect(page.getByTestId("work-signoff")).toContainText("I adopt my typed name");
+    await page.screenshot({ path: test.info().outputPath("technician-typed-work-signoff.png"), fullPage: true });
     await page.getByRole("button", { name: "Sign and finish visit" }).focus(); await page.keyboard.press("Enter");
     await expect(page.locator(".work-card", { hasText: "Keyboard sign-off" })).toContainText("Done");
     await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 60_000 });

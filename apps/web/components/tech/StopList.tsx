@@ -50,8 +50,9 @@ export function StopList({
     );
   }
   const done = route.items.filter((s) => stopStatus(s, inspections.get(s.jobId)).label.startsWith("Done")).length;
-  const workDone = work?.stops.filter(s => work.done(s.jobId)).length ?? 0;
-  const total = route.items.length + (work?.stops.length ?? 0);
+  const sameDayWork = work?.stops.filter(s => s.scheduledDate === route.date) ?? [];
+  const workDone = sameDayWork.filter(s => work?.done(s.jobId)).length;
+  const total = route.items.length + sameDayWork.length;
   const mappable = route.items.length + (work?.stops.filter((s) => numbers?.has(s.jobId)).length ?? 0);
   return (
     <div className="stack">
@@ -59,7 +60,7 @@ export function StopList({
         <div>
           <h1>{day(route.date)}</h1>
           <p className="muted small">
-            {done + workDone} of {total} stops done · {route.items.length} inspections, {work?.stops.length ?? 0} work visits
+            {done + workDone} of {total} stops done · {route.items.length} inspections, {sameDayWork.length} work visits
             {fetchedAt && ` · route last downloaded ${when(fetchedAt)}`}
           </p>
         </div>

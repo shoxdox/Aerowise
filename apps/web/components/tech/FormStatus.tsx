@@ -10,13 +10,13 @@ export function LocalSaveStatus({ state, retry }: { state: LocalSaveState; retry
   </p>;
 }
 export const sectionId = (section: string) => `form-section-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-export function FormNavigation({ fields, values, photoRequired, photoDone, actionLabel }: { fields: TemplateField[]; values: InspectionValues; photoRequired: number; photoDone: number; actionLabel: string }) {
+export function FormNavigation({ fields, values, photoRequired, photoDone, actionLabel, hasPhotos = true }: { hasPhotos?: boolean; fields: TemplateField[]; values: InspectionValues; photoRequired: number; photoDone: number; actionLabel: string }) {
   const required = fields.filter(f => f.required);
   const answered = required.filter(f => values[f.key] !== undefined && values[f.key] !== null && values[f.key] !== "").length;
   const sections = [...new Set(fields.map(f => f.section))];
   return <nav className="card stack form-navigation" aria-label="Form sections">
     <p className="small" role="status">{answered} of {required.length} required answers entered · {photoDone} of {photoRequired} required photos saved. Finish checks answer validity.</p>
-    <div className="row">{[...sections, "Photos", actionLabel].map(section => <a key={section} href={`#${sectionId(section)}`} onClick={() => document.getElementById(sectionId(section))?.focus()}>{section}</a>)}</div>
+    <div className="row">{[...sections, ...(hasPhotos ? ["Photos"] : []), actionLabel].map(section => <a key={section} href={`#${sectionId(section)}`} onClick={() => document.getElementById(sectionId(section))?.focus()}>{section}</a>)}</div>
   </nav>;
 }
 export function focusProblems() {

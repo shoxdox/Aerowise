@@ -170,6 +170,8 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   }, [storageFull]);
   const [localSave, setLocalSave] = useState<LocalSaveState>("saved");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const photoQueue = useRef<Promise<void>>(Promise.resolve());
+  const photoPending = useRef(0);
   const [signing, setSigning] = useState(false);
   const [busy, setBusy] = useState(false);
   const latest = useRef(rec);
@@ -262,11 +264,13 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== key));
   };
 
-  async function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>, replaceId?: string) {
-    if (readOnly || photoBusy || busy) return;
+  function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>, replaceId?: string) {
+    if (readOnly || busy) return;
+    photoPending.current++;
     setPhotoBusy(true);
     const files = [...(e.target.files ?? [])];
     e.target.value = "";
+    const capture = async () => {
     setPhotoError(null);
     for (const file of files) {
       let clientId: string | null = null;
@@ -308,11 +312,15 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
         if (isStorageFull()) break;
       }
     }
-    setPhotoBusy(false);
+    };
+    // A second file-input event joins the queue; no selected photo is silently dropped.
+    const queued = photoQueue.current.then(capture, capture);
+    photoQueue.current = queued;
+    void queued.finally(() => { photoPending.current--; if (photoPending.current === 0) setPhotoBusy(false); }).catch(() => {});
   }
 
   async function removePhoto(clientId: string) {
-    if (readOnly || photoBusy || busy) return;
+    if (readOnly || photoPending.current > 0 || busy) return;
     setPhotoBusy(true);
     const before = latest.current;
     const next = { ...before, photos: before.photos.filter(p => p.clientId !== clientId), removedPhotoClientIds: [...new Set([...(before.removedPhotoClientIds ?? []), clientId])] };
@@ -324,7 +332,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
 
   /** Checks the form; with a sign-off on the form, shows the summary to sign next. */
   function review() {
-    if (busy || photoBusy || readOnly) return;
+    if (busy || photoPending.current > 0 || readOnly) return;
     const found = [...validateInspection(def, latest.current.values, counts), ...pumpOutProblems(stop.requiresDisposalRecord, sendablePumpOut(latest.current.pumpOut))];
     setProblems(found);
     if (found.length) {
@@ -337,7 +345,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
 
   /** Finishes the visit, with the customer's signature on the summary if one was given. */
   async function finish(signed: { requirementKey: string; signerName: string; capture: SignatureCapture } | null) {
-    if (busy || photoBusy || readOnly) return;
+    if (busy || photoPending.current > 0 || readOnly) return;
     setBusy(true);
     const base = latest.current;
     const summary = signed ? workSummary(stop, def, base.values, base.finalVisit, base.pumpOut) : null;
@@ -392,7 +400,7 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
         </p>
       )}
       {!readOnly && <LocalSaveStatus state={localSave} retry={() => void persist(latest.current).catch(() => {})} />}
-      {!readOnly && !signing && <FormNavigation fields={fields} values={rec.values} photoRequired={photos.reduce((n, p) => n + p.minCount, 0)} photoDone={photos.reduce((n, p) => n + Math.min(p.minCount, counts[p.key] ?? 0), 0)} actionLabel="Review and finish" />}
+      {!readOnly && !signing && <FormNavigation hasPhotos={photos.length > 0} fields={fields} values={rec.values} photoRequired={photos.reduce((n, p) => n + p.minCount, 0)} photoDone={photos.reduce((n, p) => n + Math.min(p.minCount, counts[p.key] ?? 0), 0)} actionLabel="Review and finish" />}
       {problems.length > 0 && (
         <div className="card problems" role="alert" tabIndex={-1}>
           <strong>Before you can finish:</strong>

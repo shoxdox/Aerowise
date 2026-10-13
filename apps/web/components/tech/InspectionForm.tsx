@@ -39,6 +39,8 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   }, [storageFull]);
   const [localSave, setLocalSave] = useState<LocalSaveState>("saved");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const photoQueue = useRef<Promise<void>>(Promise.resolve());
+  const photoPending = useRef(0);
   const [finishing, setFinishing] = useState(false);
   const latest = useRef(insp);
   const editVersion = useRef(0);
@@ -128,11 +130,13 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
     if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== key));
   };
 
-  async function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>, replaceId?: string) {
-    if (readOnly || photoBusy || finishing) return;
+  function addPhoto(photoKey: string, e: ChangeEvent<HTMLInputElement>, replaceId?: string) {
+    if (readOnly || finishing) return;
+    photoPending.current++;
     setPhotoBusy(true);
     const files = [...(e.target.files ?? [])];
     e.target.value = "";
+    const capture = async () => {
     setPhotoError(null);
     for (const file of files) {
       let clientId: string | null = null;
@@ -174,11 +178,15 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
         if (isStorageFull()) break;
       }
     }
-    setPhotoBusy(false);
+    };
+    // A second file-input event joins the queue; no selected photo is silently dropped.
+    const queued = photoQueue.current.then(capture, capture);
+    photoQueue.current = queued;
+    void queued.finally(() => { photoPending.current--; if (photoPending.current === 0) setPhotoBusy(false); }).catch(() => {});
   }
 
   async function removePhoto(clientId: string) {
-    if (readOnly || photoBusy || finishing) return;
+    if (readOnly || photoPending.current > 0 || finishing) return;
     setPhotoBusy(true);
     const before = latest.current;
     const next = { ...before, photos: before.photos.filter(p => p.clientId !== clientId), removedPhotoClientIds: [...new Set([...(before.removedPhotoClientIds ?? []), clientId])] };
@@ -191,7 +199,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished }: { stop: S
   const setIssues = (issues: LocalInspection["issues"]) => update({ ...latest.current, issues });
 
   async function finish() {
-    if (finishing || photoBusy || readOnly) return;
+    if (finishing || photoPending.current > 0 || readOnly) return;
     const found = validateInspection(def, latest.current.values, counts);
     setProblems(found);
     if (found.length) {

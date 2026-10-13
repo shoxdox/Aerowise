@@ -380,7 +380,7 @@ export default function TechApp() {
             numbers={numbers}
           />
         )}
-        {view.name === "list" && <WorkStopList stops={workStops} records={works} failedRecords={failedWork} numbers={numbers} onOpen={(jobId) => setView({ name: "work", jobId })} />}
+        {view.name === "list" && <WorkStopList routeDate={route?.date} stops={workStops} records={works} failedRecords={failedWork} numbers={numbers} onOpen={(jobId) => setView({ name: "work", jobId })} />}
         {view.name === "list" && [...inspections.values()].some(i => i.stopSnapshot && !route?.items.some(s => s.jobId === i.jobId)) && <section className="stack"><h2>Inspections kept on this phone</h2>{[...inspections.values()].filter(i => i.stopSnapshot && !route?.items.some(s => s.jobId === i.jobId)).map(i => <button key={i.clientId} className="secondary" onClick={() => setView({ name: "stop", jobId: i.jobId })}>{i.stopSnapshot!.customer.displayName} · {i.held ? "Held for the office" : i.status === "completed" ? "Completed inspection" : "Saved inspection"}</button>)}</section>}
         {/* Off on the server, /pumping/field answers empty lists: nothing to record a disposal with yet. */}
         {view.name === "list" && pumpingField && (pumpingField.facilities.length > 0 || pumpingField.unloaded.length > 0) && (
