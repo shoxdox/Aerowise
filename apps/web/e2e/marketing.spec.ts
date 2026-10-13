@@ -140,7 +140,7 @@ test("stalled overview and failed demo checks provide bounded recovery and a kno
 
 test("share metadata is public, truthful and private routes remain noindex", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://staging.deshain.com/");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://staging.deshain.com");
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", "https://staging.deshain.com/marketing/office-due.png");
   await expect(page.locator('meta[property="og:description"]')).toHaveAttribute("content", /Early-access.*fictional demo/);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);

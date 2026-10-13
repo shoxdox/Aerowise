@@ -45,4 +45,6 @@ pnpm exec eslint apps/web/components/marketing apps/web/components/legal apps/we
 
 Web typecheck and focused ESLint passed. The initial web check found the optional authority selection guard, which was fixed, alongside temporarily incomplete parallel office edits. An API typecheck during parallel work found unrelated in-progress `ObjectStore.delete`/`ReportCorrectionError` references, reported to parent for repair. Parent owns final integrated production build, browser suite and screenshots; passing results and tested final commit must be recorded there before marking prepared browser checks verified.
 
+The first parent-managed production-browser run passed the first five marketing scenarios (real offer/preview, storage/admin outbox, delayed/failed overview recovery, uncertain-submit retry and stalled overview/availability). The metadata check initially expected a trailing slash absent from the configured canonical string; inspected actual HTML showed the correct staging root and the assertion was aligned. Its rerun/final results belong in the parent report.
+
 Relevant installed Next docs read before edits: `dist/docs/01-app/01-getting-started/14-metadata-and-og-images.md`, `05-server-and-client-components.md`, `06-fetching-data.md`. Metadata stays in a server page; interactive public reads/forms stay in client components.
