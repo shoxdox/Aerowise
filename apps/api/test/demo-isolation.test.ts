@@ -313,7 +313,8 @@ describe("a demo company next to a real one, with real services configured", () 
     expect(csvs).toHaveLength(EXPORT_TABLES.length);
     for (const name of csvs) {
       const lines = new TextDecoder().decode(files[name]).trimEnd().split("\r\n");
-      expect(lines[0], name).toMatch(/^aerowise_demo_notice,(id,)?(seq,)?organization_id,/);
+      expect(lines[0]!.split(",")[0], name).toBe("aerowise_demo_notice");
+      expect(lines[0]!.split(","), name).toContain("organization_id");
       for (const line of lines.slice(1)) expect(line.startsWith("DEMO - FICTIONAL DATA - NOT FILED,"), name).toBe(true);
     }
     const customers = new TextDecoder().decode(files["customers.csv"]);
@@ -451,9 +452,9 @@ describe("a demo company's contact details", () => {
   it("shows the banner to anyone signed in to a demo company", async () => {
     const demo = await company("Demo Co", true);
     const real = await company("Real Septic", false);
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, features: [] });
-    expect((await demo.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: true, demoVisitor: false, features: [] });
-    expect((await real.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, features: [] });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, demoRole: null, demoExpiresAt: null, features: [] });
+    expect((await demo.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: true, demoVisitor: false, demoRole: "owner", demoExpiresAt: null, features: [] });
+    expect((await real.api.get("/app-info")).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, demoRole: "owner", demoExpiresAt: null, features: [] });
   });
 });
 

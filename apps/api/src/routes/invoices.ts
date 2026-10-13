@@ -138,9 +138,10 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           view: z.enum(VIEWS).default("unpaid"),
           customerId: id.optional(),
           siteId: id.optional(),
-          limit: z.coerce.number().int().min(1).max(500).default(200),
+          limit: z.coerce.number().int().min(1).max(500).default(50),
+          offset: z.coerce.number().int().min(0).default(0),
         }),
-        response: { 200: z.object({ items: z.array(invoiceListItem), today: z.iso.date() }) },
+        response: { 200: z.object({ items: z.array(invoiceListItem), today: z.iso.date(), total: z.number().int(), owedCents: z.number().int() }) },
       },
     },
     async (req) => {
@@ -149,8 +150,11 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       let q = applyView(invoiceBase(db, organizationId), req.query.view, today);
       if (req.query.customerId) q = q.where("i.customerId", "=", req.query.customerId);
       if (req.query.siteId) q = q.where("i.siteId", "=", req.query.siteId);
-      const rows = await q.orderBy(overdueFirst).limit(req.query.limit).execute();
-      return { items: rows.map((r) => toListItem(r, today)), today };
+      const [rows, totals] = await Promise.all([
+        q.orderBy(overdueFirst).orderBy("i.id").limit(req.query.limit).offset(req.query.offset).execute(),
+        q.clearSelect().select([sql<number>`count(*)::int`.as("total"), sql<number>`coalesce(sum(case when i.status = 'open' then greatest(0, i.total_cents - i.credited_cents - i.paid_cents - i.pending_cents) else 0 end), 0)::bigint`.as("owedCents")]).executeTakeFirstOrThrow(),
+      ]);
+      return { items: rows.map((r) => toListItem(r, today)), today, total: totals.total, owedCents: Number(totals.owedCents) };
     },
   );
 

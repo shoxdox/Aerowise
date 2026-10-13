@@ -13,6 +13,7 @@ import {
 } from "@aerowise/domain";
 import { useState } from "react";
 import { VerifiedBadge } from "@/components/FilingBadges";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { day, when } from "@/lib/format";
@@ -25,7 +26,8 @@ type EvidenceKind = (typeof AUTHORITY_EVIDENCE_KINDS)[number];
  * authority's answer, a permit record); nothing is matched by guessing.
  */
 export function SiteAuthority({ siteId, county, editable }: { siteId: string; county: string | null; editable: boolean }) {
-  const { data, reload } = useLoad<SiteJurisdiction>(`/sites/${siteId}/jurisdiction`);
+  const recordLoad = useLoad<SiteJurisdiction>(`/sites/${siteId}/jurisdiction`);
+  const { data, reload } = recordLoad;
   const [editing, setEditing] = useState(false);
   const list = useLoad<{ items: Jurisdiction[] }>(editing ? "/jurisdictions" : null);
   // How far the authority itself has confirmed each line (W12.V4). Example rules have no authority to ask.
@@ -71,7 +73,7 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
     }
   }
 
-  if (!data) return null;
+  if (!data) return <LoadState load={recordLoad} label="authority assignment" />;
   const startEditing = () => {
     setChoice(data.source === "override" ? (data.jurisdiction?.id ?? "") : (data.candidates[0]?.id ?? ""));
     setEditing(true);
@@ -79,6 +81,8 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
   const chosen = list.data?.items.find((j) => j.id === choice) ?? data.candidates.find((j) => j.id === choice);
   return (
     <dl className="card details">
+      {(recordLoad.error || recordLoad.refreshing) && <><dt>Authority read status</dt><dd><LoadState load={recordLoad} label="authority assignment" /></dd></>}
+      {(confirmation.error || confirmation.loading) && <><dt>Confirmation read status</dt><dd><LoadState load={confirmation} label="authority confirmation evidence" /></dd></>}
       <dt>Reports to</dt>
       <dd>
         {data.jurisdiction ? (

@@ -1,5 +1,6 @@
 import type { Database } from "@aerowise/db";
 import { INSPECTING_CREDENTIALS, onboardingChecklist, onboardingChecklistFor } from "@aerowise/domain";
+import { explainSite, loadCatalog } from "@aerowise/compliance";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { organizationToday } from "../lib/today.ts";
 
@@ -12,7 +13,7 @@ export const onboardingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
       schema: { tags: ["organization"], summary: "First-run checklist for a new company", response: { 200: onboardingChecklist } },
     },
     async (req) => {
-      const { organizationId } = req.requireAuth();
+      const { organizationId, role } = req.requireAuth();
       const today = await organizationToday(db, organizationId, now());
 
       // A license counts while it is active and not past its expiry date.
@@ -23,7 +24,7 @@ export const onboardingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
         .where("active", "=", true)
         .where((eb) => eb.or([eb("expiresOn", "is", null), eb("expiresOn", ">=", today)]));
 
-      const [org, credentials, members, customers, quickbooks] = await Promise.all([
+      const [org, credentials, members, customers, quickbooks, sites, applicable, contracts, scheduled, reviewed, catalog] = await Promise.all([
         db
           .selectFrom("organizations")
           .select(["name", "phone", "addressLine1", "city", "state", "postalCode", "serviceCounties", "responsibleCredentialId", "stripeChargesEnabled"])
@@ -39,6 +40,14 @@ export const onboardingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
           .execute(),
         db.selectFrom("customers").select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).executeTakeFirstOrThrow(),
         db.selectFrom("quickbooksConnections").select("status").where("organizationId", "=", organizationId).executeTakeFirst(),
+        db.selectFrom("sites").select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).executeTakeFirstOrThrow(),
+        db.selectFrom("sites as s").innerJoin("siteAuthorityAssignments as a", (j) => j.onRef("a.id", "=", "s.authorityAssignmentId").onRef("a.organizationId", "=", "s.organizationId").onRef("a.siteId", "=", "s.id").onRef("a.jurisdictionId", "=", "s.jurisdictionId"))
+          .select(["s.id", "s.county", "s.state", "s.jurisdictionId", "s.authorityAssignmentId", "s.useCategory", "s.permitIntervalMonths"])
+          .where("s.organizationId", "=", organizationId).where("s.active", "=", true).where("a.jurisdictionId", "is not", null).where("a.evidenceKind", "is not", null).where("a.evidenceReference", "is not", null).execute(),
+        db.selectFrom("contracts").select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).where("status", "=", "active").executeTakeFirstOrThrow(),
+        db.selectFrom("jobs").select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).where("status", "in", ["scheduled", "in_progress", "completed"]).executeTakeFirstOrThrow(),
+        db.selectFrom("reportSignatures").select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).executeTakeFirstOrThrow(),
+        loadCatalog(db),
       ]);
 
       const inspecting = new Set(credentials.filter((c) => c.userId && INSPECTING_CREDENTIALS.includes(c.kind)).map((c) => c.userId));
@@ -48,6 +57,12 @@ export const onboardingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => 
 
       return onboardingChecklistFor({
         company: org,
+        role,
+        sites: Number(sites.n),
+        applicableSites: applicable.filter((s) => explainSite(catalog, s, today).resolved?.jurisdictionId === s.jurisdictionId).length,
+        contracts: Number(contracts.n),
+        scheduledVisits: Number(scheduled.n),
+        reviewedReports: Number(reviewed.n),
         responsibleMpValid: credentials.some((c) => c.id === org.responsibleCredentialId && c.kind === "tceq_maintenance_provider"),
         inspectors,
         serviceCounties: org.serviceCounties.length,

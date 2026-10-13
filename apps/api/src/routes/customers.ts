@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Database } from "@aerowise/db";
 import {
   contact,
@@ -168,6 +169,44 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     },
   );
 
+  // One transaction and a client operation id make later-write failures and lost responses safe to retry.
+  app.post("/customers/create-with-site", {
+    config: { permission: "crm:write" },
+    schema: { tags: ["customers"], summary: "Atomically create customer, primary contact and first site", body: z.object({ creationId: id, customer: customerInput, contact: contactInput.omit({ siteId: true }).optional(), site: siteInput.optional() }), response: { 201: customer } },
+  }, async (req, reply) => {
+    const { organizationId } = req.requireAuth();
+    const b = req.body;
+    const creationHash = createHash("sha256").update(JSON.stringify(b)).digest("hex");
+    const row = await db.transaction().execute(async (trx) => {
+      await sql`select pg_advisory_xact_lock(hashtextextended(${`${organizationId}:${b.creationId}`}, 0))`.execute(trx);
+      const prior = await trx.selectFrom("customers").select(CUSTOMER_COLUMNS).where("organizationId", "=", organizationId).where("id", "=", b.creationId).executeTakeFirst();
+      if (prior) {
+        const original = await trx.selectFrom("auditEvents").select("changes").where("organizationId", "=", organizationId).where("entityId", "=", b.creationId).where("action", "=", "customer.created").executeTakeFirst();
+        if ((original?.changes as { creationHash?: string } | undefined)?.creationHash !== creationHash) throw unprocessable("This save id belongs to a different customer. Open the saved record before starting another.");
+        return prior;
+      }
+      const created = await trx.insertInto("customers").values({ ...definedOnly(b.customer), id: b.creationId, organizationId }).returning(CUSTOMER_COLUMNS).executeTakeFirstOrThrow();
+      if (b.contact) {
+        const phone = toE164(b.contact.phone);
+        if (b.contact.consentSms && phone && await trx.selectFrom("smsOptOuts").select("phone").where("organizationId", "=", organizationId).where("phone", "=", phone).executeTakeFirst()) throw unprocessable("This number replied STOP. Only the customer can turn texts back on.");
+        const added = await trx.insertInto("contacts").values({ ...definedOnly(b.contact), organizationId, customerId: created.id }).returning("id").executeTakeFirstOrThrow();
+        await audit(trx, req, { action: "contact.created", entityType: "contact", entityId: added.id, changes: b.contact });
+      }
+      if (b.site) {
+        const { lat, lng, ...fields } = definedOnly(b.site);
+        const located = lat != null && lng != null;
+        if (!located && (lat != null || lng != null)) throw unprocessable("Give both lat and lng, or neither");
+        if (fields.permitIntervalMonths != null && !fields.permitIntervalNote) throw unprocessable(PERMIT_NOTE_NEEDED);
+        const added = await trx.insertInto("sites").values({ ...fields, ...(located ? { lat, lng, locationSource: "manual" as const } : {}), organizationId, customerId: created.id }).returning("id").executeTakeFirstOrThrow();
+        if (!located) await queueSiteLocating(trx, organizationId, `site:${added.id}`, now());
+        await audit(trx, req, { action: "site.created", entityType: "site", entityId: added.id, changes: b.site });
+      }
+      await audit(trx, req, { action: "customer.created", entityType: "customer", entityId: created.id, changes: { ...b.customer, creationHash } });
+      return created;
+    });
+    return reply.status(201).send(jsonRow(row));
+  });
+
   app.get(
     "/customers/:id",
     {
@@ -196,6 +235,22 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       return { ...jsonRow(row), contacts, sites: sites.map(siteRow) };
     },
   );
+
+  app.get("/customers/:id/overview", { config: { permission: "crm:read" }, schema: { tags: ["customers"], summary: "Next operating action across an authorized customer's sites", params, querystring: listQuery } }, async (req) => {
+    const { organizationId } = req.requireAuth();
+    await findCustomer(organizationId, req.params.id);
+    const base = db.selectFrom("sites as s").where("s.organizationId", "=", organizationId).where("s.customerId", "=", req.params.id);
+    const [rows, count] = await Promise.all([
+      base.select(["s.id", "s.addressLine1", "s.city", "s.active"])
+        .select((eb) => [
+          eb.selectFrom("jobs as j").select("j.scheduledDate").whereRef("j.siteId", "=", "s.id").where("j.organizationId", "=", organizationId).where("j.status", "in", ["scheduled", "in_progress"]).orderBy("j.scheduledDate").limit(1).as("nextVisit"),
+          eb.selectFrom("serviceObligations as o").select("o.dueOn").whereRef("o.siteId", "=", "s.id").where("o.organizationId", "=", organizationId).where("o.status", "=", "open").orderBy("o.dueOn").limit(1).as("dueOn"),
+          eb.selectFrom("issues as i").select(sql<number>`count(*)::int`.as("n")).whereRef("i.siteId", "=", "s.id").where("i.organizationId", "=", organizationId).where("i.status", "=", "open").as("openIssues"),
+        ]).orderBy("s.addressLine1").orderBy("s.id").limit(req.query.limit).offset(req.query.offset).execute(),
+      base.select(sql<number>`count(*)::int`.as("n")).executeTakeFirstOrThrow(),
+    ]);
+    return { items: rows, total: count.n };
+  });
 
   app.patch(
     "/customers/:id",

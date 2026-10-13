@@ -6,6 +6,8 @@ import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { notFound, unprocessable } from "../lib/errors.ts";
+import { expiringContracts } from "../lib/expiring-contracts.ts";
+import { organizationToday } from "../lib/today.ts";
 import { definedOnly } from "../lib/json.ts";
 import { CONTACT_COLUMNS, PERMIT_NOTE_NEEDED, SITE_COLUMNS, siteRow } from "./customers.ts";
 
@@ -38,6 +40,7 @@ export const siteRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }
         summary: "List service sites, searching address, city and permit number",
         querystring: z.object({
           search: z.string().trim().max(200).optional(),
+          contractsExpiring: z.stringbool().optional(),
           limit: z.coerce.number().int().min(1).max(200).default(50),
           offset: z.coerce.number().int().min(0).default(0),
         }),
@@ -53,6 +56,10 @@ export const siteRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }
           join.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId"),
         )
         .where("s.organizationId", "=", organizationId);
+      if (req.query.contractsExpiring) {
+        const today = await organizationToday(db, organizationId, now());
+        base = base.where((eb) => eb.exists(expiringContracts(db, organizationId, today).select("k.id").where("k.siteId", "=", sql<string>`s.id`)));
+      }
       if (search) {
         const pattern = `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
         base = base.where((eb) =>
@@ -74,6 +81,21 @@ export const siteRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date }
       return { items: items.map(siteRow), total: count.total };
     },
   );
+
+  app.get("/sites/:id/overview", { config: { permission: "crm:read" }, schema: { tags: ["sites"], summary: "Current operating context and next action for one authorized site", params } }, async (req) => {
+    const { organizationId } = req.requireAuth();
+    const site = await db.selectFrom("sites").select("id").where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+    if (!site) throw notFound("Site");
+    const today = await organizationToday(db, organizationId, now());
+    const [contract, obligation, visit, report, issues] = await Promise.all([
+      db.selectFrom("contracts").select(["id", "planName", "startOn", "endOn"]).where("organizationId", "=", organizationId).where("siteId", "=", site.id).where("status", "=", "active").where("startOn", "<=", today).where("endOn", ">=", today).orderBy("startOn", "desc").executeTakeFirst(),
+      db.selectFrom("serviceObligations").select(["id", "dueOn", "serviceType"]).where("organizationId", "=", organizationId).where("siteId", "=", site.id).where("status", "=", "open").orderBy("dueOn").executeTakeFirst(),
+      db.selectFrom("jobs as j").innerJoin("users as u", "u.id", "j.technicianUserId").select(["j.id", "j.scheduledDate", "u.name"]).where("j.organizationId", "=", organizationId).where("j.siteId", "=", site.id).where("j.status", "in", ["scheduled", "in_progress"]).orderBy("j.scheduledDate").executeTakeFirst(),
+      db.selectFrom("reports as r").leftJoin("reportSignatures as sig", (j) => j.onRef("sig.reportId", "=", "r.id").onRef("sig.organizationId", "=", "r.organizationId")).leftJoin("filings as f", (j) => j.onRef("f.inspectionId", "=", "r.inspectionId").onRef("f.organizationId", "=", "r.organizationId")).select(["r.id", "r.version", "r.generatedAt", "sig.signedAt", "f.id as filingId", "f.status as filingStatus"]).where("r.organizationId", "=", organizationId).where("r.siteId", "=", site.id).where("r.audience", "=", "authority").orderBy("r.generatedAt", "desc").orderBy("r.version", "desc").executeTakeFirst(),
+      db.selectFrom("issues").select(["id", "description", "severity", "workOrderId"]).where("organizationId", "=", organizationId).where("siteId", "=", site.id).where("status", "=", "open").orderBy("createdAt", "desc").execute(),
+    ]);
+    return { today, contract: contract ?? null, obligation: obligation ?? null, visit: visit ?? null, report: report ? { ...report, generatedAt: report.generatedAt.toISOString(), signedAt: report.signedAt?.toISOString() ?? null } : null, issues };
+  });
 
   app.get(
     "/sites/:id",

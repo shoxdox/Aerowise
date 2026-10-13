@@ -12,6 +12,7 @@ import {
 } from "@aerowise/domain";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
@@ -30,7 +31,8 @@ export default function DisposalPage() {
   const office = canEdit(me) && roleHasPermission(me.role, "work:write");
   const [offset, setOffset] = useState(0);
   const loads = useLoad<{ items: DisposalLoad[]; nextOffset: number | null }>(`/disposal/loads?limit=${PAGE}&offset=${offset}`);
-  const unloaded = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>("/pumping-records?unloaded=true&limit=200");
+  const [unloadedOffset, setUnloadedOffset] = useState(0);
+  const unloaded = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>(`/pumping-records?unloaded=true&limit=50&offset=${unloadedOffset}`);
   const facilities = useLoad<{ items: DisposalFacility[] }>(office ? "/disposal-facilities" : null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [problem, setProblem] = useState<string | null>(null);
@@ -78,11 +80,13 @@ export default function DisposalPage() {
   const pickedVolume = pickedRows.reduce((sum, p) => sum + p.volumeMilligallons, 0);
   // A load is on one truck: the truck its pump-outs were recorded on.
   const pickedTrucks = [...new Set(pickedRows.map((p) => p.vehicleId))];
-  const error = loads.error ?? unloaded.error;
-  if (error) return <p className="error">{error}</p>;
+
   return (
     <div className="stack">
       <h1>Disposal records</h1>
+      <LoadState load={loads} label="disposal records" />
+      <LoadState load={unloaded} label="unloaded pump-outs" />
+      <LoadState load={facilities} label="disposal facilities" />
       <p className="muted">
         Where each truck load of pumped waste was delivered, with its manifest or reference number. These are the company&apos;s own records; Aerowise does not say that any load meets a
         regulation or that a facility accepted it.
@@ -93,7 +97,7 @@ export default function DisposalPage() {
       <section className="stack">
         <h2>Pump-outs not in a disposal record yet</h2>
         {!unloaded.data ? (
-          <p className="muted">Loading…</p>
+          <LoadState load={unloaded} label="unloaded pump-outs" />
         ) : unloaded.data.items.length === 0 ? (
           <p className="muted">None.</p>
         ) : (
@@ -138,6 +142,7 @@ export default function DisposalPage() {
         {unloaded.data?.nextOffset !== null && unloaded.data?.nextOffset !== undefined && <p className="muted small">Showing the newest 200.</p>}
       </section>
 
+      {unloaded.data && <nav className="row" aria-label="Unloaded pump-out pages"><span>Showing {unloadedOffset + 1}–{unloadedOffset + unloaded.data.items.length}{unloaded.data.nextOffset !== null ? "; more available" : "; end of list"}</span><button className="secondary" disabled={unloadedOffset === 0} onClick={() => { setPicked(new Set()); setUnloadedOffset(Math.max(0, unloadedOffset - 50)); }}>Previous pump-outs</button><button className="secondary" disabled={unloaded.data.nextOffset === null} onClick={() => { setPicked(new Set()); setUnloadedOffset(unloaded.data!.nextOffset!); }}>Next pump-outs</button></nav>}
       {office && on && (
         <form className="card stack" onSubmit={record} data-testid="record-disposal">
           <h2>Record a disposal</h2>

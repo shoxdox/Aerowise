@@ -849,13 +849,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         tags: ["obligations"],
         summary: "Open visits due by a date, overdue first: aerobic inspections unless another kind is asked for",
         querystring: dueQuery,
-        response: { 200: z.object({ items: z.array(dueObligation), total: z.number().int(), today: z.iso.date() }) },
+        response: { 200: z.object({ items: z.array(dueObligation), total: z.number().int(), overdueTotal: z.number().int(), today: z.iso.date() }) },
       },
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
       const asOf = await today(organizationId);
-      const { through = addDays(asOf, 30), siteId, overdueOnly, unscheduledOnly, serviceType, limit, offset } = req.query;
+      const { through = addDays(asOf, 30), siteId, obligationId, overdueOnly, upcomingOnly, unscheduledOnly, serviceType, limit, offset } = req.query;
       let base = obligationsFrom(db)
         .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
         .innerJoin("customers as cu", (j) => j.onRef("cu.id", "=", "s.customerId").onRef("cu.organizationId", "=", "s.organizationId"))
@@ -870,10 +870,12 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         .where("o.organizationId", "=", organizationId)
         // One kind at a time (SW-9): the inspection list never shows pumping or maintenance.
         .where("o.serviceType", "=", serviceType)
-        .where("o.status", "=", "open")
-        .where("o.dueOn", "<=", through);
+        .where("o.status", "=", "open");
+      if (obligationId) base = base.where("o.id", "=", obligationId);
+      else base = base.where("o.dueOn", "<=", through);
       if (siteId) base = base.where("o.siteId", "=", siteId);
       if (overdueOnly) base = base.where("o.dueOn", "<", asOf);
+      if (upcomingOnly) base = base.where("o.dueOn", ">=", asOf);
       // Not yet booked: no live inspection job, or for pumping and maintenance no work order.
       if (unscheduledOnly) base = base.where("j.id", "is", null).where("wo.id", "is", null);
       const [rows, count] = await Promise.all([
@@ -896,10 +898,11 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           .limit(limit)
           .offset(offset)
           .execute(),
-        base.select(sql<number>`count(*)::int`.as("total")).executeTakeFirstOrThrow(),
+        base.select([sql<number>`count(*)::int`.as("total"), sql<number>`count(*) filter (where o.due_on < ${asOf}::date)::int`.as("overdueTotal")]).executeTakeFirstOrThrow(),
       ]);
       return {
         today: asOf,
+        overdueTotal: count.overdueTotal,
         total: count.total,
         items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, ...o }) => ({
           ...obligation.parse(toObligation(o)),

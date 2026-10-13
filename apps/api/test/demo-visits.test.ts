@@ -112,7 +112,33 @@ describe("visitor demos", () => {
     const filings = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", organizationId).where("inspectionId", "is not", null).execute();
     expect(filings.length).toBeGreaterThan(2);
     expect(new Set(filings.map((f) => f.status))).toEqual(new Set(["confirmed", "sent"]));
-    expect((await a.inject({ method: "GET", url: "/app-info", headers: { cookie } })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: true, features: [] });
+    expect((await a.inject({ method: "GET", url: "/app-info", headers: { cookie } })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: true, demoRole: "owner", demoExpiresAt: expiresAt, features: [] });
+
+    const journey = await a.inject({ method: "GET", url: "/demo/journey", headers: { cookie } });
+    expect(journey.statusCode, journey.body).toBe(200);
+    const j = journey.json();
+    expect(j.expiresAt).toBe(expiresAt);
+    expect(j.case.customerName).toBeTruthy();
+    expect(j.job).toBeTruthy();
+    expect(j.invoice.paymentStatus).toBe("unpaid");
+    const moved = await a.inject({ method: "PATCH", url: `/jobs/${j.job.id}`, payload: { scheduledDate: new Date(ctx.now.getTime() + 86_400_000).toISOString().slice(0, 10) }, headers: { cookie } });
+    expect(moved.statusCode, moved.body).toBe(200);
+    const changedJourney = (await a.inject({ method: "GET", url: "/demo/journey", headers: { cookie } })).json();
+    expect(changedJourney.job).toBeNull();
+    expect(changedJourney.case.filingId).toBe(j.case.filingId);
+    const otherTechnician = await createUser(ctx.db, organizationId, "technician");
+    const reassigned = await a.inject({ method: "PATCH", url: `/jobs/${j.job.id}`, payload: { scheduledDate: j.job.scheduledDate, technicianId: otherTechnician.id }, headers: { cookie } });
+    expect(reassigned.statusCode, reassigned.body).toBe(200);
+    expect((await a.inject({ method: "GET", url: "/demo/journey", headers: { cookie } })).json().job).toBeNull();
+
+
+    const link = await a.inject({ method: "POST", url: "/demo/homeowner", payload: { customerId: j.case.customerId }, headers: { cookie } });
+    expect(link.statusCode, link.body).toBe(200);
+    expect(link.json().expiresAt).toBe(expiresAt);
+    const homeowner = await a.inject({ method: "GET", url: link.json().href, headers: {} });
+    expect(homeowner.statusCode, homeowner.body).toBe(200);
+    expect(homeowner.body).toContain(j.case.addressLine1);
+    expect(await ctx.db.selectFrom("portalLinks").select("expiresAt").where("organizationId", "=", organizationId).where("customerId", "=", j.case.customerId).orderBy("createdAt", "desc").executeTakeFirst()).toMatchObject({ expiresAt: new Date(expiresAt) });
 
     // A second visitor gets a different company and cannot see the first.
     const other = await start(a, "198.51.100.9");
@@ -121,11 +147,34 @@ describe("visitor demos", () => {
     expect((await a.inject({ method: "GET", url: `/sites/${site.id}`, headers: { cookie: cookieOf(other) } })).statusCode).toBe(404);
     expect((await a.inject({ method: "GET", url: `/sites/${site.id}`, headers: { cookie } })).statusCode).toBe(200);
 
+    const wrongHomeowner = await a.inject({ method: "POST", url: "/demo/homeowner", payload: { customerId: j.case.customerId }, headers: { cookie: cookieOf(other) } });
+    expect(wrongHomeowner.statusCode).toBe(404);
+
     // The session ends with the demo.
     const sessions = await ctx.db.selectFrom("sessions").select("expiresAt").where("organizationId", "=", organizationId).execute();
     expect(sessions.map((x) => x.expiresAt.toISOString())).toEqual([expiresAt]);
     await sql`update sessions set expires_at = now() - interval '1 second' where organization_id = ${organizationId}`.execute(ctx.db);
     expect((await a.inject({ method: "GET", url: "/auth/me", headers: { cookie } })).statusCode).toBe(401);
+    expect((await a.inject({ method: "GET", url: "/demo/journey", headers: { cookie } })).statusCode).toBe(401);
+  });
+
+  it("never replays a future-start contract past a private demo's real expiry", async () => {
+    const fixed = new Date("2026-10-13T10:00:00Z");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(fixed);
+    try {
+      const a = await app();
+      const started = await start(a);
+      expect(started.statusCode, started.body).toBe(200);
+      const organizationId = started.json().organizationId;
+      const future = await ctx.db.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("startOn", ">", "2026-10-13").execute();
+      expect(future.length).toBeGreaterThan(0);
+      expect(await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("contractId", "in", future.map((c) => c.id)).execute()).toEqual([]);
+      const expiry = new Date(started.json().expiresAt);
+      expect(expiry.getTime()).toBe(fixed.getTime() + 24 * 3600_000);
+      const pending = await ctx.db.selectFrom("backgroundTasks").select(["kind", "runAt"]).where("organizationId", "=", organizationId).where("completedAt", "is", null).where("runAt", "<=", fixed).where("failedAt", "is", null).execute();
+      expect(pending).toEqual([]);
+    } finally { vi.useRealTimers(); }
   });
 
   it("lets the visitor look around as the office manager or technician, only in their own demo", async () => {

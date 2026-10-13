@@ -4,20 +4,26 @@ import type { SiteListItem } from "@aerowise/domain";
 import Link from "next/link";
 import { useState } from "react";
 import { SafetyBadges } from "@/components/SafetyBadges";
+import { useQueryState } from "@/components/useQueryState";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { EmptyState } from "@/components/EmptyState";
 
 const PAGE = 50;
 
 export default function SitesPage() {
+  const [expiring] = useQueryState("contractsExpiring", "false");
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const query = new URLSearchParams({ limit: String(PAGE), offset: String(offset), ...(search ? { search } : {}) });
-  const { data } = useLoad<{ items: SiteListItem[]; total: number }>(`/sites?${query}`);
+  const query = new URLSearchParams({ limit: String(PAGE), offset: String(offset), ...(search ? { search } : {}), ...(expiring === "true" ? { contractsExpiring: "true" } : {}) });
+  const recordLoad = useLoad<{ items: SiteListItem[]; total: number }>(`/sites?${query}`);
+  const { data } = recordLoad;
 
   return (
     <div className="stack">
-      <h1>Sites</h1>
+      <LoadState load={recordLoad} label="record" />
+      <h1>{expiring === "true" ? "Sites with contracts expiring in 30 days" : "Sites"}</h1>
+      {expiring === "true" && <Link href="/sites">View all sites</Link>}
       <input
         type="search"
         placeholder="Search by address, city or permit number"

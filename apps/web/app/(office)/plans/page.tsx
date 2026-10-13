@@ -3,6 +3,7 @@
 import type { Plan } from "@aerowise/domain";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -11,7 +12,8 @@ import { EmptyState } from "@/components/EmptyState";
 
 export default function PlansPage() {
   const editable = canEdit(useSession());
-  const { data, reload } = useLoad<{ items: Plan[] }>("/plans");
+  const recordLoad = useLoad<{ items: Plan[] }>("/plans");
+  const { data, reload } = recordLoad;
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +47,7 @@ export default function PlansPage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <div className="row">
         <h1>Maintenance plans</h1>
         <span className="spacer" />

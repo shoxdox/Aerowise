@@ -248,6 +248,7 @@ export const renewalListItem = z.object({
 export type RenewalListItem = z.infer<typeof renewalListItem>;
 
 export const renewalList = z.object({
+  total: z.number().int(),
   items: z.array(renewalListItem),
   counts: z.partialRecord(z.enum(RENEWAL_STATUSES), z.number().int()),
   /** Active contracts inside the renewal window that have no renewal yet. */
@@ -320,6 +321,8 @@ export const publicRenewal = z.object({
   signed: z.object({ signerName: z.string(), signedAt: datetime, pdfReady: z.boolean() }).nullable(),
   /** Set while there is something to pay. */
   pay: z.object({ amountDueCents: z.number().int(), canPayOnline: z.boolean(), invoiceUrl: z.string() }).nullable(),
+  /** Confirmation is independent of amount due: a pending bank reservation can make that zero. */
+  paymentConfirmation: z.object({ paymentStatus: z.string(), latestPaymentFailed: z.boolean(), pendingCents: z.number().int(), bankVerificationRequired: z.boolean(), invoiceUrl: z.string() }).nullable().default(null),
   newTermStartsOn: date.nullable(),
   testMode: z.boolean(),
 });

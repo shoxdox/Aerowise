@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { OnboardingSummary } from "@/components/OnboardingSummary";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -48,7 +49,8 @@ function Mapping({ imp, disabled, onSave }: { imp: ImportDetail; disabled: boole
 
 /** Undoing a saved import, or the work that stops it. */
 function Undo({ imp, busy, onUndo }: { imp: ImportDetail; busy: boolean; onUndo: () => void }) {
-  const { data: check } = useLoad<ImportUndoCheck>(`/imports/${imp.id}/undo`);
+  const recordLoad = useLoad<ImportUndoCheck>(`/imports/${imp.id}/undo`);
+  const { data: check } = recordLoad;
   if (!check) return null;
   const r = check.removes;
   if (check.canUndo) {
@@ -86,7 +88,8 @@ function Undo({ imp, busy, onUndo }: { imp: ImportDetail; busy: boolean; onUndo:
 export default function ImportPreviewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: loaded, error: loadError } = useLoad<ImportDetail>(`/imports/${id}`);
+  const importLoad = useLoad<ImportDetail>(`/imports/${id}`);
+  const { data: loaded, error: loadError } = importLoad;
   const [updated, setUpdated] = useState<ImportDetail | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [busy, setBusy] = useState(false);
@@ -107,8 +110,8 @@ export default function ImportPreviewPage() {
     }
   }
 
-  if (loadError) return <p className="error">{loadError}</p>;
-  if (!imp) return <p className="muted">Loading…</p>;
+  if (loadError && !imp) return <LoadState load={importLoad} label="import" />;
+  if (!imp) return <LoadState load={importLoad} label="import" />;
 
   const open = imp.status === "preview" || imp.status === "failed";
   const s = imp.summary;
@@ -123,6 +126,7 @@ export default function ImportPreviewPage() {
 
   return (
     <div className="stack">
+      <LoadState load={importLoad} label="import" />
       <div className="row">
         <h1>{imp.filename}</h1>
         <span className={`badge ${imp.status === "committed" ? "ok" : imp.status === "failed" ? "danger" : imp.status === "undone" ? "cancelled" : ""}`}>{imp.status}</span>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { PumpingHistory } from "@/components/PumpingHistory";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { HeldFieldRecords, useWorkForms, VisitFieldRecord } from "@/components/WorkFieldRecords";
 import { api, ApiError, formValues } from "@/lib/api";
@@ -26,7 +27,8 @@ export default function WorkOrderPage() {
   const { id } = useParams<{ id: string }>();
   const me = useSession();
   const editable = canEdit(me);
-  const { data: w, error, reload } = useLoad<WorkOrderDetail>(`/work-orders/${id}`);
+  const recordLoad = useLoad<WorkOrderDetail>(`/work-orders/${id}`);
+  const { data: w, error, reload } = recordLoad;
   const techs = useLoad<{ items: Technician[] }>(editable ? "/technicians" : null);
   const [problem, setProblem] = useState<string | null>(null);
   const [closing, setClosing] = useState<"complete" | "cancel" | null>(null);
@@ -64,13 +66,14 @@ export default function WorkOrderPage() {
     if (await fn(formValues(form), form)) form.reset();
   };
 
-  if (error) return <p className="error">{error}</p>;
-  if (!w) return <p className="muted">Loading…</p>;
+  if (error && !w) return <LoadState load={recordLoad} label="record" />;
+  if (!w) return <LoadState load={recordLoad} label="record" />;
   const open = w.status !== "completed" && w.status !== "cancelled";
   const href = sourceHref(w);
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/work">← Work orders</Link>
       </p>

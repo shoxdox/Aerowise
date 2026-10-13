@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { IntroCard } from "@/components/Intro";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { LoadState } from "@/components/LoadState";
+import { useDemoVisitor, DemoJourney } from "@/lib/demo";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
@@ -21,7 +23,7 @@ function href(e: InboxException): string | null {
     case "filing":
       return `/filings/${e.target.id}`;
     case "obligation":
-      return "/schedule";
+      return `/schedule?obligationId=${e.target.id}${e.site ? `&siteId=${e.site.id}` : ""}`;
     case "contract":
     case "site":
       return e.site ? `/sites/${e.site.id}` : null;
@@ -297,7 +299,9 @@ export default function InboxPage() {
   useEffect(() => {
     if (technician) router.replace("/tech");
   }, [technician, router]);
-  const { data, error, reload } = useLoad<Inbox>(technician ? null : "/inbox");
+  const visitor = useDemoVisitor();
+  const load = useLoad<Inbox>(technician ? null : "/inbox");
+  const { data, reload } = load;
   const setup = me.role === "owner" || me.role === "office";
   const checklist = useLoad<OnboardingChecklistData>(setup ? "/onboarding" : null);
   const editable = canEdit(me);
@@ -305,15 +309,13 @@ export default function InboxPage() {
   const estimates = useFeature("estimates");
 
   if (technician) return null;
-  if (error) return <p className="error">{error}</p>;
-  // Wait for the checklist too (unless it failed), so it doesn't push the page down when it arrives.
-  if (!data || (setup && !checklist.data && !checklist.error)) return <p className="muted">Loading…</p>;
+  if (!data) return <LoadState load={load} label="inbox" />;
 
   const tiles = [
-    { label: "Due this week", value: data.counts.dueThisWeek, href: "/due" },
-    { label: "Overdue", value: data.counts.overdue, href: "/due", alert: data.counts.overdue > 0 },
+    { label: "Due this week", value: data.counts.dueThisWeek, href: "/due?range=7&upcomingOnly=true" },
+    { label: "Overdue", value: data.counts.overdue, href: "/due?overdueOnly=true", alert: data.counts.overdue > 0 },
     { label: "Filings at risk", value: data.counts.filingsAtRisk, href: "/filings", alert: data.counts.filingsAtRisk > 0 },
-    { label: "Contracts expiring", value: data.counts.contractsExpiring, href: "/renewals" },
+    { label: "Sites with expiring contracts", value: data.counts.contractsExpiring, href: "/sites?contractsExpiring=true" },
     { label: `Unpaid invoices · ${money(data.counts.unpaidCents)}`, value: data.counts.unpaidInvoices, href: "/invoices" },
     ...(data.quickbooks
       ? [
@@ -335,8 +337,8 @@ export default function InboxPage() {
         <span className="muted">{day(data.today, { weekday: "long", month: "long", day: "numeric" })}</span>
       </div>
 
-      {me.role !== "technician" && <IntroCard intro="office" me={me} />}
-      {setup && <OnboardingChecklist data={checklist.data} />}
+      <LoadState load={load} label="inbox" />
+      {visitor ? <DemoJourney /> : <>{me.role !== "technician" && <IntroCard intro="office" me={me} />}{setup && <><LoadState load={checklist} label="setup checklist" /><OnboardingChecklist data={checklist.data} /></>}</>}
 
       <div className="tiles">
         {tiles.map((t) => (
@@ -349,7 +351,8 @@ export default function InboxPage() {
 
       <section className="stack">
         <h2>Needs attention</h2>
-        {data.items.length === 0 && <p className="card muted">Nothing needs you right now. Everything due is scheduled, filed and confirmed.</p>}
+        {data.limited && <p className="notice" role="status">This inbox shows up to 200 alerts per kind. The headline counts cover their full datasets. Use Due, Filings, Sites, Renewals and Invoices to page through all records.</p>}
+        {data.items.length === 0 && <p className="card muted">No current alerts were found. Review Due and Filings for the full records; a submitted report only shows acknowledgment when evidence is recorded.</p>}
         {data.items.length > 0 && (
           <ul className="exceptions">
             {data.items.map((e) => {

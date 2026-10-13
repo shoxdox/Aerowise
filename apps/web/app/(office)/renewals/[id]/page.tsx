@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { RenewalBadge } from "@/components/RenewalBadge";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
@@ -15,7 +16,8 @@ const FREQUENCY: Record<RenewalDetail["terms"]["billingFrequency"], string> = { 
 export default function RenewalPage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
-  const { data: r, error, reload } = useLoad<RenewalDetail>(`/renewals/${id}`);
+  const recordLoad = useLoad<RenewalDetail>(`/renewals/${id}`);
+  const { data: r, error, reload } = recordLoad;
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,8 +36,8 @@ export default function RenewalPage() {
     }
   }
 
-  if (error) return <p className="error">{error}</p>;
-  if (!r) return <p className="muted">Loading…</p>;
+  if (error && !r) return <LoadState load={recordLoad} label="record" />;
+  if (!r) return <LoadState load={recordLoad} label="record" />;
 
   const signable = isSignable(r.status);
   const canActivate =
@@ -68,6 +70,7 @@ export default function RenewalPage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <div className="row">
         <Link href="/renewals">Renewals</Link>
       </div>

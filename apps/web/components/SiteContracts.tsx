@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ContractFilingStatus } from "@/components/ContractFilingStatus";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
@@ -21,7 +22,8 @@ const STATE_LABEL: Record<ContractDetail["state"], string> = {
 };
 
 export function SiteContracts({ siteId, editable }: { siteId: string; editable: boolean }) {
-  const { data, reload } = useLoad<{ items: ContractDetail[] }>(`/sites/${siteId}/contracts`);
+  const recordLoad = useLoad<{ items: ContractDetail[] }>(`/sites/${siteId}/contracts`);
+  const { data, reload } = recordLoad;
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -100,9 +102,10 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const ticked = optionKeys ?? planOptions.filter((o) => o.default).map((o) => o.optionKey);
 
   return (
-    <section className="stack">
+    <section className="stack" id="contracts">
+      <LoadState load={recordLoad} label="contracts" />
       <div className="row">
-        <h2>Contracts</h2>
+        <h2>Contracts{data ? ` (${data.items.length})` : ""}</h2>
         <span className="spacer" />
         {editable && (
           <button className="secondary" onClick={() => setCreating((c) => !c)}>
@@ -112,6 +115,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
       </div>
       {error && <p className="error">{error}</p>}
 
+      {creating && <LoadState load={plans} label="maintenance plans" />}
       {creating && (
         <form className="card grid" onSubmit={onCreate}>
           {offered.length === 0 ? (
@@ -197,7 +201,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
 
       {data?.items.length === 0 && <p className="muted">No contracts on this site.</p>}
       {data?.items.map((c) => (
-        <div key={c.id} className="card stack">
+        <details key={c.id} className="card stack" open={c.state === "active" || c.state === "upcoming"}><summary>{c.planName} · {STATE_LABEL[c.state]} · {day(c.startOn)}–{day(c.endOn)}</summary>
           <div className="row">
             <strong>{c.planName}</strong>
             <span className={`badge ${c.state}`}>{STATE_LABEL[c.state]}</span>
@@ -358,7 +362,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               ))}
             </tbody>
           </table>
-        </div>
+        </details>
       ))}
     </section>
   );

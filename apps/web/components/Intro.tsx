@@ -22,12 +22,12 @@ const CONTENT: Record<Intro, { title: string; body: ReactNode }> = {
           <Link href="/schedule">Schedule</Link> puts visits on a technician&apos;s day. They inspect on their phone, with photos, even without signal.
         </li>
         <li>
-          Each finished inspection becomes a signed report that Aerowise files with the site&apos;s authority. <Link href="/filings">Filings</Link> counts it done once the authority acknowledges it.
+          Finished inspections are prepared for office review and the maintenance provider&apos;s signature. <Link href="/filings">Filings</Link> shows the actual email, manual or CSV submission method and its evidence. Record acknowledgment where the authority has a published process; submission alone does not prove acceptance.
         </li>
         <li>
-          <Link href="/renewals">Renewals</Link> and <Link href="/invoices">invoices</Link> go to homeowners by email, and they can sign and pay online.
+          <Link href="/renewals">Renewals</Link> and <Link href="/invoices">invoices</Link> can be sent to homeowners after review. Online payment is optional; checks and manual payments are supported.
         </li>
-        <li>This inbox lists whatever needs you today. When it is empty, everything is on track.</li>
+        <li>This inbox lists current alerts. Due, Filings and the site record retain the full operating and evidence history.</li>
       </ol>
     ),
   },
@@ -35,18 +35,18 @@ const CONTENT: Record<Intro, { title: string; body: ReactNode }> = {
     title: "Your day in Aerowise",
     body: (
       <ol className="intro-steps">
-        <li>Your route lists today&apos;s visits in order. Open one for the address, access notes and what was found last time.</li>
-        <li>Start the inspection when you arrive: it records the time and place.</li>
-        <li>Fill in the readings and take the photos it asks for. Everything is kept on this phone and sent when you have signal.</li>
-        <li>Finish, and the office gets the report to sign and file.</li>
+        <li>Open a stop for access, system, permit and office notes.</li>
+        <li>Arrive starts or resumes its inspection. Location can be declined.</li>
+        <li>The form shows Saving locally until the phone saves, then Saved on this phone. Waiting work sends when signal returns.</li>
+        <li>Review photos before finishing. Finished inspections stay read-only; the maintenance provider reviews and signs the report in the office.</li>
       </ol>
     ),
   },
 };
 
 export function IntroCard({ intro, me }: { intro: Intro; me: Me }) {
-  // An account cached on a phone before intros existed has no list: show it once more.
-  const [dismissed, setDismissed] = useState(() => me.introsDismissed?.includes(intro) ?? false);
+  // Work comes first; brief help stays available on every account.
+  const [dismissed, setDismissed] = useState(() => true);
   // Support looks around read-only and cannot record anything.
   if (me.support) return null;
   const { title, body } = CONTENT[intro];

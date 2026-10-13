@@ -17,16 +17,16 @@ describe("first-run checklist", () => {
     const res = await api.get("/onboarding");
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json().complete).toBe(false);
-    expect(keysNotDone(res.json())).toEqual(["company_details", "responsible_mp", "technicians", "service_counties", "customers", "stripe", "quickbooks"]);
+    expect(keysNotDone(res.json())).toEqual(["company_details", "responsible_mp", "technicians", "service_counties", "customers", "sites", "authority_fit", "contract", "scheduled_visit", "reviewed_report", "stripe", "quickbooks"]);
   });
 
-  it("is complete once the company has done each step, and only from real records", async () => {
+  it("keeps operating milestones open until their real records exist", async () => {
     const t = await createTenant(ctx, "Org A"); // comes with a customer
     await t.api.patch("/organization/settings", { phone: "(979) 555-0100", addressLine1: "12 Main St", city: "Bryan", state: "TX", postalCode: "77801", serviceCounties: ["Brazos County"] });
     const mp = (await t.api.post("/credentials", { userId: t.owner.id, holderName: "Owner Person", kind: "tceq_maintenance_provider", number: "MP0001234", verifiedOn: "2026-02-20", verificationSource: "TCEQ license search" })).json();
     await t.api.put("/settings/responsible-provider", { credentialId: mp.id });
     const tech = await createUser(ctx.db, t.org.id, "technician");
-    expect(keysNotDone((await t.api.get("/onboarding")).json())).toEqual(["technicians", "stripe", "quickbooks"]);
+    expect(keysNotDone((await t.api.get("/onboarding")).json())).toEqual(["technicians", "authority_fit", "contract", "scheduled_visit", "reviewed_report", "stripe", "quickbooks"]);
 
     // A technician without a license keeps the step open, with their name.
     const tech1 = (await t.api.get("/onboarding")).json().items.find((i: { key: string }) => i.key === "technicians");
@@ -36,8 +36,9 @@ describe("first-run checklist", () => {
     await ctx.db.updateTable("organizations").set({ stripeChargesEnabled: true }).where("id", "=", t.org.id).execute();
 
     const done = (await t.api.get("/onboarding")).json();
-    expect(done.complete).toBe(true);
-    expect(keysNotDone(done)).toEqual(["quickbooks"]);
+    expect(done.complete).toBe(false);
+    expect(keysNotDone(done)).toEqual(["authority_fit", "contract", "scheduled_visit", "reviewed_report", "quickbooks"]);
+    expect(done.items.find((i: { key: string }) => i.key === "stripe").optional).toBe(true);
 
     // An expired license reopens the step.
     await ctx.db.updateTable("providerCredentials").set({ expiresOn: "2026-02-01" }).where("id", "=", lic.id).execute();
@@ -56,6 +57,23 @@ describe("first-run checklist", () => {
       expect((await client(ctx.app, await login(ctx.app, u.email)).get("/onboarding")).statusCode).toBe(403);
     }
     const office = await createUser(ctx.db, a.org.id, "office");
-    expect((await client(ctx.app, await login(ctx.app, office.email)).get("/onboarding")).statusCode).toBe(200);
+    const guidance = await client(ctx.app, await login(ctx.app, office.email)).get("/onboarding");
+    expect(guidance.statusCode).toBe(200);
+    expect(guidance.json().items.find((i: { key: string }) => i.key === "responsible_mp").href).toBeNull();
   });
+  it("counts current reviewed applicability rather than an old or reset assignment", async () => {
+    const t = await createTenant(ctx, "Applicability fixture");
+    await t.api.patch(`/sites/${t.site.id}`, { county: "Travis County" });
+    const jurisdictions = (await t.api.get("/jurisdictions")).json().items;
+    const lcra = jurisdictions.find((j: { key: string }) => j.key === "tx-lcra-ossf");
+    expect(lcra).toBeTruthy();
+    const applied = await t.api.put(`/sites/${t.site.id}/jurisdiction`, { jurisdictionId: lcra.id, evidenceKind: "authority_map", evidenceReference: "Fictional map review for test only" });
+    expect(applied.statusCode, applied.body).toBe(200);
+    expect((await t.api.get("/onboarding")).json().items.find((i: { key: string }) => i.key === "authority_fit").done).toBe(true);
+    const reset = await t.api.put(`/sites/${t.site.id}/jurisdiction`, { jurisdictionId: null });
+    expect(reset.statusCode, reset.body).toBe(200);
+    expect((await t.api.get("/onboarding")).json().items.find((i: { key: string }) => i.key === "authority_fit").done).toBe(false);
+    expect(await ctx.db.selectFrom("siteAuthorityAssignments").select("id").where("organizationId", "=", t.org.id).execute()).toHaveLength(2);
+  });
+
 });

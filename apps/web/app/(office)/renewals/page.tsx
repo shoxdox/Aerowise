@@ -3,7 +3,10 @@
 import { type RenewalAddon, type RenewalListItem, type RenewalSettings, type RenewalStatus } from "@aerowise/domain";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { Pagination } from "@/components/Pagination";
+import { useQueryState } from "@/components/useQueryState";
 import { RenewalBadge } from "@/components/RenewalBadge";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
@@ -32,8 +35,13 @@ function lastStep(r: RenewalListItem) {
 
 export default function RenewalsPage() {
   const editable = canEdit(useSession());
-  const [tab, setTab] = useState("open");
-  const { data, error, reload } = useLoad<{ items: RenewalListItem[]; counts: Partial<Record<RenewalStatus, number>>; notStarted: number }>("/renewals?limit=500");
+  const [selectedTab, setTab] = useQueryState("view", "open");
+  const tab = TABS.find((t) => t.key === selectedTab)?.key ?? "open";
+  const statuses = TABS.find((t) => t.key === tab)?.statuses;
+  const [offsetText, setOffset] = useQueryState("offset", "0");
+  const offset = Number.isSafeInteger(Number(offsetText)) && Number(offsetText) >= 0 ? Number(offsetText) : 0;
+  const recordLoad = useLoad<{ items: RenewalListItem[]; total: number; counts: Partial<Record<RenewalStatus, number>>; notStarted: number }>(`/renewals?limit=50&offset=${offset}${statuses ? `&statuses=${statuses.join(",")}` : ""}`);
+  const { data, reload } = recordLoad;
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -59,12 +67,12 @@ export default function RenewalsPage() {
     }
   }
 
-  const statuses = TABS.find((t) => t.key === tab)?.statuses;
   const items = data?.items.filter((r) => !statuses || statuses.includes(r.status)) ?? [];
   const count = (t: (typeof TABS)[number]) => (t.statuses ? t.statuses.reduce((n, s) => n + (data?.counts[s] ?? 0), 0) : Object.values(data?.counts ?? {}).reduce((n, c) => n + (c ?? 0), 0));
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <div className="row">
         <h1>Renewals</h1>
         <span className="spacer" />
@@ -85,7 +93,6 @@ export default function RenewalsPage() {
         </p>
       )}
       {message && <p>{message}</p>}
-      {error && <p className="error">{error}</p>}
       {showSettings && editable && <RenewalSettingsPanel />}
 
       <div className="renewal-tabs">
@@ -136,6 +143,7 @@ export default function RenewalsPage() {
           </tbody>
         </table>
       )}
+      {data && <Pagination total={data.total} offset={offset} onChange={(n) => setOffset(String(n))} />}
     </div>
   );
 }

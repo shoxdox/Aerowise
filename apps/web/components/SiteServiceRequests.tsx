@@ -2,6 +2,7 @@
 
 import { REPORT_CLASSIFICATION_LABELS, REPORT_CLASSIFICATIONS, SERVICE_REQUEST_KINDS, type ServiceRequestDetail } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -15,7 +16,8 @@ import { when } from "@/lib/format";
  * outstanding rather than holding the filing.
  */
 export function SiteServiceRequests({ siteId, editable }: { siteId: string; editable: boolean }) {
-  const { data, reload } = useLoad<{ items: ServiceRequestDetail[] }>(`/sites/${siteId}/service-requests`);
+  const recordLoad = useLoad<{ items: ServiceRequestDetail[] }>(`/sites/${siteId}/service-requests`);
+  const { data, reload } = recordLoad;
   const [error, setError] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
 
@@ -39,10 +41,11 @@ export function SiteServiceRequests({ siteId, editable }: { siteId: string; edit
     );
   }
 
-  if (!data) return null;
+  if (!data) return <LoadState load={recordLoad} label="site service requests" />;
   const unreviewed = data.items.filter((r) => !r.classification).length;
   return (
     <section className="stack">
+      <LoadState load={recordLoad} label="site service requests" />
       <div className="row">
         <h2>Complaints and requests</h2>
         {unreviewed > 0 && <span className="badge warn">{unreviewed} to review for reporting</span>}

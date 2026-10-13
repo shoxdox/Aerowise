@@ -2,14 +2,17 @@
 
 import { SERVICE_REQUEST_LABELS, type PortalAccess, type ServiceRequest } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { when } from "@/lib/format";
 
 /** The customer's portal access and what they have asked for from it. */
 export function CustomerPortal({ customerId, editable }: { customerId: string; editable: boolean }) {
-  const { data: access, reload } = useLoad<PortalAccess>(`/customers/${customerId}/portal`);
-  const { data: requests, reload: reloadRequests } = useLoad<{ items: ServiceRequest[] }>(`/service-requests?customerId=${customerId}`);
+  const recordLoad = useLoad<PortalAccess>(`/customers/${customerId}/portal`);
+  const { data: access, reload } = recordLoad;
+  const requestLoad = useLoad<{ items: ServiceRequest[] }>(`/service-requests?customerId=${customerId}`);
+  const { data: requests, reload: reloadRequests } = requestLoad;
   const [url, setUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +67,9 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
 
   return (
     <section className="stack">
+      <LoadState load={recordLoad} label="customer portal access" />
       <h2>Customer portal</h2>
+      <LoadState load={requestLoad} label="customer service requests" />
       <div className="card stack">
         {access && (
           <p className="muted small">

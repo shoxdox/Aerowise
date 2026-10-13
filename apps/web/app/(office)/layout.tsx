@@ -93,7 +93,7 @@ function Shell({ children }: { children: ReactNode }) {
         <span className="spacer" />
         <span className="account">
           <span className="muted">
-            {me.user.name} · {me.organization.name}
+            {me.user.name} · {me.role === "owner" ? "Owner" : me.role === "office" ? "Office" : me.role} · {me.organization.name}
           </span>
           {!isSupportView(me) && (
             <button className="link" onClick={signOut}>

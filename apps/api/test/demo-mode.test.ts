@@ -172,7 +172,7 @@ describe("the API in demo mode", () => {
   it("is off by default, and production keeps the fictional rules and test checkout out", async () => {
     const db = await fresh();
     const app = await buildApp({ db, production: true, fileSigningSecret: "s" });
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, features: [] });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: false, demoCompany: false, demoVisitor: false, demoRole: null, demoExpiresAt: null, features: [] });
     expect(await exampleRules(db)).toHaveLength(0);
     expect(app.hasRoute({ method: "POST", url: "/pay/:token/test-checkout" })).toBe(false);
     await app.close();
@@ -182,7 +182,7 @@ describe("the API in demo mode", () => {
   it("says so, loads the fictional rules and offers test checkout, in production", async () => {
     const db = await fresh();
     const app = await buildApp({ db, production: true, demo: true, fileSigningSecret: "s" });
-    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: false, features: [] });
+    expect((await app.inject({ method: "GET", url: "/app-info" })).json()).toEqual({ demo: true, demoCompany: true, demoVisitor: false, demoRole: null, demoExpiresAt: null, features: [] });
     expect(await exampleRules(db)).toHaveLength(1);
     expect(app.hasRoute({ method: "POST", url: "/pay/:token/test-checkout" })).toBe(true);
     await app.close();

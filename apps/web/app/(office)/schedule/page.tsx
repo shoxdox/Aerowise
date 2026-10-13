@@ -2,9 +2,12 @@
 
 import type { DueObligation, NearbyResult, OptimizeResult, RouteDay, Stop, Technician } from "@aerowise/domain";
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ROUTE_COLORS, RouteMap } from "@/components/RouteMap";
 import { SafetyBadges } from "@/components/SafetyBadges";
+import { LoadState } from "@/components/LoadState";
+import { Pagination } from "@/components/Pagination";
+import { useQueryState } from "@/components/useQueryState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { day, duration } from "@/lib/format";
@@ -26,13 +29,19 @@ export default function SchedulePage() {
   const editable = canEdit(useSession());
   const todayProbe = useLoad<{ today: string }>("/obligations/due?limit=1");
   const today = todayProbe.data?.today;
-  const [picked, setPicked] = useState<string | null>(null);
-  const selected = picked ?? today ?? null;
+  const [picked, setPicked] = useQueryState("date", "");
+  const [obligationId] = useQueryState("obligationId", "");
+  const [siteId] = useQueryState("siteId", "");
+  const [offsetText, setOffset] = useQueryState("offset", "0");
+  const offset = Number.isSafeInteger(Number(offsetText)) && Number(offsetText) >= 0 ? Number(offsetText) : 0;
+  const target = useLoad<{ items: DueObligation[] }>(obligationId ? `/obligations/due?obligationId=${encodeURIComponent(obligationId)}` : null);
+  const validPicked = /^\d{4}-\d{2}-\d{2}$/.test(picked) && !Number.isNaN(Date.parse(`${picked}T00:00:00Z`)) ? picked : "";
+  const selected = validPicked || target.data?.items[0]?.job?.scheduledDate || today || null;
   const monday = selected ? weekStart(selected) : null;
 
   const techs = useLoad<{ items: Technician[] }>("/technicians");
   const unscheduled = useLoad<{ items: DueObligation[]; total: number }>(
-    today ? `/obligations/due?unscheduledOnly=true&limit=500&through=${addDays(today, 30)}` : null,
+    today ? `/obligations/due?unscheduledOnly=true&limit=50&offset=${offset}&through=${addDays(today, 30)}` : null,
   );
   const week = useLoad<{ items: Stop[] }>(monday ? `/schedule?from=${monday}&to=${addDays(monday, 6)}` : null);
   const routes = useLoad<RouteDay>(selected ? `/routing/day?date=${selected}` : null);
@@ -54,11 +63,13 @@ export default function SchedulePage() {
     return m;
   }, [dayStops, techs.data]);
   const unscheduledItems = useMemo(() => {
-    const items = unscheduled.data?.items ?? [];
+    const page = unscheduled.data?.items ?? [];
+    const chosen = target.data?.items[0];
+    const items = chosen && !chosen.job && !page.some((o) => o.id === chosen.id) ? [chosen, ...page] : page;
     if (sort !== "nearby" || !nearby.data) return items;
     const rank = new Map(nearby.data.items.map((n, i) => [n.obligationId, i]));
     return [...items].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
-  }, [unscheduled.data, nearby.data, sort]);
+  }, [unscheduled.data, nearby.data, sort, target.data]);
   const nearbyOf = useMemo(() => new Map((nearby.data?.items ?? []).map((n) => [n.obligationId, n])), [nearby.data]);
 
   async function run(action: () => Promise<unknown>) {
@@ -102,10 +113,16 @@ export default function SchedulePage() {
     void run(() => api("/schedule/reorder", { method: "POST", body: { technicianId: s.technicianId, scheduledDate: s.scheduledDate, jobIds: ids } }));
   };
 
+  useEffect(() => {
+    if (!obligationId || !target.data) return;
+    window.requestAnimationFrame(() => document.getElementById(`obligation-${obligationId}`)?.scrollIntoView({ block: "center" }));
+  }, [obligationId, target.data]);
+
   // Wait for the first answer of each list, so the unscheduled list arriving last doesn't push
   // the day's routes down under a thumb (a 0.3 layout shift on a phone, W11.3).
   const settled = [techs, unscheduled, week, routes].every((l) => l.data || l.error);
-  if (!selected || !monday || !settled) return <p className="muted">Loading…</p>;
+  if (!selected || !monday) return <LoadState load={todayProbe} label="company date" />;
+  if (!settled) return <p className="muted" role="status">Loading schedule sections…</p>;
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const countFor = (d: string) => (week.data?.items ?? []).filter((s) => s.scheduledDate === d).length;
@@ -133,7 +150,13 @@ export default function SchedulePage() {
           </button>
         ))}
       </div>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      <LoadState load={target} label="selected visit" />
+      {obligationId && target.data?.items.length === 0 && <p className="card">This visit is no longer open. {siteId && <Link href={`/sites/${encodeURIComponent(siteId)}`}>Open its site to review the current record.</Link>}</p>}
+      {target.data?.items[0]?.job && <p className="card">Selected visit at <Link href={`/sites/${target.data.items[0].site.id}`}>{target.data.items[0].site.addressLine1}</Link> is assigned to {target.data.items[0].job.technicianName} on {day(target.data.items[0].job.scheduledDate)}. Opening this link has not changed it.</p>}
+      <LoadState load={week} label="week's stops" />
+      <LoadState load={techs} label="technicians" />
+      <LoadState load={routes} label="route estimates" />
 
       <div className="schedule">
         <section className="stack">
@@ -160,9 +183,11 @@ export default function SchedulePage() {
               <option value="nearby">Nearest to {techs.data?.items.find((t) => t.id === technicianId)?.name ?? "the"}&apos;s route</option>
             </select>
           </label>
+          <LoadState load={unscheduled} label="unscheduled visits" />
+          <LoadState load={nearby} label="nearby visits" />
           {unscheduled.data?.items.length === 0 && <p className="muted">Everything due is scheduled.</p>}
           {unscheduledItems.map((o) => (
-            <div key={o.id} className={`card tight ${o.overdue ? "overdue-card" : ""}`}>
+            <div key={o.id} id={`obligation-${o.id}`} tabIndex={o.id === obligationId ? -1 : undefined} className={`card tight ${o.id === obligationId ? "selected-obligation" : ""} ${o.overdue ? "overdue-card" : ""}`}>
               <div className="row">
                 <Link href={`/sites/${o.site.id}`}>
                   <strong>{o.site.addressLine1}</strong>, {o.site.city}
@@ -196,6 +221,7 @@ export default function SchedulePage() {
               {o.site.schedulingNotes && <div className="small restriction">⚠ {o.site.schedulingNotes}</div>}
             </div>
           ))}
+          {unscheduled.data && <Pagination total={unscheduled.data.total} offset={offset} onChange={(n) => setOffset(String(n))} />}
         </section>
 
         <section className="stack">

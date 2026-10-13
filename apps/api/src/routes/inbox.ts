@@ -7,6 +7,7 @@ import {
   estimateLabel,
   type ExceptionSeverity,
   FILING_OPEN_STATUSES,
+  FILING_ATTENTION_STATUSES,
   formatGallons,
   formatPhone,
   id,
@@ -35,6 +36,7 @@ import { audit } from "../lib/audit.ts";
 import { HttpError, notFound } from "../lib/errors.ts";
 import { dollars } from "@aerowise/payments";
 import { listQuickBooksRecords } from "../lib/quickbooks.ts";
+import { expiringContracts } from "../lib/expiring-contracts.ts";
 import { organizationToday } from "../lib/today.ts";
 import { readPumpingRecords } from "../lib/pumping.ts";
 
@@ -992,7 +994,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     async (req) => {
       const { organizationId } = req.requireAuth();
       const today = await organizationToday(db, organizationId, now());
-      const [groups, due, routes, unpaid] = await Promise.all([
+      const [groups, due, routes, unpaid, atRisk, expiring] = await Promise.all([
         Promise.all([
           overdueVisits(organizationId, today),
           serviceCycleVisits(organizationId, today),
@@ -1044,6 +1046,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
           .where("status", "=", "open")
           .where("paymentStatus", "in", ["unpaid", "processing", "partial"])
           .executeTakeFirstOrThrow(),
+        db.selectFrom("filings as f").select(sql<number>`count(*)::int`.as("n")).where("f.organizationId", "=", organizationId).where((eb) => eb.or([eb("f.status", "in", [...FILING_ATTENTION_STATUSES]), eb.and([eb("f.status", "in", [...FILING_OPEN_STATUSES]), eb(sql`f.deadline_on - f.warning_days`, "<=", sql`${today}::date`)])])).executeTakeFirstOrThrow(),
+        expiringContracts(db, organizationId, today).select(sql<number>`count(distinct k.site_id)::int`.as("n")).executeTakeFirstOrThrow(),
       ]);
       const items = sortExceptions(groups.flat());
       const qb = await db.selectFrom("quickbooksConnections").select(["status", "setupState"]).where("organizationId", "=", organizationId).executeTakeFirst();
@@ -1052,12 +1056,13 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         counts: {
           dueThisWeek: Number(due.dueThisWeek),
           overdue: Number(due.overdue),
-          filingsAtRisk: items.filter((e) => e.kind.startsWith("filing_")).length,
-          contractsExpiring: items.filter((e) => e.kind === "contract_expiring").length,
+          filingsAtRisk: atRisk.n,
+          contractsExpiring: expiring.n,
           unpaidInvoices: Number(unpaid.n),
           unpaidCents: Number(unpaid.cents),
         },
         items,
+        limited: groups.some((g) => g.length >= PER_KIND),
         quickbooks: qb ? { status: qb.status, setupState: qb.setupState, attention: items.filter((e) => e.kind.startsWith("quickbooks_")).length } : null,
         routes: routes.map((r) => ({ ...r, stops: Number(r.stops), done: Number(r.done) })),
       };

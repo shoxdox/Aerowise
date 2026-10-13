@@ -4,9 +4,11 @@ import type { CustomerDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { CustomerNextActions } from "@/components/CustomerNextActions";
 import { CustomerInvoices } from "@/components/CustomerInvoices";
 import { CustomerPortal } from "@/components/CustomerPortal";
 import { SafetyBadges } from "@/components/SafetyBadges";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { canEdit, useSession } from "@/lib/session";
@@ -15,12 +17,13 @@ export default function CustomerPage() {
   const { id } = useParams<{ id: string }>();
   const me = useSession();
   const editable = canEdit(me);
-  const { data: customer, error, reload } = useLoad<CustomerDetail>(`/customers/${id}`);
+  const recordLoad = useLoad<CustomerDetail>(`/customers/${id}`);
+  const { data: customer, error, reload } = recordLoad;
   const [editing, setEditing] = useState<"customer" | "contact" | "site" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!customer) return <p className="muted">Loading…</p>;
+  if (error && !customer) return <LoadState load={recordLoad} label="record" />;
+  if (!customer) return <LoadState load={recordLoad} label="record" />;
 
   const submit = (path: string, method: "POST" | "PATCH", toBody: (v: Record<string, string | undefined>) => object) =>
     async (event: FormEvent<HTMLFormElement>) => {
@@ -37,6 +40,7 @@ export default function CustomerPage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/customers">← Customers</Link>
       </p>
@@ -51,6 +55,8 @@ export default function CustomerPage() {
         )}
       </div>
 
+      <CustomerNextActions customerId={id} />
+      {me.role !== "technician" && <CustomerInvoices customerId={id} editable={editable} />}
       {editing === "customer" ? (
         <form
           className="card grid"
@@ -165,7 +171,6 @@ export default function CustomerPage() {
         ))}
       </section>
 
-      {me.role !== "technician" && <CustomerInvoices customerId={id} editable={editable} />}
       {me.role !== "technician" && <CustomerPortal customerId={id} editable={editable} />}
 
       <section className="stack">

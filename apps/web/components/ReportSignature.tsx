@@ -2,6 +2,7 @@
 
 import type { ReportSigning } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -12,10 +13,11 @@ import { when } from "@/lib/format";
  * typed-name signature for an MP who can sign it now.
  */
 export function ReportSignature({ inspectionId, editable, onSigned }: { inspectionId: string; editable: boolean; onSigned: () => void }) {
-  const { data, reload } = useLoad<ReportSigning>(`/inspections/${inspectionId}/signature`);
+  const recordLoad = useLoad<ReportSigning>(`/inspections/${inspectionId}/signature`);
+  const { data, reload } = recordLoad;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  if (!data) return null;
+  if (!data) return <LoadState load={recordLoad} label="provider signature" />;
 
   async function sign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,6 +38,7 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
   const s = data.signature;
   return (
     <section className="card stack">
+      <LoadState load={recordLoad} label="provider signature" />
       <h2>Maintenance provider signature</h2>
       {s ? (
         <>

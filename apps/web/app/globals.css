@@ -373,3 +373,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .marketing .price-card { grid-template-columns: 1fr; }
   .marketing .demo-grid { grid-template-columns: 1fr; }
 }
+
+/* Operational hierarchy and the optional visitor walkthrough share the product's existing cards. */
+.demo-journey { color: var(--text); background: var(--surface, #fff); }
+.demo-journey nav { flex-wrap: wrap; }
+.demo-journey button { min-height: 44px; }
+.selected-obligation { outline: 3px solid var(--accent, #17746c); outline-offset: 2px; }
+.topbar.office .nav-group { border-left: 1px solid var(--line, #d4dedb); padding-left: .7rem; }
+.topbar.office .nav-group-label { display: block; font-size: .7rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+details.card > summary { cursor: pointer; font-weight: 600; min-height: 44px; align-content: center; }
+details.card[open] > summary { margin-bottom: .75rem; }
+@media (max-width: 700px) { .demo-journey nav button { flex: 1 1 8rem; } .topbar.office .nav-group { border-left: 0; padding-left: 0; } }

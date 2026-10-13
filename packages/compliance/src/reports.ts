@@ -449,7 +449,8 @@ export async function writeReportVersion(
   if (unknown.length) throw new ReportCorrectionError(`Not a field on this inspection's form: ${unknown.join(", ")}`);
   if (amendedFields.length) {
     const photoCounts = Object.fromEntries(def.photos.map((p) => [p.key, Number.MAX_SAFE_INTEGER]));
-    const problems = validateInspection(def, answers, photoCounts).filter((p) => amendedFields.includes(p.key));
+    const changedDefinition = { ...def, fields: def.fields.filter((f) => amendedFields.includes(f.key)).map((f) => ({ ...f, showWhen: undefined })), photos: [] };
+    const problems = validateInspection(changedDefinition, answers, photoCounts);
     if (problems.length) throw new ReportCorrectionError(problems.map((p) => p.message).join("; "));
   }
   // Kept on the snapshot so the next correction, and the filing checks, see them. Stored as

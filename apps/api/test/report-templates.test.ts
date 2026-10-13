@@ -93,6 +93,15 @@ describe("an authority's report layout", () => {
     await s.api.post(`/filings/${f.id}/manual`, {});
     await s.api.post(`/filings/${f.id}/mark-sent`, { reference: "FF-0", note: null });
     expect((await s.api.post(`/filings/${f.id}/reject`, { reason: "Pressure looks wrong" })).statusCode).toBe(200);
+    const current = await s.api.get(`/filings/${f.id}/correction-fields`);
+    expect(current.statusCode).toBe(200);
+    expect(current.json().definition.fields.find((field: { key: string }) => field.key === "air_pressure").label).toBe("Air pressure");
+    expect(current.json().values.air_pressure).toBe(4.5);
+    for (const amendments of [{}, { unknown_field: 4 }, { air_pressure: "bad" }, { chlorine_level: "bad" }]) {
+      const invalid = await s.api.post(`/filings/${f.id}/correct`, { reason: "Invalid correction fixture", amendments });
+      expect(invalid.statusCode, invalid.body).toBe(422);
+    }
+    expect((await s.api.get(`/filings/${f.id}`)).json().reports).toHaveLength(1);
     const corrected = await s.api.post(`/filings/${f.id}/correct`, { reason: "Pressure misread", amendments: { air_pressure: 5 } });
     expect(corrected.statusCode, corrected.body).toBe(200);
     const latest = await ctx.db.selectFrom("reports").select("snapshot").where("inspectionId", "=", done.id).where("audience", "=", "authority").orderBy("version", "desc").executeTakeFirstOrThrow();

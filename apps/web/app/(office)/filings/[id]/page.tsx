@@ -5,34 +5,24 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DeadlineCell, FilingStatusBadge, VerifiedBadge } from "@/components/FilingBadges";
+import { ReportCorrection } from "@/components/ReportCorrection";
 import { ReportSignature } from "@/components/ReportSignature";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
-/** "field_key: value" lines into corrected answers; numbers and yes/no are read as such. */
-function parseAmendments(text: string | undefined): Record<string, string | number | boolean | null> {
-  const out: Record<string, string | number | boolean | null> = {};
-  for (const line of (text ?? "").split("\n")) {
-    const at = line.indexOf(":");
-    if (at < 1) continue;
-    const key = line.slice(0, at).trim();
-    const raw = line.slice(at + 1).trim();
-    out[key] = raw === "" ? null : raw === "true" ? true : raw === "false" ? false : Number.isFinite(Number(raw)) ? Number(raw) : raw;
-  }
-  return out;
-}
-
 export default function FilingPage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
-  const { data: f, error, reload } = useLoad<FilingDetail>(`/filings/${id}`);
+  const recordLoad = useLoad<FilingDetail>(`/filings/${id}`);
+  const { data: f, error, reload } = recordLoad;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!f) return <p className="muted">Loading…</p>;
+  if (error && !f) return <LoadState load={recordLoad} label="record" />;
+  if (!f) return <LoadState load={recordLoad} label="record" />;
 
   async function run(path: string, body: object = {}) {
     setBusy(true);
@@ -61,6 +51,7 @@ export default function FilingPage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/filings">← Filings</Link>
       </p>
@@ -162,8 +153,7 @@ export default function FilingPage() {
             </>
           ) : (
             <>
-              Not yet
-              {f.profile?.confirmationMode === "none_published" && <div className="muted small">This authority publishes no acknowledgment process. {f.profile.confirmationNote}</div>}
+              {f.profile?.confirmationMode === "none_published" ? <><strong>{f.sentAt ? "Submitted; no published acknowledgment process" : "No published acknowledgment process"}</strong><div className="muted small">Retain the submission evidence. This status does not assert authority acceptance. {f.profile.confirmationNote}</div></> : "Awaiting evidence of acknowledgment"}
             </>
           )}
         </dd>
@@ -257,30 +247,7 @@ export default function FilingPage() {
           )}
 
           {f.status === "rejected" && f.kind === "inspection_report" && (
-            <form
-              className="card stack"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const v = formValues(event.currentTarget);
-                void run("correct", { reason: v.reason, amendments: parseAmendments(v.amendments) });
-              }}
-            >
-              <strong>Correct the report and submit again</strong>
-              <p className="muted small">
-                Makes a new report version that names the one it replaces and why. The rejected version and what was sent stay as they were.
-              </p>
-              <label>
-                What was corrected
-                <input name="reason" required />
-              </label>
-              <label>
-                Corrected answers (one per line, as field_key: value)
-                <textarea name="amendments" rows={3} placeholder="chlorine_level: 2" />
-              </label>
-              <button type="submit" disabled={busy}>
-                Make corrected version
-              </button>
-            </form>
+            <ReportCorrection filingId={id} busy={busy} onSubmit={(body) => void run("correct", body)} />
           )}
 
           {f.status === "ready" && manual && (
