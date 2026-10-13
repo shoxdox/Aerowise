@@ -49,7 +49,7 @@ export function VisitFieldRecord({ jobId, forms }: { jobId: string; forms: Map<s
       {record.photos.length > 0 && (
         <p className="row">
           {record.photos.map((p) => (
-            <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="badge">
+            <a key={p.id} href={`/api${p.url}`} target="_blank" rel="noreferrer" className="badge">
               Photo · {p.photoKey}
             </a>
           ))}

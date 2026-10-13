@@ -131,7 +131,8 @@ test("typed work signature uses the consent and exact summary binding and mixed 
       else deny();
     };
   });
-  const office = (await browser.newContext()).request;
+  const officeContext = await browser.newContext();
+  const office = officeContext.request;
   expect((await office.post("/api/auth/login", { data: { email: "owner@example.com", password: "aerowise-dev" } })).ok()).toBe(true);
   const site = (await (await office.get("/api/sites?limit=1")).json()).items[0];
   const types = (await (await office.get("/api/work-types")).json()).items as { id: string; key: string }[];
@@ -173,10 +174,19 @@ test("typed work signature uses the consent and exact summary binding and mixed 
       const { rows } = await db.query("select d.signature_kind kind,d.consent_text,d.content_sha256=r.summary_sha256 matching from signed_documents d join work_records r on r.offline_client_id=d.record_client_id where r.job_id=$1", [jobId]);
       expect(rows).toEqual([{ kind: "typed", consent_text: "I have read the summary of the work above and confirm it describes the work done at this property.", matching: true }]);
     } finally { await db.end(); }
+    const review = await officeContext.newPage();
+    await review.goto(`/work/${wo.id}`);
+    const photo = review.getByTestId("field-record").getByRole("link", { name: /Photo/ }).first();
+    await expect(photo).toHaveAttribute("href", /^\/api\/work-files\//);
+    const image = await office.get((await photo.getAttribute("href"))!);
+    expect(image.ok()).toBe(true);
+    expect(image.headers()["content-type"]).toMatch(/^image\//);
+    expect((await image.body()).length).toBeGreaterThan(20);
   } finally {
     // Leave no new stop on today’s route for unrelated cap/map tests.
     const db = new pg.Client({ connectionString: databaseUrl }); await db.connect();
     try { await db.query("update jobs set scheduled_date=scheduled_date-1 where id=$1", [jobId]); } finally { await db.end(); }
+    await officeContext.close();
   }
 });
 
