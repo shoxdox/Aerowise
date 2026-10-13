@@ -52,6 +52,7 @@ test("Due counts preserve range and overdue URLs, service-type failures stay vis
   await expect(page.locator("main").getByRole("alert")).toContainText("Controlled pumping read failure");
   await expect(page.getByRole("row")).toHaveCount(1); // headings, no inspection rows relabeled as pumping
   await expect(page.getByText("Nothing due in this range")).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath("office-due-load-failure.png"), fullPage: true });
   await page.unroute("**/api/obligations/due?**serviceType=pumping**");
   const due = await (await page.request.get("/api/obligations/due?unscheduledOnly=true&limit=1&through=2030-01-01")).json();
   const target = due.items[0];

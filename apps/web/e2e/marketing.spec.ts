@@ -93,6 +93,7 @@ test("slow and failed overview reads retain useful actions and retry every hollo
   await expect(page.getByText(/^Authority profiles is temporarily unavailable/)).toBeVisible();
   await expect(page.getByText(/^Inspection preview is temporarily unavailable/)).toBeVisible();
   await expect(page.locator(".price")).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath("homepage-load-failure.png"), fullPage: true });
   await page.unroute("**/api/public/overview");
   await page.getByRole("button", { name: "Retry pricing", exact: true }).click();
   await expect(page.locator(".price")).toContainText("$0.50");
