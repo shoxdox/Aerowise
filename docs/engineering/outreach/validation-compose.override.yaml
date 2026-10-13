@@ -1,0 +1,13 @@
+# Disposable local validation only: separate project, volumes and loopback ports.
+# Build the named image before using --no-build. This does not configure a live release.
+services:
+  db:
+    ports: !override ["127.0.0.1:55434:5432"]
+  api:
+    image: aerowise:outreach-readiness
+    ports: !override ["127.0.0.1:4400:4000"]
+  worker:
+    image: aerowise:outreach-readiness
+  web:
+    image: aerowise:outreach-readiness
+    ports: !override ["127.0.0.1:3300:3000"]

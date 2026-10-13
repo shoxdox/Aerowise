@@ -1,0 +1,42 @@
+{
+  "observed_utc": "2026-10-13T06:59:00.545713+00:00",
+  "method": "anonymous read-only HTTPS GET, no form or customer action",
+  "deploy_sha": "not independently determined",
+  "domains": {
+    "staging.deshain.com": {
+      "demo": true,
+      "features": [
+        "deposits",
+        "estimates",
+        "field_work",
+        "plan_builder",
+        "pumping",
+        "service_cycles",
+        "service_items",
+        "work_orders"
+      ],
+      "profiles": 21,
+      "draft_profiles": 21,
+      "verified_profiles": 0,
+      "pricing": {
+        "designPartnerDays": 90,
+        "trialDays": 30,
+        "pricePerContractCents": 50,
+        "monthlyMinimumCents": 5000
+      }
+    },
+    "app.deshain.com": {
+      "demo": false,
+      "features": [],
+      "profiles": 2,
+      "draft_profiles": 2,
+      "verified_profiles": 0,
+      "pricing": {
+        "designPartnerDays": 90,
+        "trialDays": 30,
+        "pricePerContractCents": 150,
+        "monthlyMinimumCents": 9900
+      }
+    }
+  }
+}

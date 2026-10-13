@@ -2,7 +2,7 @@
 
 Software for Texas septic maintenance and service providers: customers, sites and contracts, recurring inspections, an offline technician app, reporting and filing evidence, renewals, invoices, payments and the customer portal.
 
-**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. Staging runs `a444be2` (migration `0060`, all eight workflow flags on). Main is ahead: the October 9 [outside review](docs/engineering/REVIEW-2026-10-09.md) with its P1, P2 and P3 lists fixed (migrations 0061 to 0064), a demo with a year of real LCRA history and grouped office navigation; staging shows these once redeployed. What comes next is outside the code: [the gates](docs/NEXT-GATES.md). Physical-phone, real-provider/accounting/legal and authority acceptance remain separate gates. Production is unchanged.
+**Current handoff:** read [Demo and pilot status](docs/DEMO-PILOT-BRIEF.md) first. The first-impression and workflow cleanup is tracked in [Outreach readiness](docs/engineering/OUTREACH-READINESS-REVIEW.md), including all 28 findings, actual checks and release dependencies. October 12 iPhone/Android testing and hosted CI are documented historical evidence; field changes need the recorded device recheck. Real-provider, accounting/legal and authority acceptance remain separate gates. Production is unchanged by this cleanup.
 
 ## Start here
 
@@ -60,7 +60,7 @@ Outside development, create a platform admin using the CLI, which reads its pass
 pnpm db:create-platform-admin you@example.com "Your Name"
 ```
 
-The API exposes `/openapi.json` outside production. The marketing page offers "Try the demo" only on a demo deployment. `DEMO_MODE` selects deployment stand-ins; `DEMO_LIVE_SERVICES` is for controlled staging integration checks. Demo organizations always retain their server/worker isolation regardless of those settings.
+The API exposes `/openapi.json` outside production. The marketing page offers its local demo on a demo deployment and the known staging demo entry elsewhere; staff sign-in remains local. `DEMO_MODE` selects deployment stand-ins; `DEMO_LIVE_SERVICES` is for controlled staging integration checks. Demo organizations always retain their server/worker isolation regardless of those settings.
 
 ## Checks
 
