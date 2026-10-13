@@ -118,6 +118,14 @@ test("an uncertain save and repeated submit reuse the request rather than create
   await form.evaluate((el: HTMLFormElement) => { el.requestSubmit(); el.requestSubmit(); });
   await expect(form.getByRole("alert")).toContainText("could not confirm whether your request saved");
   expect(posts).toBe(1);
+  const retained = await page.evaluate(() => sessionStorage.getItem("aerowise.pilotRequestAttempt.v1"));
+  expect(Object.keys(JSON.parse(retained!)).sort()).toEqual(["fingerprint", "key"]);
+  expect(retained).not.toContain("retry@example.com");
+  expect(retained).not.toContain("Synthetic Retry");
+  await page.reload(); // Ordinary recovery after the saved request's confirmation was lost.
+  await form.getByLabel("Your name").fill("Synthetic Retry");
+  await form.getByLabel("Email", { exact: true }).fill("retry@example.com");
+  await form.getByLabel("Company", { exact: true }).fill("Synthetic Retry Provider");
   await form.getByRole("button", { name: "Save pilot request" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Your request is saved" })).toContainText("no duplicate request was created");
   expect(posts).toBe(2);
@@ -126,6 +134,8 @@ test("an uncertain save and repeated submit reuse the request rather than create
   expect(signedIn.ok()).toBe(true);
   const leads = await (await page.request.get("/api/admin/demo-requests")).json();
   expect(leads.items.filter((r: { company: string }) => r.company === "Synthetic Retry Provider")).toHaveLength(1);
+  await page.getByRole("button", { name: "Start another request" }).click();
+  expect(await page.evaluate(() => sessionStorage.getItem("aerowise.pilotRequestAttempt.v1"))).toBeNull();
 });
 
 test("stalled overview and failed demo checks provide bounded recovery and a known entry", async ({ page }) => {
