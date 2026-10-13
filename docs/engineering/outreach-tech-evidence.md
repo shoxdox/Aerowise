@@ -71,3 +71,14 @@ On the approved candidate staging release, use only a new isolated fictional vis
 8. Traverse required fields, errors, photo actions and section links with keyboard and VoiceOver/TalkBack. Confirm error associations/status announcements and focus on validation/sign-off. Capture 375px and wider-phone screenshots with readable wrapping.
 
 Until this candidate passes the device recheck, status is implemented with automated evidence and **physical-device verification pending**, never externally/physically verified.
+
+
+## Independent review fix — late callbacks after confirmed access end
+
+The independent review found that the same-tenant check occurred only after `ensureInspection`/`ensureWork`. A delayed GPS result could therefore reopen a deleted database after confirmed demo end, even though the UI correctly refused to show it. Bound photo/flush callbacks shared that lifecycle gap.
+
+Both technician start paths now recheck the active tenant before the post-await write. The inspection and work transaction wrappers reject writes when that tenant's phone registration was removed, both before opening IndexedDB and after its asynchronous open completes. This also blocks late photo-upload marks, camera processing, local-save and flush callbacks from recreating an ended demo's data. Existing read/recovery behavior remains available; switching away from a still-registered account does not delete its pending work.
+
+`TEST_DATABASE_URL=postgres://aerowise:aerowise@localhost:55433/outreach_tech_test pnpm --filter @aerowise/api exec vitest run test/tech-tenant-lifecycle.test.ts test/inspections.test.ts test/work-sync.test.ts test/inspections-held.test.ts` passed **49 tests**. The three added tests execute the actual browser wrappers with controlled IndexedDB/registry stand-ins: forgotten inspection/work/photo callbacks never open a database, and forgetting either account while its database opens prevents the write transaction. The test loads browser modules at runtime so browser DOM globals do not alter the Node API typecheck. After fixing that test-runner boundary, the lifecycle file separately passed 3/3, and API/web typecheck and focused lint passed.
+
+`outreach-technician.spec.ts` adds a real-app regression with a new fictional prospect company: hold GPS (freeze only the browser timeout), end that disposable company through the isolated admin fixture, trigger the existing pageshow access recheck, release GPS, and assert both scoped phone databases remain absent and the ended screen remains visible. This new browser case is pending the parent's final rebuilt suite. No shared company or real data is ended or deleted by that case.

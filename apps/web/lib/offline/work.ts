@@ -1,7 +1,7 @@
 "use client";
 
 import type { InspectionValues, LocationStatus, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
-import { done, openDb, openExisting, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
+import { done, openDb, openExisting, requireRegisteredTenant, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
 // photos and the customer's signature, and an outbox of changes waiting for the server. All of it
@@ -216,7 +216,9 @@ async function readAll<T>(t: KnownTenant, store: StoreName): Promise<T[]> {
 
 /** Runs `fn` in one transaction on the sign-in's work database (created if need be) and resolves once it commits. */
 async function tx<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMode, fn: (trx: IDBTransaction) => Promise<T> | T): Promise<T> {
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const db = await openDb(workDbName(t), STORES);
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();

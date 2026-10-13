@@ -247,6 +247,7 @@ export default function TechApp() {
             arrivalGps: arrival.gps, completionGps: null, locationStatus: arrival.status, accessIssue: null, values: {}, issues: [], photos: [], server: null };
         }
         // Atomic recheck after every network/location wait; never replace an existing draft.
+        if (!sameTenant(activeTenant(), store.tenant)) return;
         await saveOrReport(() => store.ensureInspection(insp));
       }
       if (!sameTenant(activeTenant(), store.tenant)) return;
@@ -268,6 +269,7 @@ export default function TechApp() {
           status: "draft", revision: 0, arrivedAt: new Date().toISOString(), completedAt: null, arrivalGps: arrival.gps, completionGps: null, locationStatus: arrival.status,
           values: {}, finalVisit: true, summary: null, photos: [], signatures: [], draftAckedAt: null, server: null, held: null, resolved: null,
         };
+        if (!sameTenant(activeTenant(), tenant)) return;
         await saveOrReport(() => store.ensureWork(rec));
       }
       if (!sameTenant(activeTenant(), tenant)) return;

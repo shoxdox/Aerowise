@@ -1,0 +1,46 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+// Load the actual browser wrappers at runtime without adding DOM globals to the Node API compilation.
+const inspectionModule = new URL("../../web/lib/offline/db.ts", import.meta.url).pathname;
+const workModule = new URL("../../web/lib/offline/work.ts", import.meta.url).pathname;
+const { storeFor } = await import(inspectionModule);
+const { workStoreFor } = await import(workModule);
+type KnownTenant = { organizationId: string; userId: string; dbName: string; organizationName: string; userName: string };
+
+const tenant = (): KnownTenant => ({ organizationId: crypto.randomUUID(), userId: crypto.randomUUID(), dbName: `test-${crypto.randomUUID()}`, organizationName: "Fictional lifecycle", userName: "Fictional technician" });
+function registry(t?: KnownTenant) {
+  const entries = new Map<string, string>(t ? [["aerowise-tech:tenants", JSON.stringify([t])]] : []);
+  vi.stubGlobal("localStorage", { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) });
+  return entries;
+}
+const inspection = () => ({ clientId: crypto.randomUUID(), jobId: crypto.randomUUID(), templateId: crypto.randomUUID(), status: "draft", arrivedAt: new Date().toISOString(), completedAt: null, arrivalGps: null, completionGps: null, values: { notes: "Fictional late callback" }, accessIssue: null, issues: [], photos: [], server: null });
+const work = () => ({ clientId: crypto.randomUUID(), jobId: crypto.randomUUID(), templateId: crypto.randomUUID(), status: "draft", revision: 0, arrivedAt: new Date().toISOString(), completedAt: null, arrivalGps: null, completionGps: null, values: { problem: "Fictional late callback" }, photos: [], signatures: [], finalVisit: true, summary: null, server: null, held: null, resolved: null, draftAckedAt: null });
+afterEach(() => vi.unstubAllGlobals());
+
+describe("forgotten technician account lifecycle", () => {
+  it("rejects late inspection/work/GPS/photo writes before opening or recreating either database", async () => {
+    const t = tenant(); registry();
+    const open = vi.fn(() => { throw new Error("A forgotten database must not open"); });
+    vi.stubGlobal("indexedDB", { open });
+    const i = storeFor(t); const w = workStoreFor(t);
+    for (const write of [() => i.ensureInspection(inspection()), () => i.saveInspection(inspection()), () => i.photoUploaded(crypto.randomUUID(), crypto.randomUUID()), () => w.ensureWork(work()), () => w.saveWork(work()), () => w.uploaded(crypto.randomUUID(), { photoClientId: crypto.randomUUID() })]) {
+      await expect(write()).rejects.toThrow("no longer kept on this phone");
+    }
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  for (const kind of ["inspection", "work"] as const) {
+    it(`rechecks registration after an in-flight ${kind} database open before creating a write transaction`, async () => {
+      const t = tenant(); const entries = registry(t);
+      const transaction = vi.fn(() => { throw new Error("Must not start a write after access ended"); });
+      const result = { objectStoreNames: { contains: () => true }, transaction, close: vi.fn(), version: 1 };
+      const request = { result, onsuccess: null as (() => void) | null, onerror: null, onupgradeneeded: null };
+      vi.stubGlobal("indexedDB", { open: vi.fn(() => request) });
+      const writing = kind === "inspection" ? storeFor(t).ensureInspection(inspection()) : workStoreFor(t).ensureWork(work());
+      // A confirmed access-end removes the registration while IndexedDB opening is still pending.
+      entries.delete("aerowise-tech:tenants");
+      request.onsuccess!();
+      await expect(writing).rejects.toThrow("no longer kept on this phone");
+      expect(transaction).not.toHaveBeenCalled();
+    });
+  }
+});

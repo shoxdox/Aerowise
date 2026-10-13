@@ -143,6 +143,11 @@ function writeJson(key: string, value: unknown) {
 export const knownTenants = (): KnownTenant[] => readJson<KnownTenant[]>(REGISTRY_KEY) ?? [];
 const known = (t: Tenant) => knownTenants().find((k) => sameTenant(k, t));
 
+/** Late callbacks must never recreate data after confirmed ended access removed this registration. */
+export function requireRegisteredTenant(t: Tenant) {
+  if (!known(t)) throw new Error("This account is no longer kept on this phone. Reopen the app before recording more work.");
+}
+
 /** Remembers a sign-in (and the names shown when its data is waiting on the phone). */
 export function rememberTenant(t: Tenant, names: { organizationName: string; userName: string; demoTicket?: string }): KnownTenant {
   const list = knownTenants();
@@ -334,7 +339,10 @@ export const done = <T>(req: IDBRequest<T>) =>
 
 /** Runs `fn` in one transaction on one sign-in's database and resolves once it commits. */
 async function txOn<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMode, fn: (t: IDBTransaction) => Promise<T> | T): Promise<T> {
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const db = await openDb(t.dbName);
+  // Opening can yield while another tab or an access check forgets the account.
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();

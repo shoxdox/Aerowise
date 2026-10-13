@@ -225,3 +225,42 @@ test("quota failure never claims the latest edit is saved, retry recovers, and y
   await page.getByRole("button", { name: "Continue inspection" }).click();
   await expect(page.getByLabel("Notes for the customer")).toHaveValue("Latest edit must not be called safe before commit");
 });
+
+test("GPS resolving after confirmed demo end cannot recreate its deleted phone data", async ({ page, browser }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    navigator.geolocation.getCurrentPosition = (_success, failure) => {
+      (window as unknown as { releaseEndedGps: () => void }).releaseEndedGps = () => failure?.({ code: 1, PERMISSION_DENIED: 1, message: "Controlled denial" } as GeolocationPositionError);
+    };
+  });
+  const adminContext = await browser.newContext();
+  const admin = adminContext.request;
+  expect((await admin.post("/api/admin/auth/login", { data: { email: "admin@example.com", password: "aerowise-dev" } })).ok()).toBe(true);
+  const response = await admin.post("/api/admin/prospect-demos", { data: { prospect: "Fictional late GPS lifecycle", serviceCounties: ["Travis County"], days: 7 } });
+  expect(response.status()).toBe(201);
+  const { demo, link } = await response.json();
+  const url = new URL(link.url);
+  try {
+    await page.goto(url.pathname + url.hash);
+    await page.waitForURL("**/inbox");
+    expect((await page.request.post("/api/demo/switch", { data: { role: "technician" } })).ok()).toBe(true);
+    await page.goto("/tech");
+    await expect(page.locator(".stop-card", { hasText: "To do" }).first()).toBeVisible();
+    const me = await (await page.request.get("/api/auth/me")).json();
+    const name = `aerowise-tech:${me.organization.id}:${me.user.id}`;
+    const workName = `aerowise-tech-work:${me.organization.id}:${me.user.id}`;
+    // Freeze the browser's location timeout so the controlled GPS callback is definitely late.
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.locator(".stop-card", { hasText: "To do" }).first().click();
+    await page.getByRole("button", { name: "Arrive and start inspection" }).click();
+    await expect(page.getByRole("button", { name: "Starting…", exact: true })).toBeDisabled();
+    expect((await admin.post(`/api/admin/prospect-demos/${demo.id}/end`, { data: {} })).ok()).toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+    await expect(page.getByTestId("access-ended")).toBeVisible();
+    await page.evaluate(() => (window as unknown as { releaseEndedGps: () => void }).releaseEndedGps());
+    await expect.poll(() => page.evaluate(async ({ name, workName }) => (await indexedDB.databases()).some(d => d.name === name || d.name === workName), { name, workName })).toBe(false);
+    await expect(page.getByTestId("access-ended")).toBeVisible();
+    await expect(page.locator(".stop-card")).toHaveCount(0);
+  } finally { await adminContext.close(); }
+});
