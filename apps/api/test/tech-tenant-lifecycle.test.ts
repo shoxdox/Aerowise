@@ -17,6 +17,31 @@ const work = () => ({ clientId: crypto.randomUUID(), jobId: crypto.randomUUID(),
 afterEach(() => vi.unstubAllGlobals());
 
 describe("forgotten technician account lifecycle", () => {
+  it("keeps a partial future work database read-only for cache writes and rejects new records without upgrading", async () => {
+    const t = tenant(); registry(t);
+    const futureOps = [{ seq: 1, kind: "estimate-sync", recordClientId: "future-record" }, { seq: 2, kind: "estimate-photo", recordClientId: "future-record" }];
+    const requestFor = (result: unknown) => {
+      const request = { result, onsuccess: null as (() => void) | null, onerror: null, onupgradeneeded: null };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    };
+    const transaction = vi.fn((stores: string[], mode: string) => {
+      expect(stores).toEqual(["outbox"]);
+      expect(mode).toBe("readonly");
+      return { objectStore: () => ({ getAll: () => requestFor(futureOps) }) };
+    });
+    const database = { version: 2, objectStoreNames: { contains: (name: string) => ["records", "outbox"].includes(name) }, transaction, close: vi.fn() };
+    const open = vi.fn((_name: string, version?: number) => { expect(version).toBeUndefined(); return requestFor(database); });
+    vi.stubGlobal("indexedDB", { open });
+    const store = workStoreFor(t);
+    await expect(store.kvSet("route", { date: "2026-10-13", items: [{ jobId: "new-visit" }] })).resolves.toBeUndefined();
+    await expect(store.ensureWork(work())).rejects.toThrow("Update the app before saving new work");
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(database.close).toHaveBeenCalledTimes(2);
+    expect(futureOps).toEqual([{ seq: 1, kind: "estimate-sync", recordClientId: "future-record" }, { seq: 2, kind: "estimate-photo", recordClientId: "future-record" }]);
+  });
+
   it("merges refreshed photo links while preserving newer draft answers, thumbnails and removals", () => {
     const photoId = crypto.randomUUID();
     const local = { ...inspection(), values: { notes: "Latest unsent answer" }, photos: [{ clientId: photoId, photoKey: "overview", uploaded: false, preview: "data:image/png;base64,local" }] };

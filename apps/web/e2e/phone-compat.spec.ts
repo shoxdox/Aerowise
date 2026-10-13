@@ -253,8 +253,15 @@ test("a database a later release moved on opens without VersionError, and its wo
     expect(inspections?.rows.outbox).toEqual([]);
     const work = await readDb(page, workDb(me));
     expect(work?.version).toBe(2);
+    expect(work?.stores.sort()).toEqual(["outbox", "records"]);
     expect((work?.rows.outbox as { kind: string }[]).map((o) => o.kind)).toEqual(["estimate-sync", "estimate-photo"]);
     expect(work?.rows.records).toEqual([{ clientId: "w1" }]);
+
+    // The current demo includes a work visit: downloading its route/forms must not add stores
+    // to a later release's incompatible database, including on a second app startup.
+    await page.reload();
+    await expect(page.getByTestId("update-waiting")).toBeVisible();
+    expect(await readDb(page, workDb(me))).toEqual(work);
 
     // Signing out from the Map view warns about the work only the later release can send, and
     // cancelling keeps it and the view the technician was on.

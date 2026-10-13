@@ -190,6 +190,17 @@ const STORES: StoreSpecs = {
 };
 type StoreName = "kv" | "records" | "blobs" | "outbox";
 
+class WorkStorageNeedsUpdate extends Error {
+  constructor() { super("This work database contains changes from a newer app. Update the app before saving new work. The waiting changes stay on this phone."); }
+}
+
+/** A partial schema with newer operations belongs to that release; reading/counting stays safe. */
+async function beforeWorkUpgrade(db: IDBDatabase) {
+  if (!db.objectStoreNames.contains(WORK_OUTBOX_STORE)) return;
+  const ops = await done(db.transaction([WORK_OUTBOX_STORE], "readonly").objectStore(WORK_OUTBOX_STORE).getAll()) as StoredWorkOp[];
+  if (ops.some(op => !isKnown(op))) throw new WorkStorageNeedsUpdate();
+}
+
 /** The ops waiting in a sign-in's work outbox; reading never creates or upgrades the database. */
 async function readOps(t: KnownTenant): Promise<StoredWorkOp[]> {
   const db = await openExisting(workDbName(t));
@@ -217,7 +228,7 @@ async function readAll<T>(t: KnownTenant, store: StoreName): Promise<T[]> {
 /** Runs `fn` in one transaction on the sign-in's work database (created if need be) and resolves once it commits. */
 async function tx<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMode, fn: (trx: IDBTransaction) => Promise<T> | T): Promise<T> {
   if (mode === "readwrite") requireRegisteredTenant(t);
-  const db = await openDb(workDbName(t), STORES);
+  const db = await openDb(workDbName(t), STORES, beforeWorkUpgrade);
   if (mode === "readwrite") requireRegisteredTenant(t);
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
@@ -274,7 +285,8 @@ export function workStoreFor(t: KnownTenant) {
         db.close();
       }
     },
-    kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)),
+    // Fresh route/form data remains usable online; optional caching cannot change a newer schema.
+    kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)).catch(error => { if (!(error instanceof WorkStorageNeedsUpdate)) throw error; }),
     /** Recheck the job in one write transaction before creating a work record. */
     ensureWork: (proposed: LocalWork) => run(["records", "outbox"], "readwrite", async (trx) => {
       const records = trx.objectStore("records");

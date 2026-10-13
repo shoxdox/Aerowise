@@ -209,10 +209,13 @@ function openAt(name: string, stores: StoreSpecs, version?: number): Promise<IDB
  * code ran). A new database is created at version 1, exactly as earlier versions create it, so
  * they can still open it. The version is raised only when a store this version needs is missing.
  */
-async function openByStores(name: string, stores: StoreSpecs): Promise<IDBDatabase> {
+async function openByStores(name: string, stores: StoreSpecs, beforeUpgrade?: (db: IDBDatabase) => Promise<void>): Promise<IDBDatabase> {
   for (let attempt = 0; ; attempt++) {
     const db = await openAt(name, stores);
     if (missingStores(db, stores).length === 0) return db;
+    // A caller may recognize newer queued data and refuse to alter its schema.
+    try { await beforeUpgrade?.(db); }
+    catch (error) { db.close(); throw error; }
     const next = db.version + 1;
     db.close();
     try {
@@ -228,10 +231,10 @@ async function openByStores(name: string, stores: StoreSpecs): Promise<IDBDataba
 }
 
 /** One shared connection per database name, opened (and created if need be) with these stores. */
-export function openDb(name: string, stores: StoreSpecs = STORES): Promise<IDBDatabase> {
+export function openDb(name: string, stores: StoreSpecs = STORES, beforeUpgrade?: (db: IDBDatabase) => Promise<void>): Promise<IDBDatabase> {
   let opening = connections.get(name);
   if (!opening) {
-    opening = openByStores(name, stores).then((db) => {
+    opening = openByStores(name, stores, beforeUpgrade).then((db) => {
       // Another tab deleting this database (an ended demo) must not wait on us.
       db.onversionchange = () => {
         db.close();
