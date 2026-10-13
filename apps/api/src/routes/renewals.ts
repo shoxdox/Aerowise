@@ -662,7 +662,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const payable = await openInvoiceById(db, inv.id);
         const verification = await db.selectFrom("payments").select("id").where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).where("status", "=", "pending").where("bankVerificationUrl", "is not", null).executeTakeFirst();
         const invoiceUrl = payUrlFor(appUrl, inv.id);
-        paymentConfirmation = { paymentStatus: payable.paymentStatus, latestPaymentFailed: await latestPaymentFailed(db, organizationId, inv.id, payable.pendingCents), pendingCents: payable.pendingCents, bankVerificationRequired: Boolean(verification), invoiceUrl };
+        paymentConfirmation = { paymentStatus: payable.paymentStatus, latestPaymentFailed: await latestPaymentFailed(db, organizationId, inv.id, payable.pendingCents, now()), pendingCents: payable.pendingCents, bankVerificationRequired: Boolean(verification), invoiceUrl };
         if (amountDue(payable) > 0) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl };
       }
       return {

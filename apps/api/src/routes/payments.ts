@@ -156,7 +156,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         amountDueCents: amountDue(inv),
         canPayOnline: !closedReason && canPayOnline(provider, inv),
         bankVerificationUrl: verify?.bankVerificationUrl ?? null,
-        latestPaymentFailed: await latestPaymentFailed(db, inv.organizationId, inv.id, inv.pendingCents),
+        latestPaymentFailed: await latestPaymentFailed(db, inv.organizationId, inv.id, inv.pendingCents, now()),
         pdfReady: !!inv.pdfStorageKey,
         testMode: !!provider && (await providerFor(provider, inv.organizationId)).kind === "test",
         closedReason,

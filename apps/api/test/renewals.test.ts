@@ -374,5 +374,10 @@ describe("renewal payment confirmation on the original link", () => {
     // A fresh retry is not failed just because its predecessor was; its webhook has not arrived.
     expect((await anon().get(`/pay/${invoiceToken}`)).json().latestPaymentFailed).toBe(false);
     expect((await anon().get(`/renew/${r.token}`)).json().paymentConfirmation.latestPaymentFailed).toBe(false);
+    // Missing expiry webhooks leave status=open behind. Expiry time still ends that attempt.
+    await ctx.db.updateTable("checkoutSessions").set({ expiresAt: new Date(ctx.now.getTime() - 1) })
+      .where("organizationId", "=", t.org.id).where("status", "=", "open").execute();
+    expect((await anon().get(`/pay/${invoiceToken}`)).json().latestPaymentFailed).toBe(true);
+    expect((await anon().get(`/renew/${r.token}`)).json().paymentConfirmation.latestPaymentFailed).toBe(true);
   });
 });
