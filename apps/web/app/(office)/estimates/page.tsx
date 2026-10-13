@@ -2,7 +2,9 @@
 
 import { ESTIMATE_STATUS_LABELS, type EstimateSummary } from "@aerowise/domain";
 import Link from "next/link";
-import { useState } from "react";
+import { useQueryState } from "@/components/useQueryState";
+import { LoadState } from "@/components/LoadState";
+import { Pagination } from "@/components/Pagination";
 import { EmptyState } from "@/components/EmptyState";
 import { estimateBadge } from "@/components/EstimateLineEditor";
 import { useLoad } from "@/components/useLoad";
@@ -21,9 +23,13 @@ const VIEWS = [
 export default function EstimatesPage() {
   const editable = canEdit(useSession());
   const on = useFeature("estimates");
-  const [view, setView] = useState<(typeof VIEWS)[number]["key"]>("active");
+  const [selectedView, setView] = useQueryState("view", "active");
+  const view = VIEWS.find((v) => v.key === selectedView)?.key ?? "active";
   const query = VIEWS.find((v) => v.key === view)!.query;
-  const { data, error } = useLoad<{ items: EstimateSummary[]; total: number }>(`/estimates?limit=200${query ? `&${query}` : ""}`);
+  const [offsetText, setOffset] = useQueryState("offset", "0");
+  const offset = Number.isSafeInteger(Number(offsetText)) && Number(offsetText) >= 0 ? Number(offsetText) : 0;
+  const load = useLoad<{ items: EstimateSummary[]; total: number }>(`/estimates?limit=50&offset=${offset}${query ? `&${query}` : ""}`);
+  const { data } = load;
 
   return (
     <div className="stack">
@@ -42,7 +48,7 @@ export default function EstimatesPage() {
         )}
       </div>
       <p className="muted small">Quotes for repairs, pumping and other work. When the customer accepts one, it becomes a work order.</p>
-      {error && <p className="error">{error}</p>}
+      <LoadState load={load} label="estimates" />
       {data && data.items.length > 0 && (
         <div className="table-scroll">
           <table>
@@ -82,6 +88,7 @@ export default function EstimatesPage() {
       {data?.items.length === 0 && (
         <EmptyState title="No estimates here">Draft one from a site, or turn an inspection issue or a customer&apos;s request in the inbox into one.</EmptyState>
       )}
+      {data && <Pagination total={data.total} offset={offset} onChange={(n) => setOffset(String(n))} />}
     </div>
   );
 }

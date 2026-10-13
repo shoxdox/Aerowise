@@ -1,6 +1,6 @@
 import { CURRENT_LEGAL_VERSIONS, LEGAL_DOCUMENT_TITLES, type LegalDocument } from "@aerowise/domain";
 import Link from "next/link";
-import { LEGAL_TEXT, PLACEHOLDER_WARNING } from "./text";
+import { LEGAL_TEXT, LEGAL_REVIEW_NOTICE } from "./text";
 
 /** A public terms or privacy page, with the version an owner accepts. */
 export function LegalDocumentPage({ document }: { document: LegalDocument }) {
@@ -17,7 +17,7 @@ export function LegalDocumentPage({ document }: { document: LegalDocument }) {
         <h1>{LEGAL_DOCUMENT_TITLES[document]}</h1>
         <p className="muted small">Version {CURRENT_LEGAL_VERSIONS[document]}</p>
         <p className="banner warn" role="note">
-          {PLACEHOLDER_WARNING}
+          {LEGAL_REVIEW_NOTICE}
         </p>
         {LEGAL_TEXT[document].map((s) => (
           <section key={s.heading} className="stack">

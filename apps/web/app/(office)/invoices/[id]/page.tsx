@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { InvoiceStatusBadge } from "@/components/InvoiceBadges";
 import { InvoiceEditor } from "@/components/InvoiceEditor";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, today, when } from "@/lib/format";
@@ -19,7 +20,8 @@ export default function InvoicePage() {
   const me = useSession();
   const editable = canEdit(me);
   const owner = me.role === "owner";
-  const { data: inv, error, reload } = useLoad<InvoiceDetail>(`/invoices/${id}`);
+  const recordLoad = useLoad<InvoiceDetail>(`/invoices/${id}`);
+  const { data: inv, error, reload } = recordLoad;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [panel, setPanel] = useState<"payment" | "void" | "refundJob" | null>(null);
@@ -29,8 +31,8 @@ export default function InvoicePage() {
   // One id per opened "Refund the job": a retry or a second click sends the same one, so the money moves once.
   const [refundJobRequestId, setRefundJobRequestId] = useState("");
 
-  if (error) return <p className="error">{error}</p>;
-  if (!inv) return <p className="muted">Loading…</p>;
+  if (error && !inv) return <LoadState load={recordLoad} label="record" />;
+  if (!inv) return <LoadState load={recordLoad} label="record" />;
 
   async function run(path: string, body: object = {}, after?: () => void) {
     setBusy(true);
@@ -88,6 +90,7 @@ export default function InvoicePage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/invoices">← Invoices</Link>
       </p>

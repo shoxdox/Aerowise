@@ -2,6 +2,7 @@
 
 import { MONITORING_METHOD_LABELS, MONITORING_METHODS, type SystemMonitoring as Monitoring, type WastewaterSystem } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day } from "@/lib/format";
@@ -12,10 +13,11 @@ import { day } from "@/lib/format";
  * on record (and checked) get that schedule; otherwise it is only kept for reference.
  */
 export function SystemMonitoring({ siteId, systems, editable }: { siteId: string; systems: WastewaterSystem[]; editable: boolean }) {
-  const { data, reload } = useLoad<{ items: Monitoring[] }>(`/sites/${siteId}/monitoring`);
+  const recordLoad = useLoad<{ items: Monitoring[] }>(`/sites/${siteId}/monitoring`);
+  const { data, reload } = recordLoad;
   const [form, setForm] = useState<{ kind: "record"; systemId: string } | { kind: "end"; id: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  if (!data) return null;
+  if (!data) return <LoadState load={recordLoad} label="monitoring records" />;
   const active = systems.filter((s) => s.active);
   if (active.length === 0 && data.items.length === 0) return null;
   const open = (systemId: string) => data.items.find((m) => m.systemId === systemId && !m.endedOn);
@@ -43,6 +45,7 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
 
   return (
     <section className="stack">
+      <LoadState load={recordLoad} label="monitoring records" />
       <h2>Electronic monitoring</h2>
       {active.map((s) => {
         const m = open(s.id);

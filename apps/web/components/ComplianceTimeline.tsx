@@ -3,6 +3,8 @@
 import type { ComplianceEvent } from "@aerowise/domain";
 import Link from "next/link";
 import { useState } from "react";
+import { Pagination } from "@/components/Pagination";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -10,7 +12,9 @@ import { when } from "@/lib/format";
 
 /** The site's compliance ledger, newest first. Report links are signed and short-lived, so they are fetched fresh with the list. */
 export function ComplianceTimeline({ siteId, editable = false }: { siteId: string; editable?: boolean }) {
-  const { data, error, reload } = useLoad<{ items: ComplianceEvent[] }>(`/sites/${siteId}/compliance-events`);
+  const [offset, setOffset] = useState(0);
+  const recordLoad = useLoad<{ items: ComplianceEvent[]; total: number }>(`/sites/${siteId}/compliance-events?limit=50&offset=${offset}`);
+  const { data, error, reload } = recordLoad;
   const [message, setMessage] = useState<string | null>(null);
 
   /** Emails the customer copy. This is a delivery to the customer, never a filing. */
@@ -26,9 +30,10 @@ export function ComplianceTimeline({ siteId, editable = false }: { siteId: strin
     }
   }
   return (
-    <section className="stack">
+    <details className="card"><summary>Report and filing history{data ? ` (${data.total} records)` : ""}</summary><section className="stack">
+      <LoadState load={recordLoad} label="compliance history" />
       <div className="row">
-        <h2>Compliance history</h2>
+        <h2>Compliance history{data ? ` (${data.total})` : ""}</h2>
         <span className="spacer" />
         <button className="link" onClick={() => void reload()}>
           Refresh
@@ -72,6 +77,7 @@ export function ComplianceTimeline({ siteId, editable = false }: { siteId: strin
           ))}
         </ol>
       )}
-    </section>
+      {data && <Pagination total={data.total} offset={offset} onChange={setOffset} />}
+    </section></details>
   );
 }

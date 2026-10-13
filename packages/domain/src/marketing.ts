@@ -53,6 +53,8 @@ export const publicOverview = z.object({
     trialDays: z.number().int(),
     pricePerContractCents: z.number().int(),
     monthlyMinimumCents: z.number().int(),
+    founderPricePerContractCents: z.number().int(),
+    founderCompanyLimit: z.number().int(),
   }),
 });
 export type PublicOverview = z.infer<typeof publicOverview>;

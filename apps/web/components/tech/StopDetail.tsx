@@ -10,12 +10,14 @@ export function StopDetail({
   stop,
   inspection,
   canStart,
+  starting = false,
   onStart,
   notice = null,
 }: {
   stop: Stop;
   inspection: LocalInspection | undefined;
   canStart: boolean;
+  starting?: boolean;
   onStart: () => void;
   /** Why the last tap on the button did not open the form. */
   notice?: string | null;
@@ -90,10 +92,10 @@ export function StopDetail({
         )}
       </dl>
       {finished ? (
-        <p className={`badge ${status.tone}`}>{status.label}</p>
+        <div className="stack"><p className={`badge ${status.tone}`}>{status.label}</p><button className="secondary" onClick={onStart} disabled={starting}>{starting ? "Opening…" : "View completed inspection"}</button></div>
       ) : (
-        <button className="big" onClick={onStart} disabled={!canStart}>
-          {inspection || stop.inspection?.status === "draft" ? "Continue inspection" : "Arrive and start inspection"}
+        <button className="big" onClick={onStart} disabled={!canStart || starting} aria-busy={starting}>
+          {starting ? "Starting…" : inspection || stop.inspection?.status === "draft" ? "Continue inspection" : "Arrive and start inspection"}
         </button>
       )}
       {!canStart && <p className="muted small">The inspection form has not been downloaded yet. Open the app once with signal.</p>}

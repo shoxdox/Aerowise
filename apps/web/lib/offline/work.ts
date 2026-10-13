@@ -1,7 +1,7 @@
 "use client";
 
 import type { InspectionValues, LocationStatus, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
-import { done, openDb, openExisting, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
+import { done, openDb, openExisting, requireRegisteredTenant, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
 // photos and the customer's signature, and an outbox of changes waiting for the server. All of it
@@ -18,6 +18,9 @@ export interface WorkPhotoLocal {
   lat: number | null;
   lng: number | null;
   uploaded: boolean;
+  /** Small image kept with the record for offline review after the full upload leaves the phone. */
+  preview?: string;
+  url?: string;
 }
 
 export interface WorkSignatureLocal {
@@ -54,6 +57,7 @@ export interface LocalWork {
   /** What the customer was shown when signing; fixed once signed. */
   summary: Record<string, unknown> | null;
   photos: WorkPhotoLocal[];
+  removedPhotoClientIds?: string[];
   signatures: WorkSignatureLocal[];
   /** When the server first had this record; photos and signatures can only go after it. */
   draftAckedAt: string | null;
@@ -147,6 +151,7 @@ export function withSentState(form: LocalWork, stored: LocalWork | undefined): L
   const signatures = new Set(stored.signatures.filter((s) => s.uploaded).map((s) => s.clientId));
   return {
     ...form,
+    ...(stored.status === "draft" && stored.server?.validationStatus === "invalid" ? { status: "draft" as const, completedAt: null } : {}),
     server: stored.server,
     draftAckedAt: stored.draftAckedAt,
     held: stored.held,
@@ -185,6 +190,17 @@ const STORES: StoreSpecs = {
 };
 type StoreName = "kv" | "records" | "blobs" | "outbox";
 
+class WorkStorageNeedsUpdate extends Error {
+  constructor() { super("This work database contains changes from a newer app. Update the app before saving new work. The waiting changes stay on this phone."); }
+}
+
+/** A partial schema with newer operations belongs to that release; reading/counting stays safe. */
+async function beforeWorkUpgrade(db: IDBDatabase) {
+  if (!db.objectStoreNames.contains(WORK_OUTBOX_STORE)) return;
+  const ops = await done(db.transaction([WORK_OUTBOX_STORE], "readonly").objectStore(WORK_OUTBOX_STORE).getAll()) as StoredWorkOp[];
+  if (ops.some(op => !isKnown(op))) throw new WorkStorageNeedsUpdate();
+}
+
 /** The ops waiting in a sign-in's work outbox; reading never creates or upgrades the database. */
 async function readOps(t: KnownTenant): Promise<StoredWorkOp[]> {
   const db = await openExisting(workDbName(t));
@@ -211,7 +227,9 @@ async function readAll<T>(t: KnownTenant, store: StoreName): Promise<T[]> {
 
 /** Runs `fn` in one transaction on the sign-in's work database (created if need be) and resolves once it commits. */
 async function tx<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMode, fn: (trx: IDBTransaction) => Promise<T> | T): Promise<T> {
-  const db = await openDb(workDbName(t), STORES);
+  if (mode === "readwrite") requireRegisteredTenant(t);
+  const db = await openDb(workDbName(t), STORES, beforeWorkUpgrade);
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();
@@ -267,7 +285,17 @@ export function workStoreFor(t: KnownTenant) {
         db.close();
       }
     },
-    kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)),
+    // Fresh route/form data remains usable online; optional caching cannot change a newer schema.
+    kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)).catch(error => { if (!(error instanceof WorkStorageNeedsUpdate)) throw error; }),
+    /** Recheck the job in one write transaction before creating a work record. */
+    ensureWork: (proposed: LocalWork) => run(["records", "outbox"], "readwrite", async (trx) => {
+      const records = trx.objectStore("records");
+      const existing = ((await done(records.getAll())) as LocalWork[]).find(r => r.jobId === proposed.jobId);
+      if (existing) return existing;
+      records.put(proposed);
+      await queueSync(trx.objectStore("outbox"), proposed.clientId);
+      return proposed;
+    }),
     allRecords: () => readAll<LocalWork>(t, "records"),
     getBlob: (clientId: string) => run(["blobs"], "readonly", (trx) => done(trx.objectStore("blobs").get(clientId)) as Promise<WorkBlob | undefined>),
     allOps: () => readOps(t),
@@ -282,8 +310,12 @@ export function workStoreFor(t: KnownTenant) {
       run(["records", "blobs", "outbox"], "readwrite", async (trx) => {
         const records = trx.objectStore("records");
         const existing = (await done(records.get(rec.clientId))) as LocalWork | undefined;
+        if (existing?.held || existing?.resolved || existing?.server?.status === "completed" || (existing?.status === "completed" && rec.status !== "completed")) return;
         records.put({ ...withSentState(rec, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
+        const removed = new Set(rec.removedPhotoClientIds ?? []);
+        for (const id of removed) trx.objectStore("blobs").delete(id);
+        for (const op of (await done(outbox.getAll())) as QueuedWorkOp[]) if (op.recordClientId === rec.clientId && op.kind === "work-photo" && removed.has(op.photoClientId)) outbox.delete(op.seq);
         if (extra.photo) {
           trx.objectStore("blobs").put(extra.photo);
           outbox.add({ kind: "work-photo", recordClientId: rec.clientId, photoClientId: extra.photo.clientId } satisfies WorkOp);

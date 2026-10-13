@@ -1,7 +1,9 @@
 "use client";
 
 import { CONFLICT_REASON_LABELS, type FormTemplate, type WorkRecord, type WorkSyncConflict } from "@aerowise/domain";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
+import { Pagination } from "@/components/Pagination";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 
@@ -31,15 +33,13 @@ function AnswerList({ values, form }: { values: Answers; form: FormTemplate | un
 }
 
 export function VisitFieldRecord({ jobId, forms }: { jobId: string; forms: Map<string, FormTemplate> }) {
-  const [record, setRecord] = useState<WorkRecord | null | undefined>(undefined);
-  useEffect(() => {
-    api<WorkRecord>(`/jobs/${jobId}/work-record`)
-      .then(setRecord)
-      .catch(() => setRecord(null));
-  }, [jobId]);
-  if (record === undefined || record === null) return null;
+  const load = useLoad<WorkRecord>(`/jobs/${jobId}/work-record`);
+  const record = load.data;
+  if (load.errorStatus === 404) return <p className="muted small">No field record received for this visit.</p>;
+  if (!record) return <LoadState load={load} label="visit field record" />;
   return (
     <div className="stack" data-testid="field-record">
+      <LoadState load={load} label="visit field record" />
       <div className="muted small">
         Field record {record.status === "completed" ? `finished ${record.completedAt ? when(record.completedAt) : ""}` : "in progress on the phone"}
         {record.attachedByOffice && " · accepted by the office from a held record"}
@@ -49,7 +49,7 @@ export function VisitFieldRecord({ jobId, forms }: { jobId: string; forms: Map<s
       {record.photos.length > 0 && (
         <p className="row">
           {record.photos.map((p) => (
-            <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="badge">
+            <a key={p.id} href={`/api${p.url}`} target="_blank" rel="noreferrer" className="badge">
               Photo · {p.photoKey}
             </a>
           ))}
@@ -72,11 +72,15 @@ export function useWorkForms(on: boolean) {
 
 /** Records held for the office on this work order, with what can be done about each. */
 export function HeldFieldRecords({ workOrderId, forms, editable, onChanged }: { workOrderId: string; forms: Map<string, FormTemplate>; editable: boolean; onChanged: () => void }) {
-  const { data, reload } = useLoad<{ items: WorkSyncConflict[] }>(editable ? "/work/conflicts" : null);
+  const [offset, setOffset] = useState(0);
+  const load = useLoad<{ items: WorkSyncConflict[]; total: number }>(editable ? `/work/conflicts?workOrderId=${workOrderId}&limit=50&offset=${offset}` : null);
+  const { data, reload } = load;
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const items = (data?.items ?? []).filter((c) => c.workOrderId === workOrderId);
-  if (items.length === 0) return null;
+  const items = data?.items ?? [];
+  if (!editable) return null;
+  if (!data) return <LoadState load={load} label="held field records" />;
+  if (data.total === 0 && !load.error && offset === 0) return null;
 
   async function act(path: string, body: unknown) {
     setProblem(null);
@@ -93,6 +97,8 @@ export function HeldFieldRecords({ workOrderId, forms, editable, onChanged }: { 
   return (
     <section className="stack" data-testid="held-records">
       <h2>Held field records</h2>
+      <LoadState load={load} label="held field records" />
+      <Pagination total={data.total} offset={offset} onChange={setOffset} />
       <p className="muted small">These reached the office after the visit changed while the technician&apos;s phone was offline. Nothing from them counts until you accept one.</p>
       {problem && <p className="error">{problem}</p>}
       {items.map((c) => {

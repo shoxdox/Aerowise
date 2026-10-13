@@ -21,6 +21,11 @@ export interface LocalPhoto {
   lat: number | null;
   lng: number | null;
   uploaded: boolean;
+  /** Small image kept with the record for offline review after the full upload leaves the phone. */
+  preview?: string;
+  url?: string;
+  /** Refreshes a preview even if its signed URL is unchanged within the same server second. */
+  urlVersion?: number;
 }
 
 export interface LocalIssue {
@@ -35,6 +40,8 @@ export interface LocalInspection {
   revision?: number;
   clientId: string;
   jobId: string;
+  /** The authorized stop at start, for a read-only recap after it leaves today’s route. */
+  stopSnapshot?: Stop;
   templateId: string;
   /** "completed" here means the technician finished it on the phone. */
   status: "draft" | "completed";
@@ -48,6 +55,7 @@ export interface LocalInspection {
   values: InspectionValues;
   issues: LocalIssue[];
   photos: LocalPhoto[];
+  removedPhotoClientIds?: string[];
   /** What the server last said about it. */
   server: { id: string; status: "draft" | "completed"; validationStatus: string; problems: { key: string; message: string }[] } | null;
   /** Held for the office: the visit changed while the phone was offline. The form is read-only from then on. */
@@ -137,6 +145,11 @@ function writeJson(key: string, value: unknown) {
 export const knownTenants = (): KnownTenant[] => readJson<KnownTenant[]>(REGISTRY_KEY) ?? [];
 const known = (t: Tenant) => knownTenants().find((k) => sameTenant(k, t));
 
+/** Late callbacks must never recreate data after confirmed ended access removed this registration. */
+export function requireRegisteredTenant(t: Tenant) {
+  if (!known(t)) throw new Error("This account is no longer kept on this phone. Reopen the app before recording more work.");
+}
+
 /** Remembers a sign-in (and the names shown when its data is waiting on the phone). */
 export function rememberTenant(t: Tenant, names: { organizationName: string; userName: string; demoTicket?: string }): KnownTenant {
   const list = knownTenants();
@@ -196,10 +209,13 @@ function openAt(name: string, stores: StoreSpecs, version?: number): Promise<IDB
  * code ran). A new database is created at version 1, exactly as earlier versions create it, so
  * they can still open it. The version is raised only when a store this version needs is missing.
  */
-async function openByStores(name: string, stores: StoreSpecs): Promise<IDBDatabase> {
+async function openByStores(name: string, stores: StoreSpecs, beforeUpgrade?: (db: IDBDatabase) => Promise<void>): Promise<IDBDatabase> {
   for (let attempt = 0; ; attempt++) {
     const db = await openAt(name, stores);
     if (missingStores(db, stores).length === 0) return db;
+    // A caller may recognize newer queued data and refuse to alter its schema.
+    try { await beforeUpgrade?.(db); }
+    catch (error) { db.close(); throw error; }
     const next = db.version + 1;
     db.close();
     try {
@@ -215,10 +231,10 @@ async function openByStores(name: string, stores: StoreSpecs): Promise<IDBDataba
 }
 
 /** One shared connection per database name, opened (and created if need be) with these stores. */
-export function openDb(name: string, stores: StoreSpecs = STORES): Promise<IDBDatabase> {
+export function openDb(name: string, stores: StoreSpecs = STORES, beforeUpgrade?: (db: IDBDatabase) => Promise<void>): Promise<IDBDatabase> {
   let opening = connections.get(name);
   if (!opening) {
-    opening = openByStores(name, stores).then((db) => {
+    opening = openByStores(name, stores, beforeUpgrade).then((db) => {
       // Another tab deleting this database (an ended demo) must not wait on us.
       db.onversionchange = () => {
         db.close();
@@ -328,7 +344,10 @@ export const done = <T>(req: IDBRequest<T>) =>
 
 /** Runs `fn` in one transaction on one sign-in's database and resolves once it commits. */
 async function txOn<T>(t: KnownTenant, stores: StoreName[], mode: IDBTransactionMode, fn: (t: IDBTransaction) => Promise<T> | T): Promise<T> {
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const db = await openDb(t.dbName);
+  // Opening can yield while another tab or an access check forgets the account.
+  if (mode === "readwrite") requireRegisteredTenant(t);
   const trx = db.transaction(stores, mode);
   const committed = new Promise<void>((resolve, reject) => {
     trx.oncomplete = () => resolve();
@@ -374,8 +393,9 @@ function deliveredUnmarked(insp: LocalInspection, ops: StoredOp[]): Set<string> 
  */
 export function withSentState(form: LocalInspection, stored: LocalInspection | undefined): LocalInspection {
   if (!stored) return form;
-  const sent = new Set(stored.photos.filter((p) => p.uploaded).map((p) => p.clientId));
-  return { ...form, server: stored.server, photos: form.photos.map((p) => (sent.has(p.clientId) && !p.uploaded ? { ...p, uploaded: true } : p)) };
+  const storedPhotos = new Map(stored.photos.map(p => [p.clientId, p]));
+  const invalidCompletion = stored.status === "draft" && stored.server?.validationStatus === "invalid";
+  return { ...form, ...(invalidCompletion ? { status: "draft" as const, completedAt: null } : {}), server: stored.server, held: stored.held, photos: form.photos.map(p => { const saved = storedPhotos.get(p.clientId); return saved ? { ...p, uploaded: p.uploaded || saved.uploaded, url: saved.url ?? p.url, urlVersion: saved.urlVersion ?? p.urlVersion } : p; }) };
 }
 
 /** Clears the failed mark on every op in an outbox, keeping each op and its place in the queue. */
@@ -401,8 +421,25 @@ export function storeFor(t: KnownTenant) {
     kvGet: <T>(key: string) => run(["kv"], "readonly", (trx) => done(trx.objectStore("kv").get(key)) as Promise<T | undefined>),
     kvSet: (key: string, value: unknown) => run(["kv"], "readwrite", (trx) => done(trx.objectStore("kv").put(value, key)).then(() => undefined)),
     getInspection: (jobId: string) => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").get(jobId)) as Promise<LocalInspection | undefined>),
+    /** Recheck inside the write transaction: late GPS or a second tab never replaces a draft. */
+    ensureInspection: (proposed: LocalInspection) => run(["inspections", "outbox"], "readwrite", async (trx) => {
+      const inspections = trx.objectStore("inspections");
+      const existing = await done(inspections.get(proposed.jobId)) as LocalInspection | undefined;
+      if (existing) return existing;
+      inspections.put(proposed);
+      trx.objectStore("outbox").add({ kind: "sync", inspectionClientId: proposed.clientId } satisfies OutboxOp);
+      return proposed;
+    }),
     allInspections: () => run(["inspections"], "readonly", (trx) => done(trx.objectStore("inspections").getAll()) as Promise<LocalInspection[]>),
     getPhotoBlob: (clientId: string) => run(["photos"], "readonly", (trx) => done(trx.objectStore("photos").get(clientId)) as Promise<PhotoBlob | undefined>),
+    /** Refresh only ephemeral authorized links; answers, photo ids and immutable completion stay untouched. */
+    refreshPhotoUrls: (jobId: string, clientId: string, urls: { clientId: string; url: string }[]) => run(["inspections"], "readwrite", async trx => {
+      const inspections = trx.objectStore("inspections");
+      const existing = await done(inspections.get(jobId)) as LocalInspection | undefined;
+      if (!existing || existing.clientId !== clientId) return;
+      const byId = new Map(urls.map(p => [p.clientId, p.url]));
+      inspections.put({ ...existing, photos: existing.photos.map(p => byId.has(p.clientId) ? { ...p, url: byId.get(p.clientId), urlVersion: (p.urlVersion ?? 0) + 1 } : p) });
+    }),
     /** Every op in the outbox, including ones only a later version can send. */
     allOps: () => run(["outbox"], "readonly", (trx) => done(trx.objectStore("outbox").getAll()) as Promise<StoredOp[]>),
 
@@ -413,9 +450,13 @@ export function storeFor(t: KnownTenant) {
     saveInspection: (insp: LocalInspection, photo?: PhotoBlob) =>
       run(["inspections", "photos", "outbox"], "readwrite", async (trx) => {
         const existing = await done(trx.objectStore("inspections").get(insp.jobId)) as LocalInspection | undefined;
+        if (existing?.held || existing?.server?.status === "completed" || (existing?.status === "completed" && insp.status !== "completed")) return;
         trx.objectStore("inspections").put({ ...withSentState(insp, existing), revision: (existing?.revision ?? 0) + 1 });
         const outbox = trx.objectStore("outbox");
         const ops = (await done(outbox.getAll())) as StoredOp[];
+        const removed = new Set(insp.removedPhotoClientIds ?? []);
+        for (const id of removed) trx.objectStore("photos").delete(id);
+        for (const op of ops) if (op.inspectionClientId === insp.clientId && op.kind === "photo" && removed.has((op as QueuedOp & { photoClientId: string }).photoClientId)) outbox.delete(op.seq);
         const mine = ops.filter((o) => o.inspectionClientId === insp.clientId && !o.failed);
         if (photo) {
           trx.objectStore("photos").put(photo);

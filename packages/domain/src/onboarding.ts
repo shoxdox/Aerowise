@@ -10,6 +10,11 @@ export const ONBOARDING_ITEMS = [
   "technicians",
   "service_counties",
   "customers",
+  "sites",
+  "authority_fit",
+  "contract",
+  "scheduled_visit",
+  "reviewed_report",
   "stripe",
   "quickbooks",
 ] as const;
@@ -24,6 +29,12 @@ export interface OnboardingFacts {
   inspectors: { name: string; role: string; hasValidCredential: boolean }[];
   serviceCounties: number;
   customers: number;
+  sites: number;
+  applicableSites: number;
+  contracts: number;
+  scheduledVisits: number;
+  reviewedReports: number;
+  role?: string;
   stripeChargesEnabled: boolean;
   quickbooksConnected: boolean;
 }
@@ -35,7 +46,7 @@ export const onboardingItem = z.object({
   optional: z.boolean(),
   /** Why it is not done yet, in a sentence; null once done. */
   detail: z.string().nullable(),
-  href: z.string(),
+  href: z.string().nullable(),
 });
 export type OnboardingItem = z.infer<typeof onboardingItem>;
 
@@ -84,9 +95,22 @@ export function onboardingChecklistFor(f: OnboardingFacts): OnboardingChecklist 
       techniciansMissing(f.inspectors),
     ),
     item("service_counties", "Service counties", "/settings/company", f.serviceCounties > 0 ? null : "List the counties you work in."),
-    item("customers", "Import customers", "/import", f.customers > 0 ? null : "Import your customer list from a spreadsheet, or add a customer."),
-    item("stripe", "Connect Stripe", "/settings/billing", f.stripeChargesEnabled ? null : "Connect Stripe so customers can pay invoices online."),
+    item("customers", "First customer", "/customers", f.customers > 0 ? null : "Import your customer list from a spreadsheet, or add a customer."),
+    item("sites", "First service site", "/sites", f.sites > 0 ? null : "Add a service address, system and permit information to a customer."),
+    item("authority_fit", "Review site authority applicability", "/sites", f.applicableSites > 0 ? null : "Review the permit, reporting authority and unresolved requirements on your first site. A draft profile is not authority acceptance."),
+    item("contract", "First contract", "/sites", f.contracts > 0 ? null : "Choose a plan and record the service term on a site."),
+    item("scheduled_visit", "First scheduled visit", "/due", f.scheduledVisits > 0 ? null : "Schedule a visit from Due, or book supported work from a site."),
+    item("reviewed_report", "First reviewed and signed report", "/filings", f.reviewedReports > 0 ? null : "Review the completed inspection and have the responsible maintenance provider sign its report in the office."),
+    item("stripe", "Connect Stripe", "/settings/billing", f.stripeChargesEnabled ? null : "Optional online payments. Check and manual-payment workflows do not need Stripe.", true),
     item("quickbooks", "Connect QuickBooks", "/quickbooks", f.quickbooksConnected ? null : "Optional: keep customers and invoices in step with QuickBooks.", true),
   ];
+  if (f.role === "office") {
+    for (const i of items) {
+      if (["company_details", "responsible_mp", "technicians", "service_counties", "stripe", "quickbooks"].includes(i.key) && !i.done) {
+        i.href = null;
+        i.detail = `Ask the company owner: ${i.detail}`;
+      }
+    }
+  }
   return { complete: items.every((i) => i.done || i.optional), items };
 }

@@ -3,6 +3,7 @@
 import { formatEntered, roleHasPermission, VOLUME_UNITS, WASTE_TYPE_LABELS, WASTE_TYPES, type PumpingRecord } from "@aerowise/domain";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
@@ -18,10 +19,13 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
   const on = useFeature("pumping");
   const office = canEdit(me) && roleHasPermission(me.role, "work:write");
   const query = siteId ? `siteId=${siteId}` : `workOrderId=${workOrderId}`;
-  const { data, reload } = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>(`/pumping-records?${query}&limit=50`);
+  const [offset, setOffset] = useState(0);
+  const recordLoad = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>(`/pumping-records?${query}&limit=50&offset=${offset}`);
+  const { data, reload } = recordLoad;
   const [correcting, setCorrecting] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  if (!data || (!on && data.items.length === 0)) return null;
+  if (!data) return <LoadState load={recordLoad} label="pumping history" />;
+  if (!on && data.items.length === 0) return null;
 
   async function correct(p: PumpingRecord, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +44,7 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
   }
 
   return (
-    <section className="stack" data-testid="pumping-history">
+    <details className="card"><summary>Pumping and disposal history ({data.items.length}{data.nextOffset !== null ? "+" : ""} records on this page)</summary><section className="stack" data-testid="pumping-history"><LoadState load={recordLoad} label="pumping history" />
       <h2>{siteId ? "Pumping history" : "Pump-outs"}</h2>
       {problem && <p className="error">{problem}</p>}
       {data.items.length === 0 ? (
@@ -123,7 +127,7 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
           </table>
         </div>
       )}
-      {data.nextOffset !== null && <p className="muted small">Showing the newest 50.</p>}
-    </section>
+      <nav className="row" aria-label="Pumping history pages"><span className="muted small">Showing records {data.items.length ? offset + 1 : 0}–{offset + data.items.length}{data.nextOffset !== null ? "; more available" : "; end of history"}</span><button className="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><button className="secondary" disabled={data.nextOffset === null} onClick={() => setOffset(data.nextOffset!)}>Next</button></nav>
+    </section></details>
   );
 }

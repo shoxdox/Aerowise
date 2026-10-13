@@ -15,7 +15,7 @@ test("the demo owner finds a filed and acknowledged inspection, a renewal and a 
 
   // Yesterday's inspection, filed with the county and acknowledged, with its proof.
   await page.goto("/filings");
-  await page.getByRole("button", { name: "Acknowledged" }).click();
+  await page.getByRole("button", { name: "Acknowledgment recorded" }).click();
   await expect(page.getByText("Reference EC-DEMO-0042")).toBeVisible();
   // The table is wider than a phone; open the row's link directly.
   const href = await page.getByRole("row").filter({ hasText: "Reference EC-DEMO-0042" }).getByRole("link").getAttribute("href");
@@ -25,7 +25,7 @@ test("the demo owner finds a filed and acknowledged inspection, a renewal and a 
 
   // The other one waits for the county.
   await page.goto("/filings");
-  await page.getByRole("button", { name: "Waiting for acknowledgment" }).click();
+  await page.getByRole("button", { name: "Submitted" }).click();
   await expect(page.getByRole("row").filter({ hasText: /Sent / }).first()).toBeVisible();
 
   // A renewal on its way to the customer.

@@ -199,7 +199,9 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
   // inspection completed, its report made, signed and filed when they would have been), then the
   // clock returns to the present for yesterday's work and everything after it.
   let clockAt: Date | null = null;
-  const now = () => clockAt ?? realNow();
+  // Historical replay may never advance beyond the visitor's actual arrival. In particular,
+  // a newly starting contract must not advance past a private demo's 24-hour expiry.
+  const now = () => clockAt ? new Date(Math.min(clockAt.getTime(), realNow().getTime())) : realNow();
   const work = features.has("work_orders");
   const catalog = work && features.has("service_items");
   const tiers = features.has("plan_builder");
@@ -364,11 +366,13 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       .select(["c.id", "c.startOn"])
       .where("c.organizationId", "=", org.id)
       .where("c.status", "=", "active")
+      // Replay only records that could have existed before this visitor arrived.
+      .where("c.startOn", "<=", today)
       .where("c.serviceType", "=", "aerobic_inspection")
       .where("s.county", "in", Object.keys(AUTHORITY_FOR_COUNTY))
       .orderBy("c.startOn")
       .execute();
-    // First every contract's copy on file and its filing opened and checked, each on its own
+    // First each already-started contract's copy on file and its filing opened and checked, each on its own
     // day (the worker's sweep would otherwise open the rest all at once); then each one sent.
     const contractFilings: { filingId: string; startOn: string }[] = [];
     for (const c of realCountyContracts) {
@@ -461,6 +465,16 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     const first = filings.find((f) => f.inspectionId === inspections[0]);
     if (first?.status === "sent") await office.post(`/filings/${first.id}/confirm`, { reference: "EC-DEMO-0042", note: "Fictional: the county clerk replied by email." });
 
+    // The same completed case has a follow-up on today's route, so a visitor can connect roles.
+    const caseSite = overdue[1]?.siteId ?? overdue[0]?.siteId;
+    if (caseSite) {
+      const next = await db.selectFrom("serviceObligations").select("id").where("organizationId", "=", org.id).where("siteId", "=", caseSite).where("serviceType", "=", "aerobic_inspection").where("status", "=", "open").orderBy("dueOn").executeTakeFirst();
+      if (next) {
+        const booked = await db.selectFrom("jobs").select("id").where("organizationId", "=", org.id).where("obligationId", "=", next.id).where("status", "<>", "cancelled").executeTakeFirst();
+        if (!booked) await office.post("/jobs", { obligationId: next.id, technicianId: techId, scheduledDate: today, notes: "Fictional follow-up: revisit the completed inspection shown in the five-minute walkthrough." });
+      }
+    }
+
     // ---- A renewal for the contract that ends in three weeks ----
     const ending = await db
       .selectFrom("contracts")
@@ -530,7 +544,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       const repair = issues.find((i) => i.type === "repair_needed");
       if (repair) {
         const wo = await office.post(`/issues/${repair.id}/work-order`);
-        await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: addDays(today, 1), notes: "Bring a float switch." });
+        await office.post(`/work-orders/${wo.id}/schedule`, { technicianId: techId, scheduledDate: today, notes: "Bring a float switch. Fictional work stop in today’s walkthrough." });
         workOrders++;
       }
       // A homeowner asks from their portal; the office turns it into a work order.

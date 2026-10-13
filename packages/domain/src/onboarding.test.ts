@@ -7,6 +7,7 @@ const complete: OnboardingFacts = {
   inspectors: [{ name: "Tina Tech", role: "technician", hasValidCredential: true }],
   serviceCounties: 1,
   customers: 1,
+  sites: 1, applicableSites: 1, contracts: 1, scheduledVisits: 1, reviewedReports: 1,
   stripeChargesEnabled: true,
   quickbooksConnected: false,
 };
@@ -28,6 +29,7 @@ describe("first-run checklist", () => {
       inspectors: [],
       serviceCounties: 0,
       customers: 0,
+      sites: 0, applicableSites: 0, contracts: 0, scheduledVisits: 0, reviewedReports: 0,
       stripeChargesEnabled: false,
       quickbooksConnected: false,
     };
@@ -39,6 +41,11 @@ describe("first-run checklist", () => {
       ["technicians", false],
       ["service_counties", false],
       ["customers", false],
+      ["sites", false],
+      ["authority_fit", false],
+      ["contract", false],
+      ["scheduled_visit", false],
+      ["reviewed_report", false],
       ["stripe", false],
       ["quickbooks", false],
     ]);
@@ -72,12 +79,19 @@ describe("first-run checklist", () => {
     expect(itemOf({ ...complete, inspectors: [{ name: "Ned New", role: "technician", hasValidCredential: false }] }, "technicians").done).toBe(false);
   });
 
-  it("needs a service county, a customer and Stripe ready to take payments", () => {
+  it("needs operational records while payments stay optional", () => {
     expect(itemOf({ ...complete, serviceCounties: 0 }, "service_counties").done).toBe(false);
     expect(itemOf({ ...complete, customers: 0 }, "customers").done).toBe(false);
     expect(itemOf({ ...complete, stripeChargesEnabled: false }, "stripe").done).toBe(false);
-    for (const f of [{ serviceCounties: 0 }, { customers: 0 }, { stripeChargesEnabled: false }, { responsibleMpValid: false }]) {
+    for (const f of [{ serviceCounties: 0 }, { customers: 0 }, { reviewedReports: 0 }, { responsibleMpValid: false }]) {
       expect(onboardingChecklistFor({ ...complete, ...f }).complete).toBe(false);
     }
+  });
+  it("allows check-only operations and never links Office to owner-only setup", () => {
+    expect(onboardingChecklistFor({ ...complete, stripeChargesEnabled: false }).complete).toBe(true);
+    const office = onboardingChecklistFor({ ...complete, role: "office", responsibleMpValid: false, stripeChargesEnabled: false });
+    expect(office.items.find((i) => i.key === "stripe")).toMatchObject({ optional: true, href: null });
+    expect(office.items.find((i) => i.key === "responsible_mp")).toMatchObject({ href: null });
+    expect(office.items.find((i) => i.key === "responsible_mp")!.detail).toContain("company owner");
   });
 });

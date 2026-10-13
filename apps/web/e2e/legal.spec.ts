@@ -6,9 +6,12 @@ test("a new company owner reads and accepts the terms and privacy policy before 
   await page.getByRole("link", { name: "Terms of service" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Terms of service" })).toBeVisible();
   await expect(page.getByText(/^Version /)).toBeVisible();
-  await expect(page.getByText(/^Placeholder text\./)).toBeVisible();
+  await expect(page.getByText(/^Early-access draft prepared for owner and counsel review/)).toBeVisible();
+  await expect(page.getByText("2026-10-05-placeholder")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Exports, operational deletion and retained copies" })).toBeVisible();
   await page.goto("/privacy");
   await expect(page.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prospect requests and public use" })).toBeVisible();
 
   // The founder creates a company and invites its first owner, the usual way a design
   // partner starts. (Signing in through /admin keeps the office sign-in limit free for

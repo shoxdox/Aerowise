@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { DemoBanner } from "@/lib/demo";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Aerowise", description: "Aerobic septic maintenance, run in one place.", icons: { icon: "/icons/icon.svg" } };
+export const metadata: Metadata = { title: "Aerowise", description: "Septic maintenance, from route to provider review.", icons: { icon: "/icons/icon.svg" }, robots: { index: false, follow: false } };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

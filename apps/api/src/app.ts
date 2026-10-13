@@ -267,10 +267,10 @@ export async function buildApp({
   // Lets the web app show the demo banner (and the demo sign-ins) without its own setting.
   // `demo` is the demo deployment; `demoCompany` that whoever is signed in works in a demo company.
   app.get("/app-info", { config: { public: true }, schema: { hide: true } }, async (req) => {
-    const org = req.auth ? await db.selectFrom("organizations").select(["demo", "demoExpiresAt"]).where("id", "=", req.auth.organizationId).executeTakeFirst() : undefined;
+    const org = req.auth ? await db.selectFrom("organizations").select(["demo", "demoExpiresAt", "demoProspect"]).where("id", "=", req.auth.organizationId).executeTakeFirst() : undefined;
     // `demoVisitor`: a visitor's own demo company (W10.2), where the banner offers other people's views.
     // `features`: what this deployment has switched on, so the web app shows only those screens.
-    return { demo, demoCompany: demo || org?.demo === true, demoVisitor: !!org?.demoExpiresAt, features: [...features].sort() };
+    return { demo, demoCompany: demo || org?.demo === true, demoVisitor: org?.demo === true && !!org.demoExpiresAt, demoRole: req.auth?.role ?? null, demoExpiresAt: org?.demoExpiresAt?.toISOString() ?? null, features: [...features].sort() };
   });
 
   app.get("/health", { config: { public: true }, schema: { hide: true } }, async (_req, reply) => {

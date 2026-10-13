@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DepositPanel } from "@/components/DepositPanel";
 import { blankLine, estimateBadge, EstimateLineEditor, fromSaved, toInput, type DraftLine } from "@/components/EstimateLineEditor";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
@@ -159,7 +160,8 @@ function DraftEditor({ e, onSaved, onError }: { e: EstimateDetail; onSaved: () =
 export default function EstimatePage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
-  const { data: e, error, reload } = useLoad<EstimateDetail>(`/estimates/${id}`);
+  const recordLoad = useLoad<EstimateDetail>(`/estimates/${id}`);
+  const { data: e, error, reload } = recordLoad;
   const [problem, setProblem] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [panel, setPanel] = useState<"void" | "record" | "cancel" | null>(null);
@@ -192,8 +194,8 @@ export default function EstimatePage() {
     await fn(formValues(ev.currentTarget));
   };
 
-  if (error) return <p className="error">{error}</p>;
-  if (!e) return <p className="muted">Loading…</p>;
+  if (error && !e) return <LoadState load={recordLoad} label="record" />;
+  if (!e) return <LoadState load={recordLoad} label="record" />;
   const href = sourceHref(e);
   const latest = e.versions[e.versions.length - 1] ?? null;
   const open = isEstimateOpen(e.status);
@@ -205,6 +207,7 @@ export default function EstimatePage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/estimates">← Estimates</Link>
       </p>

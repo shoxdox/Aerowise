@@ -1,145 +1,58 @@
-// PLACEHOLDER COPY for the public marketing page. Justin edits the words here; the page
-// layout, the county list and the prices come from elsewhere (the rulesets and the
-// subscription config), so editing this file never changes what is true about coverage
-// or price.
+// Public words describe the implemented workflow. Rates and authority rules come from the API.
+export const PUBLIC_DEMO_URL = "https://staging.deshain.com/demo";
+export const PUBLIC_HOME_URL = "https://staging.deshain.com";
 
 export const HERO = {
-  eyebrow: "For Texas aerobic maintenance companies",
-  title: "Every four-month visit and every county report, on time.",
-  body: "Aerowise keeps each maintenance contract's visits on the county's schedule, puts the inspection on your technician's phone (no signal needed), and prepares the report with your licence on it. You read it and press Send.",
-  /** Three plain facts under the buttons. Each must stay true; the first is counted from the rulesets. */
-  facts: ["Texas authorities' rules built in", "Works with no signal on the phone", "Free for 90 days, no card"],
-  /** The office's Due list, captured from the demo company. */
-  shot: { src: "/marketing/office-due.png", alt: "The office's Due page: 32 open visits, five overdue, each with its window and access notes", caption: "The office's Due list, captured from the demo company." },
+  eyebrow: "Early access · For Texas septic maintenance providers",
+  title: "Keep visits, inspection records and report deadlines together.",
+  body: "Schedule the route, inspect on the phone—even without a signal—and prepare the report for office review. One record connects the field work, filing evidence and homeowner follow-up.",
+  facts: ["Fictional visitor demo", "Offline field workflow", "Provider review before filing"],
+  shot: { src: "/marketing/office-due.png", alt: "Fictional demo company Due list with visit dates, overdue flags and site access notes", caption: "Real product capture · fictional demo records. Scroll the image on a phone to read the visit details." },
 };
-
-/** The inspection form and a county's rules, live on the page (components/marketing/TryIt.tsx). */
 export const TRY_IT = {
-  title: "Try it here",
-  intro: "Pick a county and fill in the inspection the way a technician would. This is the same form the phone runs and the same rules the office applies; nothing is sent anywhere.",
-  pick: "Your county",
-  authority: "Authority",
-  visits: "Visits",
-  report: "Report due",
-  goes: "Where it goes",
-  extra: "This county also wants",
-  renewal: "Renewal due",
-  corrective: "After a failed item",
-  formLabel: "The inspection form, as on the technician's phone",
-  needs: (n: number, county: string) => `${n} ${n === 1 ? "thing" : "things"} still needed before the ${county} report can be prepared`,
-  ready: (county: string) => `Ready: the ${county} report can be prepared.`,
-  readyNote: "On the phone it would now carry the photos, the GPS fix and your licence, and go to the office to read and send.",
-  note: "Photos and the GPS fix are taken on the phone, so they are left out here.",
-  reset: "Start over",
+  title: "Preview an inspection",
+  intro: "Try the same answer fields the technician uses. This public example stays in your browser; it does not create an inspection, report or filing.",
+  pick: "Reporting authority", authority: "Authority", visits: "Visit interval in this profile", report: "Draft report deadline", goes: "Filing method in this profile", extra: "Additional answer fields", renewal: "Renewal timing", corrective: "After a failed item", formLabel: "Example technician inspection answers",
+  needs: (n: number, authority: string) => `${n} example ${n === 1 ? "answer" : "answers"} still needed for ${authority}`,
+  ready: (authority: string) => `Example answers complete for ${authority}.`,
+  readyNote: "In the app, required photos, site and system details, provider credentials, office review and signature must also be completed before a report can follow its filing method.",
+  note: "Photos, location and the full report checks are outside this preview. Selecting a profile does not assign it to a real site.", reset: "Start over",
 };
-
-export const PROBLEM = {
-  title: "What changes",
-  todayLabel: "Today",
-  afterLabel: "With Aerowise",
-  pairs: [
-    {
-      today: "Which sites are due this month lives in a spreadsheet and in someone's head.",
-      after: "The due list comes from the contracts: every visit, every report deadline and every renewal, by county.",
-    },
-    {
-      today: "The technician fills in a paper form; the office retypes it into the county's report.",
-      after: "The technician answers the form on the phone, photos included, and the report writes itself with your licence number on it.",
-    },
-    {
-      today: "Every county and river authority wants a different form, deadline and inbox.",
-      after: "Each authority's rules are built in from its published order. Where one publishes an inbox, Aerowise emails the report when you press Send.",
-    },
-  ],
-};
-
 export const STEPS = {
-  title: "How it works",
+  title: "Schedule → inspect → office reviews the report",
   items: [
-    { title: "Bring your customers", body: "Send your spreadsheet, however messy. Aerowise works out which column is which and who is due when; for the first companies, we import it for you." },
-    { title: "Run the route", body: "Technicians get the day's stops on their phone and fill in each inspection where they stand, offline if they need to. Photos and GPS come with it." },
-    { title: "File on time", body: "The report is prepared with the fields the authority asks for and the official form where there is one. Your licensed provider reviews it; nothing goes to a county on its own." },
-    { title: "Get paid and renew", body: "Invoices, renewals signed on the homeowner's phone, and a customer portal follow from the same records." },
+    { title: "Schedule the right visit", body: "Bring customer, site and contract records together. Review the site's permit and authority before relying on a visit interval or reporting deadline." },
+    { title: "Inspect on the phone", body: "Download the route, record readings and photos, and finish the inspection offline. The phone keeps work locally until it can send it to the office." },
+    { title: "Review and record the filing", body: "The responsible provider reviews and signs. The office emails through a supported channel or downloads and submits manually, then keeps the submission evidence. Authority acceptance requires its own evidence." },
   ],
 };
-
 export const COVERAGE = {
-  title: "County coverage",
-  intro: "Each authority's rules are built from its own published order, and marked in progress until that authority has confirmed them. What happens to a finished report depends on what the authority publishes:",
+  title: "Does your authority fit?",
+  intro: "Profiles are built from public sources. Before live use, review the permit, system applicability, report format and submission process with the provider. A county can contain more than one reporting authority; the permit determines which applies.",
   groups: {
-    email: { label: "Emailed when you press Send", note: "The authority publishes an inbox for reports." },
-    portal: { label: "You upload it on the authority's page", note: "Aerowise prepares the file and records the upload." },
-    prepared: { label: "Prepared for you to send as you do today", note: "No provider channel is published; Aerowise keeps the record." },
+    email: { label: "Email preparation and sending", note: "The profile has a published inbox; provider review and configured delivery come first." },
+    portal: { label: "Manual upload", note: "Download the report, upload through the authority's process, and record evidence." },
+    prepared: { label: "Manual submission or channel to confirm", note: "Prepare and download the report. Confirm the actual channel with the provider; a published acknowledgment may not exist." },
   },
-  draftLabel: "In progress",
-  draftNote: "Built from public sources; being confirmed with the authority.",
-  confirmedLabel: "Confirmed with the authority so far",
-  empty: "Coverage is being added. Ask us about your county.",
-  notYours: "Your county not here? Say which one in the demo request and it goes next.",
+  draftLabel: "Public-source draft", draftNote: "This profile has not been verified by the authority. Applicability and unresolved requirements need review before live use.", confirmedLabel: "Authority-confirmed fields",
+  empty: "No public profiles are available on this deployment. Contact Justin about your authority.", notYours: "Authority missing? Ask Justin to review your permit and current process. A request does not promise coverage or acceptance.",
 };
-
-export const PRICING = {
-  title: "Pricing",
-  perContract: "per active contract per month",
-  minimum: "monthly minimum",
-  /** Shown beside the configured price. The founder rate is set per company in /admin when it starts paying. */
-  founderLabel: "Founder offer",
-  founder: "The first five companies pay $0.25 per active contract per month, same minimum, for as long as they stay.",
-  note: "No card to start. Your data is yours to download at any time, including the day you leave.",
-};
-
-/** Who to call. Shown with the demo form and in the footer, not as a section of its own. */
-export const CONTACT = {
-  line: "Or call Justin, who built it:",
-  footer: "Built in Texas by Justin. No maintenance company has used it yet; the first few will shape it.",
-  phone: "(504) 435-6246",
-  phoneHref: "tel:+15044356246",
-  email: "justin@deshain.com",
-};
-
-export const RESPONSIBILITY =
-  "Aerowise prepares and tracks filings. The licensed maintenance provider reviews and is responsible for every report sent to an authority.";
-
-/** "Try the demo": shown only on the demo deployment, where /demo answers (W11.4). */
-export const TRY_DEMO = {
-  button: "Try the demo",
-};
-
+export const PRICING = { title: "A clear offer after the pilot", founderLabel: "First-five founder offer", note: "The minimum is a floor, not an extra fee. Your company's subscription page is the source for its agreed rate and start/end dates." };
+export const CONTACT = { line: "Contact Justin directly to discuss a supervised pilot:", footer: "Built in Texas by Justin. Early access: no real provider or authority has validated Aerowise yet.", phone: "(504) 435-6246", phoneHref: "tel:+15044356246", email: "justin@deshain.com" };
+export const RESPONSIBILITY = "The licensed maintenance provider reviews and is responsible for every report. Prepared or submitted does not establish authority acceptance.";
+export const TRY_DEMO = { button: "Explore the demo" };
 export const DEMO = {
-  title: "Ask for a demo",
-  intro: "Tell me about your company and I'll set up a walkthrough with your own counties.",
-  button: "Ask for a demo",
-  thanks: "Thanks. We got your request and will be in touch soon.",
-  tooMany: "We already have a few requests from you. We will be in touch soon.",
-  failed: "Could not send your request. Please try again.",
+  title: "Talk to Justin about a pilot", intro: "Call or email for the most direct contact. You can also save a request in Aerowise's private admin queue.", button: "Save pilot request", thanks: "Your request is saved in the private admin queue.", tooMany: "Too many requests from this connection. If you already submitted, it may be saved; contact Justin directly.", failed: "We could not confirm whether your request saved. Retry with the same details, or contact Justin directly.",
 };
-
-/**
- * The public data-handling page. Placeholder wording that describes what the software does
- * today; Justin supplies the statement itself (W5.6, "Needs from Justin").
- */
 export const DATA_HANDLING = {
   title: "How Aerowise handles your data",
   sections: [
-    {
-      id: "what",
-      title: "What we keep",
-      body: "The records your company enters or imports: customers, sites, systems, contracts, visits, inspections, reports, invoices and payments, plus the files that go with them. Each company's records are kept apart from every other company's.",
-    },
-    {
-      id: "export",
-      title: "Taking your data with you",
-      body: "The owner of a company can download everything at any time from Settings, Export: a zip of spreadsheet files and every report and invoice PDF. This works even when the account is read-only.",
-    },
-    {
-      id: "delete",
-      title: "Deleting your data",
-      body: "Ask us and we delete your company's records and files. We keep only a note that the deletion happened, who asked, and when. Please download an export first: deletion cannot be undone.",
-    },
-    {
-      id: "contact",
-      title: "Questions",
-      body: "Justin, (504) 435-6246, justin@deshain.com. Questions about your data, an export or a deletion go to that address.",
-    },
+    { id: "what", title: "What we keep", body: "Prospect requests contain the name, email, company and optional phone, counties and message supplied in the form. Company records include staff accounts, customer contacts, sites, systems, contracts, visits, inspection/work readings and photos, signatures, reports, filing evidence, renewals, estimates, invoices, payment references and audit history. Platform administrators can review prospect requests and perform authorized support actions; company access is scoped by organization and role." },
+    { id: "devices", title: "Cookies and records on your phone", body: "Sign-in uses a first-party HttpOnly session cookie. The private fictional visitor demo lasts 24 hours; it is not a place for real customer information. The technician app uses browser storage for downloaded routes, answers, photos and records waiting to sync. Clearing that storage can erase unsent work. Public inspection-preview answers stay in browser memory and disappear when the page reloads. The pilot-request form remembers only a retry key and request fingerprint in tab-session storage, allowing an unchanged request to retry after reload without saving its contact fields there. Starting another request replaces that retry information." },
+    { id: "providers", title: "Configured service providers", body: "Aerowise can use Resend for email, Twilio for texts, Stripe for homeowner payments and Aerowise subscriptions, Intuit QuickBooks for one-way accounting sync, and Cloudflare R2 for file storage. US Census address lookup may be used for geocoding. These uses depend on the deployment and company settings. Fictional demo companies use stand-ins: no real messages, charges, accounting writes or authority submissions occur. Platform request alerts can also remain in a test outbox; the confirmation and admin queue distinguish that from provider acceptance." },
+    { id: "export", title: "Taking your data with you", body: "An owner can request an export from Settings → Export, including while the subscription is read-only. The archive includes record CSVs, available report/invoice and work/disposal documents, and raw inspection/work photo bytes. Its manifest identifies included files and files that could not be found; review those entries before relying on the archive. Authentication secrets, standalone access tokens and payment credentials are excluded; application bearer links in exported record text are redacted. Invoice PDFs are clearly labeled portable copies without payment links, while the stored issued originals remain unchanged. Demo archives are marked fictional. Files that are absent from storage cannot be reconstructed by an export." },
+    { id: "delete", title: "Deleting your data", body: "Contact Justin to request an operational company deletion, after downloading and checking an export. The platform deletion process removes company-scoped database records and the configured object-store namespace; the administrator must verify the result. If file cleanup fails, database access remains disabled and the failure is audited; an operator must finish and verify cleanup before claiming the stored bytes are gone. It retains the company tombstone (including name and plan metadata) and platform audit records of the action. Users shared with another organization remain there; otherwise they are deleted or anonymized if a retained record still references them. Deletion is not immediate erasure from every backup, provider system, exported file or device." },
+    { id: "retention", title: "Retention and backups", body: "The repository's backup tooling defaults to 14 days of local backups and 35 days of offsite backups, with deployment configuration able to change those values. Those defaults are not a verified promise about the live environment. A production retention schedule, prospect-request cleanup schedule, restore/deletion reconciliation and service-provider retention review remain owner decisions before real-data use. Expired fictional demo access is disabled and its data is eligible for cleanup; expiration does not promise immediate erasure of backups." },
+    { id: "contact", title: "Questions and requests", body: "Contact Justin at (504) 435-6246 or justin@deshain.com about access, correction, exports, deletion or support. We may need to establish your authority over the company or records before acting. No fixed support response time or backup-erasure deadline is promised by this early-access draft. Read the privacy policy and terms alongside this statement; owner and counsel review is pending before publication for real-data operation." },
   ],
 };

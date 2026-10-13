@@ -199,7 +199,9 @@ export const dueQuery = z.object({
   /** Include open visits due on or before this date (so overdue ones too). Defaults to today + 30 days. */
   through: date.optional(),
   siteId: id.optional(),
+  obligationId: id.optional(),
   overdueOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
+  upcomingOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   /** Only visits that have no live job yet: the scheduler's "unscheduled work". */
   unscheduledOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   /** The kind of visit (SW-9); aerobic inspections unless asked, so the inspection list is as before. */

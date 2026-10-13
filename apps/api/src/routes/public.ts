@@ -1,6 +1,6 @@
 import { confirmationsFor, loadCatalog, loadConfirmations, rulesetOn } from "@aerowise/compliance";
 import type { Database } from "@aerowise/db";
-import { dateInZone, profileStatus, publicOverview, verifiedWith, type CoverageItem, type PublicOverview, type SubscriptionConfig } from "@aerowise/domain";
+import { dateInZone, FOUNDER_OFFER, profileStatus, publicOverview, verifiedWith, type CoverageItem, type PublicOverview, type SubscriptionConfig } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 
 /** Every customer so far is in Texas, so the public page reads rules as of today there. */
@@ -64,7 +64,7 @@ export const publicRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       // Verified authorities first, then by name.
       coverage.sort((a, b) => Number(!!b.verified) - Number(!!a.verified) || a.authorityName.localeCompare(b.authorityName));
       const { designPartnerDays, trialDays, pricePerContractCents, monthlyMinimumCents } = subscription;
-      return { coverage, pricing: { designPartnerDays, trialDays, pricePerContractCents, monthlyMinimumCents } };
+      return { coverage, pricing: { designPartnerDays, trialDays, pricePerContractCents, monthlyMinimumCents, founderPricePerContractCents: FOUNDER_OFFER.pricePerContractCents, founderCompanyLimit: FOUNDER_OFFER.companyLimit } };
     },
   );
 };

@@ -114,7 +114,7 @@ export async function seedDemoCompany(db: Database, opts: DemoCompanyOptions = {
         name,
         demoExpiresAt: expiresAt,
         demoProspect: prospect?.name ?? null,
-        ...(prospect ? { serviceCounties: prospect.serviceCounties } : {}),
+        serviceCounties: prospect?.serviceCounties ?? ["Example County", "Travis County"],
         // Fictional: its email, texts, filings, payments and books only ever reach the stand-ins.
         demo: true,
         phone: "(512) 555-0100",

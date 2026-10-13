@@ -394,7 +394,7 @@ describe("paying online", () => {
     const voided = (await t.api.post(`/invoices/${inv.id}/void`, { reason: "Cancelled job" })).json();
     expect(voided).toMatchObject({ status: "void", paymentStatus: "refunded" });
     expect((await t.api.get("/inbox")).json().items.find((i: { kind: string }) => i.kind === "invoice_overpaid")).toBeUndefined();
-    expect((await client(ctx.app).get(`/pay/${inv.token}`)).statusCode).toBe(404);
+    expect((await client(ctx.app).get(`/pay/${inv.token}`)).json()).toMatchObject({ error: "revoked" });
   });
 
   it("closes a checkout page the customer left open once the office records their payment", async () => {

@@ -2,6 +2,7 @@
 
 import type { WorkOrderCoverage } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 
@@ -12,7 +13,8 @@ const STATE_LABELS = { reserved: "applied", consumed: "used on the bill", releas
  * much of each this term has used, and applying, declining or restoring it. Office only.
  */
 export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; onChange?: () => void }) {
-  const { data: c, reload } = useLoad<WorkOrderCoverage>(`/work-orders/${workOrderId}/coverage`);
+  const load = useLoad<WorkOrderCoverage>(`/work-orders/${workOrderId}/coverage`);
+  const { data: c, reload } = load;
   const [asking, setAsking] = useState<"decline" | "restore" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -32,13 +34,14 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
     void act(path, { reason: formValues(e.currentTarget).reason });
   };
 
-  if (!c) return null;
+  if (!c) return <LoadState load={load} label="plan coverage" />;
   const reserved = c.rules.some((r) => r.use?.state === "reserved");
   const consumed = c.rules.some((r) => r.use?.state === "consumed");
   const invoiced = c.liveInvoiceId !== null;
   return (
     <section className="stack" data-testid="work-coverage">
       <h2>Plan coverage</h2>
+      <LoadState load={load} label="plan coverage" />
       {c.contract && (
         <p>
           <strong>{c.contract.planName}</strong>

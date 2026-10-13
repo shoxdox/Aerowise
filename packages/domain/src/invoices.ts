@@ -342,6 +342,7 @@ export const publicInvoice = z.object({
   canPayOnline: z.boolean(),
   /** Where the customer verifies their bank account so a bank payment can go ahead (Stripe's page). */
   bankVerificationUrl: z.string().nullable(),
+  latestPaymentFailed: z.boolean().default(false),
   pdfReady: z.boolean(),
   /** The built-in test provider is running: checkout is simulated and no money moves. */
   testMode: z.boolean(),

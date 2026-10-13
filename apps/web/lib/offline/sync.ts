@@ -120,6 +120,7 @@ function payload(insp: LocalInspection, photosQueued: boolean) {
     accessIssue: insp.accessIssue,
     values: insp.values,
     issues: insp.issues,
+    removedPhotoClientIds: insp.removedPhotoClientIds,
   };
 }
 
@@ -176,6 +177,7 @@ function workPayload(rec: LocalWork, othersQueued: boolean) {
     completionGps: rec.completionGps,
     ...(rec.locationStatus ? { locationStatus: rec.locationStatus } : {}),
     values: rec.values,
+    removedPhotoClientIds: rec.removedPhotoClientIds,
     summary: rec.summary,
     finalVisit: rec.finalVisit,
     // SW-6: only when recorded, so a record from before pumping sends exactly what it did.

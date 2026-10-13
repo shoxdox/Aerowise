@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError } from "@/lib/api";
 import { useFeature } from "@/lib/features";
@@ -79,7 +80,8 @@ export default function PlanPage() {
   const { id } = useParams<{ id: string }>();
   const me = useSession();
   const builder = useFeature("plan_builder") && canEdit(me);
-  const { data: plan, error, reload } = useLoad<PlanDetail>(`/plans/${id}`);
+  const recordLoad = useLoad<PlanDetail>(`/plans/${id}`);
+  const { data: plan, error, reload } = recordLoad;
   const items = useLoad<{ items: ServiceItem[] }>(builder ? "/service-items?active=all" : null);
   const intakeForms = useLoad<{ items: FormTemplate[] }>(builder ? "/form-templates?purpose=intake" : null);
   // Pumping and maintenance cycles (SW-9): only sent when service cycles are on, so a save
@@ -204,7 +206,7 @@ export default function PlanPage() {
     }
   }
 
-  if (error) return <p className="error">{error}</p>;
+  if (error && !plan) return <LoadState load={recordLoad} label="record" />;
   if (!plan || !current) return <p className="muted">Loading…</p>;
   const setOption = (i: number, patch: Partial<OptionRow>) => setOptions((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const setCycle = (i: number, patch: Partial<CycleRow>) => setCycles((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -212,6 +214,7 @@ export default function PlanPage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/plans">← Plans</Link>
       </p>

@@ -350,3 +350,34 @@ describe("renewal links are signed, not stored", () => {
     expect((await client(ctx.app).get(`/renew/${"b".repeat(32)}`)).statusCode).toBe(404);
   });
 });
+
+
+describe("renewal payment confirmation on the original link", () => {
+  it("keeps actual bank pending and verification visible at zero payable balance, then identifies terminal failure", async () => {
+    const t = await renewalTenant(ctx);
+    const r = await startRenewal(t);
+    expect((await anon().post(`/renew/${r.token}/sign`, signBody(1))).statusCode).toBe(200);
+    const url = new URL((await anon().post(`/renew/${r.token}/checkout`, {})).json().url);
+    const invoiceToken = url.pathname.split("/")[2]!;
+    const step = (outcome: string) => anon().post(`/pay/${invoiceToken}/test-checkout`, { sessionId: url.searchParams.get("session"), outcome });
+    expect((await step("ach_pending")).statusCode).toBe(200);
+    const pending = (await anon().get(`/renew/${r.token}`)).json();
+    expect(pending).toMatchObject({ pay: null, paymentConfirmation: { pendingCents: 30000, paymentStatus: "processing", bankVerificationRequired: false, latestPaymentFailed: false } });
+    const record = await ctx.db.selectFrom("payments").select("id").where("organizationId", "=", t.org.id).where("status", "=", "pending").executeTakeFirstOrThrow();
+    await ctx.db.updateTable("payments").set({ bankVerificationUrl: "https://payments.example.test/private-verification" }).where("id", "=", record.id).execute();
+    expect((await anon().get(`/renew/${r.token}`)).json().paymentConfirmation.bankVerificationRequired).toBe(true);
+    expect((await step("ach_fails")).statusCode).toBe(200);
+    expect((await anon().get(`/renew/${r.token}`)).json()).toMatchObject({ paymentConfirmation: { pendingCents: 0, latestPaymentFailed: true } });
+    expect((await anon().get(`/pay/${invoiceToken}`)).json()).toMatchObject({ pendingCents: 0, latestPaymentFailed: true });
+    const retry = await anon().post(`/renew/${r.token}/checkout`, {});
+    expect(retry.statusCode).toBe(200);
+    // A fresh retry is not failed just because its predecessor was; its webhook has not arrived.
+    expect((await anon().get(`/pay/${invoiceToken}`)).json().latestPaymentFailed).toBe(false);
+    expect((await anon().get(`/renew/${r.token}`)).json().paymentConfirmation.latestPaymentFailed).toBe(false);
+    // Missing expiry webhooks leave status=open behind. Expiry time still ends that attempt.
+    await ctx.db.updateTable("checkoutSessions").set({ expiresAt: new Date(ctx.now.getTime() - 1) })
+      .where("organizationId", "=", t.org.id).where("status", "=", "open").execute();
+    expect((await anon().get(`/pay/${invoiceToken}`)).json().latestPaymentFailed).toBe(true);
+    expect((await anon().get(`/renew/${r.token}`)).json().paymentConfirmation.latestPaymentFailed).toBe(true);
+  });
+});

@@ -15,7 +15,7 @@ function EmailStatus({ r }: { r: DemoRequest }) {
         Recorded in test outbox
       </span>
     );
-  if (r.notifiedAt && r.notifyDelivery === "provider") return <span className="badge ok">Emailed</span>;
+  if (r.notifiedAt && r.notifyDelivery === "provider") return <span className="badge ok" title="The provider accepted the alert. Receipt or reading by Justin is not established.">Accepted by email provider</span>;
   // Sent before Aerowise recorded where alerts go: it may have stayed in the outbox.
   if (r.notifiedAt)
     return (
@@ -45,7 +45,9 @@ export default function DemoRequestsPage() {
   return (
     <div className="stack">
       <h1>Demo requests</h1>
-      {(error || actionError) && <p className="error">{error ?? actionError}</p>}
+      {(error || actionError) && <p className="error" role="alert">{error ?? actionError}</p>}
+      {error && <button className="secondary" onClick={() => void reload()}>Retry requests</button>}
+      {!data && !error && <p role="status">Loading requests…</p>}
       {data && data.items.length === 0 && <p className="muted">No demo requests yet.</p>}
       {data &&
         data.items.map((r) => (
@@ -67,7 +69,7 @@ export default function DemoRequestsPage() {
                 <a href={`mailto:${r.email}`}>{r.email}</a>
               </dd>
               <dt>Phone</dt>
-              <dd>{r.phone ?? "—"}</dd>
+              <dd>{r.phone ? <a href={`tel:${r.phone.replace(/[^+\d]/g, "")}`}>{r.phone}</a> : "—"}</dd>
               <dt>Counties</dt>
               <dd>{r.counties ?? "—"}</dd>
             </dl>

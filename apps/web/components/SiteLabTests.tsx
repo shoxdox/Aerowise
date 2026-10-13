@@ -2,6 +2,7 @@
 
 import { LAB_ANALYTE_LABELS, type LabTest, type LabTestStatus } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day } from "@/lib/format";
@@ -19,11 +20,13 @@ const STATE_BADGE: Record<LabTestStatus["state"], [string, string]> = {
  * and nothing is on file.
  */
 export function SiteLabTests({ siteId, editable }: { siteId: string; editable: boolean }) {
-  const { data, reload } = useLoad<{ requirement: LabTestStatus | null; items: LabTest[] }>(`/sites/${siteId}/lab-tests`);
+  const recordLoad = useLoad<{ requirement: LabTestStatus | null; items: LabTest[] }>(`/sites/${siteId}/lab-tests`);
+  const { data, reload } = recordLoad;
   const [form, setForm] = useState<{ replaces: LabTest | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!data || (!data.requirement && data.items.length === 0)) return null;
+  if (!data) return <LoadState load={recordLoad} label="lab tests" />;
+  if (!data.requirement && data.items.length === 0) return null;
   const req = data.requirement;
   const analytes = req?.analytes ?? (["bod", "tss"] as const);
 
@@ -52,6 +55,7 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
 
   return (
     <section className="stack">
+      <LoadState load={recordLoad} label="lab tests" />
       <div className="row">
         <h2>Lab tests</h2>
         {req && <span className={STATE_BADGE[req.state][0]}>{STATE_BADGE[req.state][1]}</span>}

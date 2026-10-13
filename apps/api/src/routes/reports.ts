@@ -74,8 +74,8 @@ export const reportRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         tags: ["reports"],
         summary: "The site's compliance history, newest first",
         params,
-        querystring: z.object({ limit: z.coerce.number().int().min(1).max(200).default(100) }),
-        response: { 200: z.object({ items: z.array(complianceEvent) }) },
+        querystring: z.object({ limit: z.coerce.number().int().min(1).max(200).default(50), offset: z.coerce.number().int().min(0).default(0) }),
+        response: { 200: z.object({ items: z.array(complianceEvent), total: z.number().int() }) },
       },
     },
     async (req) => {
@@ -92,6 +92,7 @@ export const reportRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         .orderBy("e.occurredAt", "desc")
         .orderBy("e.id")
         .limit(req.query.limit)
+        .offset(req.query.offset)
         .execute();
       const items: ComplianceEvent[] = rows.map((r) => ({
         id: r.id,
@@ -103,7 +104,8 @@ export const reportRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         filingId: r.filingId,
         report: r.reportId && r.audience ? { id: r.reportId, audience: r.audience, url: reportUrl(organizationId, r.reportId) } : null,
       }));
-      return { items };
+      const count = await db.selectFrom("complianceEvents").select((eb) => eb.fn.countAll<string>().as("n")).where("organizationId", "=", organizationId).where("siteId", "=", site.id).executeTakeFirstOrThrow();
+      return { items, total: Number(count.n) };
     },
   );
 };

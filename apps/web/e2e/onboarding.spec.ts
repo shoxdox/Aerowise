@@ -37,8 +37,11 @@ test("a new company is created in /admin, its owner joins and invites a technici
   await owner.waitForURL("**/inbox");
   await owner.getByLabel("I have read and accept them").check();
   await owner.getByRole("button", { name: "Accept and continue" }).click();
-  await expect(owner.getByRole("heading", { name: "Get set up" })).toBeVisible();
+  await expect(owner.getByRole("heading", { name: "Start operating" })).toBeVisible();
+  await expect(owner.getByTestId("onboarding-stripe")).toContainText("optional");
+  await expect(owner.getByTestId("onboarding-reviewed_report")).toContainText("responsible maintenance provider");
   await expect(owner.getByTestId("onboarding-technicians")).toContainText("Invite a technician");
+  await owner.screenshot({ path: test.info().outputPath("new-synthetic-provider-onboarding.png"), fullPage: true });
 
   // The owner invites a technician, who joins on their phone and lands in the tech app.
   await owner.goto("/settings/users");

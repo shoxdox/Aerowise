@@ -1,36 +1,91 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { api, ApiError, formValues } from "@/lib/api";
-import { DEMO } from "./copy";
+import { demoRequestReceipt, type DemoRequestReceipt } from "@aerowise/domain";
+import { useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { ApiError, formValues } from "@/lib/api";
+import { CONTACT, DEMO } from "./copy";
 
-/** The public "ask for a demo" form. Lands in /admin and emails Aerowise. */
+const ATTEMPT_STORAGE = "aerowise.pilotRequestAttempt.v1";
+type RememberedAttempt = { key: string; fingerprint: string };
+
+async function fingerprintOf(body: Record<string, string | undefined>): Promise<string | null> {
+  try {
+    const normalized = Object.fromEntries(Object.keys(body).sort().filter((key) => body[key] !== undefined).map((key) => [key, key === "email" ? body[key]!.toLowerCase() : body[key]]));
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(normalized)));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    // If hashing is unavailable, the in-memory attempt still protects repeated taps/retries.
+    return null;
+  }
+}
+
+function rememberedAttempt(): RememberedAttempt | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(ATTEMPT_STORAGE) ?? "null") as Partial<RememberedAttempt> | null;
+    return value && typeof value.key === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.key) && typeof value.fingerprint === "string" && /^[0-9a-f]{64}$/.test(value.fingerprint) ? value as RememberedAttempt : null;
+  } catch { return null; }
+}
+
+function rememberAttempt(value: RememberedAttempt | null) {
+  try {
+    if (value) sessionStorage.setItem(ATTEMPT_STORAGE, JSON.stringify(value));
+    else sessionStorage.removeItem(ATTEMPT_STORAGE);
+  } catch { /* Storage-blocked browsers retain only the current page's in-memory attempt. */ }
+}
+
+/** Saved in /admin. A tab-session key/fingerprint survives lost confirmations without storing contact fields. */
 export function DemoRequestForm() {
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<DemoRequestReceipt | null>(null);
+  const active = useRef(false);
+  const attempt = useRef<{ key: string; body: string } | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (active.current) return;
+    active.current = true;
+    const body = formValues(event.currentTarget);
+    const serialized = JSON.stringify(body);
     setState("sending");
     setError(null);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await api("/public/demo-requests", { method: "POST", body: formValues(event.currentTarget) });
+      const fingerprint = await fingerprintOf(body);
+      const remembered = fingerprint ? rememberedAttempt() : null;
+      if (attempt.current?.body !== serialized) attempt.current = { key: remembered?.fingerprint === fingerprint ? remembered.key : crypto.randomUUID(), body: serialized };
+      rememberAttempt(fingerprint ? { key: attempt.current!.key, fingerprint } : null);
+      timer = setTimeout(() => controller.abort(), 15_000);
+      const response = await fetch("/api/public/demo-requests", { method: "POST", credentials: "omit", signal: controller.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, submissionKey: attempt.current!.key }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new ApiError(response.status, result.error ?? "request_failed", result.message ?? DEMO.failed);
+      setReceipt(demoRequestReceipt.parse(result));
       setState("sent");
     } catch (err) {
-      setError(err instanceof ApiError ? (err.status === 429 ? DEMO.tooMany : err.message) : DEMO.failed);
+      setError(err instanceof ApiError ? (err.status === 429 ? DEMO.tooMany : err.status >= 500 ? DEMO.failed : err.message) : DEMO.failed);
       setState("idle");
+    } finally {
+      clearTimeout(timer);
+      active.current = false;
     }
   }
 
   if (state === "sent") {
     return (
-      <p className="card" role="status">
-        {DEMO.thanks}
-      </p>
+      <div className="card stack" role="status">
+        <strong>{DEMO.thanks}</strong>
+        {receipt?.duplicate && <p>This retry reused your saved request; no duplicate request was created.</p>}
+        <p>{receipt?.notification === "simulated" ? "The alert is recorded in a simulated test outbox. No notification email reached Justin." : receipt?.notification === "provider_accepted" ? "A mail provider accepted the notification; that is not a guarantee Justin has read or received it." : receipt?.notification === "failed" ? "The notification failed. Your saved request is still visible to the administrator." : "Notification delivery has not been confirmed."}</p>
+        <a href={`mailto:${CONTACT.email}`}>Email Justin directly: {CONTACT.email}</a>
+        <a href={CONTACT.phoneHref}>Call {CONTACT.phone}</a>
+        <button type="button" className="secondary" onClick={() => { rememberAttempt(null); attempt.current = null; setReceipt(null); setError(null); setState("idle"); }}>Start another request</button>
+      </div>
     );
   }
   return (
-    <form className="card stack" onSubmit={onSubmit} aria-label="Ask for a demo">
+    <form className="card stack" onSubmit={onSubmit} aria-label="Save a pilot request">
       <label>
         Your name
         <input name="name" autoComplete="name" required maxLength={120} />
@@ -56,6 +111,7 @@ export function DemoRequestForm() {
         <textarea name="message" rows={3} maxLength={2000} />
       </label>
       {/* Spam trap: hidden from people and screen readers; bots that fill it are dropped. */}
+      <p className="muted small">This saves your contact details and message for private admin follow-up. <Link href="/privacy">Read the privacy policy</Link>. Do not include customer records, permits or sensitive information.</p>
       <div className="trap" aria-hidden="true">
         <label>
           Website
@@ -68,7 +124,7 @@ export function DemoRequestForm() {
         </p>
       )}
       <button type="submit" disabled={state === "sending"}>
-        {state === "sending" ? "Sending…" : DEMO.button}
+        {state === "sending" ? "Saving request…" : DEMO.button}
       </button>
     </form>
   );

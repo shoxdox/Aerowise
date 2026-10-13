@@ -30,6 +30,11 @@ describe("prospect demos", () => {
     expect(new Date(demo.endsAt).getTime() - ctx.now.getTime()).toBe(7 * 86_400_000);
     expect(link.url).toMatch(/\/demo\/enter#[\w-]{40,}$/);
 
+    const visitorCookie = cookieOf(await enter(link.url.split("#")[1]));
+    expect((await ctx.app.inject({ method: "GET", url: "/app-info", headers: { cookie: visitorCookie } })).json()).toMatchObject({ demoVisitor: true });
+    expect((await ctx.app.inject({ method: "GET", url: "/demo/journey", headers: { cookie: visitorCookie } })).statusCode).toBe(200);
+    expect((await ctx.app.inject({ method: "POST", url: "/demo/switch", payload: { role: "technician" }, headers: { cookie: visitorCookie } })).statusCode).toBe(200);
+
     const org = await ctx.db.selectFrom("organizations").select(["demo", "demoProspect"]).where("id", "=", demo.id).executeTakeFirstOrThrow();
     expect(org).toEqual({ demo: true, demoProspect: "Lone Star Aerobic" });
     const people = await ctx.db.selectFrom("memberships").innerJoin("users", "users.id", "memberships.userId").select(["users.email", "users.passwordHash"]).where("organizationId", "=", demo.id).execute();

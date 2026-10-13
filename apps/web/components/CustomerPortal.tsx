@@ -2,14 +2,19 @@
 
 import { SERVICE_REQUEST_LABELS, type PortalAccess, type ServiceRequest } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { Pagination } from "@/components/Pagination";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { when } from "@/lib/format";
 
 /** The customer's portal access and what they have asked for from it. */
 export function CustomerPortal({ customerId, editable }: { customerId: string; editable: boolean }) {
-  const { data: access, reload } = useLoad<PortalAccess>(`/customers/${customerId}/portal`);
-  const { data: requests, reload: reloadRequests } = useLoad<{ items: ServiceRequest[] }>(`/service-requests?customerId=${customerId}`);
+  const recordLoad = useLoad<PortalAccess>(`/customers/${customerId}/portal`);
+  const { data: access, reload } = recordLoad;
+  const [requestOffset, setRequestOffset] = useState(0);
+  const requestLoad = useLoad<{ items: ServiceRequest[]; total: number }>(`/service-requests?customerId=${customerId}&limit=50&offset=${requestOffset}`);
+  const { data: requests, reload: reloadRequests } = requestLoad;
   const [url, setUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +69,9 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
 
   return (
     <section className="stack">
+      <LoadState load={recordLoad} label="customer portal access" />
       <h2>Customer portal</h2>
+      <LoadState load={requestLoad} label="customer service requests" />
       <div className="card stack">
         {access && (
           <p className="muted small">
@@ -97,9 +104,10 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
         )}
       </div>
 
-      {requests && requests.items.length > 0 && (
+      {requests && (requests.total > 0 || requestOffset > 0) && (
         <div className="card stack">
           <h3>Service requests</h3>
+          <Pagination total={requests.total} offset={requestOffset} onChange={setRequestOffset} />
           {requests.items.map((r) => (
             <div key={r.id} className="stack">
               <div className="row">

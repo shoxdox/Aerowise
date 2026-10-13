@@ -3,28 +3,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
-/** Loads an API resource and exposes a reload function for after edits. */
+/** Results belong to their query. A changed filter never relabels the last query's rows. */
 export function useLoad<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Only the latest request may set state, so a slow answer for an earlier path (or an
-  // earlier reload) never overwrites a newer one.
+  const [state, setState] = useState<{ path: string | null; data: T | null; error: string | null; errorStatus: number | null; pending: boolean; updatedAt: number | null }>({ path: null, data: null, error: null, errorStatus: null, pending: false, updatedAt: null });
   const latest = useRef(0);
+  const active = useRef<AbortController | null>(null);
   const reload = useCallback(async () => {
-    if (!path) return;
     const request = ++latest.current;
+    active.current?.abort();
+    if (!path) return;
+    const controller = new AbortController();
+    active.current = controller;
+    setState((s) => ({ path, data: s.path === path ? s.data : null, error: null, errorStatus: null, pending: true, updatedAt: s.path === path ? s.updatedAt : null }));
+    const timeout = window.setTimeout(() => controller.abort("timeout"), 20_000);
     try {
-      const result = await api<T>(path);
-      if (request !== latest.current) return;
-      setData(result);
-      setError(null);
+      const data = await api<T>(path, { signal: controller.signal });
+      if (request === latest.current) setState({ path, data, error: null, errorStatus: null, pending: false, updatedAt: Date.now() });
     } catch (err) {
       if (request !== latest.current) return;
-      setError(err instanceof ApiError ? err.message : "Could not load");
+      const error = controller.signal.aborted ? "This request took too long. Check your connection and retry." : err instanceof ApiError ? err.message : "Could not load. Check your connection and retry.";
+      setState((s) => ({ ...s, path, error, errorStatus: err instanceof ApiError ? err.status : null, pending: false }));
+    } finally {
+      window.clearTimeout(timeout);
     }
   }, [path]);
   useEffect(() => {
     void reload();
+    return () => { ++latest.current; active.current?.abort(); };
   }, [reload]);
-  return { data, error, reload };
+  const current = state.path === path;
+  const data = current ? state.data : null;
+  return { data, error: current ? state.error : null, errorStatus: current ? state.errorStatus : null, reload, loading: Boolean(path) && (!current || (state.pending && !data)), refreshing: current && state.pending && Boolean(data), stale: current && Boolean(state.error && data), updatedAt: current ? state.updatedAt : null };
 }

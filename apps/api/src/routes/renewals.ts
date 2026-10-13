@@ -1,3 +1,4 @@
+import { latestPaymentFailed } from "../lib/public-payment-state.ts";
 import type { Database, DB } from "@aerowise/db";
 import {
   addDays,
@@ -325,7 +326,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       schema: {
         tags: ["renewals"],
         summary: "The renewal pipeline, by status, soonest-ending contract first",
-        querystring: z.object({ status: z.enum(RENEWAL_STATUSES).optional(), limit: z.coerce.number().int().min(1).max(500).default(200) }),
+        querystring: z.object({ status: z.enum(RENEWAL_STATUSES).optional(), statuses: z.string().transform((v) => v.split(",")).pipe(z.array(z.enum(RENEWAL_STATUSES))).optional(), limit: z.coerce.number().int().min(1).max(500).default(50), offset: z.coerce.number().int().min(0).default(0) }),
         response: { 200: renewalList },
       },
     },
@@ -333,10 +334,12 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const { organizationId } = req.requireAuth();
       let q = listBase(organizationId);
       if (req.query.status) q = q.where("r.status", "=", req.query.status);
+      if (req.query.statuses?.length) q = q.where("r.status", "in", req.query.statuses);
       const today = await organizationToday(db, organizationId, now());
       const org = await db.selectFrom("organizations").select("renewalWindowDays").where("id", "=", organizationId).executeTakeFirstOrThrow();
-      const [rows, counts, notStarted] = await Promise.all([
-        q.orderBy("c.endOn").orderBy("r.id").limit(req.query.limit).execute(),
+      const [rows, total, counts, notStarted] = await Promise.all([
+        q.orderBy("c.endOn").orderBy("r.id").limit(req.query.limit).offset(req.query.offset).execute(),
+        q.clearSelect().select(sql<number>`count(*)::int`.as("n")).executeTakeFirstOrThrow(),
         db.selectFrom("renewals").select(["status", sql<number>`count(*)::int`.as("n")]).where("organizationId", "=", organizationId).groupBy("status").execute(),
         db
           .selectFrom("contracts as c")
@@ -350,7 +353,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .where((eb) => eb.not(eb.exists(eb.selectFrom("contracts as n").select("n.id").whereRef("n.previousContractId", "=", "c.id"))))
           .executeTakeFirstOrThrow(),
       ]);
-      return { items: rows.map(toListItem), counts: Object.fromEntries(counts.map((c) => [c.status, c.n])), notStarted: notStarted.n };
+      return { total: total.n, items: rows.map(toListItem), counts: Object.fromEntries(counts.map((c) => [c.status, c.n])), notStarted: notStarted.n };
     },
   );
 
@@ -654,9 +657,13 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const options = signedContent ? (signedContent.options ?? []) : offer ? offer.options : parsePlanOptions(r.selectedOptions);
       const coverage = signedContent ? (signedContent.coverage ?? []) : offer ? await coverageLines(db, organizationId, offer.coverage) : [];
       let pay: PublicRenewal["pay"] = null;
+      let paymentConfirmation: PublicRenewal["paymentConfirmation"] = null;
       if (inv) {
         const payable = await openInvoiceById(db, inv.id);
-        if (amountDue(payable) > 0) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl: payUrlFor(appUrl, inv.id) };
+        const verification = await db.selectFrom("payments").select("id").where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).where("status", "=", "pending").where("bankVerificationUrl", "is not", null).executeTakeFirst();
+        const invoiceUrl = payUrlFor(appUrl, inv.id);
+        paymentConfirmation = { paymentStatus: payable.paymentStatus, latestPaymentFailed: await latestPaymentFailed(db, organizationId, inv.id, payable.pendingCents, now()), pendingCents: payable.pendingCents, bankVerificationRequired: Boolean(verification), invoiceUrl };
+        if (amountDue(payable) > 0) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl };
       }
       return {
         status: r.status,
@@ -683,6 +690,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         payment: org.renewalPayment,
         signed: doc ? { signerName: doc.signerName, signedAt: doc.signedAt.toISOString(), pdfReady: !!doc.pdfStorageKey } : null,
         pay,
+        paymentConfirmation,
         newTermStartsOn: r.status === "activated" ? r.startOn : null,
         testMode: !!provider && (await providerFor(provider, r.organizationId)).kind === "test",
       };

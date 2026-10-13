@@ -164,7 +164,7 @@ export const currentPosition = async (timeoutMs = 8000): Promise<Gps | null> => 
 const UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
 /** Shrinks a camera photo to at most 2000px as JPEG; keeps the original if the browser cannot decode it. */
-export async function preparePhoto(file: File): Promise<{ blob: Blob; contentType: string }> {
+export async function preparePhoto(file: File): Promise<{ blob: Blob; contentType: string; preview?: string }> {
   try {
     const bitmap = await createImageBitmap(file);
     const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
@@ -173,7 +173,16 @@ export async function preparePhoto(file: File): Promise<{ blob: Blob; contentTyp
     canvas.height = Math.round(bitmap.height * scale);
     canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-    if (blob) return { blob, contentType: "image/jpeg" };
+    if (blob) {
+      const preview = document.createElement("canvas");
+      const thumbScale = Math.min(1, 320 / Math.max(bitmap.width, bitmap.height));
+      preview.width = Math.max(1, Math.round(bitmap.width * thumbScale));
+      preview.height = Math.max(1, Math.round(bitmap.height * thumbScale));
+      preview.getContext("2d")!.drawImage(bitmap, 0, 0, preview.width, preview.height);
+      bitmap.close();
+      return { blob, contentType: "image/jpeg", preview: preview.toDataURL("image/jpeg", 0.65) };
+    }
+    bitmap.close();
   } catch {
     // Fall through to the original file.
   }

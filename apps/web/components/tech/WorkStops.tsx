@@ -1,4 +1,5 @@
 import { CONFLICT_REASON_LABELS, type WorkStop } from "@aerowise/domain";
+import { day } from "@/lib/format";
 import type { LocalWork } from "@/lib/offline/work";
 
 // Work visits on the technician's day (SW-2), listed under the inspection route.
@@ -31,6 +32,7 @@ export function WorkStopList({
   failedRecords,
   onOpen,
   numbers,
+  routeDate,
 }: {
   stops: WorkStop[];
   records: Map<string, LocalWork>;
@@ -38,6 +40,7 @@ export function WorkStopList({
   onOpen: (jobId: string) => void;
   /** Each visit's number in the whole day, as on the map; "W" when it is not on today's route. */
   numbers?: Map<string, number>;
+  routeDate?: string;
 }) {
   const listed = new Set(stops.map((s) => s.jobId));
   const offRoute = [...records.values()].filter((r) => !listed.has(r.jobId));
@@ -45,6 +48,7 @@ export function WorkStopList({
   return (
     <section className="stack" data-testid="work-stops">
       <h2>Work visits</h2>
+      {routeDate && stops.some(s => s.scheduledDate !== routeDate) && <p className="card warn" role="status">Some downloaded work visits have a different date from the route above. Check each visit’s date and refresh with signal before traveling.</p>}
       <ol className="stops">
         {stops.map((s) => {
           const rec = records.get(s.jobId);
@@ -61,7 +65,7 @@ export function WorkStopList({
                     {s.customerName} · {s.address}
                   </span>
                   <span className="muted small">
-                    {s.workTypeName} · visit {s.visitNumber}
+                    {s.workTypeName} · visit {s.visitNumber} · {day(s.scheduledDate)}
                   </span>
                 </span>
                 <span className={`badge ${status.tone}`} data-testid="work-stop-status">

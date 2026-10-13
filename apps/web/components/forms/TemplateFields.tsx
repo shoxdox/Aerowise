@@ -1,13 +1,15 @@
 "use client";
 
+import { useId } from "react";
+import { sectionId } from "@/components/tech/FormStatus";
 import type { InspectionValue, InspectionValues, TemplateField, ValidationProblem } from "@aerowise/domain";
 
 // Renders a template's fields, grouped into its sections, for any form built on a template: the
 // technician's inspection today, and work and intake forms (SW-F) on the phone and the web.
 
-function Choice({ label, options, value, onChange }: { label: string; options: { value: string | boolean; label: string }[]; value: InspectionValue | undefined; onChange: (v: InspectionValue) => void }) {
+function Choice({ label, options, value, onChange, errorId }: { errorId?: string; label: string; options: { value: string | boolean; label: string }[]; value: InspectionValue | undefined; onChange: (v: InspectionValue) => void }) {
   return (
-    <div className="choice" role="group" aria-label={label}>
+    <div className="choice" role="group" aria-label={label} aria-invalid={!!errorId} aria-describedby={errorId}>
       {options.map((o) => (
         <button
           key={String(o.value)}
@@ -24,6 +26,8 @@ function Choice({ label, options, value, onChange }: { label: string; options: {
 }
 
 export function TemplateFieldInput({ field, value, problem, onChange }: { field: TemplateField; value: InspectionValue | undefined; problem?: ValidationProblem; onChange: (v: InspectionValue) => void }) {
+  const id = useId();
+  const errorId = problem ? `${id}-error` : undefined;
   const title = (
     <span className="field-title">
       {field.label}
@@ -34,18 +38,20 @@ export function TemplateFieldInput({ field, value, problem, onChange }: { field:
   let control;
   switch (field.type) {
     case "pass_fail":
-      control = <Choice label={field.label} value={value} onChange={onChange} options={[{ value: "pass", label: "Pass" }, { value: "fail", label: "Fail" }]} />;
+      control = <Choice errorId={errorId} label={field.label} value={value} onChange={onChange} options={[{ value: "pass", label: "Pass" }, { value: "fail", label: "Fail" }]} />;
       break;
     case "boolean":
-      control = <Choice label={field.label} value={value} onChange={onChange} options={[{ value: true, label: "Yes" }, { value: false, label: "No" }]} />;
+      control = <Choice errorId={errorId} label={field.label} value={value} onChange={onChange} options={[{ value: true, label: "Yes" }, { value: false, label: "No" }]} />;
       break;
     case "select":
-      control = <Choice label={field.label} value={value} onChange={onChange} options={field.options} />;
+      control = <Choice errorId={errorId} label={field.label} value={value} onChange={onChange} options={field.options} />;
       break;
     case "number":
       control = (
         <input
           aria-label={field.label}
+          aria-invalid={!!problem}
+          aria-describedby={errorId}
           type="number"
           inputMode="decimal"
           step="any"
@@ -57,7 +63,7 @@ export function TemplateFieldInput({ field, value, problem, onChange }: { field:
       );
       break;
     case "text":
-      control = <textarea aria-label={field.label} rows={3} maxLength={field.maxLength} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
+      control = <textarea aria-invalid={!!problem} aria-describedby={errorId} aria-label={field.label} rows={3} maxLength={field.maxLength} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
       break;
   }
   return (
@@ -65,7 +71,7 @@ export function TemplateFieldInput({ field, value, problem, onChange }: { field:
       {title}
       {control}
       {field.help && <span className="muted small">{field.help}</span>}
-      {problem && <span className="error small">{problem.message}</span>}
+      {problem && <span id={errorId} className="error small">{problem.message}</span>}
     </div>
   );
 }
@@ -84,7 +90,7 @@ export function TemplateSections({
 }) {
   const sections = [...new Set(fields.map((f) => f.section))];
   return sections.map((section) => (
-    <section key={section} className="card stack">
+    <section key={section} id={sectionId(section)} tabIndex={-1} className="card stack">
       <h2>{section}</h2>
       {fields
         .filter((f) => f.section === section)

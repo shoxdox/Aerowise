@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { FilingStatusBadge } from "@/components/FilingBadges";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, when } from "@/lib/format";
@@ -47,7 +48,8 @@ interface CredentialRow {
  * filed with the authority, acknowledged by it. One never stands in for another.
  */
 export function ContractFilingStatus({ contractId, editable }: { contractId: string; editable: boolean }) {
-  const { data, reload } = useLoad<Status>(`/contracts/${contractId}/filing-status`);
+  const load = useLoad<Status>(`/contracts/${contractId}/filing-status`);
+  const { data, reload } = load;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -114,11 +116,11 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
     void save("discontinuation-notice", "POST", { sentOn: v.sentOn, note: v.note });
   }
 
-  if (!data) return null;
+  if (!data) return <LoadState load={load} label="contract paperwork and filing status" />;
   const emailed = data.customerCopy.find((d) => d.status === "accepted");
   const a = data.authority;
   return (
-    <dl className="details small">
+    <div className="stack"><LoadState load={load} label="contract paperwork and filing status" /><dl className="details small">
       <dt>Signed</dt>
       <dd>
         {data.signedAt ? (
@@ -201,7 +203,7 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
         )}
       </dd>
       <dt>Acknowledged</dt>
-      <dd>{a?.confirmedAt ? when(a.confirmedAt) : <span className="muted">Not yet</span>}</dd>
+      <dd>{a?.confirmedAt ? when(a.confirmedAt) : a ? <Link href={`/filings/${a.filingId}`}>No acknowledgment recorded. Review the authority’s process and submission evidence.</Link> : <span className="muted">No authority filing recorded</span>}</dd>
       {a && (
         <>
           <dt>Deadline</dt>
@@ -283,6 +285,6 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
           </dd>
         </>
       )}
-    </dl>
+    </dl></div>
   );
 }

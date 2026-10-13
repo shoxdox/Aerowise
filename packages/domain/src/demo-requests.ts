@@ -10,6 +10,8 @@ const optionalText = (max: number) =>
     .transform((v) => (v ? v : undefined));
 
 export const demoRequestInput = z.object({
+  /** One form attempt, reused for retries after an uncertain response. */
+  submissionKey: z.uuid().optional(),
   name: text(120).min(1, "Enter your name"),
   email: z.email("Enter a valid email address").max(320).transform((e) => e.trim().toLowerCase()),
   company: text(160).min(1, "Enter your company's name"),
@@ -23,6 +25,15 @@ export const demoRequestInput = z.object({
   website: z.string().max(500).optional(),
 });
 export type DemoRequestInput = z.input<typeof demoRequestInput>;
+
+/** Saving a request does not establish delivery to Justin. No recipient/error details are public. */
+export const demoRequestReceipt = z.object({
+  ok: z.literal(true),
+  saved: z.literal(true),
+  duplicate: z.boolean(),
+  notification: z.enum(["provider_accepted", "simulated", "failed", "pending"]),
+});
+export type DemoRequestReceipt = z.infer<typeof demoRequestReceipt>;
 
 /**
  * Where an accepted email went: kept in the local test outbox (a stand-in; nobody received

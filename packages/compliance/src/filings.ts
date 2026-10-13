@@ -25,7 +25,7 @@ import { adapterFor, adapterVersion, type CanonicalInspection, type Jurisdiction
 import type { EmailTransport } from "./email.ts";
 import { providerSignatureRequired, reportSignature } from "./signatures.ts";
 import { contractBasisOf, contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
-import { amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
+import { ReportCorrectionError, amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
 import { siteMonitoredOn } from "./monitoring.ts";
 import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
 
@@ -900,6 +900,7 @@ export async function correctFiling(
 ): Promise<{ reportId: string; version: number }> {
   if (f.status !== "rejected") throw new FilingStateError("Only a rejected filing can be corrected");
   if (f.kind !== "inspection_report" || !f.inspectionId) throw new FilingStateError("Contract filings are corrected by uploading the corrected signed contract");
+  if (Object.keys(a.amendments).length === 0) throw new ReportCorrectionError("Choose at least one corrected answer. Use Resubmit unchanged when no answer needs correction.");
   const report = await writeReportVersion(ctx.db, ctx.store, {
     organizationId: f.organizationId,
     inspectionId: f.inspectionId,

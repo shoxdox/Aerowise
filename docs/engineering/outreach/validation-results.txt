@@ -1,0 +1,93 @@
+Aerowise final local validation
+Application/test source: 0151393cc9dcb67f701abd4004a654395864b29c
+All listed calls exited 0. Final source frozen throughout.
+Host: Node 22.22.3; pnpm 10.28.0; Docker 29.1.3; official Compose 5.6.0.
+Production dependency audit: 2 moderate (uuid GHSA-w5hq-g745-h8pq; csv-parse GHSA-8cw4-87c7-c6xx); 0 high/critical.
+Full cases: 1,152 passed across 128 files, 8 packages. API: 928 across 101 files. Browser: 141 passed, 15.7 minutes, no retries or skips.
+No deployment, provider activation, real data or physical-device run.
+
+aerowise-outreach-accepted-audit.log: SHA256 1219a1f58e0db7181ea8599c000603ca8b2b1ed70ca12cd7861a0912624d2ade, 45 bytes
+2 vulnerabilities found
+Severity: 2 moderate
+
+aerowise-outreach-accepted-lint.log: SHA256 de8ba81cbdff6cc6bd23fd929b14527e4d5fee192d2a83e6791de10e0d152848, 96 bytes
+eslint . exited 0
+
+aerowise-outreach-accepted-types.log: SHA256 e1fddf3c78a941c3a06d7228bf5b0bcb5393e5d1e0ad3d1a681f1b2e4ee5a5a4, 5630 bytes
+ Tasks:    16 successful, 16 total
+Cached:    14 cached, 16 total
+  Time:    26.545s 
+
+aerowise-outreach-accepted-tests.log: SHA256 59557b2964e70ce137f70f8fb7a2e055040d2175ab6ad571c53576e672b645fb, 124493 bytes
+@aerowise/observability:test:  Test Files  1 passed (1)
+@aerowise/observability:test:       Tests  5 passed (5)
+@aerowise/routing:test:  Test Files  1 passed (1)
+@aerowise/routing:test:       Tests  14 passed (14)
+@aerowise/quickbooks:test:  Test Files  1 passed (1)
+@aerowise/quickbooks:test:       Tests  14 passed (14)
+@aerowise/sms:test:  Test Files  1 passed (1)
+@aerowise/sms:test:       Tests  8 passed (8)
+@aerowise/payments:test:  Test Files  1 passed (1)
+@aerowise/payments:test:       Tests  5 passed (5)
+@aerowise/storage:test:  Test Files  1 passed (1)
+@aerowise/storage:test:       Tests  14 passed (14)
+@aerowise/domain:test:  Test Files  21 passed (21)
+@aerowise/domain:test:       Tests  164 passed (164)
+@aerowise/api:test:  Test Files  101 passed (101)
+@aerowise/api:test:       Tests  928 passed (928)
+ Tasks:    8 successful, 8 total
+  Time:    22m45.898s 
+
+aerowise-outreach-accepted-build.log: SHA256 93e797dbf2af8c517768f5a9e608e3e7b1c7308d79e8ac9e16414ff5ebffc1ca, 10913 bytes
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    18ms >>> FULL TURBO
+
+aerowise-outreach-accepted-browser.log: SHA256 95263ab2e115141ee6d53f630e368f0eb984c0519d0a95f160d24f832479b788, 2646185 bytes
+  ✓   46 e2e/outreach-office.spec.ts:80:1 › a fresh visitor follows actual case records to the report, selected visit, technician and homeowner (18.2s)
+  ✓   55 e2e/outreach-visual.spec.ts:4:1 › public and role experiences remain readable on desktop and two phone sizes (22.3s)
+  141 passed (15.7m)
+
+aerowise-outreach-accepted-docker.log: SHA256 858b41db820a147b1da68f449ebcce2f4845bfc2a66f72b6a23eb28c7a840082, 9540 bytes
+
+aerowise-outreach-accepted-compose-seed.log: SHA256 34d134504931f9c1b685bc94d1da3e427ef26d257fb67f686af2cfae06a10eab, 1051 bytes
+demo story: 38 sites assigned to real authorities, 35 contracts filed, 21 past inspections filed (7 confirmed), 2 inspections filed yesterday (one confirmed), 1 renewal sent, 2 invoices (one paid), 0 work orders, 0 estimates
+
+aerowise-outreach-accepted-compose-smoke.log: SHA256 5bb7e898489b49917e9d97949f62e80f318de59aed5372bae2738a23da7c10ee, 117 bytes
+office: inbox has 9 exceptions
+office: imported a CSV
+technician: 6 stops on today's route
+compose smoke test passed
+
+aerowise-outreach-accepted-shellcheck.log: SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, 0 bytes
+exit 0; no diagnostics
+
+aerowise-outreach-accepted-app-config.log: SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, 0 bytes
+exit 0; no diagnostics
+
+aerowise-outreach-accepted-edge-config.log: SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, 0 bytes
+exit 0; no diagnostics
+
+aerowise-outreach-accepted-caddy.log: SHA256 a246a46fd6763bf48023203cd064bda88c4b4fc0824015ce38f20dadc8cba40e, 984 bytes
+{"level":"info","ts":1791874438.9833376,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0x36efa5d15980"}
+{"level":"info","ts":1791874438.9834738,"logger":"http","msg":"servers shutting down with eternal grace period"}
+{"level":"info","ts":1791874438.9835494,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0x36efa5d15980"}
+Valid configuration
+
+aerowise-outreach-accepted-nginx.log: SHA256 1b4564e6eaa90bbe93498d9c159a1184c3f24029216cca1f01f0419660c6e235, 887 bytes
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
+/docker-entrypoint.sh: Configuration complete; ready for start up
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+aerowise-outreach-accepted-render.log: SHA256 ff74aace8907bbee805ea41411fe858240334d4daf924950f0070945ff044421, 18 bytes
+render.yaml valid
+
+aerowise-outreach-accepted-proposed-caddy.log: SHA256 72534866bdd6d46618cc33f71f792115f3b4173f6cb82306bfa75d95280e2e4f, 1174 bytes
+{"level":"info","ts":1791874439.4333217,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xf1dc33c7a80"}
+{"level":"info","ts":1791874439.433488,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0xf1dc33c7a80"}
+{"level":"info","ts":1791874439.4334977,"logger":"http","msg":"servers shutting down with eternal grace period"}
+Valid configuration
+
+Final disposable Compose DB query confirmed schema_migrations contains 0065_demo_request_idempotency.sql.
+Remote origin/main and original checkout both remained 42b38346081560f5a8b6ddd6b3eea8f1d069bc7a; original checkout clean.

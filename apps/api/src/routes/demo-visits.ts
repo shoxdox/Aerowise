@@ -4,8 +4,11 @@ import { seedDemoCompany, type Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { sql } from "kysely";
+import { createPortalLink } from "@aerowise/tasks";
 import { createSession, SESSION_COOKIE } from "../auth/sessions.ts";
 import { playDemoStory } from "../demo-story.ts";
+import { organizationToday } from "../lib/today.ts";
 import { HttpError } from "../lib/errors.ts";
 import { emptyEndedDemos } from "../lib/demo-lifecycle.ts";
 
@@ -106,8 +109,8 @@ export const demoVisitRoutes: FastifyPluginAsyncZod<{
     },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
-      // Only a visitor's own demo company: never the shared one, a prospect's or a real company.
-      const org = await db.selectFrom("organizations").select(["demoExpiresAt"]).where("id", "=", organizationId).where("demo", "=", true).executeTakeFirst();
+      // Expiring private visitor/prospect demos only; never the permanent shared company or a real company.
+      const org = await db.selectFrom("organizations").select(["demoExpiresAt", "demoProspect"]).where("id", "=", organizationId).where("demo", "=", true).executeTakeFirst();
       if (!org?.demoExpiresAt || org.demoExpiresAt <= now()) throw new HttpError(403, "not_a_visitor_demo", "Switching people is only for your own demo company");
       const userId = await memberOf(organizationId, req.body.role);
       const session = await createSession(db, organizationId, userId, org.demoExpiresAt);
@@ -116,8 +119,45 @@ export const demoVisitRoutes: FastifyPluginAsyncZod<{
     },
   );
 
+  async function visitor(organizationId: string) {
+    const org = await db.selectFrom("organizations").select(["demo", "demoExpiresAt", "demoProspect"]).where("id", "=", organizationId).executeTakeFirst();
+    if (!org?.demo || !org.demoExpiresAt || org.demoExpiresAt <= now()) throw new HttpError(403, "not_a_visitor_demo", "This walkthrough belongs to your active private visitor demo. Start a new demo if yours has expired.");
+    return org;
+  }
+
+  app.get("/demo/journey", { config: { permission: "self:read", allowedWhenReadOnly: true }, schema: { tags: ["demo"], summary: "Actual records for the private visitor walkthrough" } }, async (req) => {
+    const { organizationId, role } = req.requireAuth();
+    const org = await visitor(organizationId);
+    // Prefer yesterday's unpaid case: completed result, office evidence and a real test invoice together.
+    const caseRecord = await db.selectFrom("filings as f").innerJoin("sites as s", (j) => j.onRef("s.id", "=", "f.siteId").onRef("s.organizationId", "=", "f.organizationId")).innerJoin("customers as c", (j) => j.onRef("c.id", "=", "s.customerId").onRef("c.organizationId", "=", "s.organizationId")).innerJoin("inspections as i", (j) => j.onRef("i.id", "=", "f.inspectionId").onRef("i.organizationId", "=", "f.organizationId")).select(["f.id as filingId", "f.siteId", "c.id as customerId", "c.displayName as customerName", "s.addressLine1", "s.city", "i.id as inspectionId", "i.completedAt", "f.status", "f.submissionMethod"]).where("f.organizationId", "=", organizationId).where("f.kind", "=", "inspection_report").orderBy(sql`exists(select 1 from invoices inv where inv.organization_id = f.organization_id and inv.customer_id = c.id and inv.status = 'open' and inv.payment_status = 'unpaid')`, "desc").orderBy("i.completedAt", "desc").orderBy("c.id", "desc").executeTakeFirst();
+    if (!caseRecord) throw new HttpError(409, "demo_records_changed", "The example report is no longer available. Explore your records or start a new private demo.");
+    const [obligation, invoice, work, renewal] = await Promise.all([
+      db.selectFrom("serviceObligations").select(["id", "dueOn"]).where("organizationId", "=", organizationId).where("siteId", "=", caseRecord.siteId).where("status", "=", "open").orderBy("dueOn").executeTakeFirst(),
+      db.selectFrom("invoices").select(["id", "paymentStatus"]).where("organizationId", "=", organizationId).where("customerId", "=", caseRecord.customerId).where("status", "=", "open").orderBy("createdAt", "desc").executeTakeFirst(),
+      db.selectFrom("workOrders").select(["id", "title", "status"]).where("organizationId", "=", organizationId).where("siteId", "=", caseRecord.siteId).orderBy("createdAt", "desc").executeTakeFirst(),
+      db.selectFrom("renewals").select(["id", "customerId", "status"]).where("organizationId", "=", organizationId).orderBy("createdAt", "desc").executeTakeFirst(),
+    ]);
+    const today = await organizationToday(db, organizationId, now());
+    const technicianId = await memberOf(organizationId, "technician");
+    const job = await db.selectFrom("jobs").select(["id", "scheduledDate"]).where("organizationId", "=", organizationId).where("siteId", "=", caseRecord.siteId).where("technicianUserId", "=", technicianId).where("scheduledDate", "=", today).where("status", "in", ["scheduled", "in_progress"]).orderBy("createdAt").executeTakeFirst();
+    return { expiresAt: org.demoExpiresAt!.toISOString(), role, case: { ...caseRecord, completedAt: caseRecord.completedAt?.toISOString() ?? null }, obligation: obligation ?? null, job: job ?? null, invoice: invoice ?? null, work: work ?? null, renewal: renewal ?? null };
+  });
+
+  app.post("/demo/homeowner", { config: { permission: "self:read", allowedWhenReadOnly: true }, schema: { tags: ["demo"], summary: "Open the fictional homeowner's populated portal", body: z.object({ customerId: z.uuid() }) } }, async (req) => {
+    const { organizationId, userId } = req.requireAuth();
+    const org = await visitor(organizationId);
+    const customer = await db.selectFrom("customers").select("id").where("organizationId", "=", organizationId).where("id", "=", req.body.customerId).executeTakeFirst();
+    if (!customer) throw new HttpError(404, "not_found", "Demo customer not found");
+    const link = await db.transaction().execute(async (trx) => {
+      const made = await createPortalLink(trx, { organizationId, customerId: customer.id, source: "office", sentTo: null, createdBy: userId, now: now() });
+      await trx.updateTable("portalLinks").set({ expiresAt: org.demoExpiresAt! }).where("organizationId", "=", organizationId).where("id", "=", made.id).execute();
+      return made;
+    });
+    return { href: `/portal/${link.token}`, expiresAt: org.demoExpiresAt!.toISOString() };
+  });
+
   async function memberOf(organizationId: string, role: (typeof ROLES)[number]) {
-    const m = await db.selectFrom("memberships").select("userId").where("organizationId", "=", organizationId).where("role", "=", role).where("active", "=", true).executeTakeFirstOrThrow();
+    const m = await db.selectFrom("memberships").select("userId").where("organizationId", "=", organizationId).where("role", "=", role).where("active", "=", true).orderBy("createdAt").orderBy("userId").executeTakeFirstOrThrow();
     return m.userId;
   }
 };

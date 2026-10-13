@@ -21,6 +21,7 @@ import {
 import type { Database, DB } from "@aerowise/db";
 import {
   authorityRequirements,
+  templateDefinition,
   deadlineState,
   exportLayoutFor,
   FILING_ATTENTION_STATUSES,
@@ -375,9 +376,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           view: z.enum(VIEWS).default("attention"),
           kind: z.enum(["inspection_report", "contract"]).optional(),
           siteId: id.optional(),
-          limit: z.coerce.number().int().min(1).max(500).default(200),
+          limit: z.coerce.number().int().min(1).max(500).default(50),
+          offset: z.coerce.number().int().min(0).default(0),
         }),
-        response: { 200: z.object({ items: z.array(filingListItem), today: z.iso.date() }) },
+        response: { 200: z.object({ items: z.array(filingListItem), today: z.iso.date(), total: z.number().int() }) },
       },
     },
     async (req) => {
@@ -406,8 +408,11 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
           q = q.where("f.status", "=", "confirmed");
           break;
       }
-      const rows = await q.orderBy(sql`f.deadline_on nulls first`).orderBy("f.createdAt").limit(req.query.limit).execute();
-      return { items: rows.map((r) => toItem(r, today)), today };
+      const [rows, count] = await Promise.all([
+        q.orderBy(sql`f.deadline_on nulls first`).orderBy("f.createdAt").orderBy("f.id").limit(req.query.limit).offset(req.query.offset).execute(),
+        q.clearSelect().select(sql<number>`count(*)::int`.as("total")).executeTakeFirstOrThrow(),
+      ]);
+      return { items: rows.map((r) => toItem(r, today)), today, total: count.total };
     },
   );
 
@@ -589,6 +594,24 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
   app.post("/filings/:id/resubmit", action("Submit again after the authority rejected it: checked again, with a new package"), async (req) => {
     await act(req, req.params.id, "resubmitted", (trx, f, a) => resubmitFiling(trx, ctx(), f, a));
     return prepared(req, req.params.id);
+  });
+
+  app.get("/filings/:id/correction-fields", {
+    config: { permission: "filings:read" },
+    schema: { tags: ["filings"], summary: "Labeled answers from the actual immutable inspection template", params, response: { 200: z.object({ definition: templateDefinition, values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])) }) } },
+  }, async (req) => {
+    const { organizationId } = req.requireAuth();
+    const f = await loadFiling(db, organizationId, req.params.id);
+    if (!f?.inspectionId) throw notFound("Inspection filing");
+    const insp = await db.selectFrom("inspections as i").innerJoin("inspectionTemplates as t", "t.id", "i.templateId").select("t.definition").where("i.organizationId", "=", organizationId).where("i.id", "=", f.inspectionId).executeTakeFirstOrThrow();
+    const [rows, latest] = await Promise.all([
+      db.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "=", f.inspectionId).execute(),
+      db.selectFrom("reports").select("snapshot").where("organizationId", "=", organizationId).where("inspectionId", "=", f.inspectionId).where("audience", "=", "authority").orderBy("version", "desc").executeTakeFirst(),
+    ]);
+    const snapshot = latest?.snapshot as { correction?: { amendments?: { key: string; value: string | number | boolean | null }[] } } | undefined;
+    const values = Object.fromEntries(rows.map((v) => [v.fieldKey, v.valueJson]));
+    for (const a of snapshot?.correction?.amendments ?? []) values[a.key] = a.value;
+    return { definition: templateDefinition.parse(insp.definition), values: values as Record<string, string | number | boolean | null> };
   });
 
   app.post(

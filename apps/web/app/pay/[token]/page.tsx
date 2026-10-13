@@ -3,7 +3,8 @@
 import type { PublicInvoice } from "@aerowise/domain";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { useLoad } from "@/components/useLoad";
+import { usePublicRead, useConfirmationPolling } from "@/components/public/usePublicRead";
+import { PublicLinkRecovery } from "@/components/public/PublicLinkRecovery";
 import { api, ApiError } from "@/lib/api";
 import { day, money } from "@/lib/format";
 
@@ -11,23 +12,18 @@ import { day, money } from "@/lib/format";
 function PayPage() {
   const { token } = useParams<{ token: string }>();
   const justPaid = useSearchParams().get("paid") === "1";
-  const { data: inv, error } = useLoad<PublicInvoice>(`/pay/${token}`);
+  const { data: inv, error, reload } = usePublicRead<PublicInvoice>(`/pay/${token}`);
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
-  if (error) {
-    return (
-      <main className="pay">
-        <div className="pay-card card">
-          <h1>Invoice not found</h1>
-          <p>{error}</p>
-        </div>
-      </main>
-    );
-  }
+  const settled = inv?.paymentStatus === "paid" || inv?.paymentStatus === "overpaid";
+  const awaiting = Boolean(inv && !settled && !inv.closedReason && !inv.bankVerificationUrl && !inv.latestPaymentFailed && (justPaid || inv.pendingCents > 0));
+  const confirmation = useConfirmationPolling(awaiting, reload);
+  if (error) return <PublicLinkRecovery error={error} retry={reload} kind="invoice" provider={inv?.provider} />;
   if (!inv) return <p className="muted pad">Loading…</p>;
 
   async function pay() {
+    if (busy || (justPaid && !inv!.latestPaymentFailed) || inv!.pendingCents > 0) return;
     setBusy(true);
     setPayError(null);
     try {
@@ -39,7 +35,6 @@ function PayPage() {
     }
   }
 
-  const settled = inv.paymentStatus === "paid" || inv.paymentStatus === "overpaid";
   const contact = [inv.provider.phone, inv.provider.email].filter(Boolean).join(" or ");
 
   return (
@@ -60,6 +55,13 @@ function PayPage() {
               <div className="amount">Paid</div>
               <p>Thank you, {inv.customerName}. This invoice is paid in full.</p>
             </>
+          ) : inv.latestPaymentFailed ? (
+            <>
+              <h1>Payment did not clear</h1>
+              <p>The latest payment attempt failed, and no payment is pending. Contact your provider with questions. You can start a new attempt if payment is still due.</p>
+              {inv.canPayOnline && <button onClick={() => void pay()} disabled={busy}>Retry payment of {money(inv.amountDueCents)}</button>}
+              {payError && <p className="error">{payError}</p>}
+            </>
           ) : inv.bankVerificationUrl ? (
             <>
               <div className="amount">Verify your bank account</div>
@@ -71,7 +73,7 @@ function PayPage() {
                 Verify bank account
               </a>
             </>
-          ) : inv.paymentStatus === "processing" || (justPaid && inv.pendingCents > 0) ? (
+          ) : inv.paymentStatus === "processing" || inv.pendingCents > 0 ? (
             <>
               <div className="amount">{money(inv.pendingCents)} clearing</div>
               <p>Your bank payment is on its way. Bank transfers take a few business days to clear. If you are asked to verify your bank account, this page shows how.</p>
@@ -85,13 +87,13 @@ function PayPage() {
                   <div className="muted">Due {day(inv.dueOn)}</div>
                 </>
               )}
-              {justPaid && <p>Thanks! Your payment is being confirmed; this page updates once it is.</p>}
+              {justPaid && <div role="status"><h2>Confirming your payment</h2><p>Your payment may still be confirming. Do not pay again while it is pending. We are checking for the provider&apos;s confirmation.</p></div>}
               {inv.closedReason ? (
                 <p className="muted" data-testid="pay-closed">
                   {inv.closedReason}
                   {contact && ` Contact ${inv.provider.name} at ${contact}.`}
                 </p>
-              ) : inv.canPayOnline ? (
+              ) : justPaid ? null : inv.canPayOnline ? (
                 <button onClick={() => void pay()} disabled={busy}>
                   Pay {money(inv.amountDueCents)} by card or bank
                 </button>
@@ -103,6 +105,10 @@ function PayPage() {
           )}
         </div>
 
+        {(justPaid || inv.pendingCents > 0 || inv.bankVerificationUrl) && !settled && !inv.closedReason && !inv.latestPaymentFailed && <div className="card stack" role="status">
+          <p>{confirmation.exhausted ? "Automatic checks have paused. Confirmation has not arrived. Bank payments can take several business days; refresh or contact your provider before making another payment." : inv.bankVerificationUrl ? "Complete bank verification, then refresh here to check the payment." : "This page checks briefly for confirmation. You can also refresh the status."}</p>
+          <button className="secondary" onClick={() => void confirmation.refresh()}>Refresh payment status</button>
+        </div>}
         <div className="card stack">
           <div className="muted small">
             Billed to {inv.customerName}

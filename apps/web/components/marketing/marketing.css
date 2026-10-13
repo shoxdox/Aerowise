@@ -1,0 +1,21 @@
+.outreach-home .hero { grid-template-columns: minmax(0, 1fr); }
+.outreach-home .hero-text { max-width: 760px; }
+.outreach-home .hero > * { min-width: 0; }
+.outreach-home .shot { width: 100%; }
+.outreach-home .readable-shot { width: 100%; max-width: 100%; overflow-x: auto; border-radius: 10px; }
+.outreach-home .readable-shot img { min-width: 780px; width: 100%; display: block; }
+.outreach-home .price-examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; padding: 0; gap: 12px; margin: 0; }
+.outreach-home details > summary { cursor: pointer; font-weight: 600; padding: 4px; min-height: 44px; }
+.outreach-home details[open] > summary { margin-bottom: 16px; }
+.outreach-home .how-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.outreach-home select { max-width: 100%; }
+.outreach-home .rule-card { grid-template-columns: minmax(0, 1fr); }
+.outreach-home .rule-card dt { margin-top: 8px; }
+.outreach-home .rule-card dd, .outreach-home .coverage li { overflow-wrap: anywhere; }
+.outreach-home footer a { min-height: 44px; display: inline-flex; align-items: center; }
+.outreach-home .public-read-state button { align-self: flex-start; }
+@media (max-width: 700px) {
+  .outreach-home .how-steps, .outreach-home .price-examples { grid-template-columns: 1fr; }
+  .outreach-home .hero h1 { font-size: 2rem; }
+  .outreach-home .page { gap: 36px; }
+}

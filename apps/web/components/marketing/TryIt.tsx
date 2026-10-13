@@ -3,7 +3,7 @@
 import { applyRequirements, DEFAULT_TEMPLATE, validateInspection, visibleFields, type CoverageItem, type InspectionValue, type InspectionValues } from "@aerowise/domain";
 import { useMemo, useState } from "react";
 import { TemplateSections } from "@/components/forms/TemplateFields";
-import { TRY_IT } from "./copy";
+import { COVERAGE, TRY_IT } from "./copy";
 
 const PREFERRED = "tx-williamson-county";
 /** The form opens a few answers in, as a technician partway through a stop, not as a blank wall of fields. */
@@ -28,7 +28,7 @@ export function TryIt({ coverage }: { coverage: CoverageItem[] }) {
   const onChange = (fieldKey: string, value: InspectionValue) => setValues((v) => ({ ...v, [fieldKey]: value }));
   if (!county) return null;
   const r = county.rules;
-  const countyLabel = county.counties.length === 1 ? `${county.counties[0]} County` : county.counties.join(", ");
+  const countyLabel = county.authorityName;
   const extra = r.requiredFields.map(labelOf);
 
   return (
@@ -36,14 +36,16 @@ export function TryIt({ coverage }: { coverage: CoverageItem[] }) {
       <div className="try-rules stack">
         <label>
           {TRY_IT.pick}
-          <select value={key} onChange={(e) => setKey(e.target.value)} aria-label={TRY_IT.pick}>
+          <select value={county.key} onChange={(e) => setKey(e.target.value)} aria-label={TRY_IT.pick}>
             {coverage.map((c) => (
               <option key={c.key} value={c.key}>
-                {c.counties.length === 1 ? `${c.counties[0]} County` : `${c.counties.join(", ")} counties`}
+                {c.authorityName} · {c.counties.join(", ")}
               </option>
             ))}
           </select>
         </label>
+        <p className="badge warn">{county.status === "draft" ? "Public-source draft · authority verification pending" : "Authority-verified profile"}</p>
+        <p className="muted small">{county.status === "draft" ? COVERAGE.draftNote : "The site's permit and system still determine applicability."} Unresolved requirements need confirmation; the values below do not establish acceptance of a report.</p>
         <dl className="rule-card" aria-label={`${countyLabel} rules`}>
           <dt>{TRY_IT.authority}</dt>
           <dd>{county.authorityName}</dd>
@@ -54,10 +56,10 @@ export function TryIt({ coverage }: { coverage: CoverageItem[] }) {
             {r.contractVisits ? "; counted from the contract's start date" : ""}.
           </dd>
           <dt>{TRY_IT.report}</dt>
-          <dd>Within {r.reportDeadlineDays} days of the test.</dd>
+          <dd>Profile value: within {r.reportDeadlineDays} days of the test. Confirm permit applicability before live use.</dd>
           <dt>{TRY_IT.goes}</dt>
           <dd>
-            {county.filing === "email" && `Emailed to ${r.destination} when you press Send.`}
+            {county.filing === "email" && `Published inbox: ${r.destination}. Provider review and confirmed delivery configuration are required before sending.`}
             {county.filing === "portal" && "Prepared for you to upload on the authority's own page; Aerowise records the upload."}
             {county.filing === "prepared" && "No provider channel is published, so it is prepared for you to send as you do today, and the record is kept."}
           </dd>

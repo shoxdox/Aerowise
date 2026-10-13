@@ -19,19 +19,21 @@ test("a visitor starts their own demo company and lands in the owner's inbox", a
   expect((await (await page.request.get("/api/auth/me")).json()).role).toBe("technician");
 });
 
-// W11.4: the marketing page offers "Try the demo" only where /demo answers.
-test("the marketing page links to Try the demo on the demo deployment", async ({ page }) => {
+// The known public staging entry stays available; a confirmed demo deployment uses its own entry.
+test("the marketing page links to its local demo on the demo deployment", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByTestId("try-demo")).toHaveAttribute("href", "/demo");
   await page.getByTestId("try-demo").click();
   await page.waitForURL("**/demo");
   await expect(page.getByRole("button", { name: "Start my demo" })).toBeVisible();
 });
 
-test("the marketing page hides Try the demo off the demo deployment", async ({ page }) => {
+test("the marketing page labels the known staging demo off the demo deployment", async ({ page }) => {
   await page.route("**/api/app-info", (route) => route.fulfill({ json: { demo: false, demoCompany: false, demoVisitor: false } }));
   const answered = page.waitForResponse("**/api/app-info");
   await page.goto("/");
   await answered;
-  await expect(page.getByRole("link", { name: "Ask for a demo" }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "Try the demo" })).toHaveCount(0);
+  await expect(page.getByTestId("try-demo")).toHaveAttribute("href", "https://staging.deshain.com/demo");
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", "/login");
+  await expect(page.getByText(/The public demo is on staging.deshain.com/)).toBeVisible();
 });

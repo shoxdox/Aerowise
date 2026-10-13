@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SAFETY_FLAG_LABELS, SafetyBadges } from "@/components/SafetyBadges";
 import { ComplianceTimeline } from "@/components/ComplianceTimeline";
+import { SiteOverview } from "@/components/SiteOverview";
 import { SiteAuthority } from "@/components/SiteAuthority";
 import { SiteContracts } from "@/components/SiteContracts";
 import { PumpingHistory } from "@/components/PumpingHistory";
@@ -13,6 +14,7 @@ import { SiteLabTests } from "@/components/SiteLabTests";
 import { SiteServiceRequests } from "@/components/SiteServiceRequests";
 import { SiteWorkOrders } from "@/components/SiteWorkOrders";
 import { SystemMonitoring } from "@/components/SystemMonitoring";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { canEdit, useSession } from "@/lib/session";
@@ -20,12 +22,13 @@ import { canEdit, useSession } from "@/lib/session";
 export default function SitePage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
-  const { data: site, error, reload } = useLoad<SiteDetail>(`/sites/${id}`);
+  const recordLoad = useLoad<SiteDetail>(`/sites/${id}`);
+  const { data: site, error, reload } = recordLoad;
   const [editing, setEditing] = useState<"site" | "system" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!site) return <p className="muted">Loading…</p>;
+  if (error && !site) return <LoadState load={recordLoad} label="record" />;
+  if (!site) return <LoadState load={recordLoad} label="record" />;
 
   async function save(path: string, method: "POST" | "PATCH", body: object) {
     setFormError(null);
@@ -84,6 +87,7 @@ export default function SitePage() {
 
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href={`/customers/${site.customer.id}`}>← {site.customer.displayName}</Link>
       </p>
@@ -102,6 +106,8 @@ export default function SitePage() {
           </button>
         )}
       </div>
+
+      <SiteOverview site={site} />
 
       {editing === "site" ? (
         <form className="card grid" onSubmit={onSaveSite}>
@@ -335,16 +341,16 @@ export default function SitePage() {
         ))}
       </section>
 
-      <SystemMonitoring siteId={site.id} systems={site.systems} editable={editable} />
+      <details className="card"><summary>Electronic monitoring records</summary><SystemMonitoring siteId={site.id} systems={site.systems} editable={editable} /></details>
 
-      <section className="stack">
+      <details className="card"><summary>Site contacts ({site.contacts.length})</summary><section className="stack">
         <h2>Contacts</h2>
         {site.contacts.map((c) => (
           <p key={c.id}>
             {c.name} {c.phone && <a href={`tel:${c.phone}`}>{c.phone}</a>}
           </p>
         ))}
-      </section>
+      </section></details>
     </div>
   );
 }

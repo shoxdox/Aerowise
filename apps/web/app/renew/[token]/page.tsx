@@ -5,7 +5,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
 import { TemplateSections } from "@/components/forms/TemplateFields";
-import { useLoad } from "@/components/useLoad";
+import { usePublicRead, useConfirmationPolling } from "@/components/public/usePublicRead";
+import { PublicLinkRecovery } from "@/components/public/PublicLinkRecovery";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
 
@@ -26,7 +27,7 @@ function Shell({ children, testMode }: { children: React.ReactNode; testMode?: b
 function RenewPage() {
   const { token } = useParams<{ token: string }>();
   const justPaid = useSearchParams().get("paid") === "1";
-  const { data: r, error, reload } = useLoad<PublicRenewal>(`/renew/${token}`);
+  const { data: r, error, reload } = usePublicRead<PublicRenewal>(`/renew/${token}`);
   const [addonIds, setAddonIds] = useState<string[] | null>(null);
   const [optionKeys, setOptionKeys] = useState<string[] | null>(null);
   // Answers to the plan's intake questions (SW-8), checked like the API checks them.
@@ -44,23 +45,10 @@ function RenewPage() {
     void api(`/renew/${token}/view`, { method: "POST", body: {} }).catch(() => undefined);
   }, [token]);
 
-  // After paying, the page waits for the payment to be confirmed.
-  useEffect(() => {
-    if (!justPaid || !r || r.status === "activated" || r.status === "needs_review") return;
-    const timer = setTimeout(() => void reload(), 2000);
-    return () => clearTimeout(timer);
-  }, [justPaid, r, reload]);
-
-  if (error) {
-    return (
-      <Shell>
-        <div className="card">
-          <h1>Renewal not found</h1>
-          <p>{error}</p>
-        </div>
-      </Shell>
-    );
-  }
+  const awaiting = Boolean(r && ["signed", "payment_pending", "paid"].includes(r.status) && !r.paymentConfirmation?.latestPaymentFailed && (justPaid || (r.paymentConfirmation?.pendingCents ?? 0) > 0 || r.paymentConfirmation?.paymentStatus === "paid"));
+  const verificationRequired = Boolean(r?.paymentConfirmation?.bankVerificationRequired);
+  const confirmation = useConfirmationPolling(awaiting && !verificationRequired, reload);
+  if (error) return <PublicLinkRecovery error={error} retry={reload} kind="renewal" provider={r?.provider} />;
   if (!r) return <p className="muted pad">Loading…</p>;
 
   const contact = [r.provider.phone, r.provider.email].filter(Boolean).join(" or ");
@@ -121,6 +109,7 @@ function RenewPage() {
   }
 
   async function pay() {
+    if (busy || awaiting) return;
     setBusy(true);
     setFormError(null);
     try {
@@ -169,12 +158,24 @@ function RenewPage() {
               </p>
               {r.pay && <p>Your invoice for {money(r.pay.amountDueCents)} is due on its terms. You can pay it any time from the invoice email.</p>}
             </>
+          ) : r.paymentConfirmation?.latestPaymentFailed ? (
+            <>
+              <h1>Payment did not clear</h1>
+              <p>The latest payment attempt failed, and no payment is pending. Your signed agreement remains on record. Contact your provider or open your invoice to review the balance and retry if appropriate.</p>
+              <a href={r.paymentConfirmation.invoiceUrl}>Open invoice and payment recovery</a>
+            </>
+          ) : awaiting && r.paymentConfirmation ? (
+            <>
+              <h1>{verificationRequired ? "Verify your bank account" : "Confirming your payment"}</h1>
+              <p>{verificationRequired ? "Your renewal payment is waiting for bank verification. Open your invoice to complete that step, then refresh here." : r.paymentConfirmation.paymentStatus === "paid" ? "Your payment is confirmed. Your provider is completing the renewal; do not pay again." : "Your payment is pending. Bank payments can take several business days. Do not pay again while it is pending."}</p>
+              <a href={r.paymentConfirmation.invoiceUrl}>Open your invoice and payment status</a>
+            </>
           ) : r.pay ? (
             <>
               <h1>{justPaid ? "Confirming your payment" : "One last step"}</h1>
               {justPaid ? (
                 <p>
-                  Thanks! Your payment is being confirmed. This page updates once it is; bank transfers can take a few business days. If you paid by bank and are asked to
+                  Your payment is being confirmed. Do not pay again while it is pending. This page checks briefly; bank transfers can take several business days. If you are asked to
                   verify your account, <a href={r.pay.invoiceUrl}>your invoice page</a> shows how.
                 </p>
               ) : (
@@ -207,6 +208,7 @@ function RenewPage() {
               <p>Your renewal is signed. {r.provider.name} will be in touch to finish it.</p>
             </>
           )}
+          {awaiting && <div role="status"><p>{confirmation.exhausted ? "Automatic checks have paused. Refresh or contact your provider before making another payment." : verificationRequired ? "Refresh after completing bank verification." : "Checking for confirmation…"}</p><button className="secondary" onClick={() => void confirmation.refresh()}>Refresh payment status</button></div>}
           {formError && <p className="error">{formError}</p>}
           {r.signed && (
             <p className="muted small">
@@ -233,7 +235,7 @@ function RenewPage() {
         <p>
           Your {r.currentTerm.planName} plan ends on {day(r.currentTerm.endOn)}.{" "}
           {r.terms.serviceType === "aerobic_inspection"
-            ? "Renewing keeps your aerobic system inspected on schedule and your reports filed with the county."
+            ? "Renewing schedules aerobic inspections and prepares reports for your provider to review and submit through the applicable authority workflow."
             : // A pumping or maintenance only plan (SW-9): no inspection or county report is promised.
               `Renewing keeps your ${r.terms.serviceType === "pumping" ? "pumping" : "maintenance"} visits on schedule.`}
         </p>

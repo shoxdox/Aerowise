@@ -512,6 +512,12 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
     }
 
     await a.afterRow?.(rowId);
+    // Only explicit removals on an authorized mutable draft. Completed/locked records returned above remain final.
+    if (body.removedPhotoClientIds?.length) {
+      const removed = await trx.deleteFrom("attachments").where("organizationId", "=", organizationId).where("inspectionId", "=", rowId)
+        .where("offlineClientId", "in", body.removedPhotoClientIds).returning("id").execute();
+      if (removed.length) await audit(trx, req, { action: "inspection.draft_photos_removed", entityType: "inspection", entityId: rowId, changes: { attachmentIds: removed.map(p => p.id) } });
+    }
     await trx.deleteFrom("inspectionValues").where("organizationId", "=", organizationId).where("inspectionId", "=", rowId).execute();
     const valueRows = Object.entries(values).map(([fieldKey, v]) => ({ organizationId, inspectionId: rowId, fieldKey, valueJson: JSON.stringify(v) }));
     if (valueRows.length) await trx.insertInto("inspectionValues").values(valueRows).execute();

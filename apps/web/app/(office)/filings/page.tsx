@@ -2,7 +2,9 @@
 
 import type { FilingListItem } from "@aerowise/domain";
 import Link from "next/link";
-import { useState } from "react";
+import { useQueryState } from "@/components/useQueryState";
+import { Pagination } from "@/components/Pagination";
+import { LoadState } from "@/components/LoadState";
 import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
 import { day, dayOf } from "@/lib/format";
@@ -11,16 +13,16 @@ import { EmptyState } from "@/components/EmptyState";
 const VIEWS = [
   { key: "attention", label: "Needs attention" },
   { key: "open", label: "Not sent yet" },
-  { key: "sent", label: "Waiting for acknowledgment" },
-  { key: "confirmed", label: "Acknowledged" },
+  { key: "sent", label: "Submitted" },
+  { key: "confirmed", label: "Acknowledgment recorded" },
   { key: "all", label: "All" },
 ] as const;
 
 const FILINGS_EMPTY: Record<(typeof VIEWS)[number]["key"], string> = {
   attention: "Nothing is late, failed or waiting on you. Today is {today}.",
   open: "Nothing is waiting to be sent. A filing starts here when a technician finishes an inspection at a site whose authority takes reports.",
-  sent: "Nothing is waiting on an authority. Sent filings wait here until you record the authority's acknowledgment.",
-  confirmed: "Nothing acknowledged yet. Record the authority's reply on a sent filing to finish it.",
+  sent: "No submitted filings here. Submission evidence is retained; record acknowledgment only when there is evidence.",
+  confirmed: "Nothing acknowledged yet. Record an authority's reply on a submitted filing when acknowledgment is available.",
   all: "No filings yet. They start when a technician finishes an inspection at a site whose authority takes reports.",
 };
 
@@ -36,8 +38,12 @@ function note(f: FilingListItem) {
 }
 
 export default function FilingsPage() {
-  const [view, setView] = useState<(typeof VIEWS)[number]["key"]>("attention");
-  const { data, error } = useLoad<{ items: FilingListItem[]; today: string }>(`/filings?view=${view}`);
+  const [selectedView, setView] = useQueryState("view", "attention");
+  const view = VIEWS.find((v) => v.key === selectedView)?.key ?? "attention";
+  const [offsetText, setOffset] = useQueryState("offset", "0");
+  const offset = Number.isSafeInteger(Number(offsetText)) && Number(offsetText) >= 0 ? Number(offsetText) : 0;
+  const load = useLoad<{ items: FilingListItem[]; today: string; total: number }>(`/filings?view=${view}&limit=50&offset=${offset}`);
+  const { data } = load;
 
   return (
     <div className="stack">
@@ -54,9 +60,9 @@ export default function FilingsPage() {
         ))}
       </div>
       <p className="muted">
-        Completed inspections, and maintenance contracts where the authority asks for them, are filed with the site&apos;s reporting authority. Sent is not done: a filing counts as done only once the authority&apos;s acknowledgment is recorded.
+        Completed inspections await office review and the provider&apos;s signature, then follow the authority&apos;s actual email, manual or CSV submission method. Submitted means submission evidence is recorded. Some authorities publish no acknowledgment process; acceptance is only claimed when supported by evidence.
       </p>
-      {error && <p className="error">{error}</p>}
+      <LoadState load={load} label="filings" />
       <table>
         <thead>
           <tr>
@@ -92,6 +98,7 @@ export default function FilingsPage() {
       {data?.items.length === 0 && (
         <EmptyState title={view === "attention" ? "Nothing needs attention" : "No filings here"}>{FILINGS_EMPTY[view].replace("{today}", day(data.today))}</EmptyState>
       )}
+      {data && <Pagination total={data.total} offset={offset} onChange={(n) => setOffset(String(n))} />}
     </div>
   );
 }

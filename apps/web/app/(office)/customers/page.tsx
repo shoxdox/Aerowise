@@ -3,7 +3,8 @@
 import type { Customer, CustomerListItem } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { canEdit, useSession } from "@/lib/session";
@@ -19,39 +20,37 @@ export default function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const query = new URLSearchParams({ limit: String(PAGE), offset: String(offset), ...(search ? { search } : {}) });
-  const { data } = useLoad<{ items: CustomerListItem[]; total: number }>(`/customers?${query}`);
+  const load = useLoad<{ items: CustomerListItem[]; total: number }>(`/customers?${query}`);
+
+  const { data } = load;
+  const saving = useRef(false);
+  const creationId = useRef<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   // Creates the customer, their primary contact and first service site in one step.
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
     setError(null);
     const v = formValues(event.currentTarget);
+    creationId.current ??= crypto.randomUUID();
     try {
-      const customer = await api<Customer>("/customers", {
-        method: "POST",
-        body: {
-          displayName: v.displayName,
-          billingLine1: v.addressLine1,
-          billingCity: v.city,
-          billingState: "TX",
-          billingPostalCode: v.postalCode,
+      const customer = await api<Customer>("/customers/create-with-site", {
+        method: "POST", body: {
+          creationId: creationId.current,
+          customer: { displayName: v.displayName, billingLine1: v.addressLine1, billingCity: v.city, billingState: "TX", billingPostalCode: v.postalCode },
+          ...((v.phone || v.email) ? { contact: { name: v.displayName, phone: v.phone, email: v.email, type: "primary" } } : {}),
+          ...((v.addressLine1 || v.city) ? { site: { addressLine1: v.addressLine1, city: v.city, postalCode: v.postalCode, permitNumber: v.permitNumber } } : {}),
         },
       });
-      if (v.phone || v.email) {
-        await api(`/customers/${customer.id}/contacts`, {
-          method: "POST",
-          body: { name: v.displayName, phone: v.phone, email: v.email, type: "primary" },
-        });
-      }
-      if (v.addressLine1 && v.city) {
-        await api(`/customers/${customer.id}/sites`, {
-          method: "POST",
-          body: { addressLine1: v.addressLine1, city: v.city, postalCode: v.postalCode, permitNumber: v.permitNumber },
-        });
-      }
       router.push(`/customers/${customer.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create customer");
+      setError(`${err instanceof ApiError ? err.message : "Could not confirm the save."} Retry this form: the same save id prevents a duplicate customer.`);
+    } finally {
+      saving.current = false;
+      setBusy(false);
     }
   }
 
@@ -93,9 +92,9 @@ export default function CustomersPage() {
             Permit number
             <input name="permitNumber" />
           </label>
-          {error && <p className="error wide">{error}</p>}
+          {error && <div className="wide" role="alert"><p className="error">{error}</p>{creationId.current && <Link href={`/customers/${creationId.current}`}>Review the customer if the previous save succeeded</Link>}</div>}
           <div className="wide">
-            <button type="submit">Create customer</button>
+            <button type="submit" disabled={busy}>{busy ? "Saving customer…" : "Create customer"}</button>
           </div>
         </form>
       )}
@@ -110,6 +109,7 @@ export default function CustomersPage() {
         }}
       />
 
+      <LoadState load={load} label="customers" />
       <table>
         <thead>
           <tr>

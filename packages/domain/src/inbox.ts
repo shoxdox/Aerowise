@@ -80,6 +80,7 @@ export const inboxException = z.object({
 export type InboxException = z.infer<typeof inboxException>;
 
 export const inbox = z.object({
+  limited: z.boolean().default(false),
   today: z.iso.date(),
   counts: z.object({
     dueThisWeek: z.number().int(),

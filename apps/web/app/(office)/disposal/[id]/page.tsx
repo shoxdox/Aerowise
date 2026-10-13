@@ -4,6 +4,7 @@ import { formatEntered, formatGallons, roleHasPermission, VOLUME_UNITS, WASTE_TY
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 import { api, ApiError, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
@@ -21,8 +22,10 @@ export default function DisposalRecordPage() {
   const me = useSession();
   const on = useFeature("pumping");
   const office = canEdit(me) && roleHasPermission(me.role, "work:write");
-  const { data: l, error, reload } = useLoad<Detail>(`/disposal/loads/${id}`);
-  const unloaded = useLoad<{ items: PumpingRecord[] }>(office ? "/pumping-records?unloaded=true&limit=200" : null);
+  const recordLoad = useLoad<Detail>(`/disposal/loads/${id}`);
+  const { data: l, error, reload } = recordLoad;
+  const [unloadedOffset, setUnloadedOffset] = useState(0);
+  const unloaded = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>(office ? `/pumping-records?unloaded=true&limit=50&offset=${unloadedOffset}` : null);
   const vehicles = useLoad<{ items: Vehicle[] }>(office ? "/vehicles" : null);
   const facilities = useLoad<{ items: DisposalFacility[] }>(office ? "/disposal-facilities" : null);
   const [correcting, setCorrecting] = useState(false);
@@ -62,11 +65,12 @@ export default function DisposalRecordPage() {
     await act(`/disposal/loads/${id}/items/remove`, { pumpingGroupId: p.groupId, reason });
   }
 
-  if (error) return <p className="error">{error}</p>;
-  if (!l) return <p className="muted">Loading…</p>;
+  if (error && !l) return <LoadState load={recordLoad} label="record" />;
+  if (!l) return <LoadState load={recordLoad} label="record" />;
   const editable = office && on;
   return (
     <div className="stack">
+      <LoadState load={recordLoad} label="record" />
       <p>
         <Link href="/disposal">Disposal records</Link>
       </p>
@@ -129,6 +133,10 @@ export default function DisposalRecordPage() {
             </table>
           </div>
         )}
+        <LoadState load={unloaded} label="available pump-outs" />
+        <LoadState load={vehicles} label="vehicles" />
+        <LoadState load={facilities} label="facilities" />
+        {unloaded.data && <nav className="row" aria-label="Available pump-out pages"><span>{unloaded.data.items.length} pump-outs on this page{unloaded.data.nextOffset !== null ? "; more available" : ""}</span><button className="secondary" disabled={unloadedOffset === 0} onClick={() => setUnloadedOffset(Math.max(0, unloadedOffset - 50))}>Previous pump-outs</button><button className="secondary" disabled={unloaded.data.nextOffset === null} onClick={() => setUnloadedOffset(unloaded.data!.nextOffset!)}>Next pump-outs</button></nav>}
         {editable && unloaded.data && unloaded.data.items.length > 0 && (
           <form
             className="row"

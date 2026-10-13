@@ -372,6 +372,8 @@ export const inspectionSync = z.object({
   /** Why there is no arrival location, when there is none; absent on payloads from before it was asked. */
   locationStatus: locationStatus.optional(),
   accessIssue: z.string().trim().max(500).nullish(),
+  /** Explicit draft removals; absent on older phones, whose uploads remain unchanged. */
+  removedPhotoClientIds: z.array(z.uuid()).max(500).optional(),
   values: z.record(z.string(), value),
   issues: z
     .array(

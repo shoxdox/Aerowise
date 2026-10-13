@@ -14,7 +14,7 @@ export function OnboardingChecklist({ data }: { data: Checklist | null }) {
   return (
     <section className="card stack onboarding" aria-labelledby="onboarding-title">
       <div className="row">
-        <h2 id="onboarding-title">Get set up</h2>
+        <h2 id="onboarding-title">Start operating</h2>
         <span className="spacer" />
         <span className="muted small">
           {done} of {required.length} done
@@ -25,7 +25,7 @@ export function OnboardingChecklist({ data }: { data: Checklist | null }) {
           <li key={i.key} className={i.done ? "done" : ""} data-testid={`onboarding-${i.key}`}>
             <span aria-hidden="true">{i.done ? "✓" : "○"}</span>
             <div>
-              {i.done ? <span>{i.label}</span> : <Link href={i.href}>{i.label}</Link>}
+              {i.done || !i.href ? <span>{i.label}</span> : <Link href={i.href}>{i.label}</Link>}
               {i.optional && <span className="muted small"> (optional)</span>}
               {i.detail && <div className="muted small">{i.detail}</div>}
             </div>

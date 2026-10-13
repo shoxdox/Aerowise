@@ -63,6 +63,31 @@ describe("recording an inspection", () => {
     expect((await s.api.get(`/jobs/${s.job.jobId}/inspection`)).json().id).toBe(done.json().id);
   });
 
+  it("removes only named draft photos, revalidates required photos, and preserves completed photos on replay", async () => {
+    const s = await setup(ctx);
+    const other = await setup(ctx, "Other tenant");
+    await s.techApi.put("/inspections/sync", payload(s));
+    await other.techApi.put("/inspections/sync", payload(other));
+    await uploadRequiredPhotos(s, payload(s).clientId);
+    await uploadRequiredPhotos(other, payload(other).clientId);
+    const removedId = "00000000-0000-4000-8000-000000000001";
+    const removed = await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: completeValues(), removedPhotoClientIds: [removedId] }));
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect(removed.json().photos).toHaveLength(1);
+    expect(removed.json().validationProblems.some((p: { key: string }) => p.key === "overview")).toBe(true);
+    expect((await other.techApi.get(`/jobs/${other.job.jobId}/inspection`)).json().photos).toHaveLength(2);
+    // Retake gets its own immutable id, rather than overwriting bytes under the original id.
+    const retake = "00000000-0000-4000-8000-000000000003";
+    expect((await s.techApi.putImage(photoUrl(payload(s).clientId, 3), JPEG, { "x-photo-key": "overview" })).statusCode).toBe(201);
+    const finished = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: completeValues(), removedPhotoClientIds: [removedId] }))).json();
+    expect(finished.status).toBe("completed");
+    expect(finished.photos.map((p: { clientId: string }) => p.clientId).sort()).toEqual(["00000000-0000-4000-8000-000000000002", retake]);
+    const replay = (await s.techApi.put("/inspections/sync", payload(s, { removedPhotoClientIds: [retake], values: {} }))).json();
+    expect(replay.photos).toEqual(finished.photos);
+    expect(replay.status).toBe("completed");
+  });
+
   it("keeps the inspection on the server's clock when the phone's is a year out", async () => {
     const s = await setup(ctx);
     const clientId = payload(s).clientId;

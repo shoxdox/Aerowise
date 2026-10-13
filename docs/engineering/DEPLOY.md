@@ -1,6 +1,6 @@
 # Deploying Aerowise
 
-> Runbook, not deployment evidence. The October 6 build is merged through #90 (application baseline `d646512`, migrations through `0046`). This documentation handoff does not deploy it or confirm the host is current. Hosted Actions are blocked by account minutes/billing; use the documented manual deploy procedure and recorded local checks where applicable. Read [the current handoff](../DEMO-PILOT-BRIEF.md) before acting.
+> Runbook, not deployment evidence. Read [the current handoff](../DEMO-PILOT-BRIEF.md) and [outreach release plan](OUTREACH-READINESS-REVIEW.md) before acting. Hosted CI was restored on October 12; the baseline main run for `42b3834` passed. CI automatically deploys staging after a successful main push, so pushing/merging main is a deployment action requiring the user's release approval. This implementation branch has not been deployed.
 
 Staging and production both run on Justin's own server (Chicago, 4 GB RAM, 2 vCPUs) with Docker Compose, until Aerowise moves to a managed host such as Render ([DEPLOY-RENDER.md](DEPLOY-RENDER.md), with `render.yaml` kept ready). Why, and what that costs in risk, is in [DECISIONS.md](../DECISIONS.md) (2026-10-05, Hosting on our own server). Everything the server runs is in [`deploy/vps/`](../../deploy/vps).
 
