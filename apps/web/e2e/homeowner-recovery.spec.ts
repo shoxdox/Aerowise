@@ -76,6 +76,18 @@ test("a failed bank attempt is terminal after returning and offers explicit reco
   await expect(page.getByRole("button", { name: "Refresh payment status" })).toHaveCount(0);
 });
 
+test("returning from a retry never treats the previous failed attempt as the new outcome", async ({ page }) => {
+  const inv = await invoice(page);
+  expect((await page.request.post(`/api${inv.path}/test-checkout`, { data: { sessionId: inv.sessionId, outcome: "ach_fails" } })).ok()).toBe(true);
+  const next = new URL((await (await page.request.post(`/api${inv.path}/checkout`, { data: {} })).json()).url);
+  expect(next.searchParams.get("session")).not.toBe(inv.sessionId);
+  await page.goto(`${inv.path}?paid=1`);
+  await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Retry payment/ })).toHaveCount(0);
+  expect((await page.request.post(`/api${inv.path}/test-checkout`, { data: { sessionId: next.searchParams.get("session"), outcome: "card" } })).ok()).toBe(true);
+  await expect(page.getByText(/This invoice is paid in full/)).toBeVisible({ timeout: 12_000 });
+});
+
 test("an original renewal link keeps a bank reservation visible and resolves terminal failure", async ({ page }) => {
   expect((await page.request.post("/api/auth/login", { data: { email: "owner@example.com", password: "aerowise-dev" } })).ok()).toBe(true);
   const customer = await (await page.request.post("/api/customers", { data: { displayName: "Fictional renewal recovery" } })).json();

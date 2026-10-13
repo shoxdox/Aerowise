@@ -1,3 +1,4 @@
+import { latestPaymentFailed } from "../lib/public-payment-state.ts";
 import type { Database } from "@aerowise/db";
 import { amountDue, billingSettings, billingSettingsInput, invoiceSnapshot, publicInvoice, type BillingSettings, type PublicInvoice } from "@aerowise/domain";
 import { applyStripeEvent, TestPaymentProvider, WebhookSignatureError, type WebhookEvent } from "@aerowise/payments";
@@ -134,7 +135,6 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         .where("bankVerificationUrl", "is not", null)
         .orderBy("createdAt", "desc")
         .executeTakeFirst();
-      const latest = await db.selectFrom("payments").select("status").where("organizationId", "=", inv.organizationId).where("invoiceId", "=", inv.id).orderBy("createdAt", "desc").orderBy("id", "desc").executeTakeFirst();
       return {
         number: s.number,
         status: inv.status,
@@ -156,7 +156,7 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         amountDueCents: amountDue(inv),
         canPayOnline: !closedReason && canPayOnline(provider, inv),
         bankVerificationUrl: verify?.bankVerificationUrl ?? null,
-        latestPaymentFailed: latest?.status === "failed" && inv.pendingCents === 0,
+        latestPaymentFailed: await latestPaymentFailed(db, inv.organizationId, inv.id, inv.pendingCents),
         pdfReady: !!inv.pdfStorageKey,
         testMode: !!provider && (await providerFor(provider, inv.organizationId)).kind === "test",
         closedReason,

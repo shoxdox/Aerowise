@@ -42,7 +42,10 @@ describe("full data export", () => {
     const original = (await ctx.store.get(sourceInvoice.pdfStorageKey!))!;
     const token = String((await a.api.get(`/invoices/${invoice.id}`)).json().payUrl).split("/pay/")[1]!;
     expect(pdfText(original).replace(/\s+/g, "")).toContain(token);
+    await ctx.db.updateTable("organizations").set({ renewalTerms: `An owner-entered reference https://app.example.test/pay/${token}` }).where("id", "=", a.org.id).execute();
     const { files } = await exportZip(ctx, a.api);
+    expect(strFromU8(files["company.json"]!)).not.toContain(token);
+    expect(strFromU8(files["company.json"]!)).toContain("[redacted-link-token]");
     expect(pdfText(Buffer.from(files[`invoices/${invoice.id}.pdf`]!)).replace(/\s+/g, "")).not.toContain(token);
     expect((await ctx.store.get(sourceInvoice.pdfStorageKey!))!.equals(original)).toBe(true);
     const portableManifest = JSON.parse(strFromU8(files["manifest.json"]!));

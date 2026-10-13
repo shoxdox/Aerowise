@@ -214,14 +214,14 @@ export async function buildExport(db: Database, store: ObjectStore, organization
       eb.exists(eb.selectFrom("inspections as i").select("i.id").where("i.organizationId", "=", organizationId).whereRef("i.templateId", "=", "t.id")),
       eb.exists(eb.selectFrom("workRecords as w").select("w.id").where("w.organizationId", "=", organizationId).whereRef("w.templateId", "=", "t.id")),
     ])).orderBy("t.id").execute();
-  files["template-versions.json"] = enc.encode(JSON.stringify({ ...(demo ? { notice: DEMO_EXPORT_NOTICE } : {}), templates }, null, 2));
+  files["template-versions.json"] = enc.encode(JSON.stringify({ ...(demo ? { notice: DEMO_EXPORT_NOTICE } : {}), templates: withoutBearerLinks(templates) }, null, 2));
   const company = await db.selectFrom("organizations").select(["id", "name", "demo", "phone", "emergencyPhone", "email", "addressLine1", "addressLine2", "city", "state", "postalCode", "timezone", "serviceCounties", "responsibleCredentialId", "invoiceTermsDays", "defaultTaxRateBps", "renewalWindowDays", "renewalAutoSend", "renewalPayment", "renewalTerms", "routeStartAddress", "routeStartLat", "routeStartLng", "routeReturnToStart", "routeStopMinutes", "routeDayMinutes", "routeSpeedMph", "disposalOverdueDays", "billFilingFees"])
     .where("id", "=", organizationId).executeTakeFirstOrThrow();
-  files["company.json"] = enc.encode(JSON.stringify({ ...(demo ? { notice: DEMO_EXPORT_NOTICE } : {}), company }, null, 2));
+  files["company.json"] = enc.encode(JSON.stringify({ ...(demo ? { notice: DEMO_EXPORT_NOTICE } : {}), company: withoutBearerLinks(company) }, null, 2));
   const staff = await db.selectFrom("memberships as m").innerJoin("users as u", "u.id", "m.userId")
     .select(["u.id", "u.name", "u.email", "u.phone", "m.role", "m.active", "m.technicianLicense"])
     .where("m.organizationId", "=", organizationId).orderBy("u.id").execute();
-  files["staff.json"] = enc.encode(JSON.stringify({ ...(demo ? { notice: DEMO_EXPORT_NOTICE } : {}), staff }, null, 2));
+  files["staff.json"] = enc.encode(JSON.stringify({ ...(demo ? { notice: DEMO_EXPORT_NOTICE } : {}), staff: withoutBearerLinks(staff) }, null, 2));
   const missing: string[] = [];
   const assets: { file: string; table: string; recordId: string; state: "included" | "missing"; rendition?: "portable-invoice-without-payment-link"; sourceSha256?: string; bytes?: number; sha256?: string }[] = [];
   let documents = 0;

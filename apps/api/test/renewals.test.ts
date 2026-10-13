@@ -369,5 +369,10 @@ describe("renewal payment confirmation on the original link", () => {
     expect((await step("ach_fails")).statusCode).toBe(200);
     expect((await anon().get(`/renew/${r.token}`)).json()).toMatchObject({ paymentConfirmation: { pendingCents: 0, latestPaymentFailed: true } });
     expect((await anon().get(`/pay/${invoiceToken}`)).json()).toMatchObject({ pendingCents: 0, latestPaymentFailed: true });
+    const retry = await anon().post(`/renew/${r.token}/checkout`, {});
+    expect(retry.statusCode).toBe(200);
+    // A fresh retry is not failed just because its predecessor was; its webhook has not arrived.
+    expect((await anon().get(`/pay/${invoiceToken}`)).json().latestPaymentFailed).toBe(false);
+    expect((await anon().get(`/renew/${r.token}`)).json().paymentConfirmation.latestPaymentFailed).toBe(false);
   });
 });
