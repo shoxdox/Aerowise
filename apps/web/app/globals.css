@@ -290,7 +290,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 
 /* Marketing page (October 2026): a landing page, not a document. */
 .marketing .page { max-width: 1040px; gap: 64px; padding-bottom: 64px; }
-.marketing .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 40px; align-items: center; padding-top: 40px; }
+.marketing .hero { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; padding-top: 40px; }
 .marketing .hero-text { gap: 16px; }
 .marketing .hero h1 { font-size: 2.6rem; line-height: 1.12; letter-spacing: -0.01em; max-width: 20ch; }
 .marketing .eyebrow { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
@@ -307,6 +307,22 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .marketing .shot.phone { max-width: 320px; justify-self: center; }
 .marketing .shot.phone img { border-radius: 24px; border-width: 6px; border-color: #1c2321; }
 .marketing .shot.wide img { border-radius: 10px; }
+.marketing .try { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+.marketing .try-rules { gap: 14px; }
+.marketing .try-rules select { width: 100%; }
+.marketing .rule-card { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-size: 0.95rem; }
+.marketing .rule-card dt { color: var(--muted); font-weight: 600; }
+.marketing .rule-card dd { margin: 0; }
+.marketing .try-status { border-left: 4px solid var(--warn-text); gap: 6px; }
+.marketing .try-status.ready { border-left-color: var(--accent); }
+.marketing .try-status ul { margin: 0; padding-left: 20px; columns: 2; column-gap: 20px; font-size: 0.95rem; }
+.marketing .phone-frame { border: 6px solid #1c2321; border-radius: 28px; background: var(--bg); height: 640px; overflow-y: auto; box-shadow: 0 12px 32px rgba(28, 35, 33, 0.14); max-width: 400px; justify-self: center; width: 100%; }
+.marketing .phone-frame .tech-bar { position: sticky; top: 0; }
+.marketing .phone-frame .tech-page { padding-bottom: 32px; }
+.marketing .phone-frame h2 { font-size: 1.1rem; }
+.marketing .phone-frame .card { padding: 14px; }
+.marketing .phone-frame .field-title { font-weight: 600; }
+.marketing .phone-frame .req { color: var(--error); }
 .marketing h2 { font-size: 1.5rem; letter-spacing: -0.01em; }
 .marketing h2 .count, .marketing h3 .count { font-size: 0.95rem; font-weight: 500; }
 .marketing .compare { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -343,7 +359,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .marketing .hero { grid-template-columns: 1fr; gap: 24px; padding-top: 16px; }
   .marketing .hero h1 { font-size: 1.9rem; }
   .marketing .lead { font-size: 1.05rem; }
-  .marketing .shot.phone { max-width: 260px; }
+  .marketing .try { grid-template-columns: 1fr; }
+  .marketing .phone-frame { height: 560px; }
+  .marketing .try-status ul { columns: 1; }
   .marketing .compare { grid-template-columns: 1fr; }
   .marketing .compare-head { display: none; }
   .marketing .compare-row span:first-child { border-right: none; border-bottom: none; padding-bottom: 4px; font-size: 0.9rem; }

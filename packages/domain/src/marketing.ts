@@ -25,6 +25,24 @@ export const coverageItem = z.object({
    * `prepared` (no provider channel published; prepared for the office to send as it does today).
    */
   filing: z.enum(["email", "portal", "prepared"]),
+  /** The rules a provider would ask about first, read from the same ruleset the product applies. */
+  rules: z.object({
+    /** Months between routine visits; `monitoredIntervalMonths` when the system has electronic monitoring on record. */
+    intervalMonths: z.number().int(),
+    monitoredIntervalMonths: z.number().int().nullable(),
+    /** Days after the test by which the report is due. */
+    reportDeadlineDays: z.number().int(),
+    /** Days before the previous contract ends by which a renewal is due, when the authority says. */
+    renewalDaysBeforePreviousEnd: z.number().int().nullable(),
+    /** Template field keys this authority requires on every report, beyond the form's own. */
+    requiredFields: z.array(z.string()),
+    /** The authority counts visits from the contract's start date rather than evenly. */
+    contractVisits: z.boolean(),
+    /** Days within which a failed or low-chlorine report needs a retest report, when the authority says. */
+    correctiveReportDays: z.number().int().nullable(),
+    /** Where a report goes: the published inbox (`email`) or upload page (`portal`); null when prepared for the office to send. */
+    destination: z.string().nullable(),
+  }),
 });
 export type CoverageItem = z.infer<typeof coverageItem>;
 

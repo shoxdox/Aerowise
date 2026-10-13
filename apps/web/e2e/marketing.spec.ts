@@ -28,7 +28,23 @@ test("the marketing page shows signed out, with coverage from the rulesets and c
   await expect(page.getByText("$0.50 per active contract per month, with a $50.00 monthly minimum.")).toBeVisible();
   await expect(page.getByText(/first five companies pay \$0\.25/)).toBeVisible();
   await expect(page.getByRole("link", { name: "justin@deshain.com" })).toBeVisible();
-  // The product screenshots are real captures shipped with the app, so they must load.
+  // Try it here: the real template with the chosen county's requirements applied, nothing sent.
+  const status = page.getByTestId("try-status");
+  await page.getByLabel("Your county").selectOption("tx-williamson-county");
+  await expect(status).toContainText("Williamson County report");
+  await expect(status).toContainText("Sludge in pump tank");
+  // Aerator and air pressure are pre-filled; the next answer clears its own line.
+  await expect(status).not.toContainText("Aerator");
+  await expect(status).toContainText("Air filter");
+  await page.getByTestId("try-form").getByRole("group", { name: "Air filter" }).getByRole("button", { name: "Pass", exact: true }).click();
+  await expect(status).not.toContainText("Air filter");
+  await page.getByRole("button", { name: "Start over" }).click();
+  await expect(status).toContainText("Air filter");
+  await page.getByLabel("Your county").selectOption("tx-hays-county");
+  await expect(status).not.toContainText("Sludge in pump tank");
+  await expect(page.getByText("counted from the contract's start date")).toBeVisible();
+
+  // The product screenshot is a real capture shipped with the app, so it must load.
   for (const img of await page.locator(".marketing .shot img").all()) {
     await expect(img).toBeVisible();
     expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);

@@ -9,15 +9,28 @@ export const HERO = {
   body: "Aerowise keeps each maintenance contract's visits on the county's schedule, puts the inspection on your technician's phone (no signal needed), and prepares the report with your licence on it. You read it and press Send.",
   /** Three plain facts under the buttons. Each must stay true; the first is counted from the rulesets. */
   facts: ["Texas authorities' rules built in", "Works with no signal on the phone", "Free for 90 days, no card"],
-  /** The real inspection form, captured from the demo company. */
-  shot: { src: "/marketing/phone-inspection.png", alt: "The technician's inspection form on a phone: Aeration section with Aerator pass, air pressure, air filter and diffuser", caption: "The inspection form on the technician's phone, from the demo company." },
+  /** The office's Due list, captured from the demo company. */
+  shot: { src: "/marketing/office-due.png", alt: "The office's Due page: 32 open visits, five overdue, each with its window and access notes", caption: "The office's Due list, captured from the demo company." },
 };
 
-/** The office screens, captured from the demo company. */
-export const OFFICE = {
-  title: "The office side",
-  body: "One list of what is due, by county. Each finished inspection becomes a report with the authority's required fields and your licence, and the filing is not done until the authority's acknowledgment is recorded.",
-  shot: { src: "/marketing/office-due.png", alt: "The office's Due page: visits and reports due, each with its county deadline", caption: "The Due list in the office, from the demo company." },
+/** The inspection form and a county's rules, live on the page (components/marketing/TryIt.tsx). */
+export const TRY_IT = {
+  title: "Try it here",
+  intro: "Pick a county and fill in the inspection the way a technician would. This is the same form the phone runs and the same rules the office applies; nothing is sent anywhere.",
+  pick: "Your county",
+  authority: "Authority",
+  visits: "Visits",
+  report: "Report due",
+  goes: "Where it goes",
+  extra: "This county also wants",
+  renewal: "Renewal due",
+  corrective: "After a failed item",
+  formLabel: "The inspection form, as on the technician's phone",
+  needs: (n: number, county: string) => `${n} ${n === 1 ? "thing" : "things"} still needed before the ${county} report can be prepared`,
+  ready: (county: string) => `Ready: the ${county} report can be prepared.`,
+  readyNote: "On the phone it would now carry the photos, the GPS fix and your licence, and go to the office to read and send.",
+  note: "Photos and the GPS fix are taken on the phone, so they are left out here.",
+  reset: "Start over",
 };
 
 export const PROBLEM = {

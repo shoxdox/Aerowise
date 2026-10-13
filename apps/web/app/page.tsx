@@ -4,7 +4,8 @@ import type { CoverageItem, PublicOverview } from "@aerowise/domain";
 import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { DemoRequestForm } from "@/components/marketing/DemoRequestForm";
-import { CONTACT, COVERAGE, DEMO, HERO, OFFICE, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO } from "@/components/marketing/copy";
+import { CONTACT, COVERAGE, DEMO, HERO, PRICING, PROBLEM, RESPONSIBILITY, STEPS, TRY_DEMO, TRY_IT } from "@/components/marketing/copy";
+import { TryIt } from "@/components/marketing/TryIt";
 import { useLoad } from "@/components/useLoad";
 import { useDemoMode } from "@/lib/demo";
 import { money } from "@/lib/format";
@@ -52,10 +53,16 @@ export default function MarketingPage() {
               ))}
             </ul>
           </div>
-          <figure className="shot phone">
-            <img src={HERO.shot.src} alt={HERO.shot.alt} width={390} height={780} />
+          <figure className="shot wide">
+            <img src={HERO.shot.src} alt={HERO.shot.alt} width={1280} height={595} />
             <figcaption className="muted small">{HERO.shot.caption}</figcaption>
           </figure>
+        </section>
+
+        <section className="stack" aria-labelledby="try">
+          <h2 id="try">{TRY_IT.title}</h2>
+          <p className="lead-small">{TRY_IT.intro}</p>
+          {data && data.coverage.length > 0 && <TryIt coverage={data.coverage} />}
         </section>
 
         <section className="stack" aria-labelledby="problem">
@@ -89,15 +96,6 @@ export default function MarketingPage() {
               </li>
             ))}
           </ol>
-        </section>
-
-        <section className="stack" aria-labelledby="office">
-          <h2 id="office">{OFFICE.title}</h2>
-          <p className="lead-small">{OFFICE.body}</p>
-          <figure className="shot wide">
-            <img src={OFFICE.shot.src} alt={OFFICE.shot.alt} width={1280} height={595} />
-            <figcaption className="muted small">{OFFICE.shot.caption}</figcaption>
-          </figure>
         </section>
 
         <section className="stack" aria-labelledby="coverage">

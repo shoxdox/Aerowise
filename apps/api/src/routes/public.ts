@@ -49,6 +49,16 @@ export const publicRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
                 .filter((f) => f.state === "authority_confirmed")
                 .map((f) => f.label),
           filing,
+          rules: {
+            intervalMonths: rs.rules.service.intervalMonths,
+            monitoredIntervalMonths: rs.rules.service.monitored?.intervalMonths ?? null,
+            reportDeadlineDays: rs.rules.filing.deadlineDays,
+            renewalDaysBeforePreviousEnd: rs.rules.contracts?.renewalDaysBeforePreviousEnd ?? null,
+            requiredFields: rs.rules.inspection.requiredFields,
+            contractVisits: !!rs.rules.service.contractVisits,
+            correctiveReportDays: rs.rules.service.correctiveReport?.withinDays ?? null,
+            destination: filing === "email" ? (rs.rules.submission.email?.to ?? null) : filing === "portal" ? rs.rules.submission.portalUrl : null,
+          },
         });
       }
       // Verified authorities first, then by name.
