@@ -63,7 +63,9 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
       .select(["id", "organizationId", "customerId", "expiresAt", "revokedAt"])
       .where("tokenHash", "=", hashPortalToken(t))
       .executeTakeFirst();
-    if (!link || link.revokedAt || link.expiresAt <= now()) throw notFoundLink();
+    if (!link) throw notFoundLink();
+    if (link.revokedAt) throw new HttpError(410, "revoked", "This account link was turned off. Ask your provider for a current link.");
+    if (link.expiresAt <= now()) throw new HttpError(410, "expired", "This account link has expired. Request a current link.");
     return link;
   }
 

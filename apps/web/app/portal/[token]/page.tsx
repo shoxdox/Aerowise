@@ -4,7 +4,8 @@ import { SERVICE_REQUEST_KINDS, SERVICE_REQUEST_LABELS, type PortalSite, type Po
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { useLoad } from "@/components/useLoad";
+import { usePublicRead } from "@/components/public/usePublicRead";
+import { PublicLinkRecovery } from "@/components/public/PublicLinkRecovery";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money } from "@/lib/format";
 
@@ -220,21 +221,9 @@ function SiteCard({ site, token, onRequested }: { site: PortalSite; token: strin
 /** A homeowner's account, opened from their magic link. No sign-in: the link is the key. */
 export default function PortalPage() {
   const { token } = useParams<{ token: string }>();
-  const { data: v, error, reload } = useLoad<PortalView>(`/portal/${token}`);
+  const { data: v, error, reload } = usePublicRead<PortalView>(`/portal/${token}`);
 
-  if (error) {
-    return (
-      <main className="pay">
-        <div className="pay-card">
-          <div className="card stack">
-            <h1>Link not valid</h1>
-            <p>{error}</p>
-            <Link href="/portal">Email me a new link</Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
+  if (error) return <PublicLinkRecovery error={error} retry={reload} kind="account" provider={v?.provider} />;
   if (!v) return <p className="muted pad">Loading…</p>;
   const contact = [v.provider.phone, v.provider.email].filter(Boolean).join(" or ");
   const owed = v.invoices.filter((i) => i.amountDueCents > 0);

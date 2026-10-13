@@ -4,7 +4,8 @@ import { estimateTotals, selectedLines, type PublicEstimate } from "@aerowise/do
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
-import { useLoad } from "@/components/useLoad";
+import { usePublicRead } from "@/components/public/usePublicRead";
+import { PublicLinkRecovery } from "@/components/public/PublicLinkRecovery";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
 
@@ -54,7 +55,7 @@ function Totals({ totals, depositCents }: { totals: Version["totals"]; depositCe
 /** What a homeowner sees from the link in their estimate email. No sign-in: the link is the key. */
 function EstimatePage() {
   const { token } = useParams<{ token: string }>();
-  const { data: r, error, reload } = useLoad<PublicEstimate>(`/estimate/${token}`);
+  const { data: r, error, reload } = usePublicRead<PublicEstimate>(`/estimate/${token}`);
   const [chosen, setChosen] = useState<string[] | null>(null);
   const [mode, setMode] = useState<"typed" | "drawn">("typed");
   const [drawn, setDrawn] = useState<string | null>(null);
@@ -68,16 +69,7 @@ function EstimatePage() {
     void api(`/estimate/${token}/view`, { method: "POST", body: {} }).catch(() => undefined);
   }, [token]);
 
-  if (error) {
-    return (
-      <Shell>
-        <div className="card">
-          <h1>Estimate not found</h1>
-          <p>{error}</p>
-        </div>
-      </Shell>
-    );
-  }
+  if (error) return <PublicLinkRecovery error={error} retry={reload} kind="estimate" provider={r?.provider} />;
   if (!r) return <p className="muted pad">Loading…</p>;
 
   const contact = [r.provider.phone, r.provider.email].filter(Boolean).join(" or ");

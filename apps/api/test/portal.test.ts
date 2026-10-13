@@ -122,13 +122,13 @@ describe("customer portal", () => {
 
     ctx.now = new Date("2026-05-31T18:00:00Z"); // 91 days later
     const expired = await anon().get(`/portal/${token}`);
-    expect(expired.statusCode).toBe(404);
-    expect(expired.json().message).toMatch(/Ask for a new one/);
+    expect(expired.statusCode).toBe(410);
+    expect(expired.json().error).toBe("expired");
 
     ctx.now = new Date("2026-03-01T18:00:00Z");
     const second = await copyLink(t);
     expect((await t.api.post(`/customers/${t.customer.id}/portal-links/revoke`, {})).json()).toEqual({ revoked: 2 });
-    expect((await anon().get(`/portal/${second}`)).statusCode).toBe(404);
+    expect((await anon().get(`/portal/${second}`)).json()).toMatchObject({ error: "revoked" });
     expect((await t.api.get(`/customers/${t.customer.id}/portal`)).json().activeLinks).toBe(0);
   });
 

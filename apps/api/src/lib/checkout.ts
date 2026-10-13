@@ -44,7 +44,10 @@ export async function openInvoiceById(db: Database, invoiceId: string) {
 export async function invoiceByToken(db: Database, token: string) {
   const id = linkTokenId("pay", token);
   if (!id) throw notFoundLink();
-  return openInvoiceById(db, id);
+  const inv = await payable(db).where("i.id", "=", id).executeTakeFirst();
+  if (!inv) throw notFoundLink();
+  if (inv.status !== "open") throw new HttpError(410, "revoked", "This payment link was turned off. Contact your provider before making another payment.");
+  return inv;
 }
 export type PayableInvoice = Awaited<ReturnType<typeof openInvoiceById>>;
 
