@@ -101,6 +101,7 @@ test("a fresh visitor follows actual case records to the report, selected visit,
   await expect(page.getByRole("heading", { name: "Report versions", exact: true })).toBeVisible();
   const corrected = await (await page.request.get(`/api/filings/${j.case.filingId}`)).json();
   expect(corrected.reports[0].version).toBe(original.reports[0].version + 1);
+  await expect(page.getByRole("heading", { name: "Maintenance provider signature", exact: true }).locator("..")).toContainText(`Report version ${corrected.reports[0].version}`);
   expect(corrected.reports[1].sha256).toBe(original.reports[0].sha256);
   expect(corrected.packages.find((p: { id: string }) => p.id === original.packages[0].id).manifestSha256).toBe(original.packages[0].manifestSha256);
 

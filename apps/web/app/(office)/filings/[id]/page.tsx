@@ -184,7 +184,7 @@ export default function FilingPage() {
       )}
 
       {f.status === "needs_review" && <p className="card restriction">{f.reviewReason}</p>}
-      {f.inspection && f.profile && <ReportSignature inspectionId={f.inspection.id} editable={editable} onSigned={() => void reload()} />}
+      {f.inspection && f.profile && <ReportSignature key={`${f.inspection.id}:${f.reports[0]?.version ?? 0}`} inspectionId={f.inspection.id} editable={editable} onSigned={() => void reload()} />}
       {f.status === "failed" && <p className="card restriction">Sending failed: {f.lastError}. It retries automatically.</p>}
       {f.status === "rejected" && <p className="card restriction">The authority rejected it: {f.rejectionReason}</p>}
 
