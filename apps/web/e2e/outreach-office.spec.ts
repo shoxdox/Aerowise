@@ -125,12 +125,40 @@ test("a fresh visitor follows actual case records to the report, selected visit,
 
 test("a pumping Due action opens and focuses the exact contract visit without booking work", async ({ page }) => {
   await office(page);
-  const probe = await (await page.request.get("/api/obligations/due?limit=1")).json();
+  const stamp = crypto.randomUUID().slice(0, 8);
+  const planResponse = await page.request.post("/api/plans", { data: { name: `Fictional exact cycle ${stamp}`, termMonths: 1, visitsPerTerm: 1, priceCents: 20000 } });
+  expect(planResponse.status(), await planResponse.text()).toBe(201);
+  const plan = await planResponse.json();
+  const typesResponse = await page.request.get("/api/work-types");
+  expect(typesResponse.ok(), await typesResponse.text()).toBe(true);
+  const pump = (await typesResponse.json()).items.find((t: { key: string }) => t.key === "pumping");
+  expect(pump).toBeTruthy();
+  const version = await page.request.post(`/api/plans/${plan.id}/versions`, { data: { termsText: "Fictional cycle target test only", options: [], coverage: [], aerobic: false, serviceCycles: [{ cycleKey: "pumping", label: "Exact fictional pump visit", serviceType: "pumping", workTypeId: pump.id, schedule: { kind: "every_months", everyMonths: 1, windowDays: 10 } }] } });
+  expect(version.status(), await version.text()).toBe(201);
+  const customerResponse = await page.request.post("/api/customers", { data: { displayName: `Fictional cycle target ${stamp}` } });
+  expect(customerResponse.status(), await customerResponse.text()).toBe(201);
+  const customer = await customerResponse.json();
+  const siteResponse = await page.request.post(`/api/customers/${customer.id}/sites`, { data: { addressLine1: "12 Fictional Exact Cycle Lane", city: "Austin" } });
+  expect(siteResponse.status(), await siteResponse.text()).toBe(201);
+  const site = await siteResponse.json();
+  const probeResponse = await page.request.get("/api/obligations/due?limit=1");
+  expect(probeResponse.ok(), await probeResponse.text()).toBe(true);
+  const probe = await probeResponse.json();
+  const contractResponse = await page.request.post(`/api/sites/${site.id}/contracts`, { data: { planId: plan.id, startOn: probe.today } });
+  expect(contractResponse.status(), await contractResponse.text()).toBe(201);
+  const obligation = (await contractResponse.json()).obligations.find((o: { serviceType: string }) => o.serviceType === "pumping");
+  expect(obligation).toBeTruthy(); expect(obligation.workOrder).toBeNull();
   const through = new Date(`${probe.today}T00:00:00Z`); through.setUTCDate(through.getUTCDate() + 90);
-  const due = await (await page.request.get(`/api/obligations/due?serviceType=pumping&through=${through.toISOString().slice(0, 10)}&limit=50`)).json();
-  const target = due.items.find((o: { workOrder: unknown }) => !o.workOrder);
-  expect(target).toBeTruthy();
-  await page.goto("/due?range=90&serviceType=pumping");
+  let offset = 0;
+  let target: { id: string; site: { id: string } } | undefined;
+  while (!target) {
+    const dueResponse = await page.request.get(`/api/obligations/due?serviceType=pumping&through=${through.toISOString().slice(0, 10)}&limit=50&offset=${offset}`);
+    expect(dueResponse.ok(), await dueResponse.text()).toBe(true);
+    const due = await dueResponse.json();
+    target = due.items.find((o: { id: string }) => o.id === obligation.id);
+    if (!target) { offset += 50; expect(offset, "Explicit fixture must remain reachable in the full Due dataset").toBeLessThan(due.total); }
+  }
+  await page.goto(`/due?range=90&serviceType=pumping&offset=${offset}`);
   const action = page.locator(`a[href="/sites/${target.site.id}?obligationId=${target.id}#obligation-${target.id}"]`);
   await expect(action).toBeVisible();
   await action.click();

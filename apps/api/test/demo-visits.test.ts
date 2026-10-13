@@ -1,4 +1,6 @@
 import { DEMO_PASSWORD, seedDemoCompany } from "@aerowise/db";
+import * as database from "@aerowise/db";
+import { buildTermSchedule } from "@aerowise/domain";
 import { sql } from "kysely";
 import { describe, expect, it, vi } from "vitest";
 import { buildApp, type App } from "../src/app.ts";
@@ -158,23 +160,48 @@ describe("visitor demos", () => {
     expect((await a.inject({ method: "GET", url: "/demo/journey", headers: { cookie } })).statusCode).toBe(401);
   });
 
-  it("never replays a future-start contract past a private demo's real expiry", async () => {
+  it("caps a current-day contract replay at morning arrival and leaves an explicit future contract unfiled", async () => {
     const fixed = new Date("2026-10-13T10:00:00Z");
+    const currentContractId = crypto.randomUUID(); const futureContractId = crypto.randomUUID();
+    const realSeed = database.seedDemoCompany;
+    // The ordinary random seed need not contain either boundary. Add complete fictional
+    // fixtures after seeding, before /demo/start calls the actual story, without changing its code.
+    const seed = vi.spyOn(database, "seedDemoCompany").mockImplementation(async (db, options) => {
+      const organizationId = await realSeed(db, options);
+      const source = await db.selectFrom("contracts as c").innerJoin("sites as s", (j) => j.onRef("s.id", "=", "c.siteId").onRef("s.organizationId", "=", "c.organizationId"))
+        .select(["c.id as contractId", "s.id as siteId", "c.termMonths", "c.visitsPerTerm"])
+        .where("c.organizationId", "=", organizationId).where("s.county", "=", "Travis").where("c.serviceType", "=", "aerobic_inspection").executeTakeFirstOrThrow();
+      for (const boundary of [{ id: currentContractId, startOn: "2026-10-13", address: "1 Fictional Morning Boundary" }, { id: futureContractId, startOn: "2026-10-14", address: "2 Fictional Future Boundary" }]) {
+        const siteId = crypto.randomUUID();
+        const schedule = buildTermSchedule(boundary.startOn, source.termMonths, source.visitsPerTerm);
+        await sql`insert into sites select (jsonb_populate_record(null::sites, to_jsonb(s) || jsonb_build_object('id', ${siteId}::uuid, 'address_line1', ${boundary.address}::text, 'authority_assignment_id', null))).* from sites s where s.id=${source.siteId}::uuid`.execute(db);
+        await sql`insert into wastewater_systems select (jsonb_populate_record(null::wastewater_systems, to_jsonb(w) || jsonb_build_object('id', gen_random_uuid(), 'site_id', ${siteId}::uuid))).* from wastewater_systems w where w.site_id=${source.siteId}::uuid`.execute(db);
+        await sql`insert into contracts select (jsonb_populate_record(null::contracts, to_jsonb(c) || jsonb_build_object('id', ${boundary.id}::uuid, 'site_id', ${siteId}::uuid, 'start_on', ${boundary.startOn}::date, 'end_on', ${schedule.endOn}::date, 'auto_renew', false))).* from contracts c where c.id=${source.contractId}::uuid`.execute(db);
+        await db.insertInto("serviceObligations").values(schedule.visits.map(v => ({ organizationId, contractId: boundary.id, siteId, serviceType: "aerobic_inspection" as const, sequence: v.sequence, windowStart: v.windowStart, windowEnd: v.windowEnd, dueOn: v.dueOn, completedAt: null }))).execute();
+      }
+      return organizationId;
+    });
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(fixed);
     try {
       const a = await app();
       const started = await start(a);
       expect(started.statusCode, started.body).toBe(200);
+      expect(seed).toHaveBeenCalledOnce();
       const organizationId = started.json().organizationId;
-      const future = await ctx.db.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("startOn", ">", "2026-10-13").execute();
-      expect(future.length).toBeGreaterThan(0);
-      expect(await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("contractId", "in", future.map((c) => c.id)).execute()).toEqual([]);
       const expiry = new Date(started.json().expiresAt);
       expect(expiry.getTime()).toBe(fixed.getTime() + 24 * 3600_000);
+      // Without the arrival cap, the current-day contract submits tomorrow afternoon,
+      // after this visitor expires tomorrow morning, and the queue correctly refuses it.
+      expect(new Date("2026-10-14T17:00:00Z").getTime()).toBeGreaterThan(expiry.getTime());
+      const submitted = await ctx.db.selectFrom("filings").select(["status", "sentAt"]).where("organizationId", "=", organizationId).where("contractId", "=", currentContractId).executeTakeFirstOrThrow();
+      expect(submitted.status).toBe("sent"); expect(submitted.sentAt!.getTime()).toBeLessThanOrEqual(fixed.getTime());
+      expect(await ctx.db.selectFrom("contracts").select("startOn").where("organizationId", "=", organizationId).where("id", "=", futureContractId).executeTakeFirstOrThrow()).toEqual({ startOn: "2026-10-14" });
+      expect(await ctx.db.selectFrom("filings").select("id").where("organizationId", "=", organizationId).where("contractId", "=", futureContractId).execute()).toEqual([]);
+      expect(await ctx.db.selectFrom("contractDocuments").select("id").where("organizationId", "=", organizationId).where("contractId", "=", futureContractId).execute()).toEqual([]);
       const pending = await ctx.db.selectFrom("backgroundTasks").select(["kind", "runAt"]).where("organizationId", "=", organizationId).where("completedAt", "is", null).where("runAt", "<=", fixed).where("failedAt", "is", null).execute();
       expect(pending).toEqual([]);
-    } finally { vi.useRealTimers(); }
+    } finally { seed.mockRestore(); vi.useRealTimers(); }
   });
 
   it("lets the visitor look around as the office manager or technician, only in their own demo", async () => {

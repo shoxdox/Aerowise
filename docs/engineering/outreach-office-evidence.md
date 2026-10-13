@@ -86,3 +86,17 @@ pnpm lint
 The three-file API batch passed **42/42** in 33.79 seconds. The final strengthened Office file passed **8/8** in 13.64 seconds, additionally proving the full portal balance with 52 outstanding invoices across multiple pages. Fixtures cover 303 portal invoices, 251 customer requests beyond both old caps, 201 held work records, distinct final pages, tenant/role refusal, invalid offsets and revoked-link refusal. The initial new fixture attempted to backdate an already issued invoice and was correctly refused by the immutable-invoice trigger. The fixture now issues it through the API at its historical test clock; the protection was preserved.
 
 The Office browser spec adds the actual Due-to-exact-cycle click/focus/no-mutation and controlled contract/coverage/field/held read failures. The existing fresh-visitor homeowner assertion was scoped to the visible main heading after its prior selector matched a hidden banner paragraph. These changed browser cases await the parent's final rebuilt suite; API passes and source changes are not recorded as browser verification.
+
+## Deterministic regression fixtures after the preliminary full sweep
+
+The first fixed-date demo test incorrectly assumed the random seed included a future-start contract. The seed's random contracts all start today or earlier; absence of a future record was a test precondition failure. The test now wraps the real seeder only within that test and inserts two complete fictional Travis sites/systems/contracts and their normal obligations before the actual `/demo/start` story runs: one starts on the morning arrival date, and one starts tomorrow. It proves successful demo startup, unchanged 24-hour expiry, the current-day contract's submission timestamp capped at arrival (the original next-day afternoon would be past expiry), no future-contract filing or uploaded document, and no due unfinished task. No production logic or gate changed.
+
+```bash
+TEST_DATABASE_URL=postgres://aerowise:aerowise@localhost:55433/outreach_office_verify_test pnpm --filter @aerowise/api exec vitest run test/demo-visits.test.ts -t 'caps a current-day contract replay'
+pnpm --filter @aerowise/api typecheck
+pnpm exec eslint apps/api/test/demo-visits.test.ts apps/web/e2e/outreach-office.spec.ts
+```
+
+The targeted boundary regression passed **1/1**, with the file's other six tests intentionally skipped by `-t`, in 19.36 seconds. API typecheck, focused lint and diff-check passed. This is not a claim that the complete demo-visits file was rerun here.
+
+The cycle browser regression also initially assumed a seed visit was both unbooked and due within 90 days; the default pumping case did not provide that combination. It now creates a named fictional pumping-only monthly plan/version, customer/site and contract through the real API, checks every response, then finds that exact generated obligation through the actual Due pages. The browser clicks its real Due action and asserts row focus/highlight/open disclosure and no work-order mutation. This test-only correction awaits the coordinated browser rerun.
