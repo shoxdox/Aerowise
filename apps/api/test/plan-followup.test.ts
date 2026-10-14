@@ -265,5 +265,6 @@ describe("the demo's plan tiers", () => {
 
     await reseedDemo(ctx.db, { filesDir: files });
     expect(await ctx.db.selectFrom("plans").select("id").where("organizationId", "=", tiers[0]!.organizationId).where("name", "like", "%(demo)").execute()).toEqual([]);
-  });
+    // It plays the whole demo story (about 20 s on CI), longer than the default 20 s limit.
+  }, 120_000);
 });
