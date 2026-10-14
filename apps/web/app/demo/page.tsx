@@ -34,11 +34,10 @@ export default function TryTheDemoPage() {
       <section className="card stack">
         <h1>Try Aerowise</h1>
         <p>
-          You get a fictional aerobic maintenance company of your own, with customers, sites, contracts and a year of work already in it: inspections filed
-          with LCRA and with a fictional county, their reports and proof on each site, a renewal sent and invoices paid and unpaid. The optional five-minute walkthrough starts with a completed report, connects one named fictional case to its scheduled visit and technician, then opens a populated homeowner view directly. You start as its owner
-          and can look around as the office manager or the technician.
+          You&apos;ll get a sample maintenance company of your own, with customers, contracts and a year of inspections, reports and invoices already in it. Look
+          around as the owner, the office manager or the technician; a short guided tour is there if you want it.
         </p>
-        <p className="muted small">Nothing is emailed, texted, filed or charged. Your fictional company is private to you. Access expires after 24 hours; the fictional records are then eligible for cleanup.</p>
+        <p className="muted small">Nothing is emailed, texted, filed or charged. Your sample company is private to you and lasts 24 hours.</p>
         {error && (
           <p className="error" role="alert">
             {error}

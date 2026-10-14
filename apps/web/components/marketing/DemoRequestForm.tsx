@@ -4,7 +4,7 @@ import { demoRequestReceipt, type DemoRequestReceipt } from "@aerowise/domain";
 import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ApiError, formValues } from "@/lib/api";
-import { CONTACT, DEMO } from "./copy";
+import { WALKTHROUGH } from "./copy";
 
 const ATTEMPT_STORAGE = "aerowise.pilotRequestAttempt.v1";
 type RememberedAttempt = { key: string; fingerprint: string };
@@ -34,11 +34,12 @@ function rememberAttempt(value: RememberedAttempt | null) {
   } catch { /* Storage-blocked browsers retain only the current page's in-memory attempt. */ }
 }
 
-/** Saved in /admin. A tab-session key/fingerprint survives lost confirmations without storing contact fields. */
+/** Saved in /admin, which alerts the platform contacts. A tab-session key/fingerprint survives lost confirmations without storing contact fields. */
 export function DemoRequestForm() {
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<DemoRequestReceipt | null>(null);
+  const [sentTo, setSentTo] = useState("");
   const active = useRef(false);
   const attempt = useRef<{ key: string; body: string } | null>(null);
 
@@ -60,11 +61,12 @@ export function DemoRequestForm() {
       timer = setTimeout(() => controller.abort(), 15_000);
       const response = await fetch("/api/public/demo-requests", { method: "POST", credentials: "omit", signal: controller.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, submissionKey: attempt.current!.key }) });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new ApiError(response.status, result.error ?? "request_failed", result.message ?? DEMO.failed);
+      if (!response.ok) throw new ApiError(response.status, result.error ?? "request_failed", result.message ?? WALKTHROUGH.failed);
       setReceipt(demoRequestReceipt.parse(result));
+      setSentTo(body.email ?? "");
       setState("sent");
     } catch (err) {
-      setError(err instanceof ApiError ? (err.status === 429 ? DEMO.tooMany : err.status >= 500 ? DEMO.failed : err.message) : DEMO.failed);
+      setError(err instanceof ApiError ? (err.status === 429 ? WALKTHROUGH.tooMany : err.status >= 500 ? WALKTHROUGH.failed : err.message) : WALKTHROUGH.failed);
       setState("idle");
     } finally {
       clearTimeout(timer);
@@ -74,44 +76,44 @@ export function DemoRequestForm() {
 
   if (state === "sent") {
     return (
-      <div className="card stack" role="status">
-        <strong>{DEMO.thanks}</strong>
-        {receipt?.duplicate && <p>This retry reused your saved request; no duplicate request was created.</p>}
-        <p>{receipt?.notification === "simulated" ? "The alert is recorded in a simulated test outbox. No notification email reached Justin." : receipt?.notification === "provider_accepted" ? "A mail provider accepted the notification; that is not a guarantee Justin has read or received it." : receipt?.notification === "failed" ? "The notification failed. Your saved request is still visible to the administrator." : "Notification delivery has not been confirmed."}</p>
-        <a href={`mailto:${CONTACT.email}`}>Email Justin directly: {CONTACT.email}</a>
-        <a href={CONTACT.phoneHref}>Call {CONTACT.phone}</a>
-        <button type="button" className="secondary" onClick={() => { rememberAttempt(null); attempt.current = null; setReceipt(null); setError(null); setState("idle"); }}>Start another request</button>
+      <div className="card stack home-form" role="status">
+        <strong>{WALKTHROUGH.thanks}</strong>
+        <p>{receipt?.duplicate ? WALKTHROUGH.duplicate : WALKTHROUGH.reply(sentTo)}</p>
+        <button type="button" className="link" onClick={() => { rememberAttempt(null); attempt.current = null; setReceipt(null); setError(null); setState("idle"); }}>{WALKTHROUGH.another}</button>
       </div>
     );
   }
   return (
-    <form className="card stack" onSubmit={onSubmit} aria-label="Save a pilot request">
-      <label>
-        Your name
-        <input name="name" autoComplete="name" required maxLength={120} />
-      </label>
-      <label>
-        Email
-        <input name="email" type="email" autoComplete="email" required maxLength={320} />
-      </label>
-      <label>
-        Company
-        <input name="company" autoComplete="organization" required maxLength={160} />
-      </label>
-      <label>
-        Phone (optional)
-        <input name="phone" type="tel" autoComplete="tel" maxLength={40} />
-      </label>
+    <form className="card stack home-form" onSubmit={onSubmit} aria-label="Request a walkthrough">
+      <div className="home-form-row">
+        <label>
+          Your name
+          <input name="name" autoComplete="name" required maxLength={120} />
+        </label>
+        <label>
+          Company
+          <input name="company" autoComplete="organization" required maxLength={160} />
+        </label>
+      </div>
+      <div className="home-form-row">
+        <label>
+          Email
+          <input name="email" type="email" autoComplete="email" required maxLength={320} />
+        </label>
+        <label>
+          Phone (optional)
+          <input name="phone" type="tel" autoComplete="tel" maxLength={40} />
+        </label>
+      </div>
       <label>
         Counties you work in (optional)
-        <input name="counties" maxLength={300} />
+        <input name="counties" maxLength={300} placeholder="e.g. Williamson, Travis" />
       </label>
       <label>
-        Anything else (optional)
-        <textarea name="message" rows={3} maxLength={2000} />
+        Anything we should know? (optional)
+        <textarea name="message" rows={3} maxLength={2000} placeholder="How many contracts, what you use today…" />
       </label>
       {/* Spam trap: hidden from people and screen readers; bots that fill it are dropped. */}
-      <p className="muted small">This saves your contact details and message for private admin follow-up. <Link href="/privacy">Read the privacy policy</Link>. Do not include customer records, permits or sensitive information.</p>
       <div className="trap" aria-hidden="true">
         <label>
           Website
@@ -124,8 +126,9 @@ export function DemoRequestForm() {
         </p>
       )}
       <button type="submit" disabled={state === "sending"}>
-        {state === "sending" ? "Saving request…" : DEMO.button}
+        {state === "sending" ? WALKTHROUGH.sending : WALKTHROUGH.button}
       </button>
+      <p className="home-fine">{WALKTHROUGH.privacy} <Link href="/privacy">Privacy policy</Link></p>
     </form>
   );
 }

@@ -28,12 +28,11 @@ test("the marketing page links to its local demo on the demo deployment", async 
   await expect(page.getByRole("button", { name: "Start my demo" })).toBeVisible();
 });
 
-test("the marketing page labels the known staging demo off the demo deployment", async ({ page }) => {
+test("the marketing page links to the known staging demo off the demo deployment", async ({ page }) => {
   await page.route("**/api/app-info", (route) => route.fulfill({ json: { demo: false, demoCompany: false, demoVisitor: false } }));
   const answered = page.waitForResponse("**/api/app-info");
   await page.goto("/");
   await answered;
   await expect(page.getByTestId("try-demo")).toHaveAttribute("href", "https://staging.deshain.com/demo");
   await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", "/login");
-  await expect(page.getByText(/The public demo is on staging.deshain.com/)).toBeVisible();
 });

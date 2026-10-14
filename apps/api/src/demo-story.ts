@@ -22,9 +22,10 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //   - The year so far: every visit due before last week was inspected on its day, on the story's
 //     own clock, so reports were made, signed by the MP and filed when they would have been
 //     (by email: the office presses Send for LCRA, the example county sends by itself). Sites have real history.
-//   - Yesterday, the technician finished two overdue inspections. Their reports were made
-//     and filed with the (fictional) Example County by email; the outbox keeps the proof.
-//     The county answered one, so it is confirmed with a reference; the other waits.
+//   - Yesterday, the technician finished two overdue inspections. A Blanco one went to the
+//     (fictional) Example County by email, and the county answered it, so it is confirmed with a
+//     reference. A Lake Travis one is the walkthrough's case: the MP signed its report and the
+//     office sent it to LCRA with LCRA's cover sheet. The outbox keeps the proof of both.
 //   - A contract ending in three weeks has a renewal sent to the customer.
 //   - Invoices: one sent and unpaid, one paid by card on the test checkout.
 //   - With work orders switched on (AEROWISE_FEATURES): the inspections noted a repair and a
@@ -428,19 +429,22 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     clockAt = null;
 
     // ---- Yesterday: two overdue visits inspected and filed ----
-    // Blanco sites, so the fictional county's automatic email files them and one is confirmed.
-    const overdue = await db
-      .selectFrom("serviceObligations as o")
-      .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
-      .select(["o.id", "o.siteId", "s.lat", "s.lng", "s.county"])
-      .where("o.organizationId", "=", org.id)
-      .where("o.serviceType", "=", "aerobic_inspection")
-      .where("o.status", "=", "open")
-      .where("o.dueOn", "<", today)
-      .where("s.county", "=", "Example County")
-      .orderBy("o.dueOn")
-      .limit(2)
-      .execute();
+    // A Blanco site, so the fictional county's automatic email files it and its clerk confirms it;
+    // then a Lake Travis site, the walkthrough's case. LCRA's rules hold its report for the MP's
+    // signature, so it is signed and the office presses Send, the way a visitor should first see a report go out.
+    const overdueIn = (counties: string[]) =>
+      db
+        .selectFrom("serviceObligations as o")
+        .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "o.siteId").onRef("s.organizationId", "=", "o.organizationId"))
+        .select(["o.id", "o.siteId", "s.lat", "s.lng", "s.county"])
+        .where("o.organizationId", "=", org.id)
+        .where("o.serviceType", "=", "aerobic_inspection")
+        .where("o.status", "=", "open")
+        .where("o.dueOn", "<", today)
+        .where("s.county", "in", counties)
+        .orderBy("o.dueOn")
+        .executeTakeFirst();
+    const overdue = [await overdueIn(["Example County"]), await overdueIn(Object.keys(AUTHORITY_FOR_COUNTY))].filter((v) => v !== undefined);
     const inspections: string[] = [];
     for (const [n, visit] of overdue.entries()) {
       const done = await inspectVisit(visit, yesterday, {
@@ -459,8 +463,9 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       inspections.push(done.id);
     }
     if (inspections.length === 0) throw new Error("demo story: no visits from yesterday to inspect (was the demo seeded today?)");
-    // Reports made, filings emailed to the county's outbox.
+    // Reports made; the fictional county's is emailed on its own, LCRA's is signed and sent.
     await worker();
+    for (const [n, inspectionId] of inspections.entries()) await fileFiling(await filingOfInspection(inspectionId), `DEMO-Y-${1001 + n}`);
     const filings = await db.selectFrom("filings").select(["id", "status", "inspectionId"]).where("organizationId", "=", org.id).where("inspectionId", "in", inspections).execute();
     const first = filings.find((f) => f.inspectionId === inspections[0]);
     if (first?.status === "sent") await office.post(`/filings/${first.id}/confirm`, { reference: "EC-DEMO-0042", note: "Fictional: the county clerk replied by email." });

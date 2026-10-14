@@ -123,6 +123,18 @@ describe("visitor demos", () => {
     expect(j.case.customerName).toBeTruthy();
     expect(j.job).toBeTruthy();
     expect(j.invoice.paymentStatus).toBe("unpaid");
+    // The walkthrough opens on a report the MP signed and the office sent to a real authority's
+    // address (the stand-in outbox), not on the fictional county's unsigned automatic email.
+    const caseFiling = await ctx.db.selectFrom("filings as f").innerJoin("jurisdictions as jr", "jr.id", "f.jurisdictionId").select(["f.status", "f.reportId", "jr.key"]).where("f.id", "=", j.case.filingId).executeTakeFirstOrThrow();
+    expect([caseFiling.key, caseFiling.status]).toEqual(["tx-lcra-ossf", "sent"]);
+    expect(await ctx.db.selectFrom("reportSignatures").select("id").where("reportId", "=", caseFiling.reportId!).executeTakeFirst()).toBeTruthy();
+    // Filings opens on All, newest first: the case went out last (with yesterday's other report,
+    // at the same instant on this test's frozen clock), so it is at the top.
+    const recent = (await a.inject({ method: "GET", url: "/filings?view=all&sort=recent&limit=500", headers: { cookie } })).json().items as { id: string; sentAt: string | null }[];
+    const sentAt = recent.map((f) => f.sentAt);
+    expect(sentAt.every(Boolean)).toBe(true);
+    expect([...sentAt].sort().reverse()).toEqual(sentAt);
+    expect(recent.filter((f) => f.sentAt === sentAt[0]).map((f) => f.id)).toContain(j.case.filingId);
     const moved = await a.inject({ method: "PATCH", url: `/jobs/${j.job.id}`, payload: { scheduledDate: new Date(ctx.now.getTime() + 86_400_000).toISOString().slice(0, 10) }, headers: { cookie } });
     expect(moved.statusCode, moved.body).toBe(200);
     const changedJourney = (await a.inject({ method: "GET", url: "/demo/journey", headers: { cookie } })).json();

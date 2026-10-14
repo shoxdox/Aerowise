@@ -3,107 +3,212 @@
 import { monthlyCharge, publicOverview, type CoverageItem, type PublicOverview } from "@aerowise/domain";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { VerifiedBadge } from "@/components/FilingBadges";
 import { money } from "@/lib/format";
 import { DemoRequestForm } from "./DemoRequestForm";
-import { CONTACT, COVERAGE, DEMO, HERO, PRICING, PUBLIC_DEMO_URL, RESPONSIBILITY, STEPS, TRY_DEMO, TRY_IT } from "./copy";
-import { TryIt } from "./TryIt";
+import { CONTACT, COUNTIES, FEATURES, FOOTER, HERO, PRICING, PUBLIC_DEMO_URL, SHOTS, WALKTHROUGH } from "./copy";
 
-const FILING_GROUPS = ["email", "portal", "prepared"] as const;
 const WAIT_MS = 10_000;
 
-/** Bounded reads, explicit retry and no invented fallback price. Independent of company/session data. */
+/** Bounded read with an explicit retry; the page never invents a price or an authority list. */
 function usePublicOverview() {
   const [data, setData] = useState<PublicOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
     const timer = setTimeout(() => controller.abort(), WAIT_MS);
-    setLoading(true);
-    setError(null);
+    setError(false);
     fetch("/api/public/overview", { credentials: "omit", signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error("unavailable");
         return publicOverview.parse(await res.json());
       })
       .then((value) => { if (active) setData(value); })
-      .catch(() => { if (active) setError(controller.signal.aborted ? "The request took too long." : "The request failed."); })
-      .finally(() => { clearTimeout(timer); if (active) setLoading(false); });
-    return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [attempt]);
-  return { data, error, loading, retry: () => setAttempt((v) => v + 1) };
-}
-
-/** Known staging entry remains usable if app-info cannot answer. Local/demo deployments use their own entry once confirmed. */
-function useDemoEntry() {
-  const [href, setHref] = useState(PUBLIC_DEMO_URL);
-  const [state, setState] = useState<"checking" | "ready" | "unavailable">("checking");
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-    const timer = setTimeout(() => controller.abort(), WAIT_MS);
-    setState("checking");
-    fetch("/api/app-info", { credentials: "same-origin", signal: controller.signal })
-      .then(async (r) => { if (!r.ok) throw new Error("unavailable"); return r.json() as Promise<{ demo?: boolean }>; })
-      .then((body) => { if (active) { setHref(body.demo ? "/demo" : PUBLIC_DEMO_URL); setState("ready"); } })
-      .catch(() => { if (active) setState("unavailable"); })
+      .catch(() => { if (active) setError(true); })
       .finally(() => clearTimeout(timer));
     return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, [attempt]);
-  return { href, state, retry: () => setAttempt((v) => v + 1) };
+  return { data, error, retry: () => setAttempt((v) => v + 1) };
 }
 
-function ReadState({ area, loading, error, hasData, retry }: { area: string; loading: boolean; error: string | null; hasData: boolean; retry: () => void }) {
-  if (error) return <div className="card stack public-read-state" role="alert"><p>{hasData ? `${area} below is from the last successful read; it has not been refreshed.` : `${area} is temporarily unavailable.`} {error} Contact Justin directly for help.</p><button type="button" className="secondary" onClick={retry}>Retry {area.toLowerCase()}</button></div>;
-  if (loading) return <p className="muted" role="status">{hasData ? `Refreshing ${area.toLowerCase()}…` : `Loading ${area.toLowerCase()}… Contact and the fictional demo are available while you wait.`}</p>;
-  return null;
+/** A demo deployment opens its own demo; anywhere else (or if app-info cannot answer) the known staging entry. */
+function useDemoHref() {
+  const [href, setHref] = useState(PUBLIC_DEMO_URL);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WAIT_MS);
+    fetch("/api/app-info", { credentials: "same-origin", signal: controller.signal })
+      .then(async (r) => { if (!r.ok) throw new Error("unavailable"); return r.json() as Promise<{ demo?: boolean }>; })
+      .then((body) => setHref(body.demo ? "/demo" : PUBLIC_DEMO_URL))
+      .catch(() => {})
+      .finally(() => clearTimeout(timer));
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, []);
+  return href;
+}
+
+/** "Williamson County", "City of Denton", "LCRA": what a provider calls the authority, with the full name on hover. */
+function shortName(c: CoverageItem): string {
+  if (c.type === "city") return `City of ${c.counties[0]}`;
+  if (c.type === "river_authority") {
+    const acronym = c.authorityName.match(/\(([A-Z]{3,})\)/)?.[1];
+    if (acronym) return acronym;
+    return (c.authorityName.split(",")[0] ?? c.authorityName).split(/\s+/).filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).join("");
+  }
+  return `${c.counties[0]} County`;
+}
+
+function Unavailable({ what, retry }: { what: string; retry: () => void }) {
+  return <p className="home-unavailable" role="alert">Couldn&apos;t load {what}. <button type="button" className="link" onClick={retry}>Try again</button></p>;
 }
 
 export function PublicHomepage() {
-  const { data, error, loading, retry } = usePublicOverview();
-  const demo = useDemoEntry();
-  const groups = FILING_GROUPS.map((filing) => ({ filing, items: (data?.coverage ?? []).filter((c) => c.filing === filing) })).filter((g) => g.items.length);
-  const price = data?.pricing;
-  return <div className="marketing outreach-home">
-    <header className="topbar"><strong>Aerowise</strong><span className="spacer" /><a href={demo.href}>{TRY_DEMO.button}</a><a href="#contact">Talk to Justin</a><Link href="/login">Sign in</Link></header>
-    <main className="page stack">
-      <section className="hero">
-        <div className="hero-text stack"><p className="eyebrow">{HERO.eyebrow}</p><h1>{HERO.title}</h1><p className="lead">{HERO.body}</p>
-          <div className="cta-row"><a className="button cta" href={demo.href} data-testid="try-demo">{TRY_DEMO.button}</a><a className="button secondary" href="#contact">Talk to Justin about a pilot</a><a href="#inspection-preview">Preview an inspection</a></div>
-          <p className="muted small">Your own fictional company for 24 hours. No sign-up, real messages or charges. The public demo is on staging.deshain.com; sign-in stays on this deployment.</p>
-          {demo.state === "checking" && <p className="muted small" role="status">Checking this deployment's demo availability… The staging demo link remains available.</p>}
-          {demo.state === "unavailable" && <p className="muted small" role="status">Demo availability could not be checked. Use the staging demo link or <button className="link" onClick={demo.retry}>retry the availability check</button>.</p>}
-          <ul className="facts" aria-label="In short">{HERO.facts.map((f) => <li key={f}>{f}</li>)}</ul>
+  const { data, error, retry } = usePublicOverview();
+  const demoHref = useDemoHref();
+  return (
+    <div className="home">
+      <header className="home-nav">
+        <div className="home-wrap home-nav-inner">
+          <Link href="/" className="home-logo"><img src="/icons/icon.svg" alt="" width={28} height={28} />Aerowise</Link>
+          <nav aria-label="On this page"><a href="#how">How it works</a><a href="#counties">Counties</a><a href="#pricing">Pricing</a></nav>
+          <span className="spacer" />
+          <Link href="/login" className="home-signin">Sign in</Link>
+          <a className="home-btn home-btn-sm" href={demoHref}>{HERO.primary}</a>
         </div>
-        <figure className="shot wide"><div className="readable-shot" tabIndex={0} role="region" aria-label="Scrollable fictional Due list screenshot"><img src={HERO.shot.src} alt={HERO.shot.alt} width={2560} height={1190} /></div><figcaption className="muted small">{HERO.shot.caption}</figcaption></figure>
-      </section>
-      <section className="stack" aria-labelledby="how"><h2 id="how">{STEPS.title}</h2><ol className="how-steps">{STEPS.items.map((s, i) => <li key={s.title} className="stack"><span className="step-number" aria-hidden="true">{i + 1}</span><strong>{s.title}</strong><span className="muted">{s.body}</span></li>)}</ol></section>
-      <section className="card stack" aria-labelledby="pilot"><p className="eyebrow">Help shape the first real provider workflow</p><h2 id="pilot">A guided design-partner pilot</h2><p>Justin helps review your import, provider credentials, permits and filing process. Start with a small supervised group of sites alongside your existing process. No real provider or authority has validated Aerowise yet.</p><p>A pilot requires a conversation and an agreed scope. The fictional demo and public preview are available immediately; they do not start a trial or paid subscription.</p><a href="#contact">Discuss your company's pilot</a></section>
-      <section className="stack" aria-labelledby="pricing"><h2 id="pricing">{PRICING.title}</h2><ReadState area="Pricing" loading={loading} error={error} hasData={!!data} retry={retry} />
-        {price && <><div className="card price-card"><div className="price-main"><p className="price">{money(price.pricePerContractCents)} <span className="small">per active contract per month</span></p><p>{money(price.monthlyMinimumCents)} monthly minimum.</p><p className="muted">{PRICING.note}</p><p>An agreed design-partner pilot has a {price.designPartnerDays}-day free period. The separate ordinary trial is {price.trialDays} days. A company starts paying when its subscription moves to a paid state; its agreed dates and rates are shown in Subscription.</p></div><div className="price-founder"><span className="badge">{PRICING.founderLabel}</span><p>The first {price.founderCompanyLimit} eligible companies can receive {money(price.founderPricePerContractCents)} per active contract per month, with the same {money(price.monthlyMinimumCents)} minimum, for as long as they stay. Justin confirms eligibility and sets each company's agreed rate before payment begins.</p></div></div>
-          <ul className="price-examples" aria-label="Example monthly prices">{[100, 300, 1000].map((n) => <li className="card stack" key={n}><strong>{n.toLocaleString()} active contracts</strong><span>List: {money(monthlyCharge(n, price).totalCents)}/month</span><span>Founder: {money(monthlyCharge(n, { ...price, pricePerContractCents: price.founderPricePerContractCents }).totalCents)}/month</span></li>)}</ul></>}
-      </section>
-      <section className="stack" aria-labelledby="coverage"><h2 id="coverage">{COVERAGE.title}</h2><p className="muted">{COVERAGE.intro}</p><ReadState area="Authority profiles" loading={loading} error={error} hasData={!!data} retry={retry} />
-        {data && (data.coverage.length ? <><AuthorityFit coverage={data.coverage} /><details className="card"><summary>All {data.coverage.length} public authority profiles</summary><div className="coverage-groups" id="coverage-groups">{groups.map((g) => <div key={g.filing} className={`coverage-group stack ${g.filing}`}><h3>{COVERAGE.groups[g.filing].label} <span className="muted count">({g.items.length})</span></h3><p className="muted small">{COVERAGE.groups[g.filing].note}</p><ul className="coverage" aria-label={`Authorities covered: ${COVERAGE.groups[g.filing].label.toLowerCase()}`}>{g.items.map((c) => <CoverageRow key={c.key} item={c} />)}</ul></div>)}</div></details></> : <p>{COVERAGE.empty}</p>)}<p className="muted small">{COVERAGE.notYours}</p>
-      </section>
-      <section className="stack" id="inspection-preview" aria-labelledby="preview-title"><h2 id="preview-title">{TRY_IT.title}</h2><p>{TRY_IT.intro}</p><ReadState area="Inspection preview" loading={loading} error={error} hasData={!!data} retry={retry} />{data && data.coverage.length > 0 && <details className="card"><summary>Open the optional inspection preview</summary><TryIt coverage={data.coverage} /></details>}{data?.coverage.length === 0 && <p>No authority profiles are available for the preview. Contact Justin about your workflow.</p>}</section>
-      <section className="stack demo-section" id="contact" aria-labelledby="contact-title"><h2 id="contact-title">{DEMO.title}</h2><p>{DEMO.intro}</p><div className="demo-grid"><div className="stack contact"><p>{CONTACT.line}</p><a className="button" href={`mailto:${CONTACT.email}`}>Email Justin: {CONTACT.email}</a><a className="button secondary" href={CONTACT.phoneHref}>Call {CONTACT.phone}</a><p className="muted small">The form saves to an admin queue. In a demo deployment its alert is simulated; it does not prove Justin received an email. Direct email/call is the dependable contact option.</p></div><DemoRequestForm /></div></section>
-      <footer className="muted small stack"><span>{CONTACT.footer}</span><span>{RESPONSIBILITY}</span><span className="row"><Link href="/terms">Terms of service</Link><Link href="/privacy">Privacy policy</Link><Link href="/data-handling">How we handle your data</Link></span></footer>
-    </main>
-  </div>;
+      </header>
+
+      <main>
+        <section className="home-hero">
+          <div className="home-wrap home-hero-grid">
+            <div className="home-hero-text">
+              <p className="home-eyebrow">{HERO.eyebrow}</p>
+              <h1>{HERO.title}</h1>
+              <p className="home-lead">{HERO.body}</p>
+              <div className="home-ctas">
+                <a className="home-btn" href={demoHref} data-testid="try-demo">{HERO.primary}<span aria-hidden="true"> →</span></a>
+                <a className="home-btn home-btn-ghost" href="#walkthrough">{HERO.secondary}</a>
+              </div>
+              <p className="home-note">{HERO.note}</p>
+            </div>
+            <div className="home-hero-art">
+              <figure className="home-browser">
+                <div className="home-browser-bar" aria-hidden="true"><span /><span /><span /></div>
+                <img src={HERO.office.src} alt={HERO.office.alt} width={HERO.office.width} height={HERO.office.height} />
+              </figure>
+              <figure className="home-phone home-phone-float">
+                <img src={HERO.phone.src} alt={HERO.phone.alt} width={HERO.phone.width} height={HERO.phone.height} />
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        <section id="how" className="home-section" aria-labelledby="how-title">
+          <div className="home-wrap">
+            <h2 id="how-title" className="home-h2">One record from the contract to the county</h2>
+            <ol className="home-features">
+              {FEATURES.map((f) => (
+                <li key={f.key} className="home-feature">
+                  <p className="home-label">{f.label}</p>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                  <ul className="home-checks">{f.points.map((p) => <li key={p}>{p}</li>)}</ul>
+                </li>
+              ))}
+            </ol>
+            <div className="home-showcase">
+              <figure>
+                <div className="home-phone"><img src={SHOTS.inspection.src} alt={SHOTS.inspection.alt} width={SHOTS.inspection.width} height={SHOTS.inspection.height} loading="lazy" /></div>
+                <figcaption>{SHOTS.inspectionCaption}</figcaption>
+              </figure>
+              <figure>
+                <div className="home-papers">
+                  <img className="home-paper" src={SHOTS.report.src} alt={SHOTS.report.alt} width={SHOTS.report.width} height={SHOTS.report.height} loading="lazy" />
+                  <img className="home-paper home-paper-front" src={SHOTS.cover.src} alt={SHOTS.cover.alt} width={SHOTS.cover.width} height={SHOTS.cover.height} loading="lazy" />
+                </div>
+                <figcaption>{SHOTS.reportCaption}</figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        <section id="counties" className="home-section home-tint" aria-labelledby="counties-title">
+          <div className="home-wrap home-narrow">
+            <h2 id="counties-title" className="home-h2">{COUNTIES.title}</h2>
+            {data && <p className="home-sub">{COUNTIES.intro(data.coverage.length)}</p>}
+            {error && !data && <Unavailable what="the list of authorities" retry={retry} />}
+            {data && (
+              <>
+                <ul className="home-chips" aria-label="Authorities">
+                  {data.coverage.map((c) => (
+                    <li key={c.key} title={c.authorityName} className={c.filing === "email" ? "emailed" : undefined}>{shortName(c)}</li>
+                  ))}
+                </ul>
+                <p className="home-legend"><span className="home-dot" aria-hidden="true" /> {COUNTIES.emailed} <span className="home-legend-sep" aria-hidden="true">·</span> <span className="home-dot hollow" aria-hidden="true" /> {COUNTIES.prepared}</p>
+              </>
+            )}
+            <p className="home-fine">{COUNTIES.note} {COUNTIES.missing} <a href="#walkthrough">{COUNTIES.ask}</a>.</p>
+          </div>
+        </section>
+
+        <section id="pricing" className="home-section" aria-labelledby="pricing-title">
+          <div className="home-wrap home-narrow">
+            <h2 id="pricing-title" className="home-h2">{PRICING.title}</h2>
+            {error && !data && <Unavailable what="pricing" retry={retry} />}
+            {data && <PriceCard pricing={data.pricing} />}
+          </div>
+        </section>
+
+        <section id="walkthrough" className="home-section home-tint" aria-labelledby="walkthrough-title">
+          <div className="home-wrap home-contact">
+            <div className="home-contact-text">
+              <h2 id="walkthrough-title" className="home-h2">{WALKTHROUGH.title}</h2>
+              <p className="home-sub">{WALKTHROUGH.body}</p>
+            </div>
+            <DemoRequestForm />
+          </div>
+        </section>
+      </main>
+
+      <footer className="home-footer">
+        <div className="home-wrap home-footer-inner">
+          <div>
+            <p className="home-logo"><img src="/icons/icon.svg" alt="" width={22} height={22} />Aerowise</p>
+            <p>{FOOTER.tagline}</p>
+          </div>
+          <div className="home-footer-links">
+            <a href={`mailto:${CONTACT.email}`}>{CONTACT.email}</a>
+            <a href={CONTACT.phoneHref}>{CONTACT.phone}</a>
+          </div>
+          <div className="home-footer-links">
+            <Link href="/terms">Terms of service</Link>
+            <Link href="/privacy">Privacy policy</Link>
+            <Link href="/data-handling">How we handle your data</Link>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
 }
 
-function AuthorityFit({ coverage }: { coverage: CoverageItem[] }) {
-  const [key, setKey] = useState(coverage[0]?.key ?? "");
-  const selected = coverage.find((c) => c.key === key) ?? coverage[0];
-  if (!selected) return null;
-  return <div className="card stack"><label>Authority fit lookup<select value={selected.key} onChange={(e) => setKey(e.target.value)}>{coverage.map((c) => <option key={c.key} value={c.key}>{c.authorityName} · {c.counties.join(", ")}</option>)}</select></label><strong>{selected.authorityName}</strong><ProfileStatus item={selected} /><p>Profile interval: {selected.rules.intervalMonths} months{selected.rules.monitoredIntervalMonths && selected.rules.monitoredIntervalMonths !== selected.rules.intervalMonths ? `; ${selected.rules.monitoredIntervalMonths} months with applicable recorded monitoring` : ""}. {COVERAGE.groups[selected.filing].note}</p><p className="muted small">Selecting an authority here assigns no real site. Check the permit and unresolved fields before live use.</p></div>;
-}
-function ProfileStatus({ item }: { item: CoverageItem }) { return item.verified ? <VerifiedBadge verified={item.verified} /> : <span className="badge warn" title={COVERAGE.draftNote}>{COVERAGE.draftLabel} · authority verification pending</span>; }
-function CoverageRow({ item: c }: { item: CoverageItem }) {
-  return <li data-key={c.key}><span className="county">{c.counties.join(", ")}</span><strong>{c.authorityName}</strong><ProfileStatus item={c} />{c.confirmedWithAuthority.length > 0 && <span className="small">{COVERAGE.confirmedLabel}: {c.confirmedWithAuthority.join(", ")}</span>}</li>;
+function PriceCard({ pricing }: { pricing: PublicOverview["pricing"] }) {
+  const [contracts, setContracts] = useState("300");
+  const n = Math.max(0, Math.min(100_000, Math.floor(Number(contracts) || 0)));
+  return (
+    <div className="home-price">
+      <div className="home-price-main">
+        <p className="price"><strong>{money(pricing.pricePerContractCents)}</strong> {PRICING.unit}</p>
+        <p className="home-fine">{PRICING.minimum(money(pricing.monthlyMinimumCents))}</p>
+        <ul className="home-checks">{PRICING.points(pricing.designPartnerDays).map((p) => <li key={p}>{p}</li>)}</ul>
+      </div>
+      <div className="home-price-calc">
+        <label>
+          {PRICING.calc}
+          <input type="number" inputMode="numeric" min={0} max={100000} step={10} value={contracts} onChange={(e) => setContracts(e.target.value)} />
+        </label>
+        <p className="home-price-total" aria-live="polite"><strong>{money(monthlyCharge(n, pricing).totalCents)}</strong> {PRICING.perMonth}</p>
+        <a className="home-btn" href="#walkthrough">{HERO.secondary}</a>
+      </div>
+    </div>
+  );
 }
