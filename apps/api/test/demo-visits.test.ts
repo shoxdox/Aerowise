@@ -71,7 +71,9 @@ describe("visitor demos", () => {
       await competing;
       ctx.store.put = put;
     }
-  });
+    // Every PDF write waits a second so the competing worker can win, so this one story takes
+    // about three minutes on CI; it sat at 178-180 s against the file's 180 s limit.
+  }, 420_000);
 
   it("is not offered outside the demo deployment", async () => {
     expect((await start(ctx.app)).statusCode).toBe(404);
