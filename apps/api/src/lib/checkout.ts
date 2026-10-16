@@ -1,6 +1,7 @@
 import type { Database, DB } from "@aerowise/db";
-import { amountDue, invoiceSnapshot, platformFeeCents } from "@aerowise/domain";
+import { amountDue, CLOSED_STATUSES, invoiceSnapshot, platformFeeCents } from "@aerowise/domain";
 import type { PaymentProvider } from "@aerowise/payments";
+import { activationProblem, type ActivationProblem } from "@aerowise/renewals";
 import { billingEmail, linkTokenId, payUrlFor } from "@aerowise/tasks";
 import { sql, type Transaction } from "kysely";
 import type { FastifyBaseLogger } from "fastify";
@@ -70,6 +71,36 @@ export async function depositClosedReason(db: Database | Transaction<DB>, organi
   return "This estimate was cancelled, so its deposit is no longer collected.";
 }
 
+export const ALREADY_RENEWED = "Your plan was already renewed. Nothing is due.";
+const OFFER_ENDED = "This renewal offer has ended. Contact your service provider about your plan.";
+
+/** What the homeowner is told when their renewal can no longer go ahead (`activationProblem`). */
+export const RENEWAL_UNAVAILABLE: Record<ActivationProblem["code"], { kind: "renewed" | "ended"; message: string }> = {
+  renewed: { kind: "renewed", message: ALREADY_RENEWED },
+  // Another contract already covers the new term: renewed, as far as the homeowner is concerned.
+  overlap: { kind: "renewed", message: ALREADY_RENEWED },
+  cancelled: { kind: "ended", message: OFFER_ENDED },
+  ending: { kind: "ended", message: OFFER_ENDED },
+};
+
+/**
+ * Why a renewal invoice no longer takes payment: its renewal has not made its term yet, and
+ * now cannot (the plan was renewed another way, or the contract is ending). Money taken would
+ * only sit in review. The renewal page and the invoice's own pay link both ask this. An
+ * activated renewal's term exists, so its invoice is simply owed.
+ */
+export async function renewalClosedReason(db: Database, organizationId: string, invoiceId: string): Promise<string | null> {
+  const r = await db
+    .selectFrom("renewals")
+    .select(["contractId", "siteId", "startOn", "endOn"])
+    .where("organizationId", "=", organizationId)
+    .where("invoiceId", "=", invoiceId)
+    .where("status", "not in", CLOSED_STATUSES)
+    .executeTakeFirst();
+  const problem = r ? await activationProblem(db, organizationId, r) : null;
+  return problem ? RENEWAL_UNAVAILABLE[problem.code].message : null;
+}
+
 export const canPayOnline = (provider: PaymentProvider | null, inv: PayableInvoice) => !!provider && !!inv.stripeAccountId && inv.stripeChargesEnabled && amountDue(inv) > 0;
 
 /**
@@ -82,6 +113,10 @@ export async function openCheckout(
 ): Promise<{ url: string }> {
   const { provider } = opts;
   const at = opts.now;
+  // Read without locks, before the invoice's: the contract's lock is taken after a renewal's
+  // everywhere else. Activation still sends a payment that slips past this to review.
+  const stopped = await renewalClosedReason(db, opts.inv.organizationId, opts.inv.id);
+  if (stopped) throw new HttpError(409, "payment_closed", stopped);
   return db.transaction().execute(async (trx) => {
     // One checkout at a time per invoice. Everything is read again under the lock: the caller's
     // copy was read before it, and a payment, void or cancellation may have landed in between

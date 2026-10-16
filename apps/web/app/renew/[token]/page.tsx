@@ -2,7 +2,7 @@
 
 import { invoiceTotals, validateInspection, visibleFields, type InspectionValues, type PublicRenewal, type ValidationProblem } from "@aerowise/domain";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Fragment, Suspense, useEffect, useState, type FormEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
 import { TemplateSections } from "@/components/forms/TemplateFields";
 import { usePublicRead, useConfirmationPolling } from "@/components/public/usePublicRead";
@@ -264,14 +264,14 @@ function RenewPage() {
         {/* The rows the signed agreement prints, word for word, including whether it renews automatically. */}
         <dl className="details">
           {r.termRows.map((row) => (
-            <span key={row.key} style={{ display: "contents" }}>
+            <Fragment key={row.key}>
               <dt>{row.label}</dt>
               <dd data-testid={`renewal-${row.key}`}>
-                {row.value.split("\n").map((line) => (
-                  <div key={line}>{line}</div>
+                {row.value.split("\n").map((line, i) => (
+                  <div key={i}>{line}</div>
                 ))}
               </dd>
-            </span>
+            </Fragment>
           ))}
         </dl>
       </div>

@@ -214,7 +214,8 @@ export async function sendReceipt(ctx: { db: Database; mail: EmailTransport; app
   if (!to) return;
   const snapshot = invoiceSnapshot.parse(p.snapshot);
   const due = amountDue(p);
-  const how = `${PAYMENT_METHOD_LABELS[p.method as PaymentMethod].toLowerCase()}${p.reference ? ` (${p.reference})` : ""}`;
+  // "by check (1042)"; a payment recorded as "other" names no method.
+  const how = p.method === "other" ? (p.reference ? ` (${p.reference})` : "") : ` by ${PAYMENT_METHOD_LABELS[p.method as PaymentMethod].toLowerCase()}${p.reference ? ` (${p.reference})` : ""}`;
   const contact = [p.orgPhone, p.orgEmail].filter(Boolean).join(" or ");
   await ctx.mail.send({
     organizationId,
@@ -226,7 +227,7 @@ export async function sendReceipt(ctx: { db: Database; mail: EmailTransport; app
     text: [
       `Hello ${snapshot.billTo.name},`,
       "",
-      `We received your payment of ${dollars(p.amountCents)} by ${how}${p.receivedOn ? ` on ${longDay(p.receivedOn)}` : ""}, for invoice ${snapshot.number}.`,
+      `We received your payment of ${dollars(p.amountCents)}${how}${p.receivedOn ? ` on ${longDay(p.receivedOn)}` : ""}, for invoice ${snapshot.number}.`,
       due === 0
         ? "The invoice is paid in full."
         : `${dollars(due)} is still due on it, by ${longDay(snapshot.dueOn)}. You can view the invoice here: ${payUrlFor(ctx.appUrl, p.invoiceId)}`,

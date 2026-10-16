@@ -752,6 +752,9 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           // in between is seen once the contract is locked, since starting one locks it too.
           await lockOpenRenewal(trx, organizationId, prev.id);
           await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("id", "=", prev.id).forUpdate().executeTakeFirstOrThrow();
+          // A second click, or a renewal activated meanwhile, made the term while this waited.
+          const made = await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("previousContractId", "=", prev.id).executeTakeFirst();
+          if (made) throw new HttpError(409, "already_renewed", "This contract has already been renewed");
           const open = await lockOpenRenewal(trx, organizationId, prev.id);
           if (open) refuseIfSigned(open);
           const created = await insertContract(trx, organizationId, {

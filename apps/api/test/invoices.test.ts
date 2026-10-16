@@ -595,6 +595,14 @@ describe("what the customer is told", () => {
     expect(last.text).toContain("The invoice is paid in full.");
   });
 
+  it("words a receipt for a payment recorded as 'other' without naming a method", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 5000, method: "other", receivedOn: "2026-03-02" })).json();
+    await runWorker(ctx);
+    expect(mail.delivered.get(`invoice-receipt-${paid.payments[0].id}`)!.text).toContain("We received your payment of $50.00 on March 2, 2026, for invoice INV-1001.");
+  });
+
   it("never promises online payment when the provider cannot take it", async () => {
     const t = await billingTenant(ctx, "Org A", { stripe: false });
     const inv = await issued(t);

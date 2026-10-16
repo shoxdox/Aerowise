@@ -405,7 +405,23 @@ describe("the office", () => {
     expect((await t2.api.post(`/contracts/${t2.contract.id}/cancel`, { reason: "Sold the house" })).statusCode).toBe(200);
     const checkout = await anon().post(`/renew/${r2.token}/checkout`, {});
     expect(checkout.statusCode).toBe(409);
+    expect(checkout.json()).toMatchObject({ error: "payment_closed", message: "This renewal offer has ended. Contact your service provider about your plan." });
+    // Nor through the invoice's own pay link, which the page and emails also hand out.
+    const payPath = new URL((await anon().get(`/renew/${r2.token}`)).json().paymentConfirmation.invoiceUrl).pathname;
+    const viaInvoice = await anon().post(`${payPath}/checkout`, {});
+    expect(viaInvoice.statusCode).toBe(409);
+    expect(viaInvoice.json().error).toBe("payment_closed");
     expect(await ctx.db.selectFrom("checkoutSessions").select("id").where("organizationId", "=", t2.org.id).execute()).toHaveLength(0);
+  });
+
+  it("makes the next term once when 'Renew now' is pressed twice at the same moment", async () => {
+    const t = await renewalTenant(ctx);
+    const r = await startRenewal(t);
+    const results = await Promise.all([t.api.post(`/contracts/${t.contract.id}/renew`, {}), t.api.post(`/contracts/${t.contract.id}/renew`, {})]);
+    expect(results.map((x) => x.statusCode).sort()).toEqual([201, 409]);
+    expect(results.find((x) => x.statusCode === 409)!.json().error).toBe("already_renewed");
+    expect((await t.api.get(`/sites/${t.site.id}/contracts`)).json().items).toHaveLength(2);
+    expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("superseded");
   });
 
   /**
@@ -459,6 +475,18 @@ describe("the office", () => {
     expect(refused.statusCode).toBe(409);
     expect(refused.json().message).toBe("The new term's first installment is already on INV-1002. Void INV-1002 first, or refund this renewal's payment.");
     expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("needs_review");
+  });
+
+  it("will not count a renewal payment toward a term made at another price", async () => {
+    const t = await renewalTenant(ctx);
+    const { r, successor } = await stuckRenewal(t);
+    await ctx.db.updateTable("contracts").set({ priceCents: 32000 }).where("id", "=", successor).execute();
+    const refused = await t.api.post(`/renewals/${r.id}/apply-to-term`, {});
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().message).toBe("This renewal billed $300.00 for the first installment, but the term already made bills $320.00. Refund this renewal's payment and bill the term from its site page.");
+    expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("needs_review");
+    const line = await ctx.db.selectFrom("invoiceLines as l").innerJoin("renewals as r", "r.invoiceId", "l.invoiceId").select("l.contractId").where("r.id", "=", r.id).where("l.position", "=", 1).executeTakeFirstOrThrow();
+    expect(line.contractId).toBeNull();
   });
 
   it("renews an auto-renewing contract without a new signature, and refuses that for others", async () => {

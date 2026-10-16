@@ -46,13 +46,13 @@ import {
   canonicalJson,
   coverageLines,
   createRenewal,
+  FINISHED_RENEWAL_STATUSES,
   loadPlanVersion,
   offerTerms,
   RenewalError,
   renewalOnTimeline,
   sha256Hex,
   systemAudit,
-  type ActivationProblem,
 } from "@aerowise/renewals";
 import type { ObjectStore } from "@aerowise/storage";
 import { billingEmail, enqueue, linkTokenId, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
@@ -61,7 +61,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { sql, type Transaction } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
-import { canPayOnline, openCheckout, openInvoiceById } from "../lib/checkout.ts";
+import { ALREADY_RENEWED, canPayOnline, openCheckout, openInvoiceById, RENEWAL_UNAVAILABLE } from "../lib/checkout.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import { draftContractInstallment, issueDraft, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
@@ -79,9 +79,6 @@ const joinAddress = (parts: (string | null | undefined)[]) => parts.filter(Boole
 const cityLine = (city: string | null, state: string | null, postal: string | null) => [city, [state, postal].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
-const ALREADY_RENEWED = "Your plan was already renewed. Nothing is due.";
-const OFFER_ENDED = "This renewal offer has ended. Contact your service provider about your plan.";
-
 const CLOSED_MESSAGE: Partial<Record<RenewalStatus, string>> = {
   signed: "This renewal is already signed",
   payment_pending: "This renewal is already signed",
@@ -93,14 +90,6 @@ const CLOSED_MESSAGE: Partial<Record<RenewalStatus, string>> = {
   superseded: ALREADY_RENEWED,
 };
 
-/** What the homeowner is told when their renewal can no longer go ahead (`activationProblem`). */
-const UNAVAILABLE: Record<ActivationProblem["code"], { kind: "renewed" | "ended"; message: string }> = {
-  renewed: { kind: "renewed", message: ALREADY_RENEWED },
-  // Another contract already covers the new term: renewed, as far as the homeowner is concerned.
-  overlap: { kind: "renewed", message: ALREADY_RENEWED },
-  cancelled: { kind: "ended", message: OFFER_ENDED },
-  ending: { kind: "ended", message: OFFER_ENDED },
-};
 
 /** The customer's contact a renewal speaks to: billing, else primary, else the first one. */
 async function renewalContact(db: Database | Transaction<DB>, organizationId: string, customerId: string) {
@@ -388,7 +377,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .where("c.serviceEndsOn", "is", null)
           .where("c.endOn", ">=", today)
           .where("c.endOn", "<=", addDays(today, org.renewalWindowDays))
-          .where((eb) => eb.not(eb.exists(eb.selectFrom("renewals as r").select("r.id").whereRef("r.contractId", "=", "c.id").where("r.status", "not in", ["declined", "expired", "superseded"]))))
+          .where((eb) => eb.not(eb.exists(eb.selectFrom("renewals as r").select("r.id").whereRef("r.contractId", "=", "c.id").where("r.status", "not in", FINISHED_RENEWAL_STATUSES))))
           .where((eb) => eb.not(eb.exists(eb.selectFrom("contracts as n").select("n.id").whereRef("n.previousContractId", "=", "c.id"))))
           .executeTakeFirstOrThrow(),
       ]);
@@ -790,7 +779,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         signed: doc ? { signerName: doc.signerName, signedAt: doc.signedAt.toISOString(), pdfReady: !!doc.pdfStorageKey } : null,
         pay,
         paymentConfirmation,
-        unavailable: problem ? UNAVAILABLE[problem.code].kind : null,
+        unavailable: problem ? RENEWAL_UNAVAILABLE[problem.code].kind : null,
         newTermStartsOn: r.status === "activated" ? r.startOn : (replacement?.startOn ?? null),
         testMode: !!provider && (await providerFor(provider, r.organizationId)).kind === "test",
       };
@@ -855,7 +844,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         // Nothing is signed or billed for a term that cannot start: the plan was renewed another
         // way, or the contract is ending. This locks the contract until the renewal is settled.
         const problem = await activationProblem(trx, organizationId, r);
-        if (problem) throw new HttpError(409, "not_signable", UNAVAILABLE[problem.code].message);
+        if (problem) throw new HttpError(409, "not_signable", RENEWAL_UNAVAILABLE[problem.code].message);
         const parties = await partiesFor(trx, organizationId, r);
         const { org } = parties;
         const prev = await trx.selectFrom("contracts").select(["status", "planName", "startOn", "endOn"]).where("id", "=", r.contractId).executeTakeFirstOrThrow();
@@ -1088,12 +1077,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const r = await byToken(req.params.token);
       if (r.status === "superseded" || r.status === "declined" || r.status === "expired") throw new HttpError(409, "not_payable", CLOSED_MESSAGE[r.status]!);
       if (!r.invoiceId) throw unprocessable("Nothing is due on this renewal");
-      // Nobody is charged for a term that cannot start (renewed another way, or the contract
-      // ending). An activated renewal's term already exists: its invoice is simply owed.
-      if (r.status !== "activated") {
-        const problem = await db.transaction().execute((trx) => activationProblem(trx, r.organizationId, r));
-        if (problem) throw new HttpError(409, "not_payable", UNAVAILABLE[problem.code].message);
-      }
+      // A term that cannot start is not charged for: openCheckout asks (`renewalClosedReason`).
       return openCheckout(db, {
         provider,
         appUrl,
