@@ -85,6 +85,8 @@ export interface CachedRoute {
   date: string;
   items: Stop[];
   fetchedAt: string;
+  /** Whether the company sends "on the way" texts; missing from a route saved before the phone was told. */
+  onTheWayTexts?: boolean;
 }
 
 // Each company and person signed in on this phone gets a database of their own, so one
@@ -102,12 +104,20 @@ export interface KnownTenant extends Tenant {
   userName: string;
   /** From /auth/me, for a demo company: what lets the server say it was removed. */
   demoTicket?: string;
+  /**
+   * Signed out on this phone (Sign out, or the server refused the session) with changes still to
+   * send: only what they need is kept, and nothing of it shows until the same person signs in again.
+   */
+  signedOut?: boolean;
 }
 
 const LEGACY_DB_NAME = "aerowise-tech";
 const REGISTRY_KEY = "aerowise-tech:tenants";
 const ACTIVE_KEY = "aerowise-tech:active";
 const LEGACY_CHECKED_KEY = "aerowise-tech:legacy-checked";
+/** Edits a form had not saved when the page was put away (./unsaved.ts), one key per record. */
+const UNSAVED_PREFIX = "aerowise-tech:unsaved:";
+export const unsavedPrefixFor = (t: Tenant) => `${UNSAVED_PREFIX}${t.organizationId}:${t.userId}:`;
 type StoreName = "kv" | "inspections" | "photos" | "outbox";
 
 export const sameTenant = (a: Tenant | null | undefined, b: Tenant | null | undefined) =>
@@ -150,7 +160,7 @@ export function requireRegisteredTenant(t: Tenant) {
   if (!known(t)) throw new Error("This account is no longer kept on this phone. Reopen the app before recording more work.");
 }
 
-/** Remembers a sign-in (and the names shown when its data is waiting on the phone). */
+/** Remembers a sign-in (and the names shown when its data is waiting on the phone). Signing in again clears `signedOut`. */
 export function rememberTenant(t: Tenant, names: { organizationName: string; userName: string; demoTicket?: string }): KnownTenant {
   const list = knownTenants();
   const existing = list.find((k) => sameTenant(k, t));
@@ -178,6 +188,15 @@ export function activateTenant(t: Tenant) {
 }
 
 export const activeTenant = (): KnownTenant | null => active;
+
+/** Notes that this phone is signed out of a sign-in it still holds changes for; it stops being the active one. */
+export function markSignedOut(t: Tenant) {
+  writeJson(
+    REGISTRY_KEY,
+    knownTenants().map((k) => (sameTenant(k, t) ? { ...k, signedOut: true } : k)),
+  );
+  if (sameTenant(active, t)) active = null;
+}
 
 // The inspection database's stores, as every version since sign-ins got their own databases
 // has created them, at version 1.
@@ -266,6 +285,40 @@ export async function openExisting(name: string): Promise<IDBDatabase | null> {
   });
 }
 
+/**
+ * Runs `fn` in one write transaction on whichever of these stores a database already has, and
+ * resolves once it commits. Never creates the database or changes its version; nothing to do
+ * when it does not exist.
+ */
+export async function rewriteExisting(name: string, stores: string[], fn: (trx: IDBTransaction, present: Set<string>) => Promise<void>) {
+  const db = await openExisting(name);
+  if (!db) return;
+  try {
+    const present = stores.filter((s) => db.objectStoreNames.contains(s));
+    if (present.length === 0) return;
+    const trx = db.transaction(present, "readwrite");
+    const committed = new Promise<void>((resolve, reject) => {
+      trx.oncomplete = () => resolve();
+      trx.onerror = () => reject(trx.error);
+      trx.onabort = () => reject(trx.error ?? new Error("transaction aborted"));
+    });
+    try {
+      await fn(trx, new Set(present));
+    } catch (err) {
+      committed.catch(() => {});
+      try {
+        trx.abort();
+      } catch {
+        // Already finished or aborted.
+      }
+      throw err;
+    }
+    await committed;
+  } finally {
+    db.close();
+  }
+}
+
 const deleteDb = (name: string) =>
   new Promise<void>((resolve) => {
     const req = indexedDB.deleteDatabase(name);
@@ -320,6 +373,12 @@ export async function forgetTenant(t: Tenant) {
   );
   if (sameTenant(readJson<Tenant>(ACTIVE_KEY), t)) writeJson(ACTIVE_KEY, undefined);
   if (sameTenant(active, t)) active = null;
+  try {
+    const prefix = unsavedPrefixFor(t);
+    for (const key of Object.keys(localStorage)) if (key.startsWith(prefix)) localStorage.removeItem(key);
+  } catch {
+    // Private mode: nothing was kept there.
+  }
   const work = connections.get(workDbName(t));
   connections.delete(workDbName(t));
   if (work) (await work.catch(() => null))?.close();
@@ -560,6 +619,44 @@ async function countOutbox(name: string, store: string): Promise<number> {
  */
 export async function pendingFor(t: KnownTenant): Promise<number> {
   return (await countOutbox(t.dbName, "outbox")) + (await countOutbox(workDbName(t), WORK_OUTBOX_STORE));
+}
+
+/** A stop as kept with work still to send after a sign-out: no phone number, gate code or notes. */
+const withoutAccessDetails = (s: Stop): Stop => ({
+  ...s,
+  notes: null,
+  customer: { ...s.customer, phone: null },
+  site: { ...s.site, gateCode: null, accessNotes: null, schedulingNotes: null },
+});
+
+/**
+ * After a sign-out with changes still to send: removes from the sign-in's inspection database
+ * everything its outbox does not need, the saved sign-in, route and forms included. An inspection
+ * with nothing queued is already on the server. With an op only a later version knows, every
+ * inspection and photo stays, as that version may need them.
+ */
+export function keepOnlyQueued(t: KnownTenant) {
+  return rewriteExisting(t.dbName, ["kv", "inspections", "photos", "outbox"], async (trx, present) => {
+    const ops = present.has("outbox") ? ((await done(trx.objectStore("outbox").getAll())) as StoredOp[]) : [];
+    const queued = new Set(ops.map((o) => o.inspectionClientId).filter((id): id is string => typeof id === "string"));
+    const keepAll = !ops.every(isKnownOp);
+    if (present.has("kv")) {
+      const kv = trx.objectStore("kv");
+      if (keepAll) for (const key of ["me", "route", "routeFetchedAt"]) kv.delete(key);
+      else kv.clear();
+    }
+    if (present.has("inspections")) {
+      const inspections = trx.objectStore("inspections");
+      for (const insp of (await done(inspections.getAll())) as LocalInspection[]) {
+        if (!keepAll && !queued.has(insp.clientId)) inspections.delete(insp.jobId);
+        else if (insp.stopSnapshot) inspections.put({ ...insp, stopSnapshot: withoutAccessDetails(insp.stopSnapshot) });
+      }
+    }
+    if (present.has("photos") && !keepAll) {
+      const photos = trx.objectStore("photos");
+      for (const p of (await done(photos.getAll())) as PhotoBlob[]) if (!queued.has(p.inspectionClientId)) photos.delete(p.clientId);
+    }
+  });
 }
 
 export const kvGet = <T>(key: string) => activeStore().kvGet<T>(key);

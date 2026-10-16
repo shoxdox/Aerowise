@@ -155,8 +155,29 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
 
   app.post(
     "/auth/logout",
-    { config: { public: true }, schema: { tags: ["auth"], summary: "Sign out", response: { 204: z.null() } } },
+    {
+      config: { public: true },
+      schema: {
+        tags: ["auth"],
+        summary: "Sign out",
+        body: z
+          .object({
+            /**
+             * The technician app signed out with no signal, at this time: once it has signal it ends the
+             * session it had then, but not one signed in since on that phone (by the same person or another).
+             */
+            signedInBefore: z.iso.datetime().optional(),
+          })
+          .optional(),
+        response: { 204: z.null() },
+      },
+    },
     async (req, reply) => {
+      const before = req.body?.signedInBefore;
+      if (req.auth && before) {
+        const session = await db.selectFrom("sessions").select("createdAt").where("id", "=", req.auth.sessionId).executeTakeFirst();
+        if (session && session.createdAt > new Date(before)) return reply.status(204).send(null);
+      }
       if (req.auth) await revokeSession(db, req.auth.sessionId);
       reply.clearCookie(SESSION_COOKIE, cookieOptions);
       return reply.status(204).send(null);

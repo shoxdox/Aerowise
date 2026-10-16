@@ -5,7 +5,8 @@ import pg from "pg";
 
 // STG-03: the technician app keeps each sign-in's route, inspections and photos apart, clears a
 // demo company's copy once the server says that demo has ended, and keeps everything when it
-// only lost signal or its sign-in expired. Runs in Pixel 7 emulation; not a physical-phone check.
+// only lost signal. An expired sign-in keeps only the work still to send, locked, for the same
+// person. Runs in Pixel 7 emulation; not a physical-phone check.
 const databaseUrl = process.env.E2E_DATABASE_URL ?? "postgres://aerowise:aerowise@localhost:5432/aerowise_e2e";
 
 test.use({ geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"], serviceWorkers: "allow" });
@@ -67,7 +68,7 @@ test("reloading an open technician app after the demo was ended shows nothing of
   await expect(page.getByTestId("access-ended")).toContainText("This demo has ended");
   await expect(page.getByTestId("access-ended")).toContainText("removed from this phone");
   await expect(page.locator(".stop-card")).toHaveCount(0);
-  await expect(page.getByText("Sign in again to send your changes")).toHaveCount(0);
+  await expect(page.getByText(/Sign in again/)).toHaveCount(0);
   expect(await databases(page)).not.toContain(scoped(demo.id, tech.user.id));
 
   // Opening it once more finds nothing saved, and asks for a sign-in.
@@ -102,7 +103,7 @@ test("a demo ended while the phone had no signal is kept until the phone can ask
 });
 
 // Both below use their own prospect demo companies, so they share no route with other tests.
-test("an expired sign-in keeps the route and unsent work until the same person signs in again", async ({ page, browser, context }) => {
+test("an expired sign-in keeps the unsent work, and shows nothing but its count, until the same person signs in again", async ({ page, browser, context }) => {
   const db = new pg.Client({ connectionString: databaseUrl });
   await db.connect();
   const count = async (organizationId: string) => Number((await db.query("select count(*) as n from inspections where organization_id = $1", [organizationId])).rows[0].n);
@@ -120,8 +121,9 @@ test("an expired sign-in keeps the route and unsent work until the same person s
     await context.clearCookies();
     await context.unroute("**/api/inspections/**");
     await page.reload();
-    await expect(page.getByText("Sign in again to send your changes. They are saved on this phone.")).toBeVisible();
-    await expect(page.locator(".stop-card", { hasText: customer })).toContainText("In progress");
+    await expect(page.getByTestId("signed-out")).toContainText(`1 change for ${me.user.name} is waiting on this phone. Sign in to send it.`);
+    await expect(page.locator(".stop-card")).toHaveCount(0);
+    await expect(page.getByText("All changes sent")).toHaveCount(0);
     await expect(page.getByTestId("access-ended")).toHaveCount(0);
     expect(await databases(page)).toContain(scoped(me.organization.id, me.user.id));
     expect(await count(me.organization.id)).toBe(before);

@@ -1,8 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
 import type { SyncState } from "@/lib/offline/sync";
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+import { plural } from "./plural";
 
 export function SyncBanner({
   state,
@@ -24,18 +23,35 @@ export function SyncBanner({
     window.addEventListener("online", listener); window.addEventListener("offline", listener);
     return () => { window.removeEventListener("online", listener); window.removeEventListener("offline", listener); };
   }, () => navigator.onLine, () => true);
+  // The phone knows before a send fails that it has no signal; the line about what waits says so then.
+  const noSignal = !online || state.kind === "offline";
   return (
     <div className="sync-area">
-      {!online && <p className="sync warn" role="status" data-testid="offline-status">Offline. Saved work stays on this phone; office delivery waits for signal.</p>}
-      {needsSignIn && (
-        <p className="sync warn" role="status">
-          Sign in again to send your changes. They are saved on this phone.{" "}
-          <a href="/login?next=/tech">Sign in</a>
+      {/* One line about signal: with changes waiting, theirs says it. */}
+      {!online && (needsSignIn || state.pending === 0) && (
+        <p className="sync warn" role="status" data-testid="offline-status">
+          No signal. New work is saved on this phone and sends when you&apos;re back online.
         </p>
       )}
-      {state.pending > 0 ? (
-        <p className={`sync ${state.kind === "offline" || state.kind === "read_only" ? "warn" : ""}`} role="status" data-testid="sync-status">
-          {state.kind === "offline"
+      {needsSignIn ? (
+        // A send was refused under this sign-in: one line, with what waits, never next to "All changes sent".
+        <p className="sync warn" role="status" data-testid="sync-status">
+          {state.pending > 0
+            ? `Sign in again to send ${plural(state.pending, "change")}. ${state.pending === 1 ? "It is" : "They are"} saved on this phone.`
+            : "You were signed out. Sign in again to keep working."}{" "}
+          <a href="/login?next=/tech">Sign in</a>
+          {state.kind !== "syncing" && (
+            <>
+              {" · "}
+              <button className="link" onClick={onRetry}>
+                Try now
+              </button>
+            </>
+          )}
+        </p>
+      ) : state.pending > 0 ? (
+        <p className={`sync ${noSignal || state.kind === "read_only" ? "warn" : ""}`} role="status" data-testid="sync-status">
+          {noSignal
             ? `No signal. ${plural(state.pending, "change")} saved on this phone, will send when you're back online.`
             : state.kind === "read_only"
               ? `Your company's account is read-only. ${plural(state.pending, "change")} saved on this phone, will send once it is reactivated.`

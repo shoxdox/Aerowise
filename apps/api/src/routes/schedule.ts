@@ -14,6 +14,7 @@ import {
   type JobStatus,
   type Stop,
 } from "@aerowise/domain";
+import { smsKindOn, smsSettingsOf } from "@aerowise/sms";
 import { serviceEndForVisit } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
@@ -258,7 +259,14 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         tags: ["schedule"],
         summary: "The signed-in technician's stops for a day, in route order",
         querystring: z.object({ date: date.optional() }),
-        response: { 200: z.object({ date, items: z.array(stop) }) },
+        response: {
+          200: z.object({
+            date,
+            items: z.array(stop),
+            /** Whether the company sends "on the way" texts now, so the phone offers the button only then. */
+            onTheWayTexts: z.boolean(),
+          }),
+        },
       },
     },
     async (req) => {
@@ -273,7 +281,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         const resolved = resolveSite(catalog, { county: r.county, state: r.state, jurisdictionId: r.jurisdictionId }, day);
         return { ...toStop(r), requirements: resolved ? requirementsOf(resolved, r.customerType) : null };
       });
-      return { date: day, items };
+      return { date: day, items, onTheWayTexts: smsKindOn(await smsSettingsOf(db, organizationId), "on_the_way") };
     },
   );
 

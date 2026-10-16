@@ -19,13 +19,14 @@ import {
   type WorkStop,
   type SignatureCapture,
 } from "@aerowise/domain";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
 import { PhotoField } from "./PhotoField";
 import { focusProblems, FormNavigation, LocalSaveStatus, sectionId, type LocalSaveState } from "./FormStatus";
 import { TemplateSections } from "@/components/forms/TemplateFields";
 import { currentPosition, preparePhoto, workFormById } from "@/lib/offline/data";
 import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
+import { clearUnsaved, mirrorUnsaved, onFlushUnsaved } from "@/lib/offline/unsaved";
 import { withSentState, type LocalWork, type WorkBlob, type WorkSignatureLocal, type WorkStore } from "@/lib/offline/work";
 import { PumpOutSection, sendablePumpOut } from "./PumpOut";
 import { heldText, workStatus } from "./WorkStops";
@@ -176,8 +177,11 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   const [busy, setBusy] = useState(false);
   const latest = useRef(rec);
   const editVersion = useRef(0);
+  // The edits saved on the phone so far; anything after them is only on screen.
+  const committed = useRef(0);
   const saveAttempt = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formId = useMemo(() => crypto.randomUUID(), []);
 
   // What sending has recorded since the form opened (photos sent, the server's answer) shows here too.
   useEffect(() => {
@@ -200,18 +204,36 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     const version = editVersion.current;
     const attempt = ++saveAttempt.current;
     setLocalSave("saving");
-    try { await saveOrReport(() => store.saveWork(next, extra)); if (editVersion.current === version && saveAttempt.current === attempt) setLocalSave("saved"); onSaved(); }
-    catch (err) { if (saveAttempt.current === attempt) setLocalSave("failed"); throw err; }
+    try {
+      await saveOrReport(() => store.saveWork(next, extra));
+      committed.current = Math.max(committed.current, version);
+      clearUnsaved(store.tenant, "work", next.clientId, formId, version);
+      if (editVersion.current === version && saveAttempt.current === attempt) setLocalSave("saved");
+      onSaved();
+    } catch (err) { if (saveAttempt.current === attempt) setLocalSave("failed"); throw err; }
   };
-  const update = (next: LocalWork) => {
+  // Saves wait for a pause in typing; taps, photos and finishing save straight away.
+  const update = (next: LocalWork, typing = false) => {
     editVersion.current++;
     latest.current = next;
     setRec(next);
     setLocalSave("saving");
     if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
     // A save that does not fit is reported on screen; the edit stays there for the next save.
-    timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
+    if (typing) timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
+    else void persist(next).catch(() => {});
   };
+  /** The answers not yet saved, written at once where the next start of the app puts them back (lib/offline/unsaved.ts). */
+  const mirror = () => {
+    const r = latest.current;
+    if (editVersion.current <= committed.current || r.status !== "draft" || r.held || r.resolved) return;
+    mirrorUnsaved(store.tenant, { kind: "work", jobId: r.jobId, clientId: r.clientId, values: r.values, finalVisit: r.finalVisit, pumpOut: r.pumpOut }, formId, editVersion.current);
+  };
+  // A Sign out, or a screen about to lock, waits for these answers to be saved.
+  useEffect(() => onFlushUnsaved(async () => {
+    if (editVersion.current > committed.current) await persist(latest.current);
+  }), [store]);
   useEffect(
     () => () => {
       // Leaving the form flushes anything not yet saved.
@@ -225,8 +247,10 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
   );
   useEffect(() => {
     // The phone going to the lock screen, the camera or another app can end this page without
-    // unmounting it: save at once instead of waiting out the debounce.
+    // unmounting it, and Back, a reload or pull-to-refresh can end it before a save started now
+    // finishes: the answers are also written down synchronously, then saved at once.
     const flush = () => {
+      mirror();
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
@@ -260,7 +284,8 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
     const values = { ...latest.current.values };
     if (v === null || v === "") delete values[key];
     else values[key] = v;
-    update({ ...latest.current, values });
+    const type = def.fields.find((f) => f.key === key)?.type;
+    update({ ...latest.current, values }, type === "number" || type === "text");
     if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== key));
   };
 
@@ -433,7 +458,10 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
                 vehicles={field?.vehicles ?? []}
                 problem={problemFor("pump_out")?.message ?? null}
                 onChange={(pumpOut) => {
-                  update({ ...latest.current, pumpOut });
+                  // The amount pumped (or the kind of waste) is typed; a unit, waste or truck chosen saves at once.
+                  const before = latest.current.pumpOut;
+                  const typed = !!before && !!pumpOut && before.unit === pumpOut.unit && before.wasteType === pumpOut.wasteType && (before.vehicleId ?? null) === (pumpOut.vehicleId ?? null);
+                  update({ ...latest.current, pumpOut }, typed);
                   if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== "pump_out"));
                 }}
               />

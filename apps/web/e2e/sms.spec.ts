@@ -57,5 +57,8 @@ test("the owner turns texting on, a customer replies STOP and another texts back
   await tech.waitForURL("**/tech");
   await tech.locator(".stop-card").last().click();
   await tech.getByRole("button", { name: "On my way" }).click();
+  // A text reaches the customer: it goes only on the second tap.
+  await expect(tech.getByTestId("on-the-way")).toHaveCount(0);
+  await tech.getByTestId("on-the-way-confirm").getByRole("button", { name: "Send text" }).click();
   await expect(tech.getByTestId("on-the-way")).toHaveText(/Customer texted that you are on the way|No text sent/);
 });

@@ -104,6 +104,16 @@ describe("on the way", () => {
     expect((await otherApi.post(`/jobs/${s.job.jobId}/on-the-way`, {})).statusCode).toBe(404);
   });
 
+  it("tells the technician's phone with the route whether these texts go, so it offers the button only then", async () => {
+    const s = await setup(ctx);
+    expect((await s.techApi.get("/route")).json().onTheWayTexts).toBe(false);
+    await s.api.patch("/sms/settings", { enabled: true });
+    expect((await s.techApi.get("/route")).json().onTheWayTexts).toBe(true);
+    // Texting on, but not this kind.
+    expect((await s.api.patch("/sms/settings", { kinds: ["report_ready"] })).statusCode).toBe(200);
+    expect((await s.techApi.get("/route")).json().onTheWayTexts).toBe(false);
+  });
+
   it("says why nothing went: texting off, no mobile number, no consent", async () => {
     const s = await setup(ctx);
     expect((await s.techApi.post(`/jobs/${s.job.jobId}/on-the-way`, {})).json()).toMatchObject({ outcome: "off" });

@@ -235,9 +235,9 @@ test("photos sent while the form is open stay sent on the phone after finishing 
     await expect(page.locator('[data-photo="before"]')).not.toContainText("not sent yet");
     await expect(page.locator('[data-photo="after"]')).not.toContainText("not sent yet");
     await expect(page.getByText("Signed by Pat Customer")).not.toContainText("not sent yet");
-    // And after the app is closed and opened again.
+    // And after the app is closed and opened again (on the visit it was on).
     await page.reload();
-    await card.click();
+    await expect(page.getByTestId("work-visit-status")).toHaveText("Done");
     await expect(page.locator('[data-photo="before"]')).not.toContainText("not sent yet");
     await expect(page.locator('[data-photo="after"]')).not.toContainText("not sent yet");
   } finally {
@@ -316,8 +316,9 @@ test("photos an earlier version left marked not sent read as sent once the serve
 
     // A photo with its upload turned down keeps its op and stays not sent; nothing is cleared.
     await rewriteOnPhone(page, title, { unmark: true, failedPhotoKey: "after" });
+    // Reopened on the visit it was on.
     await page.reload();
-    await card.click();
+    await expect(page.getByTestId("work-visit-status")).toBeVisible();
     await expect(page.locator('[data-photo="before"]')).not.toContainText("not sent yet");
     await expect(page.locator('[data-photo="after"]')).toContainText("some not sent yet");
     await expect(page.locator(".sync.error")).toContainText("Photo refused earlier");
