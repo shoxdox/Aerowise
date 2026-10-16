@@ -4,6 +4,7 @@ import { SafetyBadges } from "@/components/SafetyBadges";
 import { TechRouteMap } from "@/components/tech/TechRouteMap";
 import type { LocalInspection } from "@/lib/offline/db";
 import { day, today, when } from "@/lib/format";
+import { plural } from "./plural";
 
 export function stopStatus(stop: Stop, insp: LocalInspection | undefined): { label: string; tone: "" | "ok" | "warn" } {
   if (insp?.held) return insp.held.status === "attached" ? { label: "Done", tone: "ok" } : { label: "Held for the office", tone: "warn" };
@@ -60,7 +61,8 @@ export function StopList({
         <div>
           <h1>{day(route.date)}</h1>
           <p className="muted small">
-            {done + workDone} of {total} stops done · {route.items.length} inspections, {sameDayWork.length} work visits
+            {done + workDone} of {plural(total, "stop")} done · {plural(route.items.length, "inspection")}
+            {sameDayWork.length > 0 && `, ${plural(sameDayWork.length, "work visit")}`}
             {fetchedAt && ` · route last downloaded ${when(fetchedAt)}`}
           </p>
         </div>

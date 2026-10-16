@@ -6,3 +6,7 @@
 .tech .form-navigation a { min-height: 44px; display: inline-flex; align-items: center; }
 .tech [id^="form-section-"] { scroll-margin-top: 4rem; }
 .tech .problems:focus, .tech [id^="form-section-"]:focus { outline: 2px solid #1f6f5c; outline-offset: 3px; }
+/* Pull-to-refresh would reload the app over an open form; Back and Refresh are the ways out. */
+html:has(.tech), html:has(.tech) body { overscroll-behavior-y: contain; }
+/* The Office link sits beside Sign out and looks like it. */
+.tech-bar a { text-decoration: none; }

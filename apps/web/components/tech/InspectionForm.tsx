@@ -23,6 +23,7 @@ import { TemplateSections } from "@/components/forms/TemplateFields";
 import { activeStore, withSentState, type LocalInspection, type PhotoBlob } from "@/lib/offline/db";
 import { currentPosition, preparePhoto, templateById } from "@/lib/offline/data";
 import { isStorageFull, saveOrReport, STORAGE_FULL_MESSAGE, useStorageFull } from "@/lib/offline/storage";
+import { clearUnsaved, mirrorUnsaved, onFlushUnsaved } from "@/lib/offline/unsaved";
 
 export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPhotos }: { stop: Stop; initial: LocalInspection; onRefreshPhotos: () => Promise<boolean>; onSaved: () => void; onFinished: () => void }) {
   const store = useMemo(() => activeStore(), []);
@@ -44,8 +45,11 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
   const [finishing, setFinishing] = useState(false);
   const latest = useRef(insp);
   const editVersion = useRef(0);
+  // The edits saved on the phone so far; anything after them is only on screen.
+  const committed = useRef(0);
   const saveAttempt = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formId = useMemo(() => crypto.randomUUID(), []);
 
   // What sending has recorded since the form opened (photos sent, the server's answer) shows here too.
   useEffect(() => {
@@ -57,7 +61,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
     templateById(initial.templateId).then((t) => setTemplate(t ?? null));
   }, [initial.templateId]);
 
-  // Saves are debounced while typing; photos and finishing save straight away.
+  // Saves wait for a pause in typing; taps, photos and finishing save straight away.
   const persist = async (next: LocalInspection, photo?: PhotoBlob) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
@@ -66,19 +70,33 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
     setLocalSave("saving");
     try {
       await saveOrReport(() => store.saveInspection(next, photo));
+      committed.current = Math.max(committed.current, version);
+      clearUnsaved(store.tenant, "inspection", next.clientId, formId, version);
       if (editVersion.current === version && saveAttempt.current === attempt) setLocalSave("saved");
       onSaved();
     } catch (err) { if (saveAttempt.current === attempt) setLocalSave("failed"); throw err; }
   };
-  const update = (next: LocalInspection) => {
+  const update = (next: LocalInspection, typing = false) => {
     editVersion.current++;
     latest.current = next;
     setInsp(next);
     setLocalSave("saving");
     if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
     // A save that does not fit is reported on screen; the edit stays there for the next save.
-    timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
+    if (typing) timer.current = setTimeout(() => void persist(latest.current).catch(() => {}), 400);
+    else void persist(next).catch(() => {});
   };
+  /** The answers not yet saved, written at once where the next start of the app puts them back (lib/offline/unsaved.ts). */
+  const mirror = () => {
+    const i = latest.current;
+    if (editVersion.current <= committed.current || i.status !== "draft" || i.held) return;
+    mirrorUnsaved(store.tenant, { kind: "inspection", jobId: i.jobId, clientId: i.clientId, values: i.values, issues: i.issues, accessIssue: i.accessIssue }, formId, editVersion.current);
+  };
+  // A Sign out, or a screen about to lock, waits for these answers to be saved.
+  useEffect(() => onFlushUnsaved(async () => {
+    if (editVersion.current > committed.current) await persist(latest.current);
+  }), []);
   useEffect(
     () => () => {
       // Leaving the form flushes anything not yet saved.
@@ -92,8 +110,10 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
   );
   useEffect(() => {
     // The phone going to the lock screen, the camera or another app can end this page without
-    // unmounting it: save at once instead of waiting out the debounce.
+    // unmounting it, and Back, a reload or pull-to-refresh can end it before a save started now
+    // finishes: the answers are also written down synchronously, then saved at once.
     const flush = () => {
+      mirror();
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
@@ -126,7 +146,8 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
     const values = { ...latest.current.values };
     if (v === null || v === "") delete values[key];
     else values[key] = v;
-    update({ ...latest.current, values });
+    const type = def.fields.find((f) => f.key === key)?.type;
+    update({ ...latest.current, values }, type === "number" || type === "text");
     if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== key));
   };
 
@@ -197,7 +218,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
     finally { photoPending.current--; if (photoPending.current === 0) setPhotoBusy(false); }
   }
 
-  const setIssues = (issues: LocalInspection["issues"]) => update({ ...latest.current, issues });
+  const setIssues = (issues: LocalInspection["issues"], typing = false) => update({ ...latest.current, issues }, typing);
 
   async function finish() {
     if (finishing || photoPending.current > 0 || readOnly) return;
@@ -302,7 +323,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
                 maxLength={2000}
                 placeholder="What did you find?"
                 value={issue.description}
-                onChange={(e) => setIssues(insp.issues.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
+                onChange={(e) => setIssues(insp.issues.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)), true)}
               />
             </div>
           ))}
@@ -314,7 +335,7 @@ export function InspectionForm({ stop, initial, onSaved, onFinished, onRefreshPh
         <section className="card stack">
           <label>
             Access problem (optional)
-            <input value={insp.accessIssue ?? ""} maxLength={500} onChange={(e) => update({ ...latest.current, accessIssue: e.target.value || null })} />
+            <input value={insp.accessIssue ?? ""} maxLength={500} onChange={(e) => update({ ...latest.current, accessIssue: e.target.value || null }, true)} />
           </label>
         </section>
       </fieldset>

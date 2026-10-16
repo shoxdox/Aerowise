@@ -98,9 +98,8 @@ test("keyboard photo replacement survives offline reload, sends only retained ph
   await page.getByLabel("Add photo: Chlorinator", { exact: true }).setInputFiles({ name: "chlorinator.png", mimeType: "image/png", buffer: PNG });
   await expect(page.locator('[data-photo="chlorinator"]')).toContainText("1 taken");
   await expect(page.getByTestId("local-save-status")).toContainText("Saved on this phone");
+  // Reloading reopens the inspection it was on.
   await page.reload();
-  await page.locator(".stop-card", { hasText: customer }).click();
-  await page.getByRole("button", { name: "Continue inspection" }).click();
   await expect(page.locator('[data-photo="overview"] img')).toBeVisible();
   await expect(page.getByLabel("Chlorine level")).toHaveValue("1.5");
   await page.getByRole("button", { name: "Finish inspection", exact: true }).click();
@@ -228,7 +227,11 @@ test("quota failure never claims the latest edit is saved, retry recovers, and y
     await new Promise<void>((resolve, reject) => { trx.oncomplete = () => resolve(); trx.onabort = () => reject(trx.error); });
     db.close();
   });
+  // Reloading reopens the inspection it was on, with the edit kept; the list says which day it holds.
   await page.reload();
+  await expect(page.getByLabel("Notes for the customer")).toHaveValue("Latest edit must not be called safe before commit");
+  await page.getByRole("button", { name: "‹ Back" }).click();
+  await page.getByRole("button", { name: "‹ Back" }).click();
   await expect(page.getByText("This is the cached route for Jan 1, 2001.", { exact: false })).toBeVisible();
   await expect(page.getByText(/route last downloaded Jan 1, 2001/)).toBeVisible();
   await page.locator(".stop-card", { hasText: "In progress" }).first().click();
@@ -338,9 +341,8 @@ test("clean-phone completed photos recover expired links without changing the re
       db.close();
     }, stop.jobId);
     await context.setOffline(true);
+    // Reloading reopens the recap it was on.
     await page.reload();
-    await page.locator(".stop-card", { hasText: stop.customer.displayName }).click();
-    await page.getByRole("button", { name: "View completed inspection" }).click();
     await expect(page.getByTestId("inspection-recap")).toContainText(values.notes as string);
     await expect(page.getByTestId("photo-preview-unavailable")).toHaveCount(2);
     await page.getByRole("button", { name: "Refresh photo links", exact: true }).click();
