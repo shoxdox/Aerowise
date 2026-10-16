@@ -4,7 +4,7 @@ import type { Database } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
 import { LOCK_HEARTBEAT_MS, claimNext, enqueue, extendLock, markDone, markFailed, type Task } from "./queue.ts";
 import { GENERATE_REPORTS, generateReports } from "./report-task.ts";
-import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
+import { RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, SEND_RECEIPT, sendInvoice, sendReceipt } from "./invoice-task.ts";
 import { syncOrganization, type QuickBooksProvider, type TokenCipher } from "@aerowise/quickbooks";
 import { queueQuickBooksSync, SYNC_QUICKBOOKS } from "./quickbooks-task.ts";
 import { PORTAL_LINK_EMAIL, sendPortalLink, type PortalLinkEmail } from "./portal-task.ts";
@@ -62,7 +62,8 @@ export {
   sendEstimateEmail,
 } from "./estimate-task.ts";
 export { configureLinkTokens, LINK_TOKEN_PATTERN, linkToken, linkTokenId, payUrlFor, renewUrlFor, type LinkKind } from "./links.ts";
-export { billingEmail, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, sendInvoice } from "./invoice-task.ts";
+export { billingEmail, currentInvoicePdf, queueReceipt, RENDER_INVOICE, renderInvoicePdf, SEND_INVOICE, SEND_RECEIPT, sendInvoice, sendReceipt } from "./invoice-task.ts";
+export { fromLine, longDay, paysOnline, replyToOf } from "./customer-email.ts";
 
 export interface TaskContext {
   db: Database;
@@ -86,7 +87,11 @@ export interface TaskContext {
   geocoder?: Geocoder | null;
   /** What companies pay Aerowise: Stripe Billing (or its stand-in) and the prices. Without a provider, months are counted but not invoiced. */
   billing?: { provider: BillingProvider | null; config: SubscriptionConfig } | null;
-  /** Homeowner payments (Stripe Connect or its stand-in); without it, reserved refunds wait. */
+  /**
+   * Homeowner payments (Stripe Connect or its stand-in); without it, reserved refunds wait.
+   * Null says online payment is off, so invoices offer no pay-online link; left out (tests,
+   * the demo story), a company's own Stripe status decides that.
+   */
   payments?: PaymentProvider | null;
 }
 
@@ -115,15 +120,18 @@ async function run(ctx: TaskContext, task: Task) {
       await prepareFiling(complianceContext(ctx), task.organizationId!, payload.inspectionId!);
       return;
     case RENDER_INVOICE:
-      await renderInvoicePdf(ctx.db, ctx.store, task.organizationId!, payload.invoiceId!, ctx.appUrl ?? DEFAULT_APP_URL);
+      await renderInvoicePdf(ctx.db, ctx.store, task.organizationId!, payload.invoiceId!, ctx.appUrl ?? DEFAULT_APP_URL, ctx.payments);
       return;
     case SEND_INVOICE:
       await sendInvoice(
-        { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, appUrl: ctx.appUrl ?? DEFAULT_APP_URL, from: ctx.invoiceMailFrom },
+        { db: ctx.db, store: ctx.store, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), now: ctx.now, appUrl: ctx.appUrl ?? DEFAULT_APP_URL, from: ctx.invoiceMailFrom, payments: ctx.payments },
         task.organizationId!,
         payload.invoiceId!,
         Number(payload.sendNo),
       );
+      return;
+    case SEND_RECEIPT:
+      await sendReceipt({ db: ctx.db, mail: ctx.mail ?? new OutboxTransport(ctx.store, ctx.now), appUrl: ctx.appUrl ?? DEFAULT_APP_URL, from: ctx.invoiceMailFrom }, task.organizationId!, payload.paymentId!);
       return;
     case SYNC_QUICKBOOKS: {
       if (!ctx.quickbooks) return;
@@ -178,7 +186,7 @@ async function run(ctx: TaskContext, task: Task) {
     case SEND_SMS:
       // Texting was configured when this was queued and is not now.
       if (!ctx.sms) return;
-      await sendSms({ db: ctx.db, sms: ctx.sms, now: ctx.now, appUrl: ctx.appUrl ?? DEFAULT_APP_URL }, task.organizationId!, task.payload as unknown as SmsRequest);
+      await sendSms({ db: ctx.db, sms: ctx.sms, now: ctx.now, appUrl: ctx.appUrl ?? DEFAULT_APP_URL, payments: ctx.payments }, task.organizationId!, task.payload as unknown as SmsRequest);
       return;
     case SMS_SWEEP:
       await runSmsSweep(ctx.db, payload.organizationId!, ctx.now());

@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { Database, DB } from "@aerowise/db";
+import type { Database } from "@aerowise/db";
 import {
   amountDue,
-  contractInstallments,
   id,
   invoiceDetail as invoiceDetailSchema,
   invoiceInput,
@@ -16,14 +15,13 @@ import {
   refundInput,
   type Feature,
   type InvoiceLineInput,
-  parseSnapshotOptions,
 } from "@aerowise/domain";
 import { depositLink, dollars, invoiceEvent, paymentOnTimeline, pushReservedRefund, recalcInvoice } from "@aerowise/payments";
-import { billingEmail, queueQuickBooksSync } from "@aerowise/tasks";
+import { billingEmail, queueQuickBooksSync, queueReceipt } from "@aerowise/tasks";
 import type { ObjectStore } from "@aerowise/storage";
 import { activatePaidRenewals } from "@aerowise/renewals";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { sql, type Transaction } from "kysely";
+import { sql } from "kysely";
 import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { closeOpenCheckouts, expireAtProvider } from "../lib/checkout.ts";
@@ -31,6 +29,8 @@ import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import {
   applyView,
   checkDraftRefs,
+  draftContractInstallment,
+  invoicePdfForDownload,
   invoiceBase,
   invoiceDetail,
   isFractional,
@@ -45,55 +45,10 @@ import {
 import { afterCoveredInvoiceVoided, consumeCoverage } from "../lib/coverage.ts";
 import { lockDepositForWorkOrder, unapplyAtVoid } from "../lib/deposits.ts";
 import { afterWorkOrderInvoiceEnded, lockInvoiceWorkOrder } from "../lib/work-orders.ts";
-import { dateInZone, organizationToday } from "../lib/today.ts";
-import { readForDownload } from "../lib/demo.ts";
+import { organizationToday } from "../lib/today.ts";
 
 const params = z.object({ id });
 const VIEWS = ["unpaid", "overdue", "draft", "paid", "void", "all"] as const;
-const day = (iso: string) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-};
-
-/**
- * Lines for the authority filing fees on a site's sent filings that no invoice (other than a
- * void one) bills yet, for a company that bills them to the homeowner (Justin, 2026-10-05).
- * Late fees are the company's own and are never passed on.
- */
-async function filingFeeLines(trx: Transaction<DB>, organizationId: string, siteId: string, timezone: string) {
-  const fees = await trx
-    .selectFrom("filings as f")
-    .select(["f.id", "f.kind", "f.filingFeeCents", "f.sentAt"])
-    .select((eb) => eb.selectFrom("jurisdictions as j").select("j.authorityName").whereRef("j.id", "=", "f.jurisdictionId").as("authorityName"))
-    .where("f.organizationId", "=", organizationId)
-    .where("f.siteId", "=", siteId)
-    .where("f.filingFeeCents", ">", 0)
-    .where("f.sentAt", "is not", null)
-    .where((w) =>
-      w.not(
-        w.exists(
-          w
-            .selectFrom("invoiceLines as l")
-            .innerJoin("invoices as i", "i.id", "l.invoiceId")
-            .select("l.id")
-            .whereRef("l.organizationId", "=", "f.organizationId")
-            .whereRef("l.filingId", "=", "f.id")
-            .where("i.status", "<>", "void"),
-        ),
-      ),
-    )
-    .orderBy("f.sentAt")
-    // Two invoices made at once for the same site take turns, so a fee is billed once.
-    .forUpdate()
-    .execute();
-  return fees.map((f) => ({
-    description: `${f.authorityName ?? "Authority"} filing fee: ${f.kind === "contract" ? "maintenance contract" : "inspection report"} filed ${day(dateInZone(f.sentAt!, timezone))}`,
-    quantity: 1,
-    unitPriceCents: f.filingFeeCents!,
-    taxable: false,
-    filingId: f.id,
-  }));
-}
 
 export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date; store: ObjectStore; payments: PaymentsConfig; features: ReadonlySet<Feature> }> = async (
   app,
@@ -225,104 +180,13 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req, reply) => {
       const { organizationId, userId } = req.requireAuth();
-      const org = await db
-        .selectFrom("organizations")
-        .select(["invoiceTermsDays", "defaultTaxRateBps", "billFilingFees", "timezone"])
-        .where("id", "=", organizationId)
-        .executeTakeFirstOrThrow();
       const invoiceId = await db.transaction().execute(async (trx) => {
         const at = now();
-        // Locking the contract makes two people billing it at once take turns.
-        const c = await trx
-          .selectFrom("contracts as k")
-          .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "k.siteId").onRef("s.organizationId", "=", "k.organizationId"))
-          .select(["k.id", "k.siteId", "k.status", "k.planName", "k.startOn", "k.endOn", "k.termMonths", "k.priceCents", "k.billingFrequency", "k.agreementSnapshot", "s.customerId", "s.addressLine1"])
-          .where("k.organizationId", "=", organizationId)
-          .where("k.id", "=", req.params.id)
-          .forUpdate()
-          .executeTakeFirst();
-        if (!c) throw notFound("Contract");
-        if (c.status === "cancelled") throw unprocessable("This contract is cancelled");
-        const billed = await trx
-          .selectFrom("invoiceLines as l")
-          .innerJoin("invoices as i", "i.id", "l.invoiceId")
-          .select("l.installment")
-          .where("l.organizationId", "=", organizationId)
-          .where("l.contractId", "=", c.id)
-          .where("i.status", "<>", "void")
-          .execute();
-        const taken = new Set(billed.map((b) => b.installment));
-        const parts = contractInstallments(c);
-        const part = req.body.installment ? parts.find((p) => p.installment === req.body.installment) : parts.find((p) => !taken.has(p.installment));
-        if (!part) throw unprocessable(req.body.installment ? "The contract has no such installment" : "Every installment of this contract is already on an invoice");
-        if (taken.has(part.installment)) throw unprocessable(`Installment ${part.installment} is already on an invoice`);
-
-        const inv = await trx
-          .insertInto("invoices")
-          .values({
-            organizationId,
-            customerId: c.customerId,
-            siteId: c.siteId,
-            number: null,
-            memo: null,
-            termsDays: org.invoiceTermsDays,
-            taxRateBps: org.defaultTaxRateBps,
-            discountCents: 0,
-            subtotalCents: 0,
-            taxableCents: 0,
-            taxCents: 0,
-            totalCents: 0,
-            issuedOn: null,
-            dueOn: null,
-            pdfStorageKey: null,
-            pdfSha256: null,
-            pdfByteSize: null,
-            sentAt: null,
-            paidAt: null,
-            voidedAt: null,
-            voidReason: null,
-            createdBy: userId,
-            updatedAt: at,
-          })
-          .returning("id")
-          .executeTakeFirstOrThrow();
-        const which = part.count > 1 ? ` (payment ${part.installment} of ${part.count})` : "";
-        await writeDraftLines(
-          trx,
-          organizationId,
-          inv.id,
-          [
-            {
-              description: `${c.planName}, ${c.addressLine1}: ${day(part.periodStart)} to ${day(part.periodEnd)}${which}`,
-              quantity: 1,
-              unitPriceCents: part.amountCents,
-              taxable: false,
-              contractId: c.id,
-              installment: part.installment,
-              periodStart: part.periodStart,
-              periodEnd: part.periodEnd,
-            },
-            // Plan options the office took with the contract (SW-8), once, with the first payment.
-            ...(part.installment === 1
-              ? parseSnapshotOptions(c.agreementSnapshot).map((o) => ({
-                  description: `${c.planName} option: ${o.name}`,
-                  quantity: 1,
-                  unitPriceCents: o.priceCents,
-                  taxable: o.taxable,
-                  contractId: c.id,
-                  installment: part.installment,
-                  periodStart: part.periodStart,
-                  periodEnd: part.periodEnd,
-                }))
-              : []),
-            ...(org.billFilingFees ? await filingFeeLines(trx, organizationId, c.siteId, org.timezone) : []),
-          ],
-          { discountCents: 0, taxRateBps: org.defaultTaxRateBps },
-          at,
-        );
-        await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "created", summary: `Draft created for the contract${which}`, actorUserId: userId, at });
-        await audit(trx, req, { action: "invoice.created", entityType: "invoice", entityId: inv.id, changes: { contractId: c.id, installment: part.installment } });
-        return inv.id;
+        const draft = await draftContractInstallment(trx, organizationId, req.params.id, { installment: req.body.installment, createdBy: userId, now: at });
+        const which = draft.count > 1 ? ` (payment ${draft.installment} of ${draft.count})` : "";
+        await invoiceEvent(trx, { organizationId, invoiceId: draft.invoiceId, eventType: "created", summary: `Draft created for the contract${which}`, actorUserId: userId, at });
+        await audit(trx, req, { action: "invoice.created", entityType: "invoice", entityId: draft.invoiceId, changes: { contractId: req.params.id, installment: draft.installment } });
+        return draft.invoiceId;
       });
       return reply.status(201).send(await detail(organizationId, invoiceId));
     },
@@ -439,7 +303,14 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     "/invoices/:id/send",
     {
       config: { permission: "invoices:write" },
-      schema: { tags: ["invoices"], summary: "Email an open invoice to the customer again", params, body: z.object({}).optional(), response: { 200: invoiceDetailSchema } },
+      schema: {
+        tags: ["invoices"],
+        summary: "Email an open invoice to the customer again",
+        description: "Sent again, it reminds them of the balance still due. Refused when nothing is due.",
+        params,
+        body: z.object({}).optional(),
+        response: { 200: invoiceDetailSchema },
+      },
     },
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
@@ -447,19 +318,21 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const at = now();
         const inv = await trx
           .selectFrom("invoices")
-          .select(["id", "status", "customerId", "sendCount"])
+          .select(["id", "status", "customerId", "sendCount", "totalCents", "paidCents", "pendingCents", "creditedCents"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .forUpdate()
           .executeTakeFirst();
         if (!inv) throw notFound("Invoice");
         if (inv.status !== "open") throw unprocessable(inv.status === "draft" ? "Issue the invoice first" : "A void invoice cannot be sent");
+        // A paid customer is never told the invoice is due.
+        if (amountDue(inv) === 0) throw unprocessable("Nothing is due on this invoice, so there is nothing to send");
         const to = await billingEmail(trx, organizationId, inv.customerId);
         if (!to) throw unprocessable("The customer has no email address on file. Add a billing contact with an email.");
         const sendNo = inv.sendCount + 1;
         await trx.updateTable("invoices").set({ sendCount: sendNo, updatedAt: at }).where("id", "=", inv.id).execute();
         await queueSend(trx, organizationId, inv.id, sendNo, at);
-        await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "send_requested", summary: `Emailing again to ${to}`, actorUserId: userId, at });
+        await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "send_requested", summary: `${sendNo > 1 ? `Emailing a reminder of the ${dollars(amountDue(inv))} still due` : "Emailing"} to ${to}`, actorUserId: userId, at });
         await audit(trx, req, { action: "invoice.sent", entityType: "invoice", entityId: inv.id, changes: { sendNo } });
       });
       return detail(organizationId, req.params.id);
@@ -523,9 +396,9 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
-      const inv = await db.selectFrom("invoices").select(["number", "pdfStorageKey"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
+      const inv = await db.selectFrom("invoices").select(["number"]).where("organizationId", "=", organizationId).where("id", "=", req.params.id).executeTakeFirst();
       if (!inv) throw notFound("Invoice");
-      const data = inv.pdfStorageKey ? await readForDownload(db, store, inv.pdfStorageKey) : null;
+      const data = await invoicePdfForDownload(db, store, payments, organizationId, req.params.id);
       if (!data) throw new HttpError(404, "not_ready", "The PDF is still being prepared");
       return reply
         .header("content-type", "application/pdf")
@@ -590,6 +463,8 @@ export const invoiceRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "payment_succeeded", summary: `Payment recorded: ${what}`, actorUserId: userId, paymentId: p.id, at });
         await paymentOnTimeline(trx, { organizationId, invoiceId: inv.id, amountCents: req.body.amountCents, method: req.body.method, actorUserId: userId, at });
         await audit(trx, req, { action: "payment.recorded", entityType: "invoice", entityId: inv.id, changes: { paymentId: p.id, ...req.body } });
+        // People who mail a check want to know it arrived.
+        await queueReceipt(trx, organizationId, p.id, at);
         await queueQuickBooksSync(trx, organizationId, at);
         // A checkout page the customer still has open would charge what is no longer due.
         return closeOpenCheckouts(trx, organizationId, inv.id);

@@ -9,7 +9,7 @@ import { templateDefinition } from "./inspections.ts";
 // Renewals: the next term of a contract, offered to the homeowner through one link where
 // they confirm their details, pick add-ons, sign and pay.
 
-export const RENEWAL_STATUSES = ["upcoming", "sent", "viewed", "signed", "payment_pending", "paid", "activated", "declined", "expired", "needs_review"] as const;
+export const RENEWAL_STATUSES = ["upcoming", "sent", "viewed", "signed", "payment_pending", "paid", "activated", "declined", "expired", "needs_review", "superseded"] as const;
 export type RenewalStatus = (typeof RENEWAL_STATUSES)[number];
 
 export const RENEWAL_STATUS_LABELS: Record<RenewalStatus, string> = {
@@ -23,14 +23,19 @@ export const RENEWAL_STATUS_LABELS: Record<RenewalStatus, string> = {
   declined: "Declined",
   expired: "Expired",
   needs_review: "Needs review",
+  superseded: "Renewed another way",
 };
 
 /** The customer can still sign, and the office can still change the offer. */
 export const SIGNABLE_STATUSES = ["upcoming", "sent", "viewed"] as const satisfies readonly RenewalStatus[];
-/** Finished, one way or another. */
-export const CLOSED_STATUSES = ["activated", "declined", "expired"] as const satisfies readonly RenewalStatus[];
+/**
+ * Finished, one way or another. A superseded renewal was closed because the office made the
+ * next term another way ('Renew now'); it names that term and can no longer be signed or paid.
+ */
+export const CLOSED_STATUSES = ["activated", "declined", "expired", "superseded"] as const satisfies readonly RenewalStatus[];
 
 export const isSignable = (s: RenewalStatus) => (SIGNABLE_STATUSES as readonly RenewalStatus[]).includes(s);
+export const isClosed = (s: RenewalStatus) => (CLOSED_STATUSES as readonly RenewalStatus[]).includes(s);
 
 /** Automatic reminders go out this many days before the contract ends, while unsigned. */
 export const REMINDER_DAYS = [30, 7] as const;
@@ -62,6 +67,35 @@ export function defaultAgreementTerms(v?: { aerobic: boolean; serviceCycles: rea
   const repairs = "3. Repairs. Repairs, parts and any pumping or maintenance beyond the visits listed above are not included unless listed as an add-on, and are quoted before any work is done.";
   const clauses = DEFAULT_RENEWAL_TERMS.split("\n\n");
   return [service, clauses[1], repairs, ...clauses.slice(3)].join("\n\n");
+}
+
+/** The auto-renewal promise, as the agreement's term row and clause 5 both make it. */
+export const AUTO_RENEW_TEXT = "Automatically, unless either party gives written notice before this term ends.";
+const AUTO_RENEW_CLAUSE =
+  "5. Term. This agreement covers the dates shown above and renews automatically unless either party gives written notice before it ends. Either party may end it with 30 days' written notice; visits already performed are not refunded.";
+
+/**
+ * The built-in agreement for a renewal: the terms for what its plan version includes, with
+ * clause 5 saying the plan renews automatically when the contract is set to auto-renew. A
+ * company's or a plan's own terms replace these; the term rows still say that it renews.
+ */
+export function renewalAgreementTerms(v: { aerobic: boolean; serviceCycles: readonly unknown[] } | null | undefined, opts: { autoRenew: boolean }): string {
+  const terms = defaultAgreementTerms(v);
+  if (!opts.autoRenew) return terms;
+  return terms
+    .split("\n\n")
+    .map((c) => (c.startsWith("5. Term.") ? AUTO_RENEW_CLAUSE : c))
+    .join("\n\n");
+}
+
+/**
+ * What renewing keeps going, in one sentence, for the renewal page and its email. Inspection
+ * and filing wording only for an inspection plan: a pumping or maintenance plan (SW-9)
+ * promises neither.
+ */
+export function renewalPitch(serviceType: (typeof SERVICE_TYPES)[number]): string {
+  if (serviceType === "aerobic_inspection") return "Renewing keeps your aerobic system inspected on schedule, with each report filed where your county requires it.";
+  return `Renewing keeps your ${serviceType === "pumping" ? "pumping" : "maintenance"} visits on schedule.`;
 }
 
 export const CONSENT_TEXT = "I have read this agreement and agree to its terms. I agree to sign electronically, and that my electronic signature is as binding as one on paper.";
@@ -128,6 +162,44 @@ const longDay = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 };
+/** A calendar date as an agreement writes it: "December 10, 2027". */
+const fullDay = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+};
+const money = (cents: number) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+const BILLED: Record<RenewalTerms["billingFrequency"], string> = { annual: "yearly", semiannual: "every six months", quarterly: "quarterly", monthly: "monthly" };
+
+/** The renewal invoice's note. */
+export const renewalMemo = (t: { startOn: string; endOn: string }) => `Renewal of your maintenance plan, ${fullDay(t.startOn)} to ${fullDay(t.endOn)}.`;
+
+export const agreementRow = z.object({ key: z.enum(["plan", "term", "visits", "price", "follows", "renews"]), label: z.string(), value: z.string() });
+export type AgreementRow = z.infer<typeof agreementRow>;
+
+/**
+ * The service term of a renewal agreement, row by row. The homeowner's renewal page and the
+ * signed PDF both show exactly these, so the copy they keep says what they read before
+ * signing. A value with several lines (one per kind of visit) is joined with newlines.
+ */
+export function agreementTermRows(a: { term: RenewalTerms; previousTerm: { endOn: string }; cycles?: readonly { label: string; summary: string }[] | null }): AgreementRow[] {
+  const t = a.term;
+  const parts = contractInstallments(t);
+  const first = parts[0]!.amountCents;
+  const each = parts.every((p) => p.amountCents === first) ? ` of ${money(first)}` : `, the first ${money(first)}`;
+  return [
+    { key: "plan", label: "Plan", value: t.planName },
+    { key: "term", label: "Term", value: `${fullDay(t.startOn)} to ${fullDay(t.endOn)} (${t.termMonths} months)` },
+    {
+      key: "visits",
+      label: "Visits",
+      value: a.cycles?.length ? a.cycles.map((c) => `${c.label}: ${c.summary}`).join("\n") : `${t.visitsPerTerm} maintenance visit${t.visitsPerTerm === 1 ? "" : "s"}`,
+    },
+    { key: "price", label: "Price", value: `${money(t.priceCents)} for the term, billed ${BILLED[t.billingFrequency]}${parts.length > 1 ? ` in ${parts.length} payments${each}` : ""}` },
+    // Present tense: the term being renewed has usually not ended when this is signed.
+    { key: "follows", label: "Follows", value: `The term ending ${fullDay(a.previousTerm.endOn)}` },
+    ...(t.autoRenew ? [{ key: "renews" as const, label: "Renews", value: AUTO_RENEW_TEXT }] : []),
+  ];
+}
 
 /**
  * What the customer pays when they renew: the new term's first installment (all of it,
@@ -315,12 +387,21 @@ export const publicRenewal = z.object({
   /** The questions to answer before signing (SW-8); null when the plan asks none. */
   intake: z.object({ name: z.string(), definition: templateDefinition }).nullable(),
   contact: z.object({ name: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable() }),
+  /** The service term as the signed agreement lists it (`agreementTermRows`). */
+  termRows: z.array(agreementRow),
+  /** One sentence on what renewing keeps going (`renewalPitch`). */
+  pitch: z.string(),
   agreementText: z.string(),
   consentText: z.string(),
   payment: z.enum(RENEWAL_PAYMENT_POLICIES),
   signed: z.object({ signerName: z.string(), signedAt: datetime, pdfReady: z.boolean() }).nullable(),
   /** Set while there is something to pay. */
-  pay: z.object({ amountDueCents: z.number().int(), canPayOnline: z.boolean(), invoiceUrl: z.string() }).nullable(),
+  pay: z.object({ amountDueCents: z.number().int(), canPayOnline: z.boolean(), invoiceUrl: z.string(), dueOn: date.nullable() }).nullable(),
+  /**
+   * Why an offer that is not closed can no longer go ahead: the plan was already renewed (or
+   * another contract covers its dates), or the contract is ending. Null when it can.
+   */
+  unavailable: z.enum(["renewed", "ended"]).nullable(),
   /** Confirmation is independent of amount due: a pending bank reservation can make that zero. */
   paymentConfirmation: z.object({ paymentStatus: z.string(), latestPaymentFailed: z.boolean(), pendingCents: z.number().int(), bankVerificationRequired: z.boolean(), invoiceUrl: z.string() }).nullable().default(null),
   newTermStartsOn: date.nullable(),

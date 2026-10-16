@@ -5,6 +5,7 @@ import { addDays, dateInZone, estimateLabel, isEstimateOpen, type EstimateStatus
 import { dollars } from "@aerowise/payments";
 import { systemAudit } from "@aerowise/renewals";
 import type { Transaction } from "kysely";
+import { fromLine, longDay, replyToOf } from "./customer-email.ts";
 import { billingEmail } from "./invoice-task.ts";
 import { enqueue } from "./queue.ts";
 
@@ -121,13 +122,14 @@ export async function sendEstimateEmail(
   await ctx.mail.send({
     organizationId,
     idempotencyKey: `estimate-${p.estimateId}-email-${taskId}`,
-    from: `"${e.orgName.replace(/"/g, "")}" <${ctx.from ?? "billing@aerowise.invalid"}>`,
+    from: fromLine(e.orgName, ctx.from ?? "billing@aerowise.invalid"),
     to,
+    replyTo: replyToOf(e.orgEmail),
     subject: `Your estimate from ${e.orgName}: ${e.title}`,
     text: [
       `Hello ${e.displayName},`,
       "",
-      `${e.orgName} has sent you an estimate, ${estimateLabel(e.number)}: ${e.title}, for ${dollars(total)}${e.expiresOn ? `, good until ${e.expiresOn}` : ""}.`,
+      `${e.orgName} has sent you an estimate, ${estimateLabel(e.number)}: ${e.title}, for ${dollars(total)}${e.expiresOn ? `, good until ${longDay(e.expiresOn)}` : ""}.`,
       "",
       `Review it, choose any options and accept it here: ${estimateUrlFor(ctx.appUrl, token)}`,
       "",

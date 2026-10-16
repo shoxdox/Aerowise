@@ -4,6 +4,7 @@ interface Stored {
   id: string;
   from: string;
   to: string[];
+  reply_to?: string;
   subject: string;
   created_at: string;
   tags: { name: string; value: string }[];
@@ -39,7 +40,7 @@ export class FakeResend {
       const all = [...this.emails].reverse();
       const start = after ? all.findIndex((e) => e.id === after) + 1 : 0;
       const page = all.slice(start, start + limit);
-      return json(200, { object: "list", has_more: start + limit < all.length, data: page.map(({ tags: _t, attachments: _a, ...e }) => ({ ...e, last_event: "delivered" })) });
+      return json(200, { object: "list", has_more: start + limit < all.length, data: page.map(({ tags: _t, attachments: _a, reply_to: _r, ...e }) => ({ ...e, last_event: "delivered" })) });
     }
     if (method === "POST" && url.pathname === "/emails") {
       const mode = this.next;
@@ -55,7 +56,7 @@ export class FakeResend {
       } else {
         const body = JSON.parse(String(init!.body)) as Omit<Stored, "id" | "created_at">;
         id = `re_${++this.seq}`;
-        this.emails.push({ id, from: body.from, to: body.to, subject: body.subject, created_at: new Date(now).toISOString(), tags: body.tags, attachments: body.attachments });
+        this.emails.push({ id, from: body.from, to: body.to, reply_to: body.reply_to, subject: body.subject, created_at: new Date(now).toISOString(), tags: body.tags, attachments: body.attachments });
         this.keys.set(key, { id, at: now });
       }
       if (mode === "lose") throw new TypeError("fetch failed: socket hang up");

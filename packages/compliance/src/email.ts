@@ -12,6 +12,11 @@ export interface EmailMessage {
   idempotencyKey: string;
   from: string;
   to: string;
+  /**
+   * Where the recipient's Reply goes: the provider's own address on homeowner email, since
+   * `from` is the platform's sending address. Absent when the provider has none on file.
+   */
+  replyTo?: string | null;
   subject: string;
   text: string;
   attachments: { filename: string; contentType: string; content: Buffer }[];
@@ -47,6 +52,7 @@ export function toEml(m: EmailMessage, messageId: string, date: Date): string {
     `Date: ${date.toUTCString()}`,
     `From: ${m.from}`,
     `To: ${m.to}`,
+    ...(m.replyTo ? [`Reply-To: ${m.replyTo}`] : []),
     `Subject: ${m.subject}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${boundary}"`,

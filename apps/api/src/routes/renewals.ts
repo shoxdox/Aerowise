@@ -4,21 +4,25 @@ import {
   addDays,
   addonInput,
   addonPatch,
+  agreementTermRows,
   amountDue,
   CONSENT_TEXT,
   contractInstallments,
   DEFAULT_RENEWAL_TERMS,
-  defaultAgreementTerms,
   id,
+  isClosed,
   isSignable,
   publicRenewal,
   RENEWAL_STATUSES,
   renewalAddon,
+  renewalAgreementTerms,
   renewalCharges,
   renewalDeclineInput,
   renewalDetail,
   renewalList,
+  renewalMemo,
   renewalOfferPatch,
+  renewalPitch,
   renewalSettings,
   renewalSettingsInput,
   renewalSignInput,
@@ -34,9 +38,24 @@ import {
   type RenewalStatus,
 } from "@aerowise/domain";
 import { invoiceEvent } from "@aerowise/payments";
-import { activateRenewal, agreementCycles, canonicalJson, coverageLines, createRenewal, loadPlanVersion, offerTerms, RenewalError, renewalOnTimeline, sha256Hex, systemAudit } from "@aerowise/renewals";
+import {
+  activateRenewal,
+  activationProblem,
+  agreementCycles,
+  applyRenewalToTerm,
+  canonicalJson,
+  coverageLines,
+  createRenewal,
+  loadPlanVersion,
+  offerTerms,
+  RenewalError,
+  renewalOnTimeline,
+  sha256Hex,
+  systemAudit,
+  type ActivationProblem,
+} from "@aerowise/renewals";
 import type { ObjectStore } from "@aerowise/storage";
-import { enqueue, linkTokenId, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
+import { billingEmail, enqueue, linkTokenId, payUrlFor, providerFor, queueQuickBooksSync, queueRenewalEmail, RENEWAL_AGREEMENT, renewUrlFor, runRenewalSweep } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { sql, type Transaction } from "kysely";
@@ -45,7 +64,7 @@ import { audit } from "../lib/audit.ts";
 import { canPayOnline, openCheckout, openInvoiceById } from "../lib/checkout.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
-import { issueDraft, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
+import { draftContractInstallment, issueDraft, writeDraftLines, type PaymentsConfig } from "../lib/invoices.ts";
 import { definedOnly } from "../lib/json.ts";
 import { organizationToday } from "../lib/today.ts";
 import { readForDownload } from "../lib/demo.ts";
@@ -60,6 +79,9 @@ const joinAddress = (parts: (string | null | undefined)[]) => parts.filter(Boole
 const cityLine = (city: string | null, state: string | null, postal: string | null) => [city, [state, postal].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
+const ALREADY_RENEWED = "Your plan was already renewed. Nothing is due.";
+const OFFER_ENDED = "This renewal offer has ended. Contact your service provider about your plan.";
+
 const CLOSED_MESSAGE: Partial<Record<RenewalStatus, string>> = {
   signed: "This renewal is already signed",
   payment_pending: "This renewal is already signed",
@@ -68,6 +90,16 @@ const CLOSED_MESSAGE: Partial<Record<RenewalStatus, string>> = {
   declined: "This renewal was declined",
   expired: "This renewal offer has ended",
   needs_review: "This renewal is with the office",
+  superseded: ALREADY_RENEWED,
+};
+
+/** What the homeowner is told when their renewal can no longer go ahead (`activationProblem`). */
+const UNAVAILABLE: Record<ActivationProblem["code"], { kind: "renewed" | "ended"; message: string }> = {
+  renewed: { kind: "renewed", message: ALREADY_RENEWED },
+  // Another contract already covers the new term: renewed, as far as the homeowner is concerned.
+  overlap: { kind: "renewed", message: ALREADY_RENEWED },
+  cancelled: { kind: "ended", message: OFFER_ENDED },
+  ending: { kind: "ended", message: OFFER_ENDED },
 };
 
 /** The customer's contact a renewal speaks to: billing, else primary, else the first one. */
@@ -172,6 +204,13 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
    */
   const planOffer = async (ex: Database | Transaction<DB>, r: { organizationId: string; planVersionId: string | null }) =>
     planBuilder && r.planVersionId ? loadPlanVersion(ex, r.organizationId, r.planVersionId) : null;
+
+  /**
+   * The agreement text an offer is signed with: the plan version's own, else the company's,
+   * else the built-in one for what the version includes, saying it auto-renews when it does.
+   */
+  const agreementText = (org: { renewalTerms: string | null }, offer: Awaited<ReturnType<typeof planOffer>>, terms: { autoRenew: boolean }) =>
+    offer?.termsText ?? org.renewalTerms ?? renewalAgreementTerms(offer && (serviceCycles || !offer.aerobic) ? offer : null, { autoRenew: terms.autoRenew });
 
   // ---- Settings and add-ons ----
 
@@ -349,7 +388,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
           .where("c.serviceEndsOn", "is", null)
           .where("c.endOn", ">=", today)
           .where("c.endOn", "<=", addDays(today, org.renewalWindowDays))
-          .where((eb) => eb.not(eb.exists(eb.selectFrom("renewals as r").select("r.id").whereRef("r.contractId", "=", "c.id").where("r.status", "not in", ["declined", "expired"]))))
+          .where((eb) => eb.not(eb.exists(eb.selectFrom("renewals as r").select("r.id").whereRef("r.contractId", "=", "c.id").where("r.status", "not in", ["declined", "expired", "superseded"]))))
           .where((eb) => eb.not(eb.exists(eb.selectFrom("contracts as n").select("n.id").whereRef("n.previousContractId", "=", "c.id"))))
           .executeTakeFirstOrThrow(),
       ]);
@@ -513,8 +552,11 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
   );
 
   async function sendNow(trx: Transaction<DB>, organizationId: string, renewalId: string, at: Date) {
-    const r = await trx.selectFrom("renewals").select(["status", "customerId"]).where("id", "=", renewalId).executeTakeFirstOrThrow();
+    const r = await trx.selectFrom("renewals").select(["status", "customerId", "contractId", "siteId", "startOn", "endOn"]).where("id", "=", renewalId).executeTakeFirstOrThrow();
     if (!isSignable(r.status)) throw unprocessable("This renewal can no longer be signed");
+    // The worker would drop it anyway; say why now.
+    const problem = await activationProblem(trx, organizationId, r);
+    if (problem) throw unprocessable(`${problem.reason}, so the renewal link is not sent`);
     const contact = await renewalContact(trx, organizationId, r.customerId);
     if (!contact?.email) throw unprocessable("The customer has no email address on file. Add one to a contact, or copy the link and send it another way.");
     return queueRenewalEmail(trx, organizationId, renewalId, { now: at });
@@ -576,7 +618,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         tags: ["renewals"],
         summary: "Start the next term now",
         description:
-          "For a signed renewal still waiting on payment, or one in review. A contract set to auto-renew can also be renewed without the customer signing again; its first installment is then billed as usual.",
+          "For a signed renewal still waiting on payment, or one in review. A contract set to auto-renew can also be renewed without the customer signing again; its first installment is then invoiced and emailed to the customer (issued without email when they have no address), as a renewal billed afterwards would be.",
         params,
         body: z.object({ note: z.string().trim().max(500).nullish() }),
         response: { 200: renewalDetail },
@@ -585,6 +627,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       const result = await db.transaction().execute(async (trx) => {
+        const at = now();
         const r = await lockRow(trx, organizationId, req.params.id);
         const contract = await trx.selectFrom("contracts").select("autoRenew").where("id", "=", r.contractId).executeTakeFirstOrThrow();
         const signed = r.signedDocumentId !== null;
@@ -592,9 +635,55 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         if (r.status === "activated") throw new HttpError(409, "already_activated", "This renewal is already active");
         if (!allowed) throw unprocessable(contract.autoRenew ? "This renewal cannot be activated" : "The customer has to sign first, unless the contract is set to auto-renew");
         const note = req.body.note ?? (signed ? "activated by the office" : "auto-renewed by the office");
-        return activateRenewal(trx, organizationId, r.id, { now: now(), actorUserId: userId, requestId: req.id, note, planBuilder, serviceCycles });
+        const activated = await activateRenewal(trx, organizationId, r.id, { now: at, actorUserId: userId, requestId: req.id, note, planBuilder, serviceCycles });
+        // Renewed without a signature, so nothing has billed the new term yet: its first
+        // installment goes out now, like a renewal the customer signs in 'bill afterwards' mode.
+        // A draft left for later is how a term goes unbilled.
+        if (activated.status === "activated" && !r.invoiceId) await billFirstInstallment(trx, r, activated.contractId, { actorUserId: userId, now: at });
+        return activated;
       });
       if (result.status === "needs_review") throw new HttpError(409, "needs_review", result.reason);
+      return detail(organizationId, req.params.id);
+    },
+  );
+
+  /** Invoices a renewed term's first installment, and emails it when the customer has an address. */
+  async function billFirstInstallment(trx: Transaction<DB>, r: { id: string; organizationId: string; customerId: string }, contractId: string, opts: { actorUserId: string; now: Date }) {
+    const { organizationId } = r;
+    const c = await trx.selectFrom("contracts").select(["startOn", "endOn", "priceCents"]).where("id", "=", contractId).executeTakeFirstOrThrow();
+    if (c.priceCents === 0) return;
+    const draft = await draftContractInstallment(trx, organizationId, contractId, { installment: 1, createdBy: opts.actorUserId, memo: renewalMemo(c), now: opts.now });
+    await invoiceEvent(trx, { organizationId, invoiceId: draft.invoiceId, eventType: "created", summary: "Created when the office renewed an auto-renewing contract", actorUserId: opts.actorUserId, at: opts.now });
+    const send = (await billingEmail(trx, organizationId, r.customerId)) !== null;
+    const issued = await issueDraft(trx, organizationId, draft.invoiceId, { send, now: opts.now });
+    await invoiceEvent(trx, { organizationId, invoiceId: draft.invoiceId, eventType: "issued", summary: `Issued as ${issued.label}${send ? `; emailing to ${issued.billTo}` : ""}`, actorUserId: opts.actorUserId, at: opts.now });
+    await trx.updateTable("renewals").set({ invoiceId: draft.invoiceId, updatedAt: opts.now }).where("id", "=", r.id).execute();
+    await queueQuickBooksSync(trx, organizationId, opts.now);
+  }
+
+  app.post(
+    "/renewals/:id/apply-to-term",
+    {
+      config: { permission: "contracts:write" },
+      schema: {
+        tags: ["renewals"],
+        summary: "Count a renewal in review toward the term that was already made another way",
+        description:
+          "For a renewal in review because its contract was renewed another way: its invoice pays that term's first installment, so the installment is not billed again, and the renewal is complete. 409 `installment_billed` when another invoice already bills that installment.",
+        params,
+        body: z.object({}).optional(),
+        response: { 200: renewalDetail },
+      },
+    },
+    async (req) => {
+      const { organizationId, userId } = req.requireAuth();
+      await db
+        .transaction()
+        .execute((trx) => applyRenewalToTerm(trx, organizationId, req.params.id, { now: now(), actorUserId: userId, requestId: req.id }))
+        .catch((err) => {
+          if (err instanceof RenewalError && err.code === "not_found") throw notFound("Renewal");
+          return renewalConflict(err);
+        });
       return detail(organizationId, req.params.id);
     },
   );
@@ -656,6 +745,10 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
       const offer = isSignable(r.status) ? await planOffer(db, r) : null;
       const options = signedContent ? (signedContent.options ?? []) : offer ? offer.options : parsePlanOptions(r.selectedOptions);
       const coverage = signedContent ? (signedContent.coverage ?? []) : offer ? await coverageLines(db, organizationId, offer.coverage) : [];
+      const cycles = signedContent ? (signedContent.cycles ?? []) : offer && (serviceCycles || !offer.aerobic) ? (agreementCycles(offer, terms) ?? []) : [];
+      // An offer not yet turned into a term, whose contract was renewed or ended meanwhile, says
+      // so instead of asking for a signature or money.
+      const problem = isClosed(r.status) ? null : await activationProblem(db, organizationId, r);
       let pay: PublicRenewal["pay"] = null;
       let paymentConfirmation: PublicRenewal["paymentConfirmation"] = null;
       if (inv) {
@@ -663,8 +756,11 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const verification = await db.selectFrom("payments").select("id").where("organizationId", "=", organizationId).where("invoiceId", "=", inv.id).where("status", "=", "pending").where("bankVerificationUrl", "is not", null).executeTakeFirst();
         const invoiceUrl = payUrlFor(appUrl, inv.id);
         paymentConfirmation = { paymentStatus: payable.paymentStatus, latestPaymentFailed: await latestPaymentFailed(db, organizationId, inv.id, payable.pendingCents, now()), pendingCents: payable.pendingCents, bankVerificationRequired: Boolean(verification), invoiceUrl };
-        if (amountDue(payable) > 0) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl };
+        const dueOn = (payable.snapshot as { dueOn?: string } | null)?.dueOn ?? null;
+        if (amountDue(payable) > 0 && !problem) pay = { amountDueCents: amountDue(payable), canPayOnline: canPayOnline(provider, payable), invoiceUrl, dueOn };
       }
+      // The term that replaced a superseded offer starts when the renewed one would have.
+      const replacement = r.status === "superseded" && r.newContractId ? await db.selectFrom("contracts").select("startOn").where("id", "=", r.newContractId).executeTakeFirst() : undefined;
       return {
         status: r.status,
         version: r.version,
@@ -681,17 +777,21 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         options,
         selectedOptionKeys: (signedContent ? options : offer ? offer.options.filter((o) => o.default) : parsePlanOptions(r.selectedOptions)).map((o) => o.optionKey),
         coverage: coverage.map((c) => c.summary),
-        cycles: (signedContent ? (signedContent.cycles ?? []) : offer && (serviceCycles || !offer.aerobic) ? (agreementCycles(offer, terms) ?? []) : []).map((c) => `${c.label}: ${c.summary}`),
+        cycles: cycles.map((c) => `${c.label}: ${c.summary}`),
         // Asked only while it can be signed; the signed answers are in the agreement itself.
         intake: offer?.intake ? { name: offer.intake.name, definition: offer.intake.definition } : null,
         contact: { name: contact?.name ?? null, email: contact?.email ?? null, phone: contact?.phone ?? null },
-        agreementText: signedContent ? signedContent.terms : (offer?.termsText ?? org.renewalTerms ?? defaultAgreementTerms(offer && (serviceCycles || !offer.aerobic) ? offer : null)),
+        // The same rows and text the signed PDF prints (packages/reports/src/agreement.ts).
+        termRows: agreementTermRows(signedContent ?? { term: terms, previousTerm: { endOn: contract.endOn }, cycles }),
+        pitch: renewalPitch(terms.serviceType),
+        agreementText: signedContent ? signedContent.terms : agreementText(org, offer, terms),
         consentText: CONSENT_TEXT,
         payment: org.renewalPayment,
         signed: doc ? { signerName: doc.signerName, signedAt: doc.signedAt.toISOString(), pdfReady: !!doc.pdfStorageKey } : null,
         pay,
         paymentConfirmation,
-        newTermStartsOn: r.status === "activated" ? r.startOn : null,
+        unavailable: problem ? UNAVAILABLE[problem.code].kind : null,
+        newTermStartsOn: r.status === "activated" ? r.startOn : (replacement?.startOn ?? null),
         testMode: !!provider && (await providerFor(provider, r.organizationId)).kind === "test",
       };
     },
@@ -752,10 +852,13 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
         const organizationId = r.organizationId;
         if (!isSignable(r.status)) throw new HttpError(409, "not_signable", CLOSED_MESSAGE[r.status] ?? "This renewal can no longer be signed");
         if (r.version !== b.version) throw new HttpError(409, "offer_changed", "The offer changed since you opened it. Review it again before signing.");
+        // Nothing is signed or billed for a term that cannot start: the plan was renewed another
+        // way, or the contract is ending. This locks the contract until the renewal is settled.
+        const problem = await activationProblem(trx, organizationId, r);
+        if (problem) throw new HttpError(409, "not_signable", UNAVAILABLE[problem.code].message);
         const parties = await partiesFor(trx, organizationId, r);
         const { org } = parties;
         const prev = await trx.selectFrom("contracts").select(["status", "planName", "startOn", "endOn"]).where("id", "=", r.contractId).executeTakeFirstOrThrow();
-        if (prev.status === "cancelled") throw new HttpError(409, "not_signable", "This renewal offer has ended");
 
         // Add-ons, as they are priced today.
         const ids = [...new Set(b.addonIds)];
@@ -821,7 +924,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
             installments: charges.installments,
             payment: org.renewalPayment,
           },
-          terms: offer?.termsText ?? org.renewalTerms ?? defaultAgreementTerms(offer && (serviceCycles || !offer.aerobic) ? offer : null),
+          terms: agreementText(org, offer, terms),
           // Only with the plan builder on, so every other agreement keeps exactly its old content.
           ...(offer
             ? {
@@ -869,7 +972,7 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
               customerId: r.customerId,
               siteId: r.siteId,
               number: null,
-              memo: `Renewal of your maintenance plan, ${terms.startOn} to ${terms.endOn}.`,
+              memo: renewalMemo(terms),
               termsDays: org.renewalPayment === "pay_to_activate" ? 0 : org.invoiceTermsDays,
               taxRateBps: org.defaultTaxRateBps,
               discountCents: 0,
@@ -901,7 +1004,17 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
             at,
           );
           await invoiceEvent(trx, { organizationId, invoiceId: inv.id, eventType: "created", summary: "Created when the customer signed their renewal", at });
-          await issueDraft(trx, organizationId, inv.id, { send: false, now: at });
+          // Billed afterwards, the customer pays from the invoice email, so it is sent (they
+          // just gave the address it goes to). Paying to activate, they pay on the page now.
+          const send = org.renewalPayment === "invoice";
+          const issued = await issueDraft(trx, organizationId, inv.id, { send, now: at });
+          await invoiceEvent(trx, {
+            organizationId,
+            invoiceId: inv.id,
+            eventType: "issued",
+            summary: `Issued as ${issued.label}${send ? `; emailing to ${issued.billTo}` : " for the customer to pay on their renewal page"}`,
+            at,
+          });
           await queueQuickBooksSync(trx, organizationId, at);
         }
 
@@ -973,7 +1086,14 @@ export const renewalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     },
     async (req) => {
       const r = await byToken(req.params.token);
+      if (r.status === "superseded" || r.status === "declined" || r.status === "expired") throw new HttpError(409, "not_payable", CLOSED_MESSAGE[r.status]!);
       if (!r.invoiceId) throw unprocessable("Nothing is due on this renewal");
+      // Nobody is charged for a term that cannot start (renewed another way, or the contract
+      // ending). An activated renewal's term already exists: its invoice is simply owed.
+      if (r.status !== "activated") {
+        const problem = await db.transaction().execute((trx) => activationProblem(trx, r.organizationId, r));
+        if (problem) throw new HttpError(409, "not_payable", UNAVAILABLE[problem.code].message);
+      }
       return openCheckout(db, {
         provider,
         appUrl,

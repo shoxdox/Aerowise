@@ -11,6 +11,7 @@ const CLASS: Record<RenewalStatus, string> = {
   declined: "inactive",
   expired: "inactive",
   needs_review: "danger",
+  superseded: "inactive",
 };
 
 export function RenewalBadge({ status }: { status: RenewalStatus }) {

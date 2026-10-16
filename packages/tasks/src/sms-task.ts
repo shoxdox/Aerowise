@@ -1,9 +1,11 @@
 import type { Database, DB } from "@aerowise/db";
 import { customerCopy } from "@aerowise/compliance";
-import { addDays, amountDue, dateInZone, nextSmsTime, PAYMENT_REMINDER_DAYS, PAYMENT_REMINDER_GRACE_DAYS, SIGNABLE_STATUSES, type SmsQueueResult } from "@aerowise/domain";
-import { dollars } from "@aerowise/payments";
+import { addDays, amountDue, dateInZone, invoiceNumberLabel, nextSmsTime, PAYMENT_REMINDER_DAYS, PAYMENT_REMINDER_GRACE_DAYS, SIGNABLE_STATUSES, type SmsQueueResult } from "@aerowise/domain";
+import { dollars, type PaymentProvider } from "@aerowise/payments";
+import { activationProblem } from "@aerowise/renewals";
 import { deliverSms, recordSkip, resolveRecipient, smsKindOn, smsSettingsOf, type ComposedSms, type SmsConfig, type SmsRequest } from "@aerowise/sms";
 import { sql, type Transaction } from "kysely";
+import { paysOnline } from "./customer-email.ts";
 import { payUrlFor, renewUrlFor } from "./links.ts";
 import { createPortalLink, portalUrlFor } from "./portal-task.ts";
 import { enqueue } from "./queue.ts";
@@ -40,7 +42,7 @@ export async function queueSms(db: Executor, organizationId: string, req: SmsReq
 }
 
 /** Sends a queued text: writes it from the record it is about, as that record is now. */
-export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Date; appUrl: string }, organizationId: string, req: SmsRequest) {
+export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Date; appUrl: string; payments?: PaymentProvider | null }, organizationId: string, req: SmsRequest) {
   const { db } = ctx;
   const org = await db.selectFrom("organizations").select(["name"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
   const from = org.name;
@@ -87,12 +89,14 @@ export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Da
         const r = await db
           .selectFrom("renewals as r")
           .innerJoin("contracts as c", "c.id", "r.contractId")
-          .select(["r.id", "r.status", "c.endOn"])
+          .select(["r.id", "r.status", "r.contractId", "r.siteId", "r.startOn", "r.endOn", "c.endOn as contractEndOn"])
           .where("r.organizationId", "=", organizationId)
           .where("r.id", "=", req.relatedId)
           .executeTakeFirst();
         if (!r || !(SIGNABLE_STATUSES as readonly string[]).includes(r.status)) return null;
-        return text(`your septic maintenance plan ends ${shortDay(r.endOn)}. Renew online in a couple of minutes: ${renewUrlFor(ctx.appUrl, r.id)}`);
+        // Renewed another way (or ending) since this was queued: nothing to renew.
+        if (await activationProblem(db, organizationId, r)) return null;
+        return text(`your septic maintenance plan ends ${shortDay(r.contractEndOn)}. Renew online in a couple of minutes: ${renewUrlFor(ctx.appUrl, r.id)}`);
       }
       case "payment_reminder": {
         const inv = await db
@@ -104,7 +108,9 @@ export async function sendSms(ctx: { db: Database; sms: SmsConfig; now: () => Da
         if (!inv || inv.status !== "open" || !inv.dueOn || amountDue(inv) === 0) return null;
         const org = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
         const late = inv.dueOn < dateInZone(ctx.now(), org.timezone);
-        return text(`invoice ${inv.number} for ${dollars(amountDue(inv))} ${late ? "was" : "is"} due ${shortDay(inv.dueOn)}. Pay online: ${payUrlFor(ctx.appUrl, inv.id)}`);
+        // The link says "pay online" only when the provider can take payment online.
+        const online = await paysOnline(db, organizationId, ctx.payments);
+        return text(`invoice ${invoiceNumberLabel(inv.number)} for ${dollars(amountDue(inv))} ${late ? "was" : "is"} due ${shortDay(inv.dueOn)}. ${online ? "Pay online" : "View it"}: ${payUrlFor(ctx.appUrl, inv.id)}`);
       }
     }
   };

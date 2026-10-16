@@ -88,6 +88,7 @@ export class ResendEmailProvider implements EmailProvider {
       body: {
         from: m.from,
         to: [m.to],
+        ...(m.replyTo ? { reply_to: m.replyTo } : {}),
         subject: m.subject,
         text: m.text,
         attachments: m.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), content_type: a.contentType })),

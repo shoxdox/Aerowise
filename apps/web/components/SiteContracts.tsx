@@ -1,6 +1,6 @@
 "use client";
 
-import { RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type PlanDetail, type RenewalStatus } from "@aerowise/domain";
+import { isClosed, RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type PlanDetail, type RenewalStatus } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
@@ -21,6 +21,9 @@ const STATE_LABEL: Record<ContractDetail["state"], string> = {
   expired: "expired",
   cancelled: "cancelled",
 };
+
+/** The contract's latest renewal is still in progress (sent, signed, awaiting payment or in review). */
+const renewalOpen = (c: ContractDetail) => !!c.renewalId && !isClosed(c.renewalStatus as RenewalStatus);
 
 export function SiteContracts({ siteId, editable }: { siteId: string; editable: boolean }) {
   const recordLoad = useLoad<{ items: ContractDetail[] }>(`/sites/${siteId}/contracts`);
@@ -229,7 +232,10 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             )}
             {c.renewalId && (
               <Link href={`/renewals/${c.renewalId}`} className="small">
-                Renewal: {RENEWAL_STATUS_LABELS[c.renewalStatus as RenewalStatus]?.toLowerCase() ?? c.renewalStatus}
+                {/* An offer still open is finished from its own page, so the link says where it stands and invites a look. */}
+                {renewalOpen(c)
+                  ? `Renewal ${RENEWAL_STATUS_LABELS[c.renewalStatus as RenewalStatus]?.toLowerCase() ?? c.renewalStatus} — view`
+                  : `Renewal: ${RENEWAL_STATUS_LABELS[c.renewalStatus as RenewalStatus]?.toLowerCase() ?? c.renewalStatus}`}
               </Link>
             )}
             {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && (!c.renewalId || c.renewalStatus === "declined" || c.renewalStatus === "expired") && (
@@ -240,7 +246,8 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 Start renewal
               </button>
             )}
-            {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && (
+            {/* One way to make the next term at a time: while a renewal offer is open, it is the way. */}
+            {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && !renewalOpen(c) && (
               <button
                 className="link"
                 title="Create the next term now, without the customer signing or paying online"

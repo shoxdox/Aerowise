@@ -83,6 +83,8 @@ describe("estimates", () => {
     const emails = [...mail.delivered.values()].filter((m) => m.to === "pat@example.test" && m.idempotencyKey.startsWith(`estimate-${e.id}-email-`));
     expect(emails).toHaveLength(1);
     expect(emails[0]!.subject).toContain("Your estimate from Org A");
+    // A readable date, not 2026-03-31.
+    expect(emails[0]!.text).toContain(", good until March 31, 2026.");
     const token = tokenOf(emails[0]!.text);
     // Only a hash of the link is stored.
     const links = await ctx.db.selectFrom("estimateLinks").select(["tokenHash"]).execute();

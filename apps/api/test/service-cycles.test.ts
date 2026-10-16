@@ -713,7 +713,8 @@ describe("offers and imports never turn cycles into inspections", () => {
     await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now });
     const key = (await ctx.db.selectFrom("signedDocuments").select("pdfStorageKey").where("renewalId", "=", offer.id).executeTakeFirstOrThrow()).pdfStorageKey;
     const text = pdfText((await ctx.store.get(key!))!);
-    expect(text).toContain("36 visits this term");
+    // Under Visits, as the renewal page lists it ("Tank pumping: …"), which may wrap.
+    expect(text.replace(/\s+/g, "")).toContain("Tankpumping:Every1month,within10daysoftheduedate(36visitsthisterm)");
     expect(text).not.toMatch(/file each inspection report|24 maintenance visits/);
 
     const activated = await t.api.post(`/renewals/${offer.id}/activate`, {});

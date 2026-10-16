@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import type { EmailTransport } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, agreementContent, dateInZone, daysBetween, REMINDER_DAYS, REMINDER_GAP_DAYS, SIGNABLE_STATUSES } from "@aerowise/domain";
+import { addDays, agreementContent, dateInZone, daysBetween, REMINDER_DAYS, REMINDER_GAP_DAYS, renewalPitch, SIGNABLE_STATUSES } from "@aerowise/domain";
 import { dollars } from "@aerowise/payments";
-import { activatePaidRenewals, createRenewal, RenewalError, sha256Hex, systemAudit } from "@aerowise/renewals";
+import { activatePaidRenewals, activationProblem, createRenewal, RenewalError, sha256Hex, systemAudit } from "@aerowise/renewals";
 import { renderAgreement } from "@aerowise/reports";
 import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction } from "kysely";
+import { fromLine, longDay, replyToOf } from "./customer-email.ts";
 import { billingEmail } from "./invoice-task.ts";
 import { renewUrlFor } from "./links.ts";
 import { enqueue } from "./queue.ts";
@@ -17,11 +18,6 @@ export const RENEWAL_AGREEMENT = "renewals.agreement";
 export const RENEWAL_SWEEP = "renewals.sweep";
 
 type Executor = Database | Transaction<DB>;
-
-const longDay = (iso: string) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-};
 
 /**
  * Queues the renewal email (the offer, or a reminder) and marks the renewal sent. Each send
@@ -60,7 +56,10 @@ export async function queueRenewalEmail(trx: Transaction<DB>, organizationId: st
   return r.sendCount;
 }
 
-/** Emails the homeowner their renewal link. Skips a renewal that can no longer be signed. */
+/**
+ * Emails the homeowner their renewal link. Skips a renewal that can no longer be signed, or
+ * whose contract was renewed another way or is ending since the email was queued.
+ */
 export async function sendRenewalEmail(
   ctx: { db: Database; mail: EmailTransport; appUrl: string; from?: string },
   organizationId: string,
@@ -74,12 +73,28 @@ export async function sendRenewalEmail(
     .innerJoin("contracts as c", "c.id", "r.contractId")
     .innerJoin("customers as cu", "cu.id", "r.customerId")
     .innerJoin("organizations as o", "o.id", "r.organizationId")
-    .select(["r.status", "r.customerId", "r.planName", "r.priceCents", "r.startOn", "r.endOn", "c.endOn as contractEndOn", "cu.displayName", "o.name as orgName", "o.phone as orgPhone", "o.email as orgEmail"])
+    .select([
+      "r.status",
+      "r.contractId",
+      "r.siteId",
+      "r.customerId",
+      "r.planName",
+      "r.priceCents",
+      "r.serviceType",
+      "r.startOn",
+      "r.endOn",
+      "c.endOn as contractEndOn",
+      "cu.displayName",
+      "o.name as orgName",
+      "o.phone as orgPhone",
+      "o.email as orgEmail",
+    ])
     .where("r.organizationId", "=", organizationId)
     .where("r.id", "=", renewalId)
     .executeTakeFirst();
   if (!r) throw new Error(`renewal ${renewalId} not found`);
   if (!(SIGNABLE_STATUSES as readonly string[]).includes(r.status)) return;
+  if (await activationProblem(db, organizationId, r)) return;
   const to = await billingEmail(db, organizationId, r.customerId);
   if (!to) throw new Error("No email address on file for this customer");
   const link = renewUrlFor(ctx.appUrl, renewalId);
@@ -87,8 +102,9 @@ export async function sendRenewalEmail(
   await ctx.mail.send({
     organizationId,
     idempotencyKey: `renewal-${renewalId}-send-${sendNo}`,
-    from: `"${r.orgName.replace(/"/g, "")}" <${ctx.from ?? "billing@aerowise.invalid"}>`,
+    from: fromLine(r.orgName, ctx.from ?? "billing@aerowise.invalid"),
     to,
+    replyTo: replyToOf(r.orgEmail),
     subject: reminder
       ? `Reminder: your septic maintenance plan ends ${longDay(r.contractEndOn)}`
       : `Renew your septic maintenance plan with ${r.orgName}`,
@@ -96,7 +112,8 @@ export async function sendRenewalEmail(
       `Hello ${r.displayName},`,
       "",
       `Your ${r.planName} maintenance plan with ${r.orgName} ends on ${longDay(r.contractEndOn)}.`,
-      `Renewing keeps your aerobic system inspected and your reports filed on time. The next term runs ${longDay(r.startOn)} to ${longDay(r.endOn)} for ${dollars(r.priceCents)}.`,
+      // The renewal page's own sentence: no inspection or filing promised on a pumping or maintenance plan (SW-9).
+      `${renewalPitch(r.serviceType)} The next term runs ${longDay(r.startOn)} to ${longDay(r.endOn)} for ${dollars(r.priceCents)}.`,
       "",
       `Review, sign and pay in a couple of minutes: ${link}`,
       "",
@@ -136,6 +153,7 @@ export async function renderSignedAgreement(ctx: { db: Database; store: ObjectSt
       "d.siteId",
       "o.timezone",
       "o.name as orgName",
+      "o.email as orgEmail",
     ])
     .where("d.organizationId", "=", organizationId)
     .where("d.id", "=", documentId)
@@ -193,8 +211,9 @@ export async function renderSignedAgreement(ctx: { db: Database; store: ObjectSt
   const sent = await ctx.mail.send({
     organizationId,
     idempotencyKey,
-    from: `"${d.orgName.replace(/"/g, "")}" <${ctx.from ?? "billing@aerowise.invalid"}>`,
+    from: fromLine(d.orgName, ctx.from ?? "billing@aerowise.invalid"),
     to,
+    replyTo: replyToOf(d.orgEmail),
     subject: `Your signed agreement with ${d.orgName}`,
     text: [
       `Hello ${d.signerName},`,
@@ -267,6 +286,10 @@ export async function runRenewalSweep(db: Database, organizationId: string, now:
       .where("r.organizationId", "=", organizationId)
       .where("r.status", "in", ["upcoming", "sent", "viewed"])
       .where("c.endOn", ">=", today)
+      // Nothing for a contract that was cancelled, is ending, or was renewed another way.
+      .where("c.status", "=", "active")
+      .where("c.serviceEndsOn", "is", null)
+      .where((eb) => eb.not(eb.exists(eb.selectFrom("contracts as n").select("n.id").whereRef("n.previousContractId", "=", "c.id"))))
       .execute();
     const gapStart = new Date(now.getTime() - REMINDER_GAP_DAYS * 86_400_000);
     for (const r of waiting) {

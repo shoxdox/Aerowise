@@ -10,8 +10,7 @@ import { z } from "zod";
 import { audit } from "../lib/audit.ts";
 import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { canPayOnline, depositClosedReason, invoiceByToken, notFoundLink, openCheckout } from "../lib/checkout.ts";
-import type { PaymentsConfig } from "../lib/invoices.ts";
-import { readForDownload } from "../lib/demo.ts";
+import { invoicePdfForDownload, type PaymentsConfig } from "../lib/invoices.ts";
 
 // Any shape is looked at: a token that is not a signed link is simply not found (`linkTokenId`).
 const token = z.object({ token: z.string().min(1).max(200) });
@@ -169,7 +168,8 @@ export const paymentRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Dat
     { config: { public: true, rateLimit: publicLimit }, schema: { tags: ["pay"], summary: "The invoice PDF, for the customer", params: token } },
     async (req, reply) => {
       const inv = await byToken(req.params.token);
-      const data = inv.pdfStorageKey ? await readForDownload(db, store, inv.pdfStorageKey) : null;
+      // Once paid, a copy that says so (with the date), not the amount due at issue.
+      const data = await invoicePdfForDownload(db, store, payments, inv.organizationId, inv.id);
       if (!data) throw new HttpError(404, "not_ready", "The PDF is still being prepared. Try again in a minute.");
       const s = invoiceSnapshot.parse(inv.snapshot);
       return reply.header("content-type", "application/pdf").header("content-disposition", `inline; filename="${s.number}.pdf"`).send(data);

@@ -1,4 +1,4 @@
-import { EmailNeedsReviewError, ProviderTransport, ResendEmailProvider, type EmailMessage } from "@aerowise/compliance";
+import { EmailNeedsReviewError, ProviderTransport, ResendEmailProvider, toEml, type EmailMessage } from "@aerowise/compliance";
 import { drainTasks } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
@@ -117,6 +117,17 @@ describe("email through Resend", () => {
     const { api, mail } = resend(ctx, { redirectTo: "inbox@test.example" });
     await mail.send(message(org.id));
     expect(api.emails[0]).toMatchObject({ to: ["inbox@test.example"], subject: "[for ossf@example.gov] Aerobic maintenance report, permit EX-1" });
+  });
+
+  it("sends Reply-To, so a homeowner's reply reaches the provider rather than the sending address", async () => {
+    const org = await createOrg(ctx.db, "Org A");
+    const { api, mail } = resend(ctx);
+    await mail.send(message(org.id, { idempotencyKey: "invoice-1-send-1", replyTo: "office@orga.test" }));
+    await mail.send(message(org.id, { idempotencyKey: "invoice-2-send-1" }));
+    expect(api.emails.map((e) => e.reply_to)).toEqual(["office@orga.test", undefined]);
+    // The development outbox keeps it in the .eml it writes.
+    expect(toEml(message(org.id, { replyTo: "office@orga.test" }), "<m@x>", ctx.now)).toContain("\r\nReply-To: office@orga.test\r\n");
+    expect(toEml(message(org.id), "<m@x>", ctx.now)).not.toContain("Reply-To");
   });
 });
 
