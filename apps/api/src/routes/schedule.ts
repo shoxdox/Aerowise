@@ -1,4 +1,4 @@
-import { loadCatalog, requirementsOf, resolveSite } from "@aerowise/compliance";
+import { loadCatalog, requirementsOf, resolveSite, visitDeadline } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import {
   canTransition,
@@ -66,6 +66,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "o.sequence",
         "o.dueOn",
         "o.windowEnd",
+        sql<string | null>`case when o.id is null then null else ${visitDeadline("o")} end`.as("mustBeDoneBy"),
         "s.id as siteId",
         "s.addressLine1",
         "s.addressLine2",
@@ -124,7 +125,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     notes: r.notes,
     onTheWayAt: r.onTheWayAt?.toISOString() ?? null,
     obligation: r.obligationId && r.sequence !== null && r.dueOn && r.windowEnd
-      ? { id: r.obligationId, sequence: r.sequence, dueOn: r.dueOn, windowEnd: r.windowEnd }
+      ? { id: r.obligationId, sequence: r.sequence, dueOn: r.dueOn, windowEnd: r.windowEnd, mustBeDoneBy: r.mustBeDoneBy ?? r.dueOn }
       : null,
     site: {
       id: r.siteId,

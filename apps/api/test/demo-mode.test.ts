@@ -250,15 +250,25 @@ describe("demo reseed", () => {
     const filings = await ctx.db
       .selectFrom("filings as f")
       .innerJoin("jurisdictions as j", "j.id", "f.jurisdictionId")
-      .select(["f.organizationId", "f.inspectionId", "f.status", "f.confirmationReference", "j.key"])
+      .select(["f.organizationId", "f.inspectionId", "f.status", "f.confirmationReference", "f.sentAt", "j.key"])
       .where("f.inspectionId", "is not", null)
       .execute();
     expect(filings.length).toBeGreaterThan(2);
     expect(new Set(filings.map((f) => f.status))).toEqual(new Set(["confirmed", "sent"]));
     expect(filings.filter((f) => f.confirmationReference === "EC-DEMO-0042")).toHaveLength(1);
-    // The fictional county's rules don't hold a filing for the MP's signature (the page says so); LCRA's do, and the story signed those.
-    for (const f of filings.filter((f) => f.key === "tx-example-county")) expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(false);
-    for (const f of filings.filter((f) => f.key === "tx-lcra-ossf")) expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(true);
+    // Every report was signed by the MP before it went out, the fictional county's as well as LCRA's (30 TAC 285.7(b)(3)).
+    for (const f of filings) {
+      expect(await signatureRequiredForInspection(ctx.db, f.organizationId, f.inspectionId!)).toBe(true);
+      const signed = await ctx.db
+        .selectFrom("reportSignatures as rs")
+        .innerJoin("reports as r", "r.id", "rs.reportId")
+        .select("rs.signedAt")
+        .where("r.inspectionId", "=", f.inspectionId!)
+        .where("r.audience", "=", "authority")
+        .executeTakeFirst();
+      expect(signed, `filing ${f.inspectionId} was sent unsigned`).toBeDefined();
+      expect(signed!.signedAt.getTime()).toBeLessThanOrEqual(f.sentAt!.getTime());
+    }
     expect(new Set(filings.map((f) => f.key))).toEqual(new Set(["tx-example-county", "tx-lcra-ossf"]));
     // Blanco stays in the fictional county; the Lake Travis sites are in their real counties, assigned to LCRA.
     const counties = await ctx.db.selectFrom("sites").select("county").distinct().execute();

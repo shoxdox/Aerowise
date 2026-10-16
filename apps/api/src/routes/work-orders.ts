@@ -40,6 +40,7 @@ import { acceptedPricing } from "../lib/estimates.ts";
 import { checkDraftRefs, writeDraftLines } from "../lib/invoices.ts";
 import { pumpedVolume } from "../lib/pumping.ts";
 import { featureOff, lockWorkOrder, nextWorkOrderNumber, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
+import { closeWorkSources } from "../lib/work-sources.ts";
 
 // General work orders (SW-1 of the service workflows plan): the office creates them, turns
 // inspection issues and homeowner requests into them, schedules their visits and completes
@@ -743,6 +744,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
         if (wo.status === "draft") throw new HttpError(409, "invalid_transition", "Make the draft ready to schedule first");
         // Work done at no charge spends its coverage now; billed work spends it when invoiced.
         await setWorkOrderStatus(trx, organizationId, wo, "completed", at, { completedAt: at, completedWithoutRecordReason: req.body.reason }, req);
+        await closeWorkSources(trx, req, { organizationId, workOrderId: wo.id, at });
         const jobId = await endOpenVisit(trx, req, organizationId, wo.id, "Work order completed by the office without a field record", at);
         await workOrderEvent(trx, req, { organizationId, workOrderId: wo.id, eventType: "completed", summary: `Completed by the office without a field record: ${req.body.reason}`, details: { reason: req.body.reason, jobId }, homeownerVisible: true, at });
         await audit(trx, req, { action: "work_order.completed", entityType: "work_order", entityId: wo.id, changes: { ...req.body, withoutRecord: true } });

@@ -1,7 +1,8 @@
 import type { Database } from "@aerowise/db";
-import { AWAITING_SIGNATURE, labTestStatuses } from "@aerowise/compliance";
+import { AWAITING_SIGNATURE, holdsProviderLicense, labTestStatuses, loadCatalog, requirementsOf, resolveSite, visitDeadline } from "@aerowise/compliance";
 import {
   addDays,
+  applyRequirements,
   CONTRACT_EXPIRED_WINDOW_DAYS,
   CONTRACT_EXPIRING_DAYS,
   estimateLabel,
@@ -16,17 +17,21 @@ import {
   inbox,
   type InboxException,
   INSPECTION_CONFLICT_REASON_LABELS,
+  type InspectionValues,
   INVOICE_LATE_DAYS,
   invoiceNumberLabel,
   ISSUE_LABELS,
   issueResolveInput,
   LAB_ANALYTE_LABELS,
+  overrideBlockers,
   PAYMENT_FAILED_WINDOW_DAYS,
   RENEWAL_STATUS_LABELS,
   SERVICE_REQUEST_LABELS,
   SERVICE_TYPE_LABELS,
   sortExceptions,
+  type TemplateDefinition,
   UNCONFIRMED_AFTER_DAYS,
+  validateInspection,
   type ValidationProblem,
   workOrderLabel,
   type WorkOrderStatus,
@@ -69,24 +74,32 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   /** The live work order an issue or request was turned into, if any. */
   const woLink = (r: { woId: string | null; woNumber: number | null; woStatus: WorkOrderStatus | null }) =>
     r.woId && r.woNumber !== null && r.woStatus ? { id: r.woId, label: workOrderLabel(r.woNumber), status: r.woStatus } : null;
+  /** Its work order is on a route: the office has handled it, so it drops to the bottom. */
+  const handled = (woStatus: WorkOrderStatus | null) => woStatus === "scheduled" || woStatus === "in_progress";
 
   async function overdueVisits(organizationId: string, today: string): Promise<InboxException[]> {
+    // Overdue by the date that counts, as on the Due list: the authority's when it comes first.
+    const dueBy = visitDeadline("o");
     const rows = await sites(organizationId)
       .innerJoin("serviceObligations as o", (j) => j.onRef("o.siteId", "=", "s.id").onRef("o.organizationId", "=", "s.organizationId"))
       .leftJoin("jobs as j", (k) => k.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.type", "=", "inspection").on("j.status", "<>", "cancelled"))
       .leftJoin("users as u", "u.id", "j.technicianUserId")
-      .select(["o.id", "o.dueOn", "o.sequence", "j.scheduledDate", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .select([dueBy.as("dueOn"), "o.id", "o.sequence", "j.id as jobId", "j.scheduledDate", "j.technicianUserId", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
       // Inspections only (SW-9): pumping and maintenance visits are work, not compliance.
       .where("o.serviceType", "=", "aerobic_inspection")
       .where("o.status", "=", "open")
-      .where("o.dueOn", "<", today)
-      .orderBy("o.dueOn")
+      .where(dueBy, "<", today)
+      .orderBy(dueBy)
       .limit(PER_KIND)
       .execute();
+    // On a route today or later, the office has dealt with it; a booking already past was missed.
+    const booked = (r: (typeof rows)[number]) =>
+      r.jobId && r.scheduledDate && r.scheduledDate >= today && r.technicianUserId ? { jobId: r.jobId, scheduledDate: r.scheduledDate, technicianId: r.technicianUserId, technicianName: r.technicianName ?? "" } : null;
     return rows.map((r) => ({
       key: `inspection_overdue:${r.id}`,
       kind: "inspection_overdue",
-      severity: "high",
+      severity: booked(r) ? "medium" : "high",
+      booking: booked(r),
       title: "Inspection overdue",
       detail: r.scheduledDate ? `Scheduled for ${on(r.scheduledDate)} with ${r.technicianName}` : "Not scheduled",
       dueOn: r.dueOn,
@@ -96,16 +109,39 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
-  async function incompleteInspections(organizationId: string): Promise<InboxException[]> {
+  /** `mayAcceptAnyway`: the person looking is the owner or a licensed maintenance provider. */
+  async function incompleteInspections(organizationId: string, today: string, mayAcceptAnyway: boolean): Promise<InboxException[]> {
     const rows = await sites(organizationId)
       .innerJoin("inspections as i", (j) => j.onRef("i.siteId", "=", "s.id").onRef("i.organizationId", "=", "s.organizationId"))
+      .innerJoin("inspectionTemplates as t", "t.id", "i.templateId")
       .innerJoin("users as u", "u.id", "i.technicianUserId")
-      .select(["i.id", "i.validationProblems", "i.updatedAt", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .select(["i.id", "i.validationProblems", "i.updatedAt", "t.definition", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "s.county", "s.state", "s.jurisdictionId", "s.customerType", "c.id as customerId", "c.displayName"])
       .where("i.status", "=", "draft")
       .where("i.validationStatus", "=", "invalid")
       .orderBy("i.updatedAt")
       .limit(PER_KIND)
       .execute();
+    // Whether accepting it anyway would be allowed now (photos may have come in since): only
+    // photos the company's own form asks for can be waived, as the override route checks.
+    const ids = rows.map((r) => r.id);
+    const [catalog, answers, photos] = ids.length && mayAcceptAnyway
+      ? await Promise.all([
+          loadCatalog(db),
+          db.selectFrom("inspectionValues").select(["inspectionId", "fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "in", ids).execute(),
+          db.selectFrom("attachments").select(["inspectionId", "photoKey", sql<number>`count(*)::int`.as("n")]).where("organizationId", "=", organizationId).where("inspectionId", "in", ids).groupBy(["inspectionId", "photoKey"]).execute(),
+        ])
+      : [[], [], []];
+    const canOverride = (r: (typeof rows)[number]) => {
+      if (!mayAcceptAnyway) return false;
+      const resolved = resolveSite(catalog, r, today);
+      const requirements = resolved ? requirementsOf(resolved, r.customerType) : null;
+      const problems = validateInspection(
+        applyRequirements(r.definition as TemplateDefinition, requirements),
+        Object.fromEntries(answers.filter((a) => a.inspectionId === r.id).map((a) => [a.fieldKey, a.valueJson as InspectionValues[string]])),
+        Object.fromEntries(photos.filter((p) => p.inspectionId === r.id).map((p) => [p.photoKey, Number(p.n)])),
+      );
+      return overrideBlockers(problems, requirements?.requiredPhotos).length === 0;
+    };
     return rows.map((r) => ({
       key: `inspection_incomplete:${r.id}`,
       kind: "inspection_incomplete",
@@ -116,6 +152,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       site: site(r),
       customer: customer(r),
       target: { type: "inspection", id: r.id },
+      canOverride: canOverride(r),
     }));
   }
 
@@ -253,9 +290,11 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   }
 
   /**
-   * The authority requires the next inspection by the date on the site's latest filing.
-   * Flag a site when no open visit can meet that date: there is none, its window opens
-   * too late, or the date is within 30 days and the visit is not on a route by then.
+   * The authority requires the next inspection by the date on the site's latest filing (one
+   * still waiting for the MP's signature counts: the inspection happened). Flag a site when no
+   * open visit can meet that date: there is none, its window opens too late, or the date is
+   * within 30 days and the visit is not on a route by then. A visit already overdue (by the
+   * date that counts) is the overdue item's, not this one's. Nothing here is urgent more than 30 days out.
    */
   async function lateNextVisits(organizationId: string, today: string): Promise<InboxException[]> {
     const soon = addDays(today, 30);
@@ -275,21 +314,22 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
              s.id as "siteId", s.address_line1 as "addressLine1", s.city,
              c.id as "customerId", c.display_name as "displayName"
       from (
+        -- The latest inspection's filing: an older one's date stopped counting when it was done.
         select distinct on (site_id) site_id, next_due_on
         from filings
-        where organization_id = ${organizationId} and next_due_on is not null and status <> 'needs_review'
+        where organization_id = ${organizationId} and kind = 'inspection_report'
         order by site_id, created_at desc
       ) latest
       join sites s on s.id = latest.site_id and s.organization_id = ${organizationId}
       join customers c on c.id = s.customer_id and c.organization_id = s.organization_id
       left join lateral (
-        select o.id, o.window_start, j.scheduled_date
+        select o.id, o.window_start, ${visitDeadline("o")} as due_by, j.scheduled_date
         from service_obligations o
         left join jobs j on j.obligation_id = o.id and j.organization_id = o.organization_id and j.type = 'inspection' and j.status <> 'cancelled'
         where o.organization_id = ${organizationId} and o.site_id = s.id and o.status = 'open' and o.service_type = 'aerobic_inspection'
         order by o.due_on limit 1
       ) nv on true
-      where s.active and (
+      where latest.next_due_on is not null and s.active and (nv.id is null or nv.due_by >= ${today}::date) and (
         nv.id is null
         or nv.window_start > latest.next_due_on
         or (latest.next_due_on <= ${soon}::date and (nv.scheduled_date is null or nv.scheduled_date > latest.next_due_on))
@@ -305,7 +345,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       return {
         key: `next_visit_late:${r.siteId}`,
         kind: "next_visit_late" as const,
-        severity: r.nextDueOn < today || !r.visitId ? "high" : "medium",
+        severity: r.nextDueOn < today || (!r.visitId && r.nextDueOn <= soon) ? "high" : r.nextDueOn <= soon ? "medium" : "low",
         title,
         detail,
         dueOn: r.nextDueOn,
@@ -444,13 +484,15 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .where("x.status", "=", "open")
       // Issues on an inspection still in progress can change; they count once it is done.
       .where("i.status", "=", "completed")
+      // Finished work closes its issue; this is for one that was open before it did.
+      .where((eb) => eb.or([eb("wo.status", "is", null), eb("wo.status", "<>", "completed")]))
       .orderBy("x.createdAt")
       .limit(PER_KIND)
       .execute();
     return rows.map((r) => ({
       key: `issue_open:${r.id}`,
       kind: "issue_open",
-      severity: r.severity as ExceptionSeverity,
+      severity: handled(r.woStatus) ? "low" : (r.severity as ExceptionSeverity),
       title: ISSUE_LABELS[r.type as keyof typeof ISSUE_LABELS] ?? r.type,
       detail: [r.description || null, r.completedAt ? `found ${formatDateOf(r.completedAt, zone)}` : null].filter(Boolean).join(" · ") || null,
       dueOn: null,
@@ -541,6 +583,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       .select(["r.id", "r.kind", "r.description", "r.contactPhone", "r.receivedAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName", "wo.id as woId", "wo.number as woNumber", "wo.status as woStatus"])
       .where("r.organizationId", "=", organizationId)
       .where("r.status", "=", "open")
+      .where((eb) => eb.or([eb("wo.status", "is", null), eb("wo.status", "<>", "completed")]))
       .orderBy("r.createdAt")
       .limit(PER_KIND)
       .execute();
@@ -548,7 +591,9 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       key: `service_request:${r.id}`,
       kind: "service_request",
       // An alarm or a smell can mean the system is failing; everything else can wait a little.
-      severity: r.kind === "alarm" || r.kind === "odor" ? "high" : "medium",
+      severity: handled(r.woStatus) ? "low" : r.kind === "alarm" || r.kind === "odor" ? "high" : "medium",
+      // The same call's reportable response (complaint_unresolved) shares it: one card, both actions.
+      groupKey: `service_request:${r.id}`,
       title: `Customer asked for service: ${SERVICE_REQUEST_LABELS[r.kind].toLowerCase()}`,
       detail: [r.description, r.contactPhone ? `call ${r.contactPhone}` : null, `received ${formatDateOf(r.receivedAt, zone)}`].filter(Boolean).join(" · "),
       dueOn: null,
@@ -580,6 +625,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       key: `complaint_unresolved:${r.id}`,
       kind: "complaint_unresolved",
       severity: "high",
+      groupKey: `service_request:${r.id}`,
       title: `${r.reportClassification === "owner_complaint" ? "Owner complaint" : "Monitoring notice"} ${r.responseAction ? "still outstanding" : "with no response yet"}`,
       detail: [r.description, `received ${formatDateOf(r.receivedAt, zone)}`, "reported to the authority as outstanding until resolved"].join(" · "),
       dueOn: null,
@@ -998,14 +1044,15 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       },
     },
     async (req) => {
-      const { organizationId } = req.requireAuth();
+      const { organizationId, userId, role } = req.requireAuth();
       const { timezone: zone } = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
       const today = dateInZone(now(), zone);
+      const mayAcceptAnyway = role === "owner" || (await holdsProviderLicense(db, organizationId, userId, today));
       const [groups, due, routes, unpaid, atRisk, expiring] = await Promise.all([
         Promise.all([
           overdueVisits(organizationId, today),
           serviceCycleVisits(organizationId, today),
-          incompleteInspections(organizationId),
+          incompleteInspections(organizationId, today, mayAcceptAnyway),
           filingExceptions(organizationId, today, zone),
           heldInspectionExceptions(organizationId, zone),
           lateNextVisits(organizationId, today),

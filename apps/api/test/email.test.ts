@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { FakeResend, RESEND_TEST_SECRET } from "./fake-resend.ts";
 import { createOrg, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 const HOUR = 3600_000;
@@ -232,7 +232,9 @@ describe("Resend webhooks", () => {
     const p = payload(s);
     await s.techApi.put("/inspections/sync", p);
     await uploadRequiredPhotos(s, p.clientId);
-    await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } }));
+    const done = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } }))).json();
+    await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now, mail });
+    await signAsProvider(s, done.id);
     await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now, mail });
     const filing = (await s.api.get("/filings?view=all")).json().items[0];
     expect(filing.status).toBe("sent");

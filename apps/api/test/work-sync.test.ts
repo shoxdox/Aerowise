@@ -179,6 +179,22 @@ describe("field records from the phone", () => {
     expect((await s.api.get(`/work-orders/${s.wo.id}`)).json()).toMatchObject({ status: "open", visits: [{ status: "completed" }] });
   });
 
+  it("finishing the work on the phone closes the customer's request it was for; a visit that is not the last leaves it open", async () => {
+    const s = await setup(ctx);
+    const sr = (await s.api.post("/service-requests", { siteId: s.site.id, kind: "repair", description: "Alarm going off", receivedAt: "2026-02-28T15:00:00Z" })).json();
+    await ctx.db.updateTable("serviceRequests").set({ workOrderId: s.wo.id }).where("id", "=", sr.id).execute();
+    const status = async () => ctx.db.selectFrom("serviceRequests").select(["status", "resolution", "closedBy"]).where("id", "=", sr.id).executeTakeFirstOrThrow();
+
+    await sendAll(s.aApi, visit(s, { finalVisit: false }));
+    expect(await status()).toEqual({ status: "open", resolution: null, closedBy: null });
+
+    const next = await s.api.post(`/work-orders/${s.wo.id}/schedule`, { technicianId: s.a.id, scheduledDate: "2026-03-01" });
+    expect(next.statusCode, next.body).toBe(201);
+    const done = await sendAll(s.aApi, visit({ ...s, jobId: next.json().visits.find((x: { status: string }) => x.status === "scheduled").jobId }));
+    expect(done[4]!.statusCode, done[4]!.body).toBe(200);
+    expect(await status()).toEqual({ status: "closed", resolution: `Done: ${s.wo.label} completed`, closedBy: s.a.id });
+  });
+
   it("a replay of an older revision changes nothing in a newer draft: answers, summary, GPS and next-visit flag are kept", async () => {
     const s = await setup(ctx);
     const v = visit(s, {

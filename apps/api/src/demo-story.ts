@@ -21,11 +21,12 @@ import { createSession, SESSION_COOKIE } from "./auth/sessions.ts";
 //     an LCRA site has a (fictional) signed copy on file and its contract filing emailed.
 //   - The year so far: every visit due before last week was inspected on its day, on the story's
 //     own clock, so reports were made, signed by the MP and filed when they would have been
-//     (by email: the office presses Send for LCRA, the example county sends by itself). Sites have real history.
-//   - Yesterday, the technician finished two overdue inspections. A Blanco one went to the
-//     (fictional) Example County by email, and the county answered it, so it is confirmed with a
-//     reference. A Lake Travis one is the walkthrough's case: the MP signed its report and the
-//     office sent it to LCRA with LCRA's cover sheet. The outbox keeps the proof of both.
+//     (by email, always after the MP signed: the office presses Send for LCRA, the example county's
+//     goes by itself once signed). Sites have real history.
+//   - Yesterday, the technician finished two overdue inspections. A Blanco one, signed by the MP,
+//     went to the (fictional) Example County by email, and the county answered it, so it is
+//     confirmed with a reference. A Lake Travis one is the walkthrough's case: the MP signed its
+//     report and the office sent it to LCRA with LCRA's cover sheet. The outbox keeps the proof of both.
 //   - A contract ending in three weeks has a renewal sent to the customer.
 //   - Invoices: one sent and unpaid, one paid by card on the test checkout.
 //   - With work orders switched on (AEROWISE_FEATURES): the inspections noted a repair and a
@@ -302,8 +303,9 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     /**
      * Files a filing the way its authority takes it. A report is first signed by the MP
      * (30 TAC 285.7(b)(3)); then the office presses Send for an email authority, or records a
-     * filing by hand with the reference the portal gave. The example county's automatic email
-     * needs nothing. Returns the filing, or null when it could not be filed (left for the inbox).
+     * filing by hand with the reference the portal gave. The example county's email goes by
+     * itself once the report is signed. Returns the filing, or null when it could not be filed
+     * (left for the inbox).
      */
     const fileFiling = async (filingId: string, reference: string) => {
       const read = () => db.selectFrom("filings").select(["id", "status", "submissionMethod", "kind", "inspectionId"]).where("organizationId", "=", org.id).where("id", "=", filingId).executeTakeFirstOrThrow();
@@ -312,6 +314,10 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       if (f.kind === "inspection_report" && f.inspectionId) {
         await owner.post(`/inspections/${f.inspectionId}/signature`, { typedName: "Olivia Owner" });
         f = await read();
+      }
+      if (f.status === "queued") {
+        await worker();
+        return read();
       }
       if (f.status !== "ready") return null;
       if (f.submissionMethod === "email") {
@@ -406,8 +412,11 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       .execute();
     let historyConfirmed = 0;
     for (const [n, visit] of history.entries()) {
-      // Done ten days before it was due, mid-afternoon.
-      const day = addDays(visit.dueOn, -10);
+      // Done ten days before the contract's date, mid-afternoon, and never after the authority's:
+      // each report moves the site's next visit to the date the authority counts from it.
+      const current = await db.selectFrom("serviceObligations").select("dueOn").where("id", "=", visit.id).executeTakeFirstOrThrow();
+      const tenEarly = addDays(visit.dueOn, -10);
+      const day = current.dueOn < tenEarly ? current.dueOn : tenEarly;
       // The server's clock sits just after that afternoon's work, as a phone syncing at the end of the stop would find it.
       clockAt = new Date(`${day}T19:45:00Z`);
       const done = await inspectVisit(visit, day, {
@@ -429,9 +438,9 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
     clockAt = null;
 
     // ---- Yesterday: two overdue visits inspected and filed ----
-    // A Blanco site, so the fictional county's automatic email files it and its clerk confirms it;
-    // then a Lake Travis site, the walkthrough's case. LCRA's rules hold its report for the MP's
-    // signature, so it is signed and the office presses Send, the way a visitor should first see a report go out.
+    // A Blanco site: the MP signs it, the fictional county's automatic email files it and its clerk
+    // confirms it; then a Lake Travis site, the walkthrough's case. Both hold for the MP's signature
+    // (30 TAC 285.7(b)(3)); LCRA's is signed and the office presses Send, the way a visitor should first see a report go out.
     const overdueIn = (counties: string[]) =>
       db
         .selectFrom("serviceObligations as o")
@@ -463,7 +472,7 @@ export async function playDemoStory(opts: { db: Database; store: ObjectStore; or
       inspections.push(done.id);
     }
     if (inspections.length === 0) throw new Error("demo story: no visits from yesterday to inspect (was the demo seeded today?)");
-    // Reports made; the fictional county's is emailed on its own, LCRA's is signed and sent.
+    // Reports made and signed; the fictional county's is then emailed on its own, LCRA's sent by the office.
     await worker();
     for (const [n, inspectionId] of inspections.entries()) await fileFiling(await filingOfInspection(inspectionId), `DEMO-Y-${1001 + n}`);
     const filings = await db.selectFrom("filings").select(["id", "status", "inspectionId"]).where("organizationId", "=", org.id).where("inspectionId", "in", inspections).execute();

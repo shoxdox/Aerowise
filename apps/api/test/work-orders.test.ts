@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { drainTasks } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
@@ -202,6 +203,39 @@ describe("turning issues and requests into work", () => {
     expect(request).toEqual({ status: "open", workOrderId: first.json().id, responseAction: null });
   });
 
+  it("follows the work in the inbox: low once on a route, closed with its issue and request when the work is done", async () => {
+    const s = await inspectedWithIssue();
+    const sr = (await s.api.post("/service-requests", { siteId: s.site.id, kind: "alarm", description: "Red light on the panel", receivedAt: "2026-02-28T15:00:00Z" })).json();
+    const fromIssue = (await s.api.post(`/issues/${s.issueId}/work-order`, {})).json();
+    const fromRequest = (await s.api.post(`/service-requests/${sr.id}/work-order`, {})).json();
+    type Item = { kind: string; severity: string; target: { id: string }; workOrder?: { status: string } | null; groupKey?: string };
+    const item = async (kind: string, id: string) => ((await s.api.get("/inbox")).json().items as Item[]).find((x) => x.kind === kind && x.target.id === id);
+    expect(await item("issue_open", s.issueId)).toMatchObject({ severity: "high", workOrder: { status: "open" } });
+    expect(await item("service_request", sr.id)).toMatchObject({ severity: "high", groupKey: `service_request:${sr.id}` });
+
+    // Booked: the office has dealt with them, so they drop to the bottom.
+    for (const wo of [fromIssue, fromRequest]) await s.api.post(`/work-orders/${wo.id}/schedule`, { technicianId: s.tech.id, scheduledDate: "2026-03-02" });
+    expect(await item("issue_open", s.issueId)).toMatchObject({ severity: "low", workOrder: { status: "scheduled" } });
+    expect(await item("service_request", sr.id)).toMatchObject({ severity: "low", workOrder: { status: "scheduled" } });
+
+    // Done: what each was made for is closed in the same step.
+    for (const wo of [fromIssue, fromRequest]) expect((await s.api.post(`/work-orders/${wo.id}/complete`, { reason: "Recorded on the paper ticket" })).statusCode).toBe(200);
+    expect(await item("issue_open", s.issueId)).toBeUndefined();
+    expect(await item("service_request", sr.id)).toBeUndefined();
+    expect(await ctx.db.selectFrom("issues").select(["status", "resolution", "resolvedBy"]).where("id", "=", s.issueId).executeTakeFirstOrThrow()).toEqual({ status: "resolved", resolution: "Done: WO-1001 completed", resolvedBy: s.owner.id });
+    expect(await ctx.db.selectFrom("serviceRequests").select(["status", "resolution", "closedBy"]).where("id", "=", sr.id).executeTakeFirstOrThrow()).toEqual({ status: "closed", resolution: "Done: WO-1002 completed", closedBy: s.owner.id });
+    expect(await ctx.db.selectFrom("auditEvents").select("action").where("action", "in", ["issue.resolved", "service_request.closed"]).execute()).toHaveLength(2);
+  });
+
+  it("links one call's dispatch and its reportable response as one card", async () => {
+    const t = await createTenant(ctx, "Org A");
+    const sr = (await t.api.post("/service-requests", { siteId: t.site.id, kind: "odor", description: "Neighbor complained about smell", receivedAt: "2026-02-28T15:00:00Z" })).json();
+    expect((await t.api.post(`/service-requests/${sr.id}/classify`, { classification: "owner_complaint" })).statusCode).toBe(200);
+    const items = ((await t.api.get("/inbox")).json().items as { kind: string; groupKey?: string; site: { id: string } }[]).filter((x) => x.groupKey === `service_request:${sr.id}`);
+    expect(items.map((x) => x.kind).sort()).toEqual(["complaint_unresolved", "service_request"]);
+    expect(new Set(items.map((x) => x.site.id))).toEqual(new Set([t.site.id]));
+  });
+
   it("lets a request's response cite a work visit or a retest, not only a contract visit", async () => {
     const t = await createTenant(ctx, "Org A");
     const tech = await createUser(ctx.db, t.org.id, "technician");
@@ -211,6 +245,39 @@ describe("turning issues and requests into work", () => {
     const res = await t.api.post(`/service-requests/${sr.id}/response`, { action: "Visit booked", respondedAt: "2026-03-01T15:00:00Z", jobId: visit.jobId, outcome: "outstanding" });
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json()).toMatchObject({ responseJobId: visit.jobId });
+  });
+});
+
+describe("data from before finished work closed its issues (migration 0067)", () => {
+  it("closes the issues and requests of finished work, and moves each site's next visit to the authority's date", async () => {
+    const s = await setup(ctx);
+    await s.api.patch(`/sites/${s.site.id}`, { county: "Example County" });
+    await ctx.db.updateTable("memberships").set({ technicianLicense: "MP-0001" }).where("userId", "=", s.tech.id).execute();
+    await s.techApi.put("/inspections/sync", payload(s));
+    await uploadRequiredPhotos(s, payload(s).clientId);
+    const done = (
+      await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: { ...completeValues(), air_pressure: 4 }, issues: [{ clientId: "2b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d01", type: "pump_out", severity: "high", description: "Sludge near the top" }] }))
+    ).json();
+    const issueId = done.issues[0].id as string;
+    const sr = (await s.api.post("/service-requests", { siteId: s.site.id, kind: "alarm", description: "Red light", receivedAt: "2026-02-28T15:00:00Z" })).json();
+    const open = (await s.api.post(`/service-requests/${sr.id}/work-order`, {})).json();
+    const finished = (await s.api.post(`/issues/${issueId}/work-order`, {})).json();
+    await s.api.post(`/work-orders/${finished.id}/complete`, { reason: "Paper ticket" });
+    const visit2 = s.contract.obligations[1];
+
+    // As the earlier release left it: the finished work's issue still open, the visit on the contract's date.
+    await ctx.db.updateTable("issues").set({ status: "open", resolvedAt: null, resolvedBy: null, resolution: null }).where("id", "=", issueId).execute();
+    await ctx.db.updateTable("serviceObligations").set({ dueOn: visit2.dueOn, windowEnd: visit2.windowEnd }).where("id", "=", visit2.id).execute();
+    const file = await readFile(new URL("../../../packages/db/migrations/0067_follow_up_issues_and_next_due.sql", import.meta.url), "utf8");
+    await sql.raw(file.replace(/^alter table issues add column field_key text;$/m, "")).execute(ctx.db);
+
+    expect(await ctx.db.selectFrom("issues").select(["status", "resolution"]).where("id", "=", issueId).executeTakeFirstOrThrow()).toEqual({ status: "resolved", resolution: "Done: WO-1002 completed" });
+    // A request whose work is not done stays open.
+    expect((await ctx.db.selectFrom("serviceRequests").select("status").where("id", "=", sr.id).executeTakeFirstOrThrow()).status).toBe("open");
+    expect(open.status).toBe("open");
+    expect(await ctx.db.selectFrom("serviceObligations").select(["dueOn", "windowStart", "windowEnd"]).where("id", "=", visit2.id).executeTakeFirstOrThrow()).toEqual({ dueOn: "2026-07-01", windowStart: "2026-04-01", windowEnd: "2026-07-01" });
+    // The visit after it keeps the contract's date.
+    expect((await ctx.db.selectFrom("serviceObligations").select("dueOn").where("id", "=", s.contract.obligations[2].id).executeTakeFirstOrThrow()).dueOn).toBe("2026-11-30");
   });
 });
 

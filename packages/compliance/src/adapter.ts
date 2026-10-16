@@ -2,6 +2,7 @@ import type { Database } from "@aerowise/db";
 import {
   applyRequirements,
   DEFAULT_TEMPLATE,
+  overrideBlockers,
   validateInspection,
   type InspectionValues,
   type RulesetRules,
@@ -147,7 +148,11 @@ export class EmailManualAdapter implements JurisdictionAdapter {
   async validate(insp: CanonicalInspection): Promise<ValidationResult> {
     const req = requirementsOf(this.resolved, insp.site.customerType);
     const def = applyRequirements(insp.definition, req);
-    const problems = validateInspection(def, insp.values, insp.photoCounts).map((p) => p.message);
+    let checks = validateInspection(def, insp.values, insp.photoCounts);
+    // Photos only the company's own form asks for, accepted without by the owner or MP: the
+    // reason is on the report, and the authority does not ask for them.
+    if (insp.validationStatus === "overridden") checks = overrideBlockers(checks, req.requiredPhotos);
+    const problems = checks.map((p) => p.message);
     // A form made before the authority's requirement (or a company's own form) may not ask at all.
     const asked = new Set(insp.definition.fields.map((f) => f.key));
     const unasked = req.requiredFields.filter((k) => !asked.has(k));

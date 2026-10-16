@@ -11,7 +11,7 @@ import { sql } from "kysely";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 // SW-11: an authority's CSV export, tested only with fictional rules. Today is 2026-03-01
 // (setupTestApp's clock) and inspections complete that day.
@@ -82,8 +82,8 @@ async function demoSetup(c: TestContext): Promise<Setup> {
   return { org, owner, cookie, api, customer, site, contact: null, system: null, contract, tech, techApi, visit, job, template } as unknown as Setup;
 }
 
-/** A completed inspection at a site in `county`, by a licensed technician, with a permit number. */
-async function inspected(c: TestContext, county: string, opts: { name?: string; permit?: string | null; values?: Record<string, unknown>; demo?: boolean } = {}) {
+/** A completed inspection at a site in `county`, by a licensed technician, with a permit number; signed by the MP unless `sign` is false. */
+async function inspected(c: TestContext, county: string, opts: { name?: string; permit?: string | null; values?: Record<string, unknown>; demo?: boolean; sign?: boolean } = {}) {
   const s = opts.demo ? await demoSetup(c) : await setup(c, opts.name ?? "Org A");
   const permit = opts.permit === undefined ? "EX-1234" : opts.permit;
   expect((await s.api.patch(`/sites/${s.site.id}`, { county, permitNumber: permit })).statusCode).toBe(200);
@@ -94,7 +94,12 @@ async function inspected(c: TestContext, county: string, opts: { name?: string; 
   const values = opts.values ?? { ...completeValues(), air_pressure: 4.5 };
   const done = await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values }));
   expect(done.json().status).toBe("completed");
-  return s;
+  // The reports are made and the MP signs: nothing is filed before that (30 TAC 285.7(b)(3)).
+  if (opts.sign !== false) {
+    await runWorker(c);
+    await signAsProvider(s, done.json().id);
+  }
+  return { ...s, inspectionId: done.json().id as string };
 }
 
 const filingOf = async (s: Setup) => (await s.api.get("/filings?view=all")).json().items[0] as { id: string; status: string };
@@ -116,9 +121,11 @@ const rows = (text: string) =>
 
 describe("filing by CSV export", () => {
   it("puts the authority's CSV in the package; the filing stays ready until marked filed, and confirmed only with the acknowledgment", async () => {
-    const s = await inspected(ctx, CSV_COUNTY);
+    const s = await inspected(ctx, CSV_COUNTY, { sign: false });
     await ctx.db.insertInto("siteAuthorityIdentifiers").values({ organizationId: s.org.id, siteId: s.site.id, jurisdictionId: (await ctx.db.selectFrom("jurisdictions").select("id").where("key", "=", "tx-fixture-csv").executeTakeFirstOrThrow()).id, kind: "parcel_id", value: "P-77" }).execute();
     const calls = mail.calls;
+    await runWorker(ctx);
+    await signAsProvider(s, s.inspectionId);
     await runWorker(ctx);
     const f = await filingOf(s);
     const ready = await detailOf(s, f.id);

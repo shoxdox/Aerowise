@@ -254,7 +254,8 @@ describe("visitor demos", () => {
     expect(busy.json().error).toBe("demo_busy");
 
     // An hour on, the visitor may start again; a day on, the old demos are gone and make room.
-    await sql`update demo_visits set created_at = now() - interval '61 minutes'`.execute(ctx.db);
+    // On the app's clock, which stopped when the app was made: starts that play the story take a while.
+    await sql`update demo_visits set created_at = ${new Date(ctx.now.getTime() - 61 * 60_000)}`.execute(ctx.db);
     await sql`update organizations set demo_expires_at = now() - interval '1 hour' where demo_expires_at is not null`.execute(ctx.db);
     expect((await start(a)).statusCode).toBe(200);
     const live = await ctx.db.selectFrom("organizations").select("id").where("demoExpiresAt", ">", new Date()).execute();
