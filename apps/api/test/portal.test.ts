@@ -135,6 +135,7 @@ describe("customer portal", () => {
   it("emails a link to whoever asks with an address on file, and says the same thing either way", async () => {
     const t = await createTenant(ctx, "Org A");
     await t.api.post(`/customers/${t.customer.id}/contacts`, { name: "Billing", email: "Pat@Example.test", type: "billing" });
+    await ctx.db.updateTable("organizations").set({ email: "office@orga.test" }).where("id", "=", t.org.id).execute();
 
     const unknown = await anon().post("/portal/request", { email: "nobody@example.test" });
     const known = await anon().post("/portal/request", { email: "pat@example.test" });
@@ -148,6 +149,8 @@ describe("customer portal", () => {
     const sent = emailsTo("pat@example.test");
     expect(sent).toHaveLength(1);
     expect(sent[0]!.subject).toContain("Org A");
+    // A reply reaches the provider, not the sending address.
+    expect(sent[0]!.replyTo).toBe("office@orga.test");
     const link = sent[0]!.text.match(/https:\/\/app\.example\.test\/portal\/([\w-]+)/)![1]!;
     expect((await anon().get(`/portal/${link}`)).json().customerName).toBe("Org A customer");
     expect(emailsTo("nobody@example.test")).toHaveLength(0);

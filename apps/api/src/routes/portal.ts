@@ -302,7 +302,7 @@ export const portalRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
               }
             : null,
           contract: k ? { planName: k.planName, startOn: k.startOn, endOn: k.endOn, state: contractState(k, today), visitsPerTerm: k.visitsPerTerm, visitsDone: Number(k.visitsDone ?? 0), visitProgress: progressOf(k.id) } : null,
-          renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" ? null : renewUrlFor(appUrl, r.id) } : null,
+          renewal: r ? { status: r.status, startOn: r.startOn, url: r.status === "expired" || r.status === "superseded" ? null : renewUrlFor(appUrl, r.id) } : null,
           nextVisit: next
             ? { dueOn: next.dueOn, windowStart: next.windowStart, windowEnd: next.windowEnd, scheduledDate: next.scheduledDate, label: null }
             : nextCycle

@@ -1,4 +1,4 @@
-import type { AgreementContent } from "@aerowise/domain";
+import { agreementTermRows, type AgreementContent } from "@aerowise/domain";
 import PDFDocument from "pdfkit";
 import { FONTS, pdfkitFont, registerFonts } from "./fonts.ts";
 
@@ -7,11 +7,6 @@ const MUTED = "#5d6b66";
 const RULE = "#d9dfdc";
 
 const money = (cents: number) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
-const day = (iso: string) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-};
-const FREQUENCY: Record<AgreementContent["term"]["billingFrequency"], string> = { annual: "yearly", semiannual: "every six months", quarterly: "quarterly", monthly: "monthly" };
 
 export interface AgreementSignature {
   documentId: string;
@@ -75,14 +70,10 @@ export function renderAgreement(c: AgreementContent, sig: AgreementSignature): P
   row("Customer", [c.customer.name, c.customer.email, c.customer.phone].filter(Boolean).join("\n"));
   row("Service address", c.serviceAddress);
 
+  // The same rows the renewal page showed the customer before they signed (SW-9: one line per
+  // kind of visit when the plan has pumping or maintenance).
   heading("Service term");
-  row("Plan", c.term.planName);
-  row("Term", `${day(c.term.startOn)} to ${day(c.term.endOn)} (${c.term.termMonths} months)`);
-  // SW-9: an agreement with pumping or maintenance lists each cycle; earlier PDFs are unchanged.
-  if (c.cycles) for (const y of c.cycles) row(y.label, y.summary);
-  else row("Visits", `${c.term.visitsPerTerm} maintenance visit${c.term.visitsPerTerm === 1 ? "" : "s"}`);
-  row("Price", `${money(c.term.priceCents)} for the term, billed ${FREQUENCY[c.term.billingFrequency]}${c.charges.installments > 1 ? ` in ${c.charges.installments} payments` : ""}`);
-  row("Renews", `Follows the term that ended ${day(c.previousTerm.endOn)}${c.term.autoRenew ? ". Renews automatically unless either party gives notice." : "."}`);
+  for (const r of agreementTermRows(c)) row(r.label, r.value);
 
   heading(c.charges.payment === "pay_to_activate" ? "Due at signing" : "First invoice");
   for (const l of c.charges.lines) row(l.description, money(l.amountCents));

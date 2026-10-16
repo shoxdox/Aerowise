@@ -40,7 +40,7 @@ export const STATUS_LABELS = {
   workOrder: withTones<WorkOrderStatus>(WORK_ORDER_STATUS_LABELS, { draft: "muted", scheduled: "info", in_progress: "info", completed: "success", cancelled: "struck" }),
   priority: { normal: s("Normal"), urgent: s("Urgent", "danger") } satisfies Record<Values<typeof WORK_ORDER_PRIORITIES>, StatusLabel>,
   estimate: withTones<EstimateStatus>(ESTIMATE_STATUS_LABELS, { draft: "muted", sent: "info", viewed: "info", accepted: "success", declined: "danger", expired: "danger", void: "struck", cancelled: "struck" }),
-  renewal: withTones<RenewalStatus>(RENEWAL_STATUS_LABELS, { sent: "info", viewed: "info", signed: "warning", payment_pending: "warning", paid: "warning", activated: "success", declined: "muted", expired: "muted", needs_review: "danger" }),
+  renewal: withTones<RenewalStatus>(RENEWAL_STATUS_LABELS, { sent: "info", viewed: "info", signed: "warning", payment_pending: "warning", paid: "warning", activated: "success", declined: "muted", expired: "muted", needs_review: "danger", superseded: "muted" }),
   /** Where an invoice stands before payment: a draft, issued, or voided. */
   invoice: { draft: s("Draft", "muted"), open: s("Issued", "info"), void: s("Void", "struck") } satisfies Record<InvoiceStatus, StatusLabel>,
   /** How far an invoice is paid. */

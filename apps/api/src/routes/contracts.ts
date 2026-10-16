@@ -1,6 +1,6 @@
 import { openContractFiling } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms, type ContractCycles } from "@aerowise/renewals";
+import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, lockOpenRenewal, MoreVisitsRequired, refuseIfSigned, RenewalError, siteVisitTerms, supersedeRenewal, type ContractCycles } from "@aerowise/renewals";
 import { FORM_COLUMNS, toForm } from "../lib/forms.ts";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
@@ -721,7 +721,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       schema: {
         tags: ["contracts"],
         summary: "Create the next term, starting the day after this one ends",
-        description: "The renewed contract is left unchanged as history. Renewal campaigns, e-signature and payment are separate modules.",
+        description:
+          "The renewed contract is left unchanged as history. An open renewal offer nobody has signed is closed in the same step (status `superseded`), so its link no longer offers the term. One the customer has signed is finished from its own page instead: 409 `renewal_in_progress`.",
         params,
         body: renewInput,
         response: { 201: contractDetail },
@@ -747,24 +748,42 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             serviceType: prev.serviceType,
             planVersionId: prev.planVersionId,
           };
-      const contractId = await db.transaction().execute(async (trx) => {
-        const created = await insertContract(trx, organizationId, {
-          siteId: prev.siteId,
-          startOn: addDays(prev.endOn, 1),
-          terms,
-          autoRenew: prev.autoRenew,
-          previousContractId: prev.id,
-          ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
-        }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
-        await audit(trx, req, {
-          action: "contract.renewed",
-          entityType: "contract",
-          entityId: created,
-          changes: { ...req.body, previousContractId: prev.id },
+      const contractId = await db
+        .transaction()
+        .execute(async (trx) => {
+          // There is one way a term gets made at a time. The open renewal offer is locked first,
+          // then the contract (the order signing and activation take them in); a renewal started
+          // in between is seen once the contract is locked, since starting one locks it too.
+          await lockOpenRenewal(trx, organizationId, prev.id);
+          await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("id", "=", prev.id).forUpdate().executeTakeFirstOrThrow();
+          // A second click, or a renewal activated meanwhile, made the term while this waited.
+          const made = await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("previousContractId", "=", prev.id).executeTakeFirst();
+          if (made) throw new HttpError(409, "already_renewed", "This contract has already been renewed");
+          const open = await lockOpenRenewal(trx, organizationId, prev.id);
+          if (open) refuseIfSigned(open);
+          const created = await insertContract(trx, organizationId, {
+            siteId: prev.siteId,
+            startOn: addDays(prev.endOn, 1),
+            terms,
+            autoRenew: prev.autoRenew,
+            previousContractId: prev.id,
+            ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
+          }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
+          // The emailed offer for this term closes now: no signing, paying or reminders for it.
+          if (open) await supersedeRenewal(trx, organizationId, open, created, { now: now(), actorUserId: req.requireAuth().userId, requestId: req.id });
+          await audit(trx, req, {
+            action: "contract.renewed",
+            entityType: "contract",
+            entityId: created,
+            changes: { ...req.body, previousContractId: prev.id, ...(open ? { supersededRenewalId: open.id } : {}) },
+          });
+          await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
+          return created;
+        })
+        .catch((err) => {
+          if (err instanceof RenewalError) throw new HttpError(409, err.code, err.message);
+          throw err;
         });
-        await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
-        return created;
-      });
       return reply.status(201).send(await loadContractDetail(organizationId, contractId));
     },
   );

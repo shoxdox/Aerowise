@@ -4,6 +4,7 @@ import { cancelOpenVisits } from "./contract-end.ts";
 import type { Database, DB } from "@aerowise/db";
 import type { ObjectStore } from "@aerowise/storage";
 import type { Transaction } from "kysely";
+import { fromLine, replyToOf } from "./customer-email.ts";
 import { enqueue } from "./queue.ts";
 
 type Executor = Database | Transaction<DB>;
@@ -92,7 +93,7 @@ export async function sendCustomerReport(
     .selectFrom("reports as r")
     .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "r.siteId").onRef("s.organizationId", "=", "r.organizationId"))
     .innerJoin("organizations as o", "o.id", "r.organizationId")
-    .select(["r.id", "r.audience", "r.storageKey", "r.sha256", "r.siteId", "r.version", "s.customerId", "s.addressLine1", "o.name as orgName"])
+    .select(["r.id", "r.audience", "r.storageKey", "r.sha256", "r.siteId", "r.version", "s.customerId", "s.addressLine1", "o.name as orgName", "o.phone as orgPhone", "o.email as orgEmail"])
     .where("r.organizationId", "=", organizationId)
     .where("r.id", "=", payload.reportId)
     .executeTakeFirstOrThrow();
@@ -120,6 +121,7 @@ export async function sendCustomerReport(
     await ctx.db.insertInto("customerDeliveries").values({ ...base, status: "failed", attemptedAt: ctx.now(), error: UNSIGNED_CUSTOMER_COPY }).execute();
     return null;
   }
+  const contact = [r.orgPhone, r.orgEmail].filter(Boolean).join(" or ");
   const pdf = await ctx.store.get(copy.storageKey);
   if (!pdf) throw new Error(`report file ${r.id} is missing from storage`);
   if (sha256Hex(pdf) !== copy.sha256) throw new Error(`report file ${r.id} does not match its recorded hash`);
@@ -127,10 +129,17 @@ export async function sendCustomerReport(
     const sent = await ctx.mail.send({
       organizationId,
       idempotencyKey,
-      from: `"${r.orgName.replace(/"/g, "")}" <${ctx.from ?? "reports@aerowise.invalid"}>`,
+      from: fromLine(r.orgName, ctx.from ?? "reports@aerowise.invalid"),
       to: payload.to,
+      replyTo: replyToOf(r.orgEmail),
       subject: `Your aerobic system inspection report for ${r.addressLine1}`,
-      text: [`Attached is the report from your aerobic septic system's maintenance inspection at ${r.addressLine1}.`, "", "Thank you,", r.orgName].join("\n"),
+      text: [
+        `Attached is the report from your aerobic septic system's maintenance inspection at ${r.addressLine1}.`,
+        "",
+        ...(contact ? [`Questions? Reach us at ${contact}.`, ""] : []),
+        "Thank you,",
+        r.orgName,
+      ].join("\n"),
       attachments: [{ filename: `inspection-report${r.version > 1 ? `-v${r.version}` : ""}${copy.signed ? "-signed" : ""}.pdf`, contentType: "application/pdf", content: pdf }],
     });
     const row = await ctx.db

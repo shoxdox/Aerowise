@@ -2,6 +2,7 @@ import type { Database, DB } from "@aerowise/db";
 import {
   addDays,
   amountDue,
+  contractInstallments,
   estimateLabel,
   invoiceNumberLabel,
   invoiceTotals,
@@ -12,11 +13,14 @@ import {
   type InvoiceSnapshot,
   INVOICE_LIMIT_MESSAGE,
   MAX_CENTS,
+  parseSnapshotOptions,
 } from "@aerowise/domain";
 import { recalcInvoice, type PaymentProvider } from "@aerowise/payments";
-import { billingEmail, enqueue, payUrlFor, RENDER_INVOICE, SEND_INVOICE } from "@aerowise/tasks";
+import { billingEmail, currentInvoicePdf, enqueue, payUrlFor, RENDER_INVOICE, SEND_INVOICE } from "@aerowise/tasks";
+import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction } from "kysely";
 import { applyDepositAtIssue, type LockedDeposit } from "./deposits.ts";
+import { readForDownload, stampForDownload } from "./demo.ts";
 import { notFound, unprocessable } from "./errors.ts";
 import { dateInZone } from "./today.ts";
 
@@ -128,6 +132,154 @@ export async function writeDraftLines(
   return totals;
 }
 
+const day = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+};
+
+/**
+ * Lines for the authority filing fees on a site's sent filings that no invoice (other than a
+ * void one) bills yet, for a company that bills them to the homeowner (Justin, 2026-10-05).
+ * Late fees are the company's own and are never passed on.
+ */
+async function filingFeeLines(trx: Transaction<DB>, organizationId: string, siteId: string, timezone: string) {
+  const fees = await trx
+    .selectFrom("filings as f")
+    .select(["f.id", "f.kind", "f.filingFeeCents", "f.sentAt"])
+    .select((eb) => eb.selectFrom("jurisdictions as j").select("j.authorityName").whereRef("j.id", "=", "f.jurisdictionId").as("authorityName"))
+    .where("f.organizationId", "=", organizationId)
+    .where("f.siteId", "=", siteId)
+    .where("f.filingFeeCents", ">", 0)
+    .where("f.sentAt", "is not", null)
+    .where((w) =>
+      w.not(
+        w.exists(
+          w
+            .selectFrom("invoiceLines as l")
+            .innerJoin("invoices as i", "i.id", "l.invoiceId")
+            .select("l.id")
+            .whereRef("l.organizationId", "=", "f.organizationId")
+            .whereRef("l.filingId", "=", "f.id")
+            .where("i.status", "<>", "void"),
+        ),
+      ),
+    )
+    .orderBy("f.sentAt")
+    // Two invoices made at once for the same site take turns, so a fee is billed once.
+    .forUpdate()
+    .execute();
+  return fees.map((f) => ({
+    description: `${f.authorityName ?? "Authority"} filing fee: ${f.kind === "contract" ? "maintenance contract" : "inspection report"} filed ${day(dateInZone(f.sentAt!, timezone))}`,
+    quantity: 1,
+    unitPriceCents: f.filingFeeCents!,
+    taxable: false,
+    filingId: f.id,
+  }));
+}
+
+/**
+ * A draft for a contract's next unbilled installment (or the one asked for), in the caller's
+ * transaction: the installment, the plan options taken with the first payment (SW-8), and the
+ * filing fees passed on to the homeowner. An installment already on an invoice that is not
+ * void is never billed again. Locking the contract makes two people billing it take turns.
+ */
+export async function draftContractInstallment(
+  trx: Transaction<DB>,
+  organizationId: string,
+  contractId: string,
+  opts: { installment?: number; createdBy: string | null; memo?: string | null; now: Date },
+) {
+  const org = await trx.selectFrom("organizations").select(["invoiceTermsDays", "defaultTaxRateBps", "billFilingFees", "timezone"]).where("id", "=", organizationId).executeTakeFirstOrThrow();
+  const c = await trx
+    .selectFrom("contracts as k")
+    .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "k.siteId").onRef("s.organizationId", "=", "k.organizationId"))
+    .select(["k.id", "k.siteId", "k.status", "k.planName", "k.startOn", "k.endOn", "k.termMonths", "k.priceCents", "k.billingFrequency", "k.agreementSnapshot", "s.customerId", "s.addressLine1"])
+    .where("k.organizationId", "=", organizationId)
+    .where("k.id", "=", contractId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!c) throw notFound("Contract");
+  if (c.status === "cancelled") throw unprocessable("This contract is cancelled");
+  const billed = await trx
+    .selectFrom("invoiceLines as l")
+    .innerJoin("invoices as i", "i.id", "l.invoiceId")
+    .select("l.installment")
+    .where("l.organizationId", "=", organizationId)
+    .where("l.contractId", "=", c.id)
+    .where("i.status", "<>", "void")
+    .execute();
+  const taken = new Set(billed.map((b) => b.installment));
+  const parts = contractInstallments(c);
+  const part = opts.installment ? parts.find((p) => p.installment === opts.installment) : parts.find((p) => !taken.has(p.installment));
+  if (!part) throw unprocessable(opts.installment ? "The contract has no such installment" : "Every installment of this contract is already on an invoice");
+  if (taken.has(part.installment)) throw unprocessable(`Installment ${part.installment} is already on an invoice`);
+
+  const inv = await trx
+    .insertInto("invoices")
+    .values({
+      organizationId,
+      customerId: c.customerId,
+      siteId: c.siteId,
+      number: null,
+      memo: opts.memo ?? null,
+      termsDays: org.invoiceTermsDays,
+      taxRateBps: org.defaultTaxRateBps,
+      discountCents: 0,
+      subtotalCents: 0,
+      taxableCents: 0,
+      taxCents: 0,
+      totalCents: 0,
+      issuedOn: null,
+      dueOn: null,
+      pdfStorageKey: null,
+      pdfSha256: null,
+      pdfByteSize: null,
+      sentAt: null,
+      paidAt: null,
+      voidedAt: null,
+      voidReason: null,
+      createdBy: opts.createdBy,
+      updatedAt: opts.now,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const which = part.count > 1 ? ` (payment ${part.installment} of ${part.count})` : "";
+  await writeDraftLines(
+    trx,
+    organizationId,
+    inv.id,
+    [
+      {
+        description: `${c.planName}, ${c.addressLine1}: ${day(part.periodStart)} to ${day(part.periodEnd)}${which}`,
+        quantity: 1,
+        unitPriceCents: part.amountCents,
+        taxable: false,
+        contractId: c.id,
+        installment: part.installment,
+        periodStart: part.periodStart,
+        periodEnd: part.periodEnd,
+      },
+      // Plan options the office took with the contract (SW-8), once, with the first payment.
+      ...(part.installment === 1
+        ? parseSnapshotOptions(c.agreementSnapshot).map((o) => ({
+            description: `${c.planName} option: ${o.name}`,
+            quantity: 1,
+            unitPriceCents: o.priceCents,
+            taxable: o.taxable,
+            contractId: c.id,
+            installment: part.installment,
+            periodStart: part.periodStart,
+            periodEnd: part.periodEnd,
+          }))
+        : []),
+      ...(org.billFilingFees ? await filingFeeLines(trx, organizationId, c.siteId, org.timezone) : []),
+    ],
+    { discountCents: 0, taxRateBps: org.defaultTaxRateBps },
+    opts.now,
+  );
+  return { invoiceId: inv.id, installment: part.installment, count: part.count };
+}
+
 /**
  * Issues a draft: gives it the next number, fixes its dates, freezes what it says into a
  * snapshot, makes its pay link and queues its PDF (and the email, when sending). One
@@ -220,6 +372,17 @@ export async function issueDraft(
   await enqueue(trx, { kind: RENDER_INVOICE, organizationId, payload: { invoiceId }, dedupeKey: `invoice-render-${invoiceId}`, runAt: opts.now });
   if (opts.send) await queueSend(trx, organizationId, invoiceId, 1, opts.now);
   return { number, label: snapshot.number, billTo };
+}
+
+/**
+ * The invoice PDF handed out for download: the copy made at issue, or once money has come in,
+ * one drawn to show it (`currentInvoicePdf`), so a paid invoice never reads as owed. Null
+ * while the issued copy is still being made.
+ */
+export async function invoicePdfForDownload(db: Database, store: ObjectStore, payments: PaymentsConfig, organizationId: string, invoiceId: string) {
+  const current = await currentInvoicePdf({ db, store, appUrl: payments.appUrl, payments: payments.provider }, organizationId, invoiceId);
+  if (!current) return null;
+  return "drawn" in current ? stampForDownload(db, organizationId, current.drawn) : readForDownload(db, store, current.stored);
 }
 
 export async function queueSend(trx: Transaction<DB>, organizationId: string, invoiceId: string, sendNo: number, now: Date) {
