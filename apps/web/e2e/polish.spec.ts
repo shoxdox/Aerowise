@@ -13,15 +13,11 @@ async function signIn(page: Page, email: string) {
 
 const sideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-test("B1: a technician's menu has no Filings or Invoices, which their role can't open", async ({ page }) => {
+test("B1: a technician who opens an office page is sent to their route, not shown office links their role can't open", async ({ page }) => {
   await signIn(page, "tech@example.com");
   await page.goto("/schedule");
-  await page.getByRole("button", { name: "Menu" }).click();
-  const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: "Schedule" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Filings" })).toHaveCount(0);
-  await expect(nav.getByRole("link", { name: "Invoices" })).toHaveCount(0);
-  await expect(nav.getByRole("link", { name: "QuickBooks" })).toHaveCount(0);
+  await page.waitForURL("**/tech");
+  await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
 });
 
 test("B2: at 8:30 PM in Texas, a new contract starts today, not tomorrow (UTC)", async ({ page }) => {
