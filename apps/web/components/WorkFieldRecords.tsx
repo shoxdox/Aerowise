@@ -1,16 +1,18 @@
 "use client";
 
-import { CONFLICT_REASON_LABELS, type FormTemplate, type WorkRecord, type WorkSyncConflict } from "@aerowise/domain";
+import { CONFLICT_REASON_LABELS, formatAnswer, type FormTemplate, type WorkRecord, type WorkSyncConflict } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
 import { LoadState } from "@/components/LoadState";
 import { Pagination } from "@/components/Pagination";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { plural, when } from "@/lib/format";
 
 // The office's view of what technicians recorded on their phones for a work order's visits
 // (SW-2), and the records held because the visit changed while the phone was offline.
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 type Answers = Record<string, unknown>;
 
@@ -19,13 +21,12 @@ function AnswerList({ values, form }: { values: Answers; form: FormTemplate | un
   const fields = form?.definition.fields ?? [];
   const keys = [...fields.map((f) => f.key).filter((k) => k in values), ...Object.keys(values).filter((k) => !fields.some((f) => f.key === k))];
   if (keys.length === 0) return <p className="muted small">No answers.</p>;
-  const show = (v: unknown) => (v === true ? "Yes" : v === false ? "No" : String(v));
   return (
     <dl className="details">
       {keys.map((k) => (
         <div key={k} style={{ display: "contents" }}>
           <dt>{fields.find((f) => f.key === k)?.label ?? k}</dt>
-          <dd style={{ whiteSpace: "pre-wrap" }}>{show(values[k])}</dd>
+          <dd style={{ whiteSpace: "pre-wrap" }}>{formatAnswer(form?.definition, k, values[k])}</dd>
         </div>
       ))}
     </dl>
@@ -50,7 +51,7 @@ export function VisitFieldRecord({ jobId, forms }: { jobId: string; forms: Map<s
         <p className="row">
           {record.photos.map((p) => (
             <a key={p.id} href={`/api${p.url}`} target="_blank" rel="noreferrer" className="badge">
-              Photo · {p.photoKey}
+              Photo: {forms.get(record.templateId)?.definition.photos.find((x) => x.key === p.photoKey)?.label ?? p.photoKey}
             </a>
           ))}
         </p>
@@ -76,23 +77,20 @@ export function HeldFieldRecords({ workOrderId, forms, editable, onChanged }: { 
   const load = useLoad<{ items: WorkSyncConflict[]; total: number }>(editable ? `/work/conflicts?workOrderId=${workOrderId}&limit=50&offset=${offset}` : null);
   const { data, reload } = load;
   const [dismissing, setDismissing] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const items = data?.items ?? [];
-  if (!editable) return null;
-  if (!data) return <LoadState load={load} label="held field records" />;
-  if (data.total === 0 && !load.error && offset === 0) return null;
-
-  async function act(path: string, body: unknown) {
-    setProblem(null);
-    try {
+  const acting = useSubmit(
+    async (path: string, body: unknown) => {
       await api(path, { method: "POST", body });
       setDismissing(null);
       await reload();
       onChanged();
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const act = (path: string, body: unknown) => acting.run(path, body);
+  const items = data?.items ?? [];
+  if (!editable) return null;
+  if (!data) return <LoadState load={load} label="held field records" />;
+  if (data.total === 0 && !load.error && offset === 0) return null;
 
   return (
     <section className="stack" data-testid="held-records">
@@ -100,24 +98,26 @@ export function HeldFieldRecords({ workOrderId, forms, editable, onChanged }: { 
       <LoadState load={load} label="held field records" />
       <Pagination total={data.total} offset={offset} onChange={setOffset} />
       <p className="muted small">These reached the office after the visit changed while the technician&apos;s phone was offline. Nothing from them counts until you accept one.</p>
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={acting.error} />
       {items.map((c) => {
         const payload = (c.payload ?? {}) as { values?: Answers; status?: string; templateId?: string; finalVisit?: boolean };
         return (
           <div key={c.id} className="card stack">
             <div>
               <strong>{c.technicianName}</strong> · {CONFLICT_REASON_LABELS[c.reason]}{" "}
-              <span className={`badge ${c.status === "held" ? "warn" : c.status === "attached" ? "ok" : ""}`}>{c.status === "held" ? "waiting for you" : c.status === "attached" ? "accepted" : "set aside"}</span>
+              <Badge tone={c.status === "held" ? "warning" : c.status === "attached" ? "success" : "muted"}>{c.status === "held" ? "Waiting for you" : c.status === "attached" ? "Accepted" : "Set aside"}</Badge>
             </div>
             <div className="muted small">
-              Received {when(c.createdAt)} · {payload.status === "completed" ? "finished on the phone" : "not finished on the phone"} · {c.photoCount} photos · {c.signatureCount} signatures
+              Received {when(c.createdAt)} · {payload.status === "completed" ? "finished on the phone" : "not finished on the phone"} · {plural(c.photoCount, "photo")} · {plural(c.signatureCount, "signature")}
             </div>
             <AnswerList values={payload.values ?? {}} form={payload.templateId ? forms.get(payload.templateId) : undefined} />
             {c.resolutionNote && <p className="small">{c.resolutionNote}</p>}
             {c.status === "held" && dismissing !== c.id && (
               <div className="row">
                 {payload.status === "completed" && (
-                  <button onClick={() => void act(`/work/conflicts/${c.id}/attach`, {})}>Accept this record</button>
+                  <SubmitButton type="button" busy={acting.busy} onClick={() => void act(`/work/conflicts/${c.id}/attach`, {})}>
+                    Accept this record
+                  </SubmitButton>
                 )}
                 <button className="secondary" onClick={() => setDismissing(c.id)}>
                   Set aside
@@ -137,7 +137,7 @@ export function HeldFieldRecords({ workOrderId, forms, editable, onChanged }: { 
                   <input name="reason" required minLength={3} maxLength={2000} />
                 </label>
                 <div className="row">
-                  <button type="submit">Set aside</button>
+                  <SubmitButton busy={acting.busy}>Set aside</SubmitButton>
                   <button type="button" className="link" onClick={() => setDismissing(null)}>
                     Back
                   </button>

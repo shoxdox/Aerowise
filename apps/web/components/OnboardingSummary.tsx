@@ -2,9 +2,9 @@
 
 import type { OnboardingSummary as Summary } from "@aerowise/domain";
 import Link from "next/link";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+import { day, plural } from "@/lib/format";
 
 function Tile({ n, label, href, alert = false }: { n: number; label: string; href?: string; alert?: boolean }) {
   const body = (
@@ -45,14 +45,14 @@ function SiteList({ title, total, sites }: { title: string; total: number; sites
 
 /** The book at a glance: what is active, what renews soon, what is late, what is missing. */
 export function OnboardingSummary({ importId }: { importId?: string }) {
-  const { data: s, error } = useLoad<Summary>(`/onboarding/summary${importId ? `?importId=${importId}` : ""}`);
-  if (error) return <p className="error">{error}</p>;
-  if (!s) return <p className="muted">Loading the summary…</p>;
+  const load = useLoad<Summary>(`/onboarding/summary${importId ? `?importId=${importId}` : ""}`);
+  const s = load.data;
+  if (!s) return <LoadState load={load} label="summary" />;
   return (
     <div className="stack">
       <p className="muted">
         {plural(s.customers, "customer")} with {plural(s.sites, "service site")}
-        {importId ? " from this import" : ""}, as of {s.today}.
+        {importId ? " from this import" : ""}, as of {day(s.today)}.
       </p>
       <div className="tiles">
         <Tile n={s.activeContracts} label="Active contracts" href="/renewals" />

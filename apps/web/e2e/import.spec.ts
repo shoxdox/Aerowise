@@ -82,8 +82,10 @@ test("the office undoes an import it got wrong", async ({ page }) => {
   await expect(page.locator(".tile", { hasText: "Missing permit numbers" })).toContainText("1");
   await expect(page.getByRole("link", { name: "1 Oops Ct, Austin" }).first()).toBeVisible();
   await expect(page.getByText("Undo deletes the 1 new customer, 1 site, 0 contracts and 0 visits")).toBeVisible();
-  page.once("dialog", (dialog) => void dialog.accept());
+  // Undo asks right there, and only the second button deletes.
   await page.getByRole("button", { name: "Undo import" }).click();
+  await expect(page.getByText("Delete the 1 site and everything else this import created?")).toBeVisible();
+  await page.getByRole("group", { name: "Confirm" }).getByRole("button", { name: "Undo import" }).click();
   await expect(page.getByText(/Undone .*Nothing this import created remains/)).toBeVisible();
 
   await page.goto("/import/summary");

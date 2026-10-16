@@ -1,20 +1,22 @@
 "use client";
 
-import { roleHasPermission, WORK_ORDER_STATUS_LABELS, type Technician, type WorkOrderDetail } from "@aerowise/domain";
+import { roleHasPermission, statusLabel, type Technician, type WorkOrderDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { PumpingHistory } from "@/components/PumpingHistory";
 import { LoadState } from "@/components/LoadState";
+import { Badge, StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
+import { useSubmit } from "@/components/useSubmit";
 import { HeldFieldRecords, useWorkForms, VisitFieldRecord } from "@/components/WorkFieldRecords";
-import { api, ApiError, formValues } from "@/lib/api";
+import { api, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
 import { WorkCoverage } from "@/components/WorkCoverage";
-import { day, money } from "@/lib/format";
+import { day, invoiceLabel, money, quantity, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+import { usePageTitle } from "@/lib/title";
 
 /** Where the work came from, as a link the office can follow. */
 function sourceHref(w: WorkOrderDetail) {
@@ -28,52 +30,48 @@ export default function WorkOrderPage() {
   const me = useSession();
   const editable = canEdit(me);
   const recordLoad = useLoad<WorkOrderDetail>(`/work-orders/${id}`);
-  const { data: w, error, reload } = recordLoad;
+  const { data: w, reload } = recordLoad;
   const techs = useLoad<{ items: Technician[] }>(editable ? "/technicians" : null);
-  const [problem, setProblem] = useState<string | null>(null);
   const [closing, setClosing] = useState<"complete" | "cancel" | null>(null);
   const router = useRouter();
   const invoicing = useFeature("service_items") && editable && roleHasPermission(me.role, "invoices:write");
+  usePageTitle(w ? `${w.label} · ${w.title}` : null);
 
-  async function createInvoice(workOrderId: string) {
-    setProblem(null);
-    try {
+  const invoice = useSubmit(
+    async (workOrderId: string) => {
       const made = await api<{ invoiceId: string }>(`/work-orders/${workOrderId}/invoice`, { method: "POST", body: {} });
       router.push(`/invoices/${made.invoiceId}`);
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not make the invoice");
-    }
-  }
+    },
+    { fallback: "Could not make the invoice." },
+  );
   // SW-2: technicians record visits on their phones.
   const fieldWork = useFeature("field_work");
   const forms = useWorkForms(fieldWork);
 
-  async function act(path: string, body: unknown, method = "POST") {
-    setProblem(null);
-    try {
+  const acting = useSubmit(
+    async (path: string, body: unknown, method: string) => {
       await api(path, { method, body });
       setClosing(null);
       await reload();
       return true;
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-      return false;
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const act = async (path: string, body: unknown, method = "POST") => (await acting.run(path, body, method)) === true;
+  const problem = acting.error ?? invoice.error;
   const submitWith = (fn: (v: Record<string, string | undefined>, form: HTMLFormElement) => Promise<boolean>) => async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     if (await fn(formValues(form), form)) form.reset();
   };
 
-  if (error && !w) return <LoadState load={recordLoad} label="record" />;
-  if (!w) return <LoadState load={recordLoad} label="record" />;
+  if (!w) return <LoadState load={recordLoad} label="work order" back={{ href: "/work", label: "Work orders" }} />;
   const open = w.status !== "completed" && w.status !== "cancelled";
   const href = sourceHref(w);
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="work order" back={{ href: "/work", label: "Work orders" }} />
       <p>
         <Link href="/work">← Work orders</Link>
       </p>
@@ -81,10 +79,8 @@ export default function WorkOrderPage() {
         <h1>
           {w.label} · {w.title}
         </h1>
-        <span className={`badge ${w.status === "completed" ? "completed" : w.status === "cancelled" ? "cancelled" : ""}`} data-testid="work-status">
-          {WORK_ORDER_STATUS_LABELS[w.status]}
-        </span>
-        {w.priority === "urgent" && <span className="badge danger">urgent</span>}
+        <StatusBadge of="workOrder" value={w.status} data-testid="work-status" />
+        {w.priority === "urgent" && <Badge tone="danger">Urgent</Badge>}
       </div>
       <dl className="details">
         <dt>Kind of work</dt>
@@ -133,10 +129,14 @@ export default function WorkOrderPage() {
         </p>
       )}
 
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
 
       {editable && w.status === "draft" && (
-        <button onClick={() => void act(`/work-orders/${w.id}`, { ready: true }, "PATCH")}>Ready to schedule</button>
+        <div>
+          <SubmitButton type="button" busy={acting.busy} onClick={() => void act(`/work-orders/${w.id}`, { ready: true }, "PATCH")}>
+            Ready to schedule
+          </SubmitButton>
+        </div>
       )}
 
       <section className="stack">
@@ -145,7 +145,7 @@ export default function WorkOrderPage() {
         {w.visits.map((v) => (
           <div key={v.jobId} className="card tight">
             <strong>Visit {v.visitNumber}</strong> · {day(v.scheduledDate, { weekday: "short", month: "short", day: "numeric" })} · {v.technicianName}{" "}
-            <span className={`badge ${v.status === "cancelled" ? "cancelled" : v.status === "completed" ? "completed" : ""}`}>{v.status.replace("_", " ")}</span>
+            <StatusBadge of="job" value={v.status} />
             {v.notes && <div className="muted small">{v.notes}</div>}
             {v.cancelReason && <div className="muted small">{v.cancelReason}</div>}
             {fieldWork && <VisitFieldRecord key={`${v.jobId}:${w.events.length}`} jobId={v.jobId} forms={forms} />}
@@ -162,7 +162,7 @@ export default function WorkOrderPage() {
             </select>
             <input name="scheduledDate" type="date" required aria-label="Visit date" />
             <input name="notes" placeholder="Notes for the technician" aria-label="Notes for the technician" maxLength={2000} />
-            <button type="submit">Schedule visit</button>
+            <SubmitButton busy={acting.busy}>Schedule visit</SubmitButton>
           </form>
         )}
         {!fieldWork && w.visits.some((v) => v.status === "scheduled") && (
@@ -180,33 +180,39 @@ export default function WorkOrderPage() {
           <p className="muted">No planned charges.</p>
         ) : (
           <div className="table-scroll">
-            <table className="compact">
+            <table className="compact stack">
               <thead>
                 <tr>
                   <th>Description</th>
-                  <th>Qty</th>
-                  <th>Unit price</th>
-                  <th>Amount</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Unit price</th>
+                  <th className="num">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {w.lines.map((l) => (
                   <tr key={l.id}>
-                    <td>
+                    <td data-label="Description">
                       {l.description}
                       {l.taxable && <span className="muted small"> · taxable</span>}
                       {l.billPumpedVolume && <span className="muted small"> · billed at the gallons pumped</span>}
                     </td>
-                    <td>{l.quantity}</td>
-                    <td>{money(l.unitPriceCents)}</td>
-                    <td>{money(l.amountCents)}</td>
+                    <td data-label="Qty" className="num">
+                      {quantity(l.quantity)}
+                    </td>
+                    <td data-label="Unit price" className="num">
+                      {money(l.unitPriceCents)}
+                    </td>
+                    <td data-label="Amount" className="num">
+                      {money(l.amountCents)}
+                    </td>
                   </tr>
                 ))}
                 <tr>
                   <td colSpan={3}>
                     <strong>Total before tax</strong>
                   </td>
-                  <td>
+                  <td data-label="Total before tax" className="num">
                     <strong>{money(w.linesTotalCents)}</strong>
                   </td>
                 </tr>
@@ -216,7 +222,9 @@ export default function WorkOrderPage() {
         )}
         {invoicing && w.billingStatus === "unbilled" && w.lines.length > 0 && w.status !== "draft" && w.status !== "cancelled" && (
           <div className="row">
-            <button onClick={() => void createInvoice(w.id)}>Create invoice</button>
+            <SubmitButton type="button" busy={invoice.busy} busyLabel="Making the invoice…" onClick={() => void invoice.run(w.id)}>
+              Create invoice
+            </SubmitButton>
             <span className="muted small">A draft from these charges; you can change it before issuing.</span>
           </div>
         )}
@@ -226,7 +234,7 @@ export default function WorkOrderPage() {
             Invoiced:{" "}
             {w.invoices.map((i) => (
               <Link key={i.id} href={`/invoices/${i.id}`} className="badge">
-                {i.number ? `#${i.number}` : "Draft"} · {money(i.totalCents)} · {i.status}
+                {i.number === null ? `Draft invoice · ${money(i.totalCents)}` : `${invoiceLabel(Number(i.number))} · ${money(i.totalCents)} · ${statusLabel("invoice", i.status).label}`}
               </Link>
             ))}
           </p>
@@ -253,9 +261,9 @@ export default function WorkOrderPage() {
                 <option value="internal">Internal</option>
                 <option value="customer">The customer can see it</option>
               </select>
-              <button type="submit" className="secondary">
+              <SubmitButton className="secondary" busy={acting.busy}>
                 Add note
-              </button>
+              </SubmitButton>
             </div>
           </form>
         )}
@@ -282,7 +290,7 @@ export default function WorkOrderPage() {
                   Complete without a field record
                 </button>
               )}
-              <button className="secondary" onClick={() => setClosing("cancel")}>
+              <button className="secondary danger" onClick={() => setClosing("cancel")}>
                 Cancel work order
               </button>
             </div>
@@ -294,7 +302,9 @@ export default function WorkOrderPage() {
                 <input name="reason" required maxLength={2000} />
               </label>
               <div className="row">
-                <button type="submit">{closing === "complete" ? "Complete" : "Cancel work order"}</button>
+                <SubmitButton className={closing === "cancel" ? "danger" : undefined} busy={acting.busy}>
+                  {closing === "complete" ? "Complete" : "Cancel work order"}
+                </SubmitButton>
                 <button type="button" className="link" onClick={() => setClosing(null)}>
                   Back
                 </button>

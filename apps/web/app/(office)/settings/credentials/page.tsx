@@ -2,10 +2,14 @@
 
 import { CREDENTIAL_KINDS, CREDENTIAL_LABELS, type Credential } from "@aerowise/domain";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, today } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { day, mpNumber, today } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -17,29 +21,27 @@ import { EmptyState } from "@/components/EmptyState";
 export default function CredentialsPage() {
   const { role } = useSession();
   const owner = role === "owner";
-  const { data, error, reload } = useLoad<{ items: Credential[] }>("/credentials");
+  const credentials = useLoad<{ items: Credential[] }>("/credentials");
+  const { data, reload } = credentials;
   const people = useLoad<{ items: { id: string; name: string }[] }>(owner ? "/technicians" : null);
   const [message, setMessage] = useState<string | null>(null);
+  // Which change the message is about, so "Added" shows by the form that added it.
+  const [added, setAdded] = useState(false);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
-
-  async function send(action: () => Promise<unknown>, done: string) {
-    setMessage(null);
-    try {
+  const sending = useSubmit(
+    async (action: () => Promise<unknown>, done: string) => {
+      setMessage(null);
+      setAdded(false);
       await action();
       await reload();
       setMessage(done);
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
-
-  function add(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const v = formValues(form);
-    void send(async () => {
+    },
+    { fallback: "Could not save." },
+  );
+  const send = (action: () => Promise<unknown>, done: string) => sending.run(action, done);
+  const adding = useSubmit(
+    async (v: Record<string, string | undefined>, form: HTMLFormElement) => {
+      setAdded(false);
       await api("/credentials", {
         method: "POST",
         body: {
@@ -53,9 +55,13 @@ export default function CredentialsPage() {
         },
       });
       form.reset();
-    }, "Added");
-  }
+      await reload();
+      setAdded(true);
+    },
+    { fallback: "Could not add the license." },
+  );
 
+  if (!data) return <LoadState load={credentials} label="licenses" />;
   const todayOn = today();
   const responsible = data.items.find((c) => c.responsible);
   return (
@@ -69,12 +75,13 @@ export default function CredentialsPage() {
         maintenance technician registration. Filings are held for review until these are on record. Check numbers against TCEQ&apos;s license search and record when you did.
       </p>
       {message && <p className="muted">{message}</p>}
+      <FormError error={sending.error} />
 
       <section className="card stack">
         <h2>Responsible maintenance provider</h2>
         {responsible ? (
           <p>
-            <strong>{responsible.holderName}</strong>, MP {responsible.number}
+            <strong>{responsible.holderName}</strong>, {mpNumber(responsible.number)}
             {responsible.expiresOn && <span className="muted small"> · expires {day(responsible.expiresOn)}</span>}
           </p>
         ) : (
@@ -85,6 +92,7 @@ export default function CredentialsPage() {
             Choose
             <select
               value={responsible?.id ?? ""}
+              disabled={sending.busy}
               onChange={(e) => void send(() => api("/settings/responsible-provider", { method: "PUT", body: { credentialId: e.target.value || null } }), "Saved")}
             >
               <option value="">None</option>
@@ -92,7 +100,7 @@ export default function CredentialsPage() {
                 .filter((c) => c.kind === "tceq_maintenance_provider" && c.active)
                 .map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.holderName}, MP {c.number}
+                    {c.holderName}, {mpNumber(c.number)}
                   </option>
                 ))}
             </select>
@@ -100,7 +108,7 @@ export default function CredentialsPage() {
         )}
       </section>
 
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>Holder</th>
@@ -114,18 +122,19 @@ export default function CredentialsPage() {
         <tbody>
           {data.items.map((c) => (
             <tr key={c.id}>
-              <td>{c.holderName}</td>
-              <td>{CREDENTIAL_LABELS[c.kind]}</td>
-              <td>{c.number}</td>
-              <td>
-                {c.expiresOn ? day(c.expiresOn) : "—"}
-                {c.expiresOn && c.expiresOn < todayOn && <span className="badge expired">Expired</span>}
+              <td data-label="Holder">{c.holderName}</td>
+              <td data-label="Credential">{CREDENTIAL_LABELS[c.kind]}</td>
+              <td data-label="Number">{c.number}</td>
+              <td data-label="Expires">
+                {c.expiresOn ? day(c.expiresOn) : "—"} {c.expiresOn && c.expiresOn < todayOn && <Badge tone="danger">Expired</Badge>}
               </td>
-              <td className="small">{c.verifiedOn ? `${day(c.verifiedOn)}, ${c.verificationSource}` : <span className="muted">Not recorded</span>}</td>
-              <td>
-                {!c.active && <span className="badge inactive">Inactive</span>}
+              <td data-label="Checked" className="small">
+                {c.verifiedOn ? `${day(c.verifiedOn)}, ${c.verificationSource}` : <span className="muted">Not recorded</span>}
+              </td>
+              <td className={owner || !c.active ? "actions" : undefined}>
+                {!c.active && <Badge tone="muted">Inactive</Badge>}{" "}
                 {owner && (
-                  <button className="link" onClick={() => void send(() => api(`/credentials/${c.id}`, { method: "PATCH", body: { active: !c.active } }), "Saved")}>
+                  <button className={c.active ? "link danger" : "link"} disabled={sending.busy} onClick={() => void send(() => api(`/credentials/${c.id}`, { method: "PATCH", body: { active: !c.active } }), "Saved")}>
                     {c.active ? "Mark inactive" : "Mark active"}
                   </button>
                 )}
@@ -141,7 +150,7 @@ export default function CredentialsPage() {
       )}
 
       {owner && (
-        <form className="card stack" onSubmit={add}>
+        <form className="card stack" onSubmit={adding.form}>
           <h2>Add one</h2>
           <label>
             Person (if they sign in)
@@ -186,7 +195,15 @@ export default function CredentialsPage() {
               <input name="verificationSource" placeholder="e.g. TCEQ license search" />
             </label>
           </div>
-          <button type="submit">Add</button>
+          <FormError error={adding.error} />
+          <div className="row">
+            <SubmitButton busy={adding.busy}>Add</SubmitButton>
+            {added && (
+              <span className="muted" role="status">
+                Added.{!responsible && " Choose it as the responsible maintenance provider above if it is."}
+              </span>
+            )}
+          </div>
         </form>
       )}
     </div>

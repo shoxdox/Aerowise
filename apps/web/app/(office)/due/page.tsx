@@ -1,6 +1,6 @@
 "use client";
 
-import { SERVICE_TYPE_LABELS, type DueObligation, type ServiceType } from "@aerowise/domain";
+import { addDays, SERVICE_TYPE_LABELS, type DueObligation, type ServiceType } from "@aerowise/domain";
 import Link from "next/link";
 import { useQueryState } from "@/components/useQueryState";
 import { LoadState } from "@/components/LoadState";
@@ -8,8 +8,9 @@ import { Pagination } from "@/components/Pagination";
 import { canEdit, useSession } from "@/lib/session";
 import { useFeature } from "@/lib/features";
 import { SafetyBadges } from "@/components/SafetyBadges";
+import { Badge } from "@/components/StatusBadge";
 import { useLoad } from "@/components/useLoad";
-import { day } from "@/lib/format";
+import { day, plural } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 
 const RANGES = [
@@ -17,12 +18,6 @@ const RANGES = [
   { label: "Next 30 days", days: 30 },
   { label: "Next 90 days", days: 90 },
 ];
-
-function addDays(date: string, n: number) {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 export default function DuePage() {
   const editable = canEdit(useSession());
@@ -78,10 +73,10 @@ export default function DuePage() {
       <LoadState load={load} label="due visits" />
       {data && (
         <p className="muted">
-          {data.total} open visit{data.total === 1 ? "" : "s"} · {overdueCount} overdue · today is {day(data.today)}
+          {plural(data.total, "open visit")} · {overdueCount} overdue · today is {day(data.today)}
         </p>
       )}
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>Due</th>
@@ -89,27 +84,36 @@ export default function DuePage() {
             <th>Customer</th>
             <th>Visit</th>
             <th>Notes</th>
+            {editable && <th />}
           </tr>
         </thead>
         <tbody>
           {data?.items.map((o) => (
             <tr key={o.id} className={o.overdue ? "overdue" : undefined}>
-              <td>
-                {day(o.dueOn)}
-                {o.overdue && <span className="badge danger">overdue</span>}
+              <td data-label="Due">
+                {day(o.dueOn)} {o.overdue && <Badge tone="danger">Overdue</Badge>}
                 <div className="muted small">window from {day(o.windowStart, { month: "short", day: "numeric" })}</div>
               </td>
-              <td>
+              <td data-label="Site">
                 <Link href={`/sites/${o.site.id}`}>
                   {o.site.addressLine1}, {o.site.city}
                 </Link>{" "}
                 <SafetyBadges flags={o.site.safetyFlags} />
               </td>
-              <td>
+              <td data-label="Customer">
                 <Link href={`/customers/${o.customer.id}`}>{o.customer.displayName}</Link>
               </td>
-              <td>#{o.sequence}{editable && <div><Link className="button secondary" href={o.serviceType === "aerobic_inspection" ? `/schedule?obligationId=${o.id}&siteId=${o.site.id}` : `/sites/${o.site.id}?obligationId=${o.id}#obligation-${o.id}`}>{o.job ? "View scheduled visit" : "Schedule"}</Link></div>}</td>
-              <td className="muted small">{o.site.schedulingNotes ?? ""}</td>
+              <td data-label="Visit">#{o.sequence}</td>
+              <td data-label={o.site.schedulingNotes ? "Notes" : undefined} className="muted small">
+                {o.site.schedulingNotes ?? ""}
+              </td>
+              {editable && (
+                <td className="actions">
+                  <Link className="button secondary" href={o.serviceType === "aerobic_inspection" ? `/schedule?obligationId=${o.id}&siteId=${o.site.id}` : `/sites/${o.site.id}?obligationId=${o.id}#obligation-${o.id}`}>
+                    {o.job ? "View scheduled visit" : "Schedule"}
+                  </Link>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

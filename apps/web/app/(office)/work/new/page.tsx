@@ -3,9 +3,11 @@
 import { SERVICE_ITEM_UNIT_LABELS, type ServiceItem, type WorkType } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useRef, useState } from "react";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { useFeature } from "@/lib/features";
 import { money } from "@/lib/format";
 
@@ -27,18 +29,16 @@ function NewWorkOrder() {
   const pumping = useFeature("pumping");
   const list = useLoad<{ items: SiteOption[] }>(fixedSite ? null : `/sites?limit=50${search ? `&search=${encodeURIComponent(search)}` : ""}`);
   const one = useLoad<{ id: string; addressLine1: string; city: string; customer: { displayName: string } }>(fixedSite ? `/sites/${fixedSite}` : null);
-  const [error, setError] = useState<string | null>(null);
+  // The new order's id, chosen once: a double click or a retry after a lost answer makes one order.
+  const creationId = useRef(crypto.randomUUID());
   const siteOptions: SiteOption[] = fixedSite
     ? one.data
       ? [{ id: one.data.id, addressLine1: one.data.addressLine1, city: one.data.city, customerName: one.data.customer.displayName }]
       : []
     : (list.data?.items ?? []);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
-    setError(null);
-    try {
+  const create = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       // A catalog item fills in what was left blank.
       const item = catalog.data?.items.find((i) => i.id === v.lineServiceItemId);
       const description = v.lineDescription ?? (item ? item.description || item.name : undefined);
@@ -49,16 +49,15 @@ function NewWorkOrder() {
           : [];
       const wo = await api<{ id: string }>("/work-orders", {
         method: "POST",
-        body: { siteId: v.siteId, workTypeId: v.workTypeId, title: v.title, description: v.description ?? "", priority: v.priority ?? "normal", requestedOn: v.requestedOn, draft: v.draft === "on", lines },
+        body: { creationId: creationId.current, siteId: v.siteId, workTypeId: v.workTypeId, title: v.title, description: v.description ?? "", priority: v.priority ?? "normal", requestedOn: v.requestedOn, draft: v.draft === "on", lines },
       });
       router.push(`/work/${wo.id}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create the work order");
-    }
-  }
+    },
+    { fallback: "Could not create the work order.", labels: { lineDescription: "Charge description", linePrice: "Unit price" } },
+  );
 
   return (
-    <form className="stack" onSubmit={submit}>
+    <form className="stack" onSubmit={create.form}>
       <p>
         <Link href="/work">← Work orders</Link>
       </p>
@@ -131,17 +130,19 @@ function NewWorkOrder() {
           <input name="linePrice" type="number" min="0" step="0.01" placeholder="Unit price ($)" aria-label="Unit price in dollars" />
         </div>
         {pumping && (
-          <label className="row">
+          <label className="check">
             <input name="billPumpedVolume" type="checkbox" /> Bill at the gallons pumped (the price is per gallon; the invoice uses the recorded pump-out volume)
           </label>
         )}
       </fieldset>
-      <label className="row">
+      <label className="check">
         <input name="draft" type="checkbox" /> Save as a draft (not ready to schedule yet)
       </label>
-      {error && <p className="error">{error}</p>}
+      <FormError error={create.error} />
       <div className="row">
-        <button type="submit">Create work order</button>
+        <SubmitButton busy={create.busy} busyLabel="Creating…">
+          Create work order
+        </SubmitButton>
         <button type="button" className="secondary" onClick={() => router.back()}>
           Cancel
         </button>

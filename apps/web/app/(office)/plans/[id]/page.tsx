@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BILLING_FREQUENCY_LABELS,
   COVERAGE_EFFECTS,
   CYCLE_SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
@@ -18,11 +19,15 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { useUnsavedChanges } from "@/components/useUnsavedChanges";
+import { api } from "@/lib/api";
 import { useFeature } from "@/lib/features";
-import { day, money } from "@/lib/format";
+import { dayOf, money, plural } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { usePageTitle } from "@/lib/title";
 
 // The plan builder (SW-8): a plan's own agreement terms, the options offered with it at
 // signing, and its coverage rules. Saving makes the next version; earlier versions, and the
@@ -76,12 +81,56 @@ interface RuleRow {
   limit: string;
 }
 
+/** Everything the builder edits, as typed. */
+interface Draft {
+  ownTerms: boolean;
+  terms: string;
+  intakeId: string;
+  aerobic: boolean;
+  cycles: CycleRow[];
+  options: OptionRow[];
+  rules: RuleRow[];
+}
+
+/** What a save sends for the builder's rows. The same rows always make the same body, so an unchanged plan is seen as unchanged. */
+function versionBody(d: Draft, cyclesOn: boolean) {
+  return {
+    termsText: d.ownTerms ? d.terms : null,
+    intakeTemplateId: d.intakeId || null,
+    ...(cyclesOn
+      ? {
+          aerobic: d.aerobic,
+          serviceCycles: d.cycles.map((y) => ({
+            cycleKey: y.cycleKey,
+            label: y.label,
+            serviceType: y.serviceType,
+            workTypeId: y.workTypeId,
+            schedule: { kind: "every_months", everyMonths: Number(y.everyMonths), windowDays: Number(y.windowDays) },
+            allowNoVisit: y.allowNoVisit,
+          })),
+        }
+      : {}),
+    options: d.options.map((o) => ({ optionKey: o.optionKey, name: o.name, priceCents: Math.round(Number(o.price) * 100), taxable: o.taxable, required: o.required, default: o.required || o.default })),
+    coverage: d.rules.map((r) => ({
+      ruleKey: r.ruleKey,
+      label: r.label,
+      match: r.matchKind === "category" ? { category: r.category } : { serviceItemId: r.serviceItemId },
+      effect: r.effect,
+      percentOff: r.effect === "percent_off" ? Number(r.percentOff) : null,
+      limit: r.effect !== "excluded" && r.limit ? { count: Number(r.limit), per: "term" } : null,
+    })),
+  };
+}
+
+/** Names for the fields a refused save points at ("/options/1/name" reads "Option 2: Name"). */
+const FIELDS = { termsText: "Agreement terms", priceCents: "Price", ruleKey: "Rule", percentOff: "Percent off", workTypeId: "Kind of work", everyMonths: "Every (months)", windowDays: "Window", serviceCycles: "Cycles", coverage: "Rules" };
+
 export default function PlanPage() {
   const { id } = useParams<{ id: string }>();
   const me = useSession();
   const builder = useFeature("plan_builder") && canEdit(me);
   const recordLoad = useLoad<PlanDetail>(`/plans/${id}`);
-  const { data: plan, error, reload } = recordLoad;
+  const { data: plan, reload } = recordLoad;
   const items = useLoad<{ items: ServiceItem[] }>(builder ? "/service-items?active=all" : null);
   const intakeForms = useLoad<{ items: FormTemplate[] }>(builder ? "/form-templates?purpose=intake" : null);
   // Pumping and maintenance cycles (SW-9): only sent when service cycles are on, so a save
@@ -97,19 +146,21 @@ export default function PlanPage() {
   const [terms, setTerms] = useState("");
   const [options, setOptions] = useState<OptionRow[]>([]);
   const [rules, setRules] = useState<RuleRow[]>([]);
-  const [problem, setProblem] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  // What the current version's rows make: a save with nothing changed would only stack an identical version.
+  const [baseline, setBaseline] = useState<string | null>(null);
+  usePageTitle(plan?.name);
 
   // The form starts from the current version.
   const current = plan?.versions[0];
   useEffect(() => {
     if (!current) return;
-    setOwnTerms(current.termsText !== null);
-    setTerms(current.termsText ?? plan!.preview.terms);
-    setIntakeId(current.intake?.id ?? "");
-    setAerobic(current.aerobic);
-    setCycles(
-      current.serviceCycles.map((y) => ({
+    const d: Draft = {
+      ownTerms: current.termsText !== null,
+      terms: current.termsText ?? plan!.preview.terms,
+      intakeId: current.intake?.id ?? "",
+      aerobic: current.aerobic,
+      cycles: current.serviceCycles.map((y) => ({
         cycleKey: y.cycleKey,
         label: y.label,
         serviceType: y.serviceType,
@@ -118,10 +169,8 @@ export default function PlanPage() {
         windowDays: String(y.schedule.windowDays),
         allowNoVisit: y.allowNoVisit,
       })),
-    );
-    setOptions(current.options.map((o) => ({ optionKey: o.optionKey, name: o.name, price: (o.priceCents / 100).toFixed(2), taxable: o.taxable, required: o.required, default: o.default })));
-    setRules(
-      current.coverage.map((r) => ({
+      options: current.options.map((o) => ({ optionKey: o.optionKey, name: o.name, price: (o.priceCents / 100).toFixed(2), taxable: o.taxable, required: o.required, default: o.default })),
+      rules: current.coverage.map((r) => ({
         ruleKey: r.ruleKey,
         label: r.label,
         matchKind: "category" in r.match ? "category" : "item",
@@ -131,53 +180,35 @@ export default function PlanPage() {
         percentOff: r.percentOff?.toString() ?? "",
         limit: r.limit?.count.toString() ?? "",
       })),
-    );
+    };
+    setOwnTerms(d.ownTerms);
+    setTerms(d.terms);
+    setIntakeId(d.intakeId);
+    setAerobic(d.aerobic);
+    setCycles(d.cycles);
+    setOptions(d.options);
+    setRules(d.rules);
+    setBaseline(JSON.stringify(versionBody(d, cyclesOn)));
   }, [current?.id]);
 
-  async function save() {
-    setProblem(null);
-    setSaved(null);
-    try {
-      const next = await api<PlanDetail>(`/plans/${id}/versions`, {
-        method: "POST",
-        body: {
-          termsText: ownTerms ? terms : null,
-          intakeTemplateId: intakeId || null,
-          ...(cyclesOn
-            ? {
-                aerobic,
-                serviceCycles: cycles.map((y) => ({
-                  cycleKey: y.cycleKey,
-                  label: y.label,
-                  serviceType: y.serviceType,
-                  workTypeId: y.workTypeId,
-                  schedule: { kind: "every_months", everyMonths: Number(y.everyMonths), windowDays: Number(y.windowDays) },
-                  allowNoVisit: y.allowNoVisit,
-                })),
-              }
-            : {}),
-          options: options.map((o) => ({ optionKey: o.optionKey, name: o.name, priceCents: Math.round(Number(o.price) * 100), taxable: o.taxable, required: o.required, default: o.required || o.default })),
-          coverage: rules.map((r) => ({
-            ruleKey: r.ruleKey,
-            label: r.label,
-            match: r.matchKind === "category" ? { category: r.category } : { serviceItemId: r.serviceItemId },
-            effect: r.effect,
-            percentOff: r.effect === "percent_off" ? Number(r.percentOff) : null,
-            limit: r.effect !== "excluded" && r.limit ? { count: Number(r.limit), per: "term" } : null,
-          })),
-        },
-      });
+  const body = versionBody({ ownTerms, terms, intakeId, aerobic, cycles, options, rules }, cyclesOn);
+  const changed = baseline !== null && JSON.stringify(body) !== baseline;
+  useUnsavedChanges(builder && changed);
+
+  // Saved against the version on screen: if the plan moved on (a second click, someone else), the API refuses.
+  const saving = useSubmit(
+    async () => {
+      setSaved(null);
+      const next = await api<PlanDetail>(`/plans/${id}/versions`, { method: "POST", body: { ...body, expectedVersion: plan!.version } });
       setSaved(`Saved as version ${next.version}. New contracts and renewal offers take it from now on; existing contracts keep theirs.`);
       await reload();
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save the plan.", labels: FIELDS },
+  );
 
-  async function saveIntakeForm() {
-    if (!newForm) return;
-    setProblem(null);
-    try {
+  const savingForm = useSubmit(
+    async () => {
+      if (!newForm) return;
       const form = await api<FormTemplate>("/intake-forms", {
         method: "POST",
         body: {
@@ -201,27 +232,26 @@ export default function PlanPage() {
       setNewForm(null);
       setIntakeId(form.id);
       await intakeForms.reload();
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save the form");
-    }
-  }
+    },
+    { fallback: "Could not save the form." },
+  );
+  const problem = saving.error ?? savingForm.error;
 
-  if (error && !plan) return <LoadState load={recordLoad} label="record" />;
-  if (!plan || !current) return <p className="muted">Loading…</p>;
+  if (!plan || !current) return <LoadState load={recordLoad} label="plan" back={{ href: "/plans", label: "Plans" }} />;
   const setOption = (i: number, patch: Partial<OptionRow>) => setOptions((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const setCycle = (i: number, patch: Partial<CycleRow>) => setCycles((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const setRule = (i: number, patch: Partial<RuleRow>) => setRules((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="plan" back={{ href: "/plans", label: "Plans" }} />
       <p>
         <Link href="/plans">← Plans</Link>
       </p>
       <div className="row">
         <h1>{plan.name}</h1>
         <span className="muted">
-          version {plan.version} · {plan.termMonths} months · {plan.visitsPerTerm} visits · {money(plan.priceCents)} billed {plan.billingFrequency}
+          version {plan.version} · {plural(plan.termMonths, "month")} · {plural(plan.visitsPerTerm, "visit")} · {money(plan.priceCents)} billed {BILLING_FREQUENCY_LABELS[plan.billingFrequency]}
         </span>
       </div>
       <p className="muted">
@@ -238,7 +268,7 @@ export default function PlanPage() {
 
       {tab === "terms" && (
         <section className="stack">
-          <label className="row">
+          <label className="check">
             <input type="checkbox" checked={ownTerms} disabled={!builder} onChange={(e) => setOwnTerms(e.target.checked)} />
             This plan has its own agreement terms
           </label>
@@ -246,7 +276,7 @@ export default function PlanPage() {
             <textarea rows={14} value={terms} disabled={!builder} onChange={(e) => setTerms(e.target.value)} aria-label="Agreement terms" />
           ) : (
             <p className="muted">
-              Customers sign your company&apos;s agreement terms (Settings → Renewals). <span className="small">Have real terms reviewed before customers sign them.</span>
+              Customers sign your company&apos;s agreement terms (Settings → Renewals).
             </p>
           )}
         </section>
@@ -258,7 +288,7 @@ export default function PlanPage() {
             What a contract on this plan includes. Pumping and maintenance visits are booked as work orders from the contract; they are never inspections and are never filed or reported to an
             authority.
           </p>
-          <label className="row">
+          <label className="check">
             <input type="checkbox" checked={aerobic} disabled={!builder || !cyclesOn} onChange={(e) => setAerobic(e.target.checked)} />
             Aerobic inspections ({plan.visitsPerTerm} visits per term, or more where the authority requires them)
           </label>
@@ -301,12 +331,12 @@ export default function PlanPage() {
                 <input type="number" min={0} max={180} value={y.windowDays} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { windowDays: e.target.value })} />
               </label>
               {Number(y.everyMonths) > plan.termMonths && (
-                <label className="row">
+                <label className="check">
                   <input type="checkbox" checked={y.allowNoVisit} disabled={!builder || !cyclesOn} onChange={(e) => setCycle(i, { allowNoVisit: e.target.checked })} /> A term may pass with no visit
                 </label>
               )}
               {builder && cyclesOn && (
-                <button className="link" onClick={() => setCycles((rows) => rows.filter((_, j) => j !== i))}>
+                <button className="link danger" onClick={() => setCycles((rows) => rows.filter((_, j) => j !== i))}>
                   Remove
                 </button>
               )}
@@ -339,23 +369,23 @@ export default function PlanPage() {
             <div key={i} className="card grid" data-testid="plan-option">
               <label>
                 Name
-                <input value={o.name} disabled={!builder} onChange={(e) => setOption(i, { name: e.target.value })} />
+                <input value={o.name} required disabled={!builder} onChange={(e) => setOption(i, { name: e.target.value })} aria-invalid={saving.fieldError(`/options/${i}/name`) ? true : undefined} />
               </label>
               <label>
                 Price ($)
                 <input type="number" min={0} step="0.01" value={o.price} disabled={!builder} onChange={(e) => setOption(i, { price: e.target.value })} />
               </label>
-              <label className="row">
+              <label className="check">
                 <input type="checkbox" checked={o.taxable} disabled={!builder} onChange={(e) => setOption(i, { taxable: e.target.checked })} /> Taxable
               </label>
-              <label className="row">
+              <label className="check">
                 <input type="checkbox" checked={o.required} disabled={!builder} onChange={(e) => setOption(i, { required: e.target.checked })} /> Always included
               </label>
-              <label className="row">
+              <label className="check">
                 <input type="checkbox" checked={o.required || o.default} disabled={!builder || o.required} onChange={(e) => setOption(i, { default: e.target.checked })} /> Ticked to start
               </label>
               {builder && (
-                <button className="link" onClick={() => setOptions((rows) => rows.filter((_, j) => j !== i))}>
+                <button className="link danger" onClick={() => setOptions((rows) => rows.filter((_, j) => j !== i))}>
                   Remove
                 </button>
               )}
@@ -440,7 +470,7 @@ export default function PlanPage() {
                 </label>
               )}
               {builder && (
-                <button className="link" onClick={() => setRules((rows) => rows.filter((_, j) => j !== i))}>
+                <button className="link danger" onClick={() => setRules((rows) => rows.filter((_, j) => j !== i))}>
                   Remove
                 </button>
               )}
@@ -535,7 +565,9 @@ export default function PlanPage() {
                 <button className="secondary" onClick={() => setNewForm({ ...newForm, questions: [...newForm.questions, { label: "", type: "text", choices: "", required: false }] })}>
                   Add question
                 </button>
-                <button onClick={() => void saveIntakeForm()}>Save form</button>
+                <SubmitButton type="button" busy={savingForm.busy} onClick={() => void savingForm.run()}>
+                  Save form
+                </SubmitButton>
                 <button className="link" onClick={() => setNewForm(null)}>
                   Cancel
                 </button>
@@ -546,7 +578,7 @@ export default function PlanPage() {
       )}
 
       {tab === "versions" && (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Version</th>
@@ -562,15 +594,17 @@ export default function PlanPage() {
           <tbody>
             {plan.versions.map((v) => (
               <tr key={v.id}>
-                <td>{v.version}</td>
-                <td>{day(v.createdAt.slice(0, 10))}</td>
-                <td>{money(v.priceCents)}</td>
-                <td>{v.termsText ? "Its own" : "Company's"}</td>
-                <td>{v.options.length}</td>
-                <td>{v.coverage.length}</td>
-                <td>{v.intake ? `${v.intake.name} v${v.intake.version}` : "None"}</td>
-                <td>
-                  {v.contracts} contract{v.contracts === 1 ? "" : "s"}, {v.renewals} renewal{v.renewals === 1 ? "" : "s"}
+                <td data-label="Version">{v.version}</td>
+                <td data-label="Made">{dayOf(v.createdAt)}</td>
+                <td data-label="Price" className="num">
+                  {money(v.priceCents)}
+                </td>
+                <td data-label="Terms">{v.termsText ? "Its own" : "Company's"}</td>
+                <td data-label="Options">{v.options.length}</td>
+                <td data-label="Coverage rules">{v.coverage.length}</td>
+                <td data-label="Intake">{v.intake ? `${v.intake.name} v${v.intake.version}` : "None"}</td>
+                <td data-label="Used by">
+                  {plural(v.contracts, "contract")}, {plural(v.renewals, "renewal")}
                 </td>
               </tr>
             ))}
@@ -633,11 +667,14 @@ export default function PlanPage() {
 
       {builder && tab !== "versions" && tab !== "preview" && (
         <div className="row">
-          <button onClick={() => void save()}>Save as version {plan.version + 1}</button>
-          {saved && <span className="muted">{saved}</span>}
+          <SubmitButton type="button" busy={saving.busy} disabled={!changed} onClick={() => void saving.run()}>
+            Save as version {plan.version + 1}
+          </SubmitButton>
+          {saved && !changed && <span className="muted">{saved}</span>}
+          {!changed && !saved && <span className="muted small">No changes to save yet.</span>}
         </div>
       )}
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
     </div>
   );
 }

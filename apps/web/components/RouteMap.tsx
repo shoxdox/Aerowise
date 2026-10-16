@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { MAP_KIND_LABEL, MAP_STOP_KINDS, stopKind, type MapStopKind } from "@/components/map/kinds";
 import { StreetMap, type StreetMapRoute } from "@/components/map/StreetMap";
 import { SafetyBadges } from "@/components/SafetyBadges";
-import { day as formatDay, duration } from "@/lib/format";
+import { day as formatDay, duration, plural } from "@/lib/format";
 
 /** One color per technician column, in column order. */
 export const ROUTE_COLORS = ["#1f6f5c", "#2b59c3", "#b54708", "#7a3fb0", "#c4314b", "#4d7c0f"];
@@ -102,7 +102,7 @@ export function RouteMap({ day, technicianIds, numbers, stops }: Props) {
         selected={selected}
         onSelect={setSelected}
         fitKey={day.date}
-        label={`Map of ${day.technicians.length} route${day.technicians.length === 1 ? "" : "s"} on ${formatDay(day.date, { month: "short", day: "numeric" })}`}
+        label={`Map of ${plural(day.technicians.length, "route")} on ${formatDay(day.date, { month: "short", day: "numeric" })}`}
       />
       {sel && (
         <div className="card tight map-detail" data-testid="map-stop-detail">

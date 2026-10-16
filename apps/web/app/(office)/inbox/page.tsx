@@ -3,18 +3,19 @@
 import type { Inbox, InboxException, OnboardingChecklist as OnboardingChecklistData, Technician } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { IntroCard } from "@/components/Intro";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { SubmitButton } from "@/components/SubmitButton";
 import { useDemoVisitor, DemoJourney } from "@/lib/demo";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, money } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { day, money, plural } from "@/lib/format";
 import { useFeature } from "@/lib/features";
 import { canEdit, useSession } from "@/lib/session";
-
-const SEVERITY_CLASS: Record<InboxException["severity"], string> = { high: "danger", medium: "warn", low: "" };
 
 /** Where to deal with an exception, when it is not handled right here. */
 function href(e: InboxException): string | null {
@@ -74,22 +75,19 @@ const ACTION_LABEL: Partial<Record<InboxException["kind"], string>> = {
 
 /** A customer's text needs no written resolution: someone read it and acted. */
 function HandledButton({ e, onDone }: { e: InboxException; onDone: () => void }) {
-  const [error, setError] = useState<string | null>(null);
-  async function done() {
-    setError(null);
-    try {
+  const done = useSubmit(
+    async () => {
       await api(`/sms/messages/${e.target.id}/handled`, { method: "POST", body: {} });
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
   return (
     <>
-      <button className="secondary" onClick={() => void done()}>
+      <SubmitButton type="button" className="secondary" busy={done.busy} onClick={() => void done.run()}>
         Mark handled
-      </button>
-      {error && <span className="error">{error}</span>}
+      </SubmitButton>
+      {done.error && <span className="error">{done.error}</span>}
     </>
   );
 }
@@ -100,8 +98,14 @@ function HandledButton({ e, onDone }: { e: InboxException; onDone: () => void })
  */
 function WorkOrderAction({ e, canCreate }: { e: InboxException; canCreate: boolean }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const convert = useSubmit(
+    async () => {
+      const path = e.target.type === "issue" ? `/issues/${e.target.id}/work-order` : `/service-requests/${e.target.id}/work-order`;
+      const wo = await api<{ id: string }>(path, { method: "POST", body: {} });
+      router.push(`/work/${wo.id}`);
+    },
+    { fallback: "Could not make the work order." },
+  );
   if (e.workOrder) {
     return (
       <Link href={`/work/${e.workOrder.id}`} className="button secondary">
@@ -110,24 +114,12 @@ function WorkOrderAction({ e, canCreate }: { e: InboxException; canCreate: boole
     );
   }
   if (!canCreate) return null;
-  async function convert() {
-    setBusy(true);
-    setError(null);
-    try {
-      const path = e.target.type === "issue" ? `/issues/${e.target.id}/work-order` : `/service-requests/${e.target.id}/work-order`;
-      const wo = await api<{ id: string }>(path, { method: "POST", body: {} });
-      router.push(`/work/${wo.id}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not make the work order");
-      setBusy(false);
-    }
-  }
   return (
     <>
-      <button className="secondary" disabled={busy} onClick={() => void convert()}>
+      <SubmitButton type="button" className="secondary" busy={convert.busy} busyLabel="Making it…" onClick={() => void convert.run()}>
         Turn into work order
-      </button>
-      {error && <span className="error">{error}</span>}
+      </SubmitButton>
+      {convert.error && <span className="error">{convert.error}</span>}
     </>
   );
 }
@@ -135,26 +127,20 @@ function WorkOrderAction({ e, canCreate }: { e: InboxException; canCreate: boole
 /** Draft an estimate for an issue or request, or open the one already drafted for it. */
 function EstimateAction({ e }: { e: InboxException }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function draft() {
-    setBusy(true);
-    setError(null);
-    try {
+  const draft = useSubmit(
+    async () => {
       const path = e.target.type === "issue" ? `/issues/${e.target.id}/estimate` : `/service-requests/${e.target.id}/estimate`;
       const est = await api<{ id: string }>(path, { method: "POST", body: {} });
       router.push(`/estimates/${est.id}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not draft the estimate");
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not draft the estimate." },
+  );
   return (
     <>
-      <button className="secondary" disabled={busy} onClick={() => void draft()}>
+      <SubmitButton type="button" className="secondary" busy={draft.busy} busyLabel="Drafting…" onClick={() => void draft.run()}>
         Estimate
-      </button>
-      {error && <span className="error">{error}</span>}
+      </SubmitButton>
+      {draft.error && <span className="error">{draft.error}</span>}
     </>
   );
 }
@@ -162,19 +148,14 @@ function EstimateAction({ e }: { e: InboxException }) {
 /** Book the extra retest visit a corrective report needs; it uses none of the contract's visits. */
 function RetestAction({ e, today, onDone }: { e: InboxException; today: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const techs = useLoad<{ items: Technician[] }>(open ? "/technicians" : null);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
-    setError(null);
-    try {
+  const book = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       await api("/jobs", { method: "POST", body: { retestOfInspectionId: e.target.id, technicianId: v.technicianId, scheduledDate: v.scheduledDate } });
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not book the retest");
-    }
-  }
+    },
+    { fallback: "Could not book the retest." },
+  );
   if (!open) {
     return (
       <button className="secondary" onClick={() => setOpen(true)}>
@@ -183,7 +164,7 @@ function RetestAction({ e, today, onDone }: { e: InboxException; today: string; 
     );
   }
   return (
-    <form className="row" onSubmit={submit}>
+    <form className="row" onSubmit={book.form}>
       <select name="technicianId" required aria-label="Technician">
         {techs.data?.items.map((t) => (
           <option key={t.id} value={t.id}>
@@ -192,11 +173,11 @@ function RetestAction({ e, today, onDone }: { e: InboxException; today: string; 
         ))}
       </select>
       <input name="scheduledDate" type="date" required defaultValue={today} min={today} aria-label="Retest date" />
-      <button type="submit">Book</button>
+      <SubmitButton busy={book.busy}>Book</SubmitButton>
       <button type="button" className="link" onClick={() => setOpen(false)}>
         Cancel
       </button>
-      {error && <span className="error">{error}</span>}
+      {book.error && <span className="error">{book.error}</span>}
     </form>
   );
 }
@@ -204,35 +185,26 @@ function RetestAction({ e, today, onDone }: { e: InboxException; today: string; 
 /** A held inspection: accept it as the visit's inspection, or set it aside with a reason. */
 function HeldInspectionAction({ e, onDone }: { e: InboxException; onDone: () => void }) {
   const [aside, setAside] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function accept() {
-    setBusy(true);
-    setError(null);
-    try {
+  const accepting = useSubmit(
+    async () => {
       await api(`/inspections/conflicts/${e.target.id}/attach`, { method: "POST", body: {} });
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not accept it");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function dismiss(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    try {
-      await api(`/inspections/conflicts/${e.target.id}/dismiss`, { method: "POST", body: { reason: formValues(event.currentTarget).text } });
+    },
+    { fallback: "Could not accept it." },
+  );
+  const dismissing = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      await api(`/inspections/conflicts/${e.target.id}/dismiss`, { method: "POST", body: { reason: v.text } });
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not set it aside");
-    }
-  }
+    },
+    { fallback: "Could not set it aside." },
+  );
+  const error = accepting.error ?? dismissing.error;
   if (aside) {
     return (
-      <form className="row" onSubmit={dismiss}>
+      <form className="row" onSubmit={dismissing.form}>
         <input name="text" required placeholder="Why it is set aside (kept on record)" aria-label="Reason" />
-        <button type="submit">Set aside</button>
+        <SubmitButton busy={dismissing.busy}>Set aside</SubmitButton>
         <button type="button" className="link" onClick={() => setAside(false)}>
           Cancel
         </button>
@@ -243,9 +215,9 @@ function HeldInspectionAction({ e, onDone }: { e: InboxException; onDone: () => 
   return (
     <span className="row">
       {e.canAccept !== false && (
-        <button onClick={() => void accept()} disabled={busy}>
-          {busy ? "Accepting…" : "Accept as the inspection"}
-        </button>
+        <SubmitButton type="button" busy={accepting.busy} busyLabel="Accepting…" onClick={() => void accepting.run()}>
+          Accept as the inspection
+        </SubmitButton>
       )}
       <button className="secondary" onClick={() => setAside(true)}>
         Set aside
@@ -258,21 +230,16 @@ function HeldInspectionAction({ e, onDone }: { e: InboxException; onDone: () => 
 /** Accept an unfinished inspection, or close an issue or a service request, without leaving the inbox. */
 function InlineAction({ e, onDone }: { e: InboxException; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const isInspection = e.target.type === "inspection";
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = formValues(event.currentTarget).text;
-    setError(null);
-    try {
+  const saving = useSubmit(
+    async ({ text }: Record<string, string | undefined>) => {
       if (isInspection) await api(`/inspections/${e.target.id}/override`, { method: "POST", body: { reason: text } });
       else if (e.target.type === "service_request") await api(`/service-requests/${e.target.id}/resolve`, { method: "POST", body: { resolution: text } });
       else await api(`/issues/${e.target.id}/resolve`, { method: "POST", body: { resolution: text } });
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
   if (!open) {
     return (
       <button className="secondary" onClick={() => setOpen(true)}>
@@ -281,13 +248,13 @@ function InlineAction({ e, onDone }: { e: InboxException; onDone: () => void }) 
     );
   }
   return (
-    <form className="row" onSubmit={submit}>
+    <form className="row" onSubmit={saving.form}>
       <input name="text" required placeholder={isInspection ? "Why it is acceptable (kept on record)" : "How it was handled"} aria-label={isInspection ? "Reason" : "Resolution"} />
-      <button type="submit">Save</button>
+      <SubmitButton busy={saving.busy}>Save</SubmitButton>
       <button type="button" className="link" onClick={() => setOpen(false)}>
         Cancel
       </button>
-      {error && <span className="error">{error}</span>}
+      {saving.error && <span className="error">{saving.error}</span>}
     </form>
   );
 }
@@ -362,7 +329,7 @@ export default function InboxPage() {
               return (
                 <li key={e.key} className="card">
                   <div className="row">
-                    <span className={`badge ${SEVERITY_CLASS[e.severity]}`}>{e.severity}</span>
+                    <StatusBadge of="severity" value={e.severity} />
                     <strong>{e.title}</strong>
                     {e.dueOn && <span className="muted small">{day(e.dueOn)}</span>}
                     <span className="spacer" />
@@ -403,7 +370,7 @@ export default function InboxPage() {
         {data.routes.length === 0 && <p className="muted">No one is on a route today.</p>}
         {data.routes.map((r) => (
           <p key={r.technicianId}>
-            <Link href="/schedule">{r.name}</Link>: {r.done} of {r.stops} stop{r.stops === 1 ? "" : "s"} done
+            <Link href="/schedule">{r.name}</Link>: {r.done} of {plural(r.stops, "stop")} done
           </p>
         ))}
       </section>

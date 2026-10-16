@@ -3,10 +3,14 @@
 import { MAX_IMPORT_BYTES, type ImportDetail, type ImportListItem } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ChangeEvent } from "react";
+import { type ChangeEvent } from "react";
+import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
-import { when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api, Refusal } from "@/lib/api";
+import { plural, when } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 
 /** The file's bytes as base64, without the data: URL prefix. */
@@ -19,30 +23,22 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-const STATUS_CLASS: Record<ImportListItem["status"], string> = { preview: "upcoming", committed: "ok", failed: "danger", discarded: "cancelled", undone: "cancelled" };
-
 export default function ImportPage() {
   const router = useRouter();
-  const { data } = useLoad<{ items: ImportListItem[] }>("/imports");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    setError(null);
-    if (file.size > MAX_IMPORT_BYTES) {
-      setError("That file is larger than 10 MB. Split it into smaller files.");
-      return;
-    }
-    setBusy(true);
-    try {
+  const imports = useLoad<{ items: ImportListItem[] }>("/imports");
+  const { data } = imports;
+  const upload = useSubmit(
+    async (file: File) => {
+      if (file.size > MAX_IMPORT_BYTES) throw new Refusal("That file is larger than 10 MB. Split it into smaller files.");
       const created = await api<ImportDetail>("/imports", { method: "POST", body: { filename: file.name, contentBase64: await readBase64(file) } });
       router.push(`/import/${created.id}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not read the file");
-      setBusy(false);
-    }
+    },
+    { fallback: "Could not read the file." },
+  );
+
+  function onFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (file) void upload.run(file);
   }
 
   return (
@@ -59,10 +55,10 @@ export default function ImportPage() {
           make are remembered for your next import.
         </p>
         <label className="row">
-          <input type="file" accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFile} disabled={busy} aria-label="Spreadsheet" />
-          {busy && <span className="muted">Reading the file…</span>}
+          <input type="file" accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFile} disabled={upload.busy} aria-label="Spreadsheet" />
+          {upload.busy && <span className="muted">Reading the file…</span>}
         </label>
-        {error && <p className="error">{error}</p>}
+        <FormError error={upload.error} />
       </div>
 
       <p>
@@ -70,18 +66,19 @@ export default function ImportPage() {
       </p>
 
       <h2>Recent imports</h2>
+      <LoadState load={imports} label="imports" quiet />
       {data && data.items.length === 0 && (
         <EmptyState title="No imports yet">
           Bring customers, sites and contracts in from a spreadsheet above. Each import you run is listed here with what it added and what it skipped.
         </EmptyState>
       )}
       {data && data.items.length > 0 && (
-        <table className="compact">
+        <table className="compact stack">
           <thead>
             <tr>
               <th>File</th>
               <th>Uploaded</th>
-              <th>Rows</th>
+              <th className="num">Rows</th>
               <th>Status</th>
               <th>Created</th>
             </tr>
@@ -89,15 +86,19 @@ export default function ImportPage() {
           <tbody>
             {data.items.map((i) => (
               <tr key={i.id}>
-                <td>
+                <td data-label="File">
                   <Link href={`/import/${i.id}`}>{i.filename}</Link>
                 </td>
-                <td>{when(i.createdAt)}</td>
-                <td>{i.rows}</td>
-                <td>
-                  <span className={`badge ${STATUS_CLASS[i.status]}`}>{i.status}</span>
+                <td data-label="Uploaded">{when(i.createdAt)}</td>
+                <td data-label="Rows" className="num">
+                  {i.rows}
                 </td>
-                <td className="muted">{i.result ? `${i.result.customers} customers, ${i.result.sites} sites, ${i.result.contracts} contracts` : ""}</td>
+                <td data-label="Status">
+                  <StatusBadge of="import" value={i.status} />
+                </td>
+                <td data-label="Created" className="muted">
+                  {i.result ? `${plural(i.result.customers, "customer")}, ${plural(i.result.sites, "site")}, ${plural(i.result.contracts, "contract")}` : ""}
+                </td>
               </tr>
             ))}
           </tbody>

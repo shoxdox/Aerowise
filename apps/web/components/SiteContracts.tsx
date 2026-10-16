@@ -1,26 +1,23 @@
 "use client";
 
-import { RENEWAL_STATUS_LABELS, type ContractDetail, type ContractTermsPreview, type Plan, type PlanDetail, type RenewalStatus } from "@aerowise/domain";
+import { RENEWAL_STATUS_LABELS, statusLabel, type ContractDetail, type ContractTermsPreview, type Plan, type PlanDetail, type RenewalStatus } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { ContractFilingStatus } from "@/components/ContractFilingStatus";
 import { useQueryState } from "@/components/useQueryState";
 import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
-import { day, money, today } from "@/lib/format";
+import { dateRange, day, money, plural, today } from "@/lib/format";
 
-/** Thrown to stop `run` without an error message or closing the form. */
-class Keep extends Error {}
-
-const STATE_LABEL: Record<ContractDetail["state"], string> = {
-  upcoming: "starts soon",
-  active: "active",
-  expired: "expired",
-  cancelled: "cancelled",
-};
+/** Returned by an action to stop without an error message or closing the form. */
+const KEEP = Symbol("keep");
 
 export function SiteContracts({ siteId, editable }: { siteId: string; editable: boolean }) {
   const recordLoad = useLoad<{ items: ContractDetail[] }>(`/sites/${siteId}/contracts`);
@@ -36,7 +33,6 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // The authority needs more visits than the plan has: shown before anything is created.
   const [moreVisits, setMoreVisits] = useState<{ body: Record<string, unknown>; preview: ContractTermsPreview } | null>(null);
   const router = useRouter();
@@ -47,17 +43,17 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
   const [planId, setPlanId] = useState("");
   const [optionKeys, setOptionKeys] = useState<string[] | null>(null);
 
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
-    try {
-      await action();
+  // One change at a time: a second click while one is on its way does nothing.
+  const acting = useSubmit(
+    async (action: () => Promise<unknown>) => {
+      if ((await action()) === KEEP) return;
       setCreating(false);
       await reload();
-    } catch (err) {
-      if (err instanceof Keep) return;
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const run = (action: () => Promise<unknown>) => acting.run(action);
+  const error = acting.error;
 
   function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,9 +70,9 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
       // Said before the contract is made: more visits than the plan, or a schedule the authority hasn't settled.
       if (preview.warning || preview.scheduleNotice || preview.systemWarning) {
         setMoreVisits({ body, preview });
-        throw new Keep();
+        return KEEP;
       }
-      await api(`/sites/${siteId}/contracts`, { method: "POST", body });
+      return api(`/sites/${siteId}/contracts`, { method: "POST", body });
     });
   }
 
@@ -122,7 +118,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
           </button>
         )}
       </div>
-      {error && <p className="error">{error}</p>}
+      <FormError error={error} />
 
       {creating && <LoadState load={plans} label="maintenance plans" />}
       {creating && (
@@ -144,7 +140,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 >
                   {offered.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}: {p.termMonths} months, {p.visitsPerTerm} visits, {money(p.priceCents)}
+                      {p.name}: {p.termMonths} months, {plural(p.visitsPerTerm, "visit")}, {money(p.priceCents)}
                     </option>
                   ))}
                 </select>
@@ -190,9 +186,9 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                     <p className="restriction">{moreVisits.preview.scheduleNotice}. Until then its filings are held for review.</p>
                   )}
                   <div className="row">
-                    <button type="button" onClick={createWithMoreVisits}>
+                    <SubmitButton type="button" busy={acting.busy} onClick={createWithMoreVisits}>
                       {moreVisits.preview.warning ? `Start contract with ${moreVisits.preview.visitsPerTerm} visits` : "Start contract anyway"}
-                    </button>
+                    </SubmitButton>
                     <button type="button" className="link" onClick={() => setMoreVisits(null)}>
                       Change the plan
                     </button>
@@ -200,7 +196,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 </div>
               ) : (
                 <div className="wide">
-                  <button type="submit">Start contract</button>
+                  <SubmitButton busy={acting.busy}>Start contract</SubmitButton>
                 </div>
               )}
             </>
@@ -210,22 +206,25 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
 
       {data?.items.length === 0 && <p className="muted">No contracts on this site.</p>}
       {data?.items.map((c) => (
-        <details key={c.id} className="card stack" open={c.state === "active" || c.state === "upcoming"}><summary>{c.planName} · {STATE_LABEL[c.state]} · {day(c.startOn)}–{day(c.endOn)}</summary>
+        <details key={c.id} className="card stack" open={c.state === "active" || c.state === "upcoming"}><summary>{c.planName} · {statusLabel("contract", c.state).label} · {dateRange(c.startOn, c.endOn)}</summary>
           <div className="row">
             <strong>{c.planName}</strong>
-            <span className={`badge ${c.state}`}>{STATE_LABEL[c.state]}</span>
+            <StatusBadge of="contract" value={c.state} />
             <span className="muted">
-              {day(c.startOn)} to {day(c.endOn)} · {money(c.priceCents)}
+              {dateRange(c.startOn, c.endOn)} · {money(c.priceCents)}
               {c.autoRenew ? " · auto-renews" : ""}
             </span>
             <span className="spacer" />
             {editable && c.status === "active" && (
-              <button
+              <SubmitButton
+                type="button"
                 className="secondary"
+                busy={acting.busy}
+                busyLabel="Billing…"
                 onClick={() => run(async () => router.push(`/invoices/${(await api<{ id: string }>(`/contracts/${c.id}/invoice`, { method: "POST", body: {} })).id}`))}
               >
                 Bill next installment
-              </button>
+              </SubmitButton>
             )}
             {c.renewalId && (
               <Link href={`/renewals/${c.renewalId}`} className="small">
@@ -233,26 +232,29 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
               </Link>
             )}
             {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && (!c.renewalId || c.renewalStatus === "declined" || c.renewalStatus === "expired") && (
-              <button
+              <SubmitButton
+                type="button"
                 className="secondary"
+                busy={acting.busy}
                 onClick={() => run(async () => router.push(`/renewals/${(await api<{ id: string }>(`/contracts/${c.id}/renewal`, { method: "POST", body: {} })).id}`))}
               >
                 Start renewal
-              </button>
+              </SubmitButton>
             )}
             {editable && c.status === "active" && !c.serviceEndsOn && !c.renewedById && (
-              <button
+              <ConfirmButton
                 className="link"
-                title="Create the next term now, without the customer signing or paying online"
-                onClick={() => {
-                  if (window.confirm("Create the next term now, without the customer signing or paying online?")) void run(() => api(`/contracts/${c.id}/renew`, { method: "POST", body: {} }));
-                }}
+                danger={false}
+                question="Create the next term now, without the customer signing or paying online?"
+                confirmLabel="Renew now"
+                busy={acting.busy}
+                onConfirm={() => run(() => api(`/contracts/${c.id}/renew`, { method: "POST", body: {} }))}
               >
                 Renew now
-              </button>
+              </ConfirmButton>
             )}
             {editable && c.status === "active" && !c.serviceEndsOn && (
-              <button className="link" onClick={() => setCancelling((x) => (x === c.id ? null : c.id))}>
+              <button className="link danger" onClick={() => setCancelling((x) => (x === c.id ? null : c.id))}>
                 Cancel contract
               </button>
             )}
@@ -282,7 +284,11 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                 30 TAC 285.7(d)(3): the provider must notify the permitting authority and the system&apos;s manufacturer in writing, and the owner too when the provider ends the contract, at least
                 30 days before service stops. Aerowise reminds you and records the notice; it does not send it.
               </p>
-              <button className="primary">Cancel contract</button>
+              <div>
+                <SubmitButton className="danger" busy={acting.busy}>
+                  Cancel contract
+                </SubmitButton>
+              </div>
             </form>
           )}
           {c.status === "active" && c.serviceEndsOn && (
@@ -324,7 +330,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             </div>
           )}
           <ContractFilingStatus key={`${c.id}-${c.status}-${c.serviceEndsOn ?? ""}`} contractId={c.id} editable={editable} />
-          <table className="compact">
+          <table className="compact stack">
             <thead>
               <tr>
                 <th>Visit</th>
@@ -336,20 +342,20 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
             <tbody>
               {c.obligations.map((o) => (
                 <tr key={o.id} id={`obligation-${o.id}`} tabIndex={o.id === selectedObligation ? -1 : undefined} className={o.id === selectedObligation ? "selected-obligation" : undefined} data-testid={o.serviceType === "aerobic_inspection" ? undefined : "cycle-visit"}>
-                  <td>
+                  <td data-label="Visit">
                     {o.serviceType === "aerobic_inspection" ? "" : `${c.cycles.find((y) => y.cycleKey === o.cycleKey)?.label ?? o.cycleKey} `}#{o.sequence}
                   </td>
-                  <td>
+                  <td data-label="Window">
                     {day(o.windowStart, { month: "short", day: "numeric" })} to {day(o.windowEnd)}
                   </td>
-                  <td>{day(o.dueOn)}</td>
-                  <td>
-                    <span className={`badge ${o.status}`}>{o.status}</span>
+                  <td data-label="Due">{day(o.dueOn)}</td>
+                  <td data-label="Status">
+                    <StatusBadge of="obligation" value={o.status} />
                     {o.workOrder ? (
                       <>
                         {" "}
                         <Link href={`/work/${o.workOrder.id}`} className="small">
-                          {o.workOrder.label}: {o.workOrder.status.replace("_", " ")}
+                          {o.workOrder.label}: {statusLabel("workOrder", o.workOrder.status).label}
                         </Link>
                       </>
                     ) : (
@@ -360,7 +366,7 @@ export function SiteContracts({ siteId, editable }: { siteId: string; editable: 
                       c.status === "active" && (
                         <>
                           {" "}
-                          <button className="link small" onClick={() => bookWork(o.id)}>
+                          <button className="link small" disabled={acting.busy} onClick={() => bookWork(o.id)}>
                             Book work
                           </button>
                         </>

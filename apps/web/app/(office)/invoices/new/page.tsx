@@ -5,13 +5,15 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { InvoiceEditor } from "@/components/InvoiceEditor";
+import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
 
 function NewInvoice() {
   const router = useRouter();
   const customerId = useSearchParams().get("customerId") ?? undefined;
-  const { data: settings } = useLoad<BillingSettings>("/billing/settings");
-  if (!settings) return <p className="muted">Loading…</p>;
+  const billing = useLoad<BillingSettings>("/billing/settings");
+  const settings = billing.data;
+  if (!settings) return <LoadState load={billing} label="invoice defaults" />;
   return (
     <div className="stack">
       <p>

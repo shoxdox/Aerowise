@@ -3,10 +3,12 @@
 import type { WorkType } from "@aerowise/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useState } from "react";
 import { blankLine, EstimateLineEditor, toInput, type DraftLine } from "@/components/EstimateLineEditor";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, Refusal } from "@/lib/api";
 import { useFeature } from "@/lib/features";
 
 interface SiteOption {
@@ -25,8 +27,6 @@ function NewEstimate() {
   const list = useLoad<{ items: SiteOption[] }>(fixedSite ? null : `/sites?limit=50${search ? `&search=${encodeURIComponent(search)}` : ""}`);
   const one = useLoad<{ id: string; addressLine1: string; city: string; customer: { displayName: string } }>(fixedSite ? `/sites/${fixedSite}` : null);
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const deposits = useFeature("deposits");
   const siteOptions: SiteOption[] = fixedSite
     ? one.data
@@ -34,17 +34,10 @@ function NewEstimate() {
       : []
     : (list.data?.items ?? []);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
-    const parsed = toInput(lines);
-    if ("error" in parsed) {
-      setError(parsed.error);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
+  const create = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      const parsed = toInput(lines);
+      if ("error" in parsed) throw new Refusal(parsed.error);
       const e = await api<{ id: string }>("/estimates", {
         method: "POST",
         body: {
@@ -58,14 +51,12 @@ function NewEstimate() {
         },
       });
       router.push(`/estimates/${e.id}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create the estimate");
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not create the estimate." },
+  );
 
   return (
-    <form className="stack" onSubmit={submit}>
+    <form className="stack" onSubmit={create.form}>
       <p>
         <Link href="/estimates">← Estimates</Link>
       </p>
@@ -104,7 +95,8 @@ function NewEstimate() {
         Title <span className="muted small">(&quot;Estimate&quot; plus the kind of work if left blank)</span>
         <input name="title" maxLength={200} />
       </label>
-      <fieldset className="stack">
+      {/* A fieldset grows to its widest content unless told otherwise; the lines scroll instead. */}
+      <fieldset className="stack" style={{ minWidth: 0 }}>
         <legend>Lines</legend>
         <EstimateLineEditor lines={lines} onChange={setLines} />
       </fieldset>
@@ -125,11 +117,9 @@ function NewEstimate() {
         )}
       </div>
       <p className="muted small">The company&apos;s sales tax rate and estimate terms apply; you can change them on the draft before sending.</p>
-      {error && <p className="error">{error}</p>}
+      <FormError error={create.error} />
       <div className="row">
-        <button type="submit" disabled={busy}>
-          Save draft
-        </button>
+        <SubmitButton busy={create.busy}>Save draft</SubmitButton>
         <button type="button" className="secondary" onClick={() => router.back()}>
           Cancel
         </button>

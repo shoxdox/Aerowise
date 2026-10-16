@@ -1,9 +1,11 @@
 "use client";
 
-import { DEPOSIT_LEDGER_LABELS, roleHasPermission, type DepositView } from "@aerowise/domain";
+import { DEPOSIT_LEDGER_LABELS, roleHasPermission, statusLabel, type DepositView } from "@aerowise/domain";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useState } from "react";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { money, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
@@ -26,27 +28,19 @@ export function DepositPanel({ deposit, onChange }: { deposit: DepositView; onCh
     setPanelState(next);
     setRequestId(next ? crypto.randomUUID() : "");
   };
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const b = deposit.balances;
   const d = deposit.invoice;
 
-  async function submit(ev: FormEvent<HTMLFormElement>) {
-    ev.preventDefault();
-    const v = formValues(ev.currentTarget);
-    const body = panel === "shortfall" ? { requestId, kind: "write_off", amountCents: cents(v.amount), reason: v.reason } : { requestId, amountCents: cents(v.amount), reason: v.reason };
-    setBusy(true);
-    setProblem(null);
-    try {
+  const saving = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      const body = panel === "shortfall" ? { requestId, kind: "write_off", amountCents: cents(v.amount), reason: v.reason } : { requestId, amountCents: cents(v.amount), reason: v.reason };
       await api(`/invoices/${d.id}/deposit/${panel}`, { method: "POST", body });
       setPanel(null);
       await onChange();
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const problem = saving.error;
 
   const max = panel === "refund" ? Math.min(b.free, deposit.refundableCents) : panel === "retain" ? b.free : panel === "retain-reverse" ? b.retained : b.shortfallOutstanding;
   return (
@@ -55,7 +49,7 @@ export function DepositPanel({ deposit, onChange }: { deposit: DepositView; onCh
         <h2>Deposit</h2>
         <Link href={`/invoices/${d.id}`}>{d.number ?? "Deposit invoice"}</Link>
         <span className="muted small">
-          {money(d.totalCents)} · {d.voided ? "void" : d.paymentStatus}
+          {money(d.totalCents)} · {d.voided ? "Void" : statusLabel("payment", d.paymentStatus).label}
         </span>
       </div>
       <dl className="details">
@@ -126,7 +120,7 @@ export function DepositPanel({ deposit, onChange }: { deposit: DepositView; onCh
         </div>
       )}
       {panel && (
-        <form className="stack" onSubmit={submit}>
+        <form className="stack" onSubmit={saving.form}>
           <p className="muted small">
             {panel === "refund"
               ? "Card and bank refunds stay pending until Stripe says they went through; the money is held for them meanwhile."
@@ -145,13 +139,11 @@ export function DepositPanel({ deposit, onChange }: { deposit: DepositView; onCh
             <input name="reason" required maxLength={2000} />
           </label>
           <div>
-            <button type="submit" disabled={busy}>
-              Save
-            </button>
+            <SubmitButton busy={saving.busy}>Save</SubmitButton>
           </div>
         </form>
       )}
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
       {deposit.refunds.some((f) => f.status !== "succeeded") && (
         <ul className="small">
           {deposit.refunds
