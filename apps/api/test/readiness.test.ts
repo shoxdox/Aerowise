@@ -876,7 +876,7 @@ describe("contract deadlines by kind (30 TAC 285.7(c), (d))", () => {
       noticeNote: null,
     });
     const item = ((await s.api.get("/inbox")).json().items as { kind: string; severity: string; title: string; detail: string; dueOn: string }[]).find((i) => i.kind === "discontinuation_notice_due");
-    expect(item).toMatchObject({ severity: "high", title: "Notice that service is ending is late", dueOn: "2026-02-18", detail: expect.stringContaining("and the owner by 2026-02-18 (30 TAC 285.7(d)(3))") });
+    expect(item).toMatchObject({ severity: "high", title: "Notice that service is ending is late", dueOn: "2026-02-18", detail: expect.stringContaining("and the owner by Feb 18, 2026 (30 TAC 285.7(d)(3))") });
     // An ending contract is not offered for renewal in the inbox either.
     expect(((await s.api.get("/inbox")).json().items as { kind: string }[]).some((i) => i.kind === "contract_expiring")).toBe(false);
 
@@ -933,7 +933,7 @@ describe("ending service and the technician's route", () => {
     // The kept visit stays, but its job is after the last day: the office is told to move it.
     expect(await route(s, "2026-03-25")).toEqual([s.job.jobId]);
     const flagged = ((await s.api.get("/inbox")).json().items as { kind: string; target: { id: string }; detail: string }[]).find((i) => i.kind === "visit_after_service_end");
-    expect(flagged).toMatchObject({ target: { id: first!.id }, detail: expect.stringContaining("move it to 2026-03-20 or earlier") });
+    expect(flagged).toMatchObject({ target: { id: first!.id }, detail: expect.stringContaining("move it to Mar 20, 2026 or earlier") });
 
     // Nothing can be booked or moved past the last day.
     expect((await s.api.patch(`/jobs/${s.job.jobId}`, { scheduledDate: "2026-03-21" })).json()).toMatchObject({ message: expect.stringContaining("ends after 2026-03-20") });

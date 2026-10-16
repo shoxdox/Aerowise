@@ -102,6 +102,11 @@ export const planVersionInput = z.object({
    * Left out, the current version's choice is kept.
    */
   aerobic: z.boolean().optional(),
+  /**
+   * The version the office was looking at. When given, the save is refused (409) if the plan has
+   * moved on since, so a second click or a second person's save never stacks an identical version.
+   */
+  expectedVersion: z.number().int().positive().optional(),
 });
 export type PlanVersionInput = z.input<typeof planVersionInput>;
 

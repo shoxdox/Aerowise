@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { verifyPassword, type Database } from "@aerowise/db";
-import { INTROS, isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES } from "@aerowise/domain";
+import { dateInZone, FEATURES, INTROS, isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES, type Feature } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -28,6 +28,10 @@ export const meResponse = z.object({
    * so it can later learn that the company was removed (STG-03). Says nothing else.
    */
   demoTicket: z.string().optional(),
+  /** What this deployment has switched on, so the office menu draws once without asking /app-info. */
+  features: z.array(z.enum(FEATURES)).optional(),
+  /** The organization's date right now (YYYY-MM-DD in its own time zone). */
+  today: z.iso.date().optional(),
 });
 
 const demoTicket = (key: string, organizationId: string) => createHmac("sha256", key).update(`demo-ticket.${organizationId}`).digest("base64url");
@@ -39,8 +43,19 @@ function verifyDemoTicket(key: string, organizationId: string, ticket: unknown) 
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
-export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">) {
-  if (auth.support) return loadSupportMe(db, auth.organizationId, auth.support);
+/** What the deployment adds to a session: its switched-on features and the company's date. */
+export interface MeContext {
+  features: ReadonlySet<Feature>;
+  now: Date;
+}
+
+const deployment = (ctx: MeContext | undefined, timezone: string) => (ctx ? { features: [...ctx.features].sort(), today: dateInZone(ctx.now, timezone) } : {});
+
+export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">, ctx?: MeContext) {
+  if (auth.support) {
+    const me = await loadSupportMe(db, auth.organizationId, auth.support);
+    return { ...me, ...deployment(ctx, me.organization.timezone) };
+  }
   const { introsDismissed, ...user } = await db.selectFrom("users").select(["id", "name", "email", "introsDismissed"]).where("id", "=", auth.userId).executeTakeFirstOrThrow();
   const organizations = await db
     .selectFrom("memberships as m")
@@ -64,6 +79,7 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
     legalDue: (await loadLegalStatus(db, auth)).due,
     introsDismissed: knownIntros(introsDismissed),
+    ...deployment(ctx, current.timezone),
   };
 }
 
@@ -95,9 +111,9 @@ async function loadSupportMe(db: Database, organizationId: string, support: NonN
   };
 }
 
-export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean; loginRateLimit: number; demoTicketKey: string }> = async (
+export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean; loginRateLimit: number; demoTicketKey: string; features: ReadonlySet<Feature>; now: () => Date }> = async (
   app,
-  { db, production, loginRateLimit, demoTicketKey },
+  { db, production, loginRateLimit, demoTicketKey, features, now },
 ) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
 
@@ -149,7 +165,7 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
 
       const session = await createSession(db, membership.organizationId, user.id);
       reply.setCookie(SESSION_COOKIE, session.token, { ...cookieOptions, expires: session.expiresAt });
-      return loadMe(db, { userId: user.id, organizationId: membership.organizationId, role: membership.role });
+      return loadMe(db, { userId: user.id, organizationId: membership.organizationId, role: membership.role }, { features, now: now() });
     },
   );
 
@@ -198,7 +214,7 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
     { config: { permission: "self:read" }, schema: { tags: ["auth"], summary: "Current user and organization", response: { 200: meResponse } } },
     async (req) => {
       const auth = req.requireAuth();
-      const me = await loadMe(db, auth);
+      const me = await loadMe(db, auth, { features, now: now() });
       const org = await db.selectFrom("organizations").select("demo").where("id", "=", auth.organizationId).executeTakeFirstOrThrow();
       return org.demo ? { ...me, demoTicket: demoTicket(demoTicketKey, auth.organizationId) } : me;
     },

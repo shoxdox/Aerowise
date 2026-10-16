@@ -304,20 +304,35 @@ export const customerRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     "/customers/:id/contacts",
     {
       config: { permission: "crm:write" },
-      schema: { tags: ["contacts"], summary: "Add a contact to a customer", params, body: contactInput, response: { 201: contact } },
+      schema: {
+        tags: ["contacts"],
+        summary: "Add a contact to a customer",
+        description: "With a `creationId`, a repeated save (a double click, a retry after a lost answer) returns the contact the first one made instead of adding it twice.",
+        params,
+        // The form's own id for the new contact, chosen once and sent with every retry.
+        body: contactInput.extend({ creationId: id.optional() }),
+        response: { 201: contact },
+      },
     },
     async (req, reply) => {
       const { organizationId } = req.requireAuth();
+      const { creationId, ...fields } = req.body;
       const parent = await findCustomer(organizationId, req.params.id);
-      await assertSiteBelongsToCustomer(organizationId, parent.id, req.body.siteId);
-      if (req.body.consentSms) await assertNotOptedOut(organizationId, req.body.phone);
+      await assertSiteBelongsToCustomer(organizationId, parent.id, fields.siteId);
+      if (fields.consentSms) await assertNotOptedOut(organizationId, fields.phone);
       const row = await db.transaction().execute(async (trx) => {
+        if (creationId) {
+          await sql`select pg_advisory_xact_lock(hashtextextended(${`contact:${creationId}`}, 0))`.execute(trx);
+          const prior = await trx.selectFrom("contacts").select(["organizationId", "customerId"]).where("id", "=", creationId).executeTakeFirst();
+          if (prior && (prior.organizationId !== organizationId || prior.customerId !== parent.id)) throw unprocessable("This save id belongs to a different contact. Open the saved one before adding another.");
+          if (prior) return trx.selectFrom("contacts").select(CONTACT_COLUMNS).where("id", "=", creationId).executeTakeFirstOrThrow();
+        }
         const created = await trx
           .insertInto("contacts")
-          .values({ ...definedOnly(req.body), organizationId, customerId: parent.id })
+          .values({ ...definedOnly(fields), ...(creationId ? { id: creationId } : {}), organizationId, customerId: parent.id })
           .returning(CONTACT_COLUMNS)
           .executeTakeFirstOrThrow();
-        await audit(trx, req, { action: "contact.created", entityType: "contact", entityId: created.id, changes: req.body });
+        await audit(trx, req, { action: "contact.created", entityType: "contact", entityId: created.id, changes: fields });
         return created;
       });
       return reply.status(201).send(row);

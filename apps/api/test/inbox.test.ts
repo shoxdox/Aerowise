@@ -54,7 +54,7 @@ describe("exception inbox", () => {
     expect(inbox.items.find((i) => i.kind === "inspection_overdue")).toMatchObject({
       severity: "high",
       dueOn: "2026-03-31",
-      detail: "Scheduled for 2026-03-01 with technician user",
+      detail: "Scheduled for Mar 1, 2026 with technician user",
       target: { type: "obligation", id: s.visit.id },
     });
     await complete(s);
@@ -109,13 +109,13 @@ describe("exception inbox", () => {
     ctx.now = new Date("2026-06-05T18:00:00Z");
     const visit2 = s.contract.obligations[1];
     expect((await inboxOf(s)).items.find((i) => i.kind === "next_visit_late")).toMatchObject({
-      title: "Schedule the next visit by 2026-07-01",
+      title: "Schedule the next visit by Jul 1, 2026",
       severity: "medium",
       target: { type: "obligation", id: visit2.id },
     });
     // On the route too late still counts; in time clears it.
     const job = (await s.api.post("/jobs", { obligationId: visit2.id, technicianId: s.tech.id, scheduledDate: "2026-07-10" })).json();
-    expect((await inboxOf(s)).items.find((i) => i.kind === "next_visit_late")?.detail).toBe("It is on the route for 2026-07-10, after the authority's date");
+    expect((await inboxOf(s)).items.find((i) => i.kind === "next_visit_late")?.detail).toBe("It is on the route for Jul 10, 2026, after the authority's date");
     await s.api.patch(`/jobs/${job.jobId}`, { scheduledDate: "2026-06-20" });
     expect(await kinds(s)).not.toContain("next_visit_late");
   });
@@ -126,7 +126,7 @@ describe("exception inbox", () => {
       issues: [{ clientId: "6a3f1b2c-1d2e-4f3a-8b4c-5d6e7f8a9b01", type: "repair_needed", severity: "high", description: "Aerator noisy" }],
     });
     const item = (await inboxOf(s)).items.find((i) => i.kind === "issue_open")!;
-    expect(item).toMatchObject({ severity: "high", title: "Repair needed", detail: "Aerator noisy · found 2026-03-01" });
+    expect(item).toMatchObject({ severity: "high", title: "Repair needed", detail: "Aerator noisy · found Mar 1, 2026" });
 
     expect((await s.techApi.post(`/issues/${item.target.id}/resolve`, { resolution: "x" })).statusCode).toBe(403);
     expect((await s.api.post(`/issues/${item.target.id}/resolve`, { resolution: "Replaced the aerator" })).json()).toMatchObject({ status: "resolved" });
@@ -147,6 +147,17 @@ describe("exception inbox", () => {
     expect((await s.api.post(`/contracts/${s.contract.id}/renew`, {})).statusCode).toBe(201);
     inbox = await inboxOf(s);
     expect(inbox.items.map((i) => i.kind)).not.toContain("contract_expired");
+  });
+
+  it("dates an evening call by the company's day, not UTC's", async () => {
+    const s = await setup(ctx);
+    // 8:30 PM in Texas on Feb 28 is already Mar 1 in UTC; the call was typed in the next morning.
+    ctx.now = new Date("2026-03-01T15:00:00Z");
+    const logged = await s.api.post("/service-requests", { siteId: s.site.id, kind: "alarm", description: "Alarm sounding", receivedAt: "2026-03-01T02:30:00Z" });
+    expect(logged.statusCode, logged.body).toBe(201);
+    const item = (await inboxOf(s)).items.find((i) => i.kind === "service_request")!;
+    expect(item.detail).toContain("received Feb 28, 2026");
+    expect(item.detail).not.toContain("2026-03-01");
   });
 
   it("puts the most urgent first and counts today's route", async () => {

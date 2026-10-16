@@ -484,6 +484,10 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           if (!form) throw unprocessable("intakeTemplateId is not one of this company's intake forms");
         }
         const cur = await trx.selectFrom("planVersions").selectAll().where("id", "=", p.currentVersionId).executeTakeFirstOrThrow();
+        // Versions are permanent, so a repeated save (a double click) must not make an identical one.
+        if (b.expectedVersion !== undefined && b.expectedVersion !== cur.version) {
+          throw new HttpError(409, "plan_version_changed", `This plan is on version ${cur.version} now. Open it again to see that version before saving.`);
+        }
         const serviceCycles = await versionCycles(trx, organizationId, cur, b);
         const created = await trx
           .insertInto("planVersions")
