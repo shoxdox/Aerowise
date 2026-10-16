@@ -63,83 +63,83 @@ export function EstimateLineEditor({ lines, onChange }: { lines: DraftLine[]; on
   return (
     <div className="stack">
       <div className="table-scroll">
-      <table className="compact stack line-editor" aria-label="Estimate lines">
-        <thead>
-          <tr>
-            <th>Description</th>
-            <th className="num" style={{ width: "7em" }}>
-              Qty
-            </th>
-            <th className="num" style={{ width: "9em" }}>
-              Unit price ($)
-            </th>
-            <th className="num" style={{ width: "8em" }}>
-              Amount
-            </th>
-            <th style={{ width: "6em" }}>Taxable</th>
-            <th style={{ width: "9em" }}>Optional</th>
-            <th style={{ width: "5em" }}>
-              <span className="muted small">Remove</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l, i) => (
-            <tr key={l.key}>
-              <td data-label="Description">
-                <input
-                  value={l.description}
-                  onChange={(e) => set(l.key, { description: e.target.value })}
-                  aria-label={`Line ${i + 1} description`}
-                  placeholder="What the work or part is"
-                  maxLength={500}
-                  style={{ ...CELL_INPUT, minWidth: "12em" }}
-                />
-              </td>
-              <td data-label="Qty" className="num">
-                <input type="number" min="0.001" step="0.001" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Line ${i + 1} quantity`} style={{ ...CELL_INPUT, minWidth: "5em" }} />
-              </td>
-              <td data-label="Unit price ($)" className="num">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={l.price}
-                  onChange={(e) => set(l.key, { price: e.target.value })}
-                  aria-label={`Line ${i + 1} unit price`}
-                  placeholder="0.00"
-                  style={{ ...CELL_INPUT, minWidth: "6em" }}
-                />
-              </td>
-              <td data-label="Amount" className="num">
-                <strong>{money(estimateLineAmount({ quantityMilli: milli(l.quantity), unitPriceCents: cents(l.price) }))}</strong>
-              </td>
-              <td data-label="Taxable">
-                <input type="checkbox" checked={l.taxable} onChange={(e) => set(l.key, { taxable: e.target.checked })} aria-label={`Line ${i + 1} taxable`} />
-              </td>
-              <td data-label="Optional">
-                <label className="check">
-                  <input type="checkbox" checked={l.optional} onChange={(e) => set(l.key, { optional: e.target.checked })} aria-label={`Line ${i + 1} optional`} />
-                  Optional
-                </label>
-                {l.optional && (
-                  <label className="check">
-                    <input type="checkbox" checked={l.selectedByDefault} onChange={(e) => set(l.key, { selectedByDefault: e.target.checked })} aria-label={`Line ${i + 1} starts chosen`} />
-                    Starts chosen
-                  </label>
-                )}
-              </td>
-              <td className={lines.length > 1 ? "actions" : undefined}>
-                {lines.length > 1 && (
-                  <button type="button" className="link danger" onClick={() => onChange(lines.filter((x) => x.key !== l.key))} aria-label={`Remove line ${i + 1}`}>
-                    Remove
-                  </button>
-                )}
-              </td>
+        <table className="compact stack line-editor" aria-label="Estimate lines">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th className="num" style={{ width: "7em" }}>
+                Qty
+              </th>
+              <th className="num" style={{ width: "9em" }}>
+                Unit price ($)
+              </th>
+              <th className="num" style={{ width: "8em" }}>
+                Amount
+              </th>
+              <th style={{ width: "6em" }}>Taxable</th>
+              <th style={{ width: "9em" }}>Optional</th>
+              <th style={{ width: "5em" }}>
+                <span className="muted small">Remove</span>
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={l.key}>
+                <td data-label="Description">
+                  <input
+                    value={l.description}
+                    onChange={(e) => set(l.key, { description: e.target.value })}
+                    aria-label={`Line ${i + 1} description`}
+                    placeholder="What the work or part is"
+                    maxLength={500}
+                    style={{ ...CELL_INPUT, minWidth: "12em" }}
+                  />
+                </td>
+                <td data-label="Qty" className="num">
+                  <input type="number" min="0.001" step="0.001" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Line ${i + 1} quantity`} style={{ ...CELL_INPUT, minWidth: "5em" }} />
+                </td>
+                <td data-label="Unit price ($)" className="num">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={l.price}
+                    onChange={(e) => set(l.key, { price: e.target.value })}
+                    aria-label={`Line ${i + 1} unit price`}
+                    placeholder="0.00"
+                    style={{ ...CELL_INPUT, minWidth: "6em" }}
+                  />
+                </td>
+                <td data-label="Amount" className="num">
+                  <strong>{money(estimateLineAmount({ quantityMilli: milli(l.quantity), unitPriceCents: cents(l.price) }))}</strong>
+                </td>
+                <td data-label="Taxable">
+                  <input type="checkbox" checked={l.taxable} onChange={(e) => set(l.key, { taxable: e.target.checked })} aria-label={`Line ${i + 1} taxable`} />
+                </td>
+                <td data-label="Optional">
+                  <label className="check">
+                    <input type="checkbox" checked={l.optional} onChange={(e) => set(l.key, { optional: e.target.checked })} aria-label={`Line ${i + 1} optional`} />
+                    Optional
+                  </label>
+                  {l.optional && (
+                    <label className="check">
+                      <input type="checkbox" checked={l.selectedByDefault} onChange={(e) => set(l.key, { selectedByDefault: e.target.checked })} aria-label={`Line ${i + 1} starts chosen`} />
+                      Starts chosen
+                    </label>
+                  )}
+                </td>
+                <td className={lines.length > 1 ? "actions" : undefined}>
+                  {lines.length > 1 && (
+                    <button type="button" className="link danger" onClick={() => onChange(lines.filter((x) => x.key !== l.key))} aria-label={`Remove line ${i + 1}`}>
+                      Remove
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <div>
         <button type="button" className="secondary" onClick={() => onChange([...lines, blankLine()])}>

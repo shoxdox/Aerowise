@@ -50,6 +50,29 @@ test("an estimate edited after its last save is sent at the edited price, and ac
   expect(sent.versions.at(-1).lines[0].unitPriceCents).toBe(12000);
 });
 
+test("a double click on Save draft makes one estimate, and a half-typed draft can still be withdrawn", async ({ page }) => {
+  await signIn(page);
+  const { siteId } = await emailedCustomer(page);
+  const title = `Double click TEST ${Date.now()}`;
+  await page.goto(`/estimates/new?siteId=${siteId}`);
+  await page.getByRole("textbox", { name: /^Title/ }).fill(title);
+  await page.getByLabel("Line 1 description").fill("Labor");
+  await page.getByLabel("Line 1 unit price").fill("95");
+  // The button stays busy until the new estimate's page opens, so the second click sends nothing.
+  await page.getByRole("button", { name: "Save draft" }).dblclick();
+  await page.waitForURL(/\/estimates\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("estimate-status")).toHaveText("Draft");
+  const list = (await (await page.request.get(`/api/estimates?limit=100`)).json()).items as { title: string }[];
+  expect(list.filter((x) => x.title === title)).toHaveLength(1);
+
+  // Withdrawing needs none of the draft's edits, so a line left without a description does not block it.
+  await page.getByLabel("Line 1 description").fill("");
+  await page.getByRole("button", { name: "Withdraw" }).click();
+  await page.getByLabel("Why withdraw it?").fill("Customer went with a neighbour's quote");
+  await page.getByRole("button", { name: "Withdraw the estimate" }).click();
+  await expect(page.getByTestId("estimate-status")).toHaveText("Void");
+});
+
 test("an invoice draft edited after its last save is issued at the edited amount", async ({ page }) => {
   await signIn(page);
   const { customerId } = await emailedCustomer(page);

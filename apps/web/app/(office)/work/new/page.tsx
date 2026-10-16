@@ -53,7 +53,7 @@ function NewWorkOrder() {
       });
       router.push(`/work/${wo.id}`);
     },
-    { fallback: "Could not create the work order.", labels: { lineDescription: "Charge description", linePrice: "Unit price" } },
+    { fallback: "Could not create the work order.", leaves: true, labels: { lineDescription: "Charge description", linePrice: "Unit price" } },
   );
 
   return (

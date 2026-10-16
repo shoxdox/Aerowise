@@ -51,7 +51,7 @@ export default function CustomersPage() {
         throw err;
       }
     },
-    { fallback: "Could not confirm the save.", labels: { billingPostalCode: "ZIP", postalCode: "ZIP", displayName: "Name", addressLine1: "Service address" } },
+    { fallback: "Could not confirm the save.", leaves: true, labels: { billingPostalCode: "ZIP", postalCode: "ZIP", displayName: "Name", addressLine1: "Service address" } },
   );
 
   return (

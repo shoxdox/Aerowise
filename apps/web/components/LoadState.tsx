@@ -49,8 +49,9 @@ export function NotForYourRole() {
  */
 export function LoadState({ load, label = "records", back, quiet = false }: { load: Load; label?: string; back?: { href: string; label: string }; quiet?: boolean }) {
   if (load.error) {
-    // A missing record (or a malformed link to one) will not appear on retry.
-    if (load.errorStatus === 404 || (load.errorStatus === 400 && !load.stale)) return <NotFound title={`${capital(label)} not found`} back={back} />;
+    // A missing record (or a malformed link to one) will not appear on retry. A 400 on a list is
+    // a filter it refused, not a missing record, so only a record's page (one with `back`) reads it so.
+    if (load.errorStatus === 404 || (load.errorStatus === 400 && back && !load.stale)) return <NotFound title={`${capital(label)} not found`} back={back} />;
     if (load.errorStatus === 403) return <NotForYourRole />;
     return (
       <div className="card stack" role="alert">

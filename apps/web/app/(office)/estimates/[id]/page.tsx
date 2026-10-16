@@ -215,9 +215,12 @@ export default function EstimatePage() {
   async function saveDraftFirst() {
     return e?.status !== "draft" || !draft.current || (await draft.current.saveEdits());
   }
+  // Which button is on its way, so only that one says so.
+  const [pending, setPending] = useState<string | null>(null);
   const action = useSubmit(
-    async (path: string, body: unknown) => {
-      if (!(await saveDraftFirst())) return false;
+    async (path: string, body: unknown, saveFirst = false) => {
+      // Withdrawing or cancelling never needs the draft's edits (and a half-typed line must not block it).
+      if (saveFirst && !(await saveDraftFirst())) return false;
       try {
         await api(path, { method: "POST", body });
         setPanel(null);
@@ -260,7 +263,15 @@ export default function EstimatePage() {
   const recordDefault = recordLines.filter((l) => l.optional && l.selectedByDefault).map((l) => l.id);
   const chosenForRecord = recordChosen ?? recordDefault;
   const recordTotals = e.status === "draft" ? estimateTotals(recordLines, e.draft.discountCents, e.draft.taxRateBps, chosenForRecord) : latest ? estimateTotals(recordLines, latest.discountCents, latest.taxRateBps, chosenForRecord) : null;
-  const act = (path: string, body: unknown) => () => void action.run(path, body);
+  /** Sending acts on what is on screen, so it saves the draft's edits first. */
+  const send = (email: boolean) => () => {
+    setPending(email ? "email" : "mark");
+    void action.run(`/estimates/${e.id}/send`, { email }, true);
+  };
+  const act = (path: string, body: unknown) => () => {
+    setPending(path);
+    void action.run(path, body);
+  };
   const submitWith = (fn: (v: Record<string, string | undefined>) => unknown) => (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault();
     fn(formValues(ev.currentTarget));
@@ -381,23 +392,23 @@ export default function EstimatePage() {
         <div className="row">
           {e.status === "draft" && (
             <>
-              <SubmitButton type="button" busy={action.busy} busyLabel="Sending…" onClick={act(`/estimates/${e.id}/send`, { email: true })} disabled={!e.canEmail || busy}>
+              <SubmitButton type="button" busy={action.busy && pending === "email"} busyLabel="Sending…" onClick={send(true)} disabled={!e.canEmail || busy}>
                 Send by email
               </SubmitButton>
-              <SubmitButton type="button" className="secondary" busy={action.busy} busyLabel="Saving…" onClick={act(`/estimates/${e.id}/send`, { email: false })} disabled={busy}>
+              <SubmitButton type="button" className="secondary" busy={action.busy && pending === "mark"} busyLabel="Saving…" onClick={send(false)} disabled={busy}>
                 Mark sent (share the link yourself)
               </SubmitButton>
             </>
           )}
           {open && (
             <>
-              <SubmitButton type="button" className="secondary" busy={action.busy} busyLabel="Sending…" onClick={act(`/estimates/${e.id}/send`, { email: true })} disabled={!e.canEmail}>
+              <SubmitButton type="button" className="secondary" busy={action.busy && pending === "email"} busyLabel="Sending…" onClick={send(true)} disabled={!e.canEmail || busy}>
                 Email it again
               </SubmitButton>
               <SubmitButton type="button" className="secondary" busy={linking.busy} busyLabel="Making a link…" onClick={() => void linking.run()}>
                 Copy a link
               </SubmitButton>
-              <SubmitButton type="button" className="secondary" busy={action.busy} onClick={act(`/estimates/${e.id}/revise`, {})}>
+              <SubmitButton type="button" className="secondary" busy={action.busy && pending === `/estimates/${e.id}/revise`} onClick={act(`/estimates/${e.id}/revise`, {})} disabled={busy}>
                 Revise
               </SubmitButton>
             </>
@@ -443,7 +454,7 @@ export default function EstimatePage() {
         <form
           className="card stack"
           onSubmit={submitWith((v) =>
-            void action.run(`/estimates/${e.id}/record-acceptance`, { version: e.status === "draft" ? undefined : latest?.version, selectedOptionalLineIds: chosenForRecord, evidence: v.evidence }),
+            void action.run(`/estimates/${e.id}/record-acceptance`, { version: e.status === "draft" ? undefined : latest?.version, selectedOptionalLineIds: chosenForRecord, evidence: v.evidence }, true),
           )}
         >
           <h2>Record the customer&apos;s acceptance</h2>

@@ -104,7 +104,7 @@ function WorkOrderAction({ e, canCreate }: { e: InboxException; canCreate: boole
       const wo = await api<{ id: string }>(path, { method: "POST", body: {} });
       router.push(`/work/${wo.id}`);
     },
-    { fallback: "Could not make the work order." },
+    { fallback: "Could not make the work order.", leaves: true },
   );
   if (e.workOrder) {
     return (
@@ -133,7 +133,7 @@ function EstimateAction({ e }: { e: InboxException }) {
       const est = await api<{ id: string }>(path, { method: "POST", body: {} });
       router.push(`/estimates/${est.id}`);
     },
-    { fallback: "Could not draft the estimate." },
+    { fallback: "Could not draft the estimate.", leaves: true },
   );
   return (
     <>

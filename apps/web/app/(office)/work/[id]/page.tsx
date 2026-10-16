@@ -42,7 +42,7 @@ export default function WorkOrderPage() {
       const made = await api<{ invoiceId: string }>(`/work-orders/${workOrderId}/invoice`, { method: "POST", body: {} });
       router.push(`/invoices/${made.invoiceId}`);
     },
-    { fallback: "Could not make the invoice." },
+    { fallback: "Could not make the invoice.", leaves: true },
   );
   // SW-2: technicians record visits on their phones.
   const fieldWork = useFeature("field_work");

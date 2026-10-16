@@ -95,7 +95,7 @@ export default function QuickBooksReviewPage() {
       await api("/quickbooks/review/commit", { method: "POST", body: {} });
       router.push("/quickbooks");
     },
-    { fallback: "Could not start syncing." },
+    { fallback: "Could not start syncing.", leaves: true },
   );
   const refresh = () => reading.run();
   const busy = reading.busy || committing.busy;

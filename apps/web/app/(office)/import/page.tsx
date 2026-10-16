@@ -33,7 +33,7 @@ export default function ImportPage() {
       const created = await api<ImportDetail>("/imports", { method: "POST", body: { filename: file.name, contentBase64: await readBase64(file) } });
       router.push(`/import/${created.id}`);
     },
-    { fallback: "Could not read the file." },
+    { fallback: "Could not read the file.", leaves: true },
   );
 
   function onFile(event: ChangeEvent<HTMLInputElement>) {

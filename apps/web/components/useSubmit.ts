@@ -8,6 +8,11 @@ interface Options {
   fallback?: string;
   /** Names for fields the API may refuse, by last key or full path (`{ billingPostalCode: "ZIP" }`). */
   labels?: Record<string, string>;
+  /**
+   * The change ends by leaving this screen (it opens what it made). After it succeeds the button
+   * stays busy, so a click while the next screen loads cannot make a second one.
+   */
+  leaves?: boolean;
 }
 
 /**
@@ -35,15 +40,20 @@ export function useSubmit<A extends unknown[], R>(fn: (...args: A) => Promise<R>
     setBusy(true);
     setError(null);
     setFieldErrors({});
+    let left = false;
     try {
-      return await latest.current(...args);
+      const result = await latest.current(...args);
+      left = Boolean(opts.current.leaves);
+      return result;
     } catch (err) {
       setError(messageFor(err, opts.current.fallback, opts.current.labels));
       if (err instanceof ApiError) setFieldErrors(issueMessages(err.issues, opts.current.labels));
       return undefined;
     } finally {
-      running.current = false;
-      setBusy(false);
+      if (!left) {
+        running.current = false;
+        setBusy(false);
+      }
     }
   }, []);
 

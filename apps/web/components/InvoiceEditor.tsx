@@ -131,7 +131,8 @@ export function InvoiceEditor({
     return saved;
   }
 
-  const save = useSubmit(async () => onSaved(await persist()), { fallback: "Could not save the draft." });
+  // A new draft opens its own page once made.
+  const save = useSubmit(async () => onSaved(await persist()), { fallback: "Could not save the draft.", leaves: !invoice });
   // Issuing saves the edits first; an unchanged draft goes straight to it.
   const act = useSubmit(
     async (action: DraftAction) => {

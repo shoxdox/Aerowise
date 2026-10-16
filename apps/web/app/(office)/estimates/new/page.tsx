@@ -52,7 +52,7 @@ function NewEstimate() {
       });
       router.push(`/estimates/${e.id}`);
     },
-    { fallback: "Could not create the estimate." },
+    { fallback: "Could not create the estimate.", leaves: true },
   );
 
   return (
