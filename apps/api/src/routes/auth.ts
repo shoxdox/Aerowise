@@ -100,10 +100,20 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
   { db, production, loginRateLimit, demoTicketKey },
 ) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
+  // A second sign-in limit, per address alone: the per-email one below lets a single address try
+  // one password against any number of emails. Three times the per-email allowance, so a few
+  // people behind one office address can still each sign in.
+  const loginsFromAddress = app.createRateLimit({ max: loginRateLimit * 3, timeWindow: "1 minute", keyGenerator: (req) => `login-address:${req.ip}` });
 
   app.post(
     "/auth/login",
     {
+      onRequest: async (req, reply) => {
+        const limit = await loginsFromAddress(req);
+        if (limit.isAllowed || !limit.isExceeded) return;
+        reply.header("retry-after", String(limit.ttlInSeconds));
+        throw new HttpError(429, "rate_limited", "Too many attempts. Try again in a minute.");
+      },
       config: {
         public: true,
         rateLimit: {

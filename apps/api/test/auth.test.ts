@@ -127,4 +127,19 @@ describe("sign-in rate limit", () => {
     expect((await attempt("colleague@example.com")).statusCode).toBe(401);
     await app.close();
   });
+
+  it("also limits one address across emails, so a password can't be tried against every account", async () => {
+    const app = await buildApp({ db: ctx.db, loginRateLimit: 3 });
+    const attempt = (email: string, remoteAddress = "203.0.113.7") =>
+      app.inject({ method: "POST", url: "/auth/login", payload: { email, password: "guess" }, remoteAddress });
+    // Three times the per-email allowance, each email tried only once.
+    for (let i = 0; i < 9; i++) expect((await attempt(`person${i}@example.com`)).statusCode).toBe(401);
+    const blocked = await attempt("person9@example.com");
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json()).toEqual({ error: "rate_limited", message: "Too many attempts. Try again in a minute." });
+    expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(0);
+    // Someone at another address is not held up by it.
+    expect((await attempt("person9@example.com", "198.51.100.4")).statusCode).toBe(401);
+    await app.close();
+  });
 });
