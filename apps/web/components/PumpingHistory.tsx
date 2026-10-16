@@ -26,7 +26,7 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
   const recordLoad = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>(`/pumping-records?${query}&limit=50&offset=${offset}`);
   const { data, reload } = recordLoad;
   const [correcting, setCorrecting] = useState<string | null>(null);
-  const correcting_ = useSubmit(
+  const correction = useSubmit(
     async (v: Record<string, string | undefined>) => {
       const p = data?.items.find((x) => x.groupId === correcting);
       if (!p) return;
@@ -39,7 +39,7 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
     },
     { fallback: "Could not save the correction." },
   );
-  const problem = correcting_.error;
+  const problem = correction.error;
   if (!data) return <LoadState load={recordLoad} label="pumping history" />;
   if (!on && data.items.length === 0) return null;
 
@@ -88,7 +88,7 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
                   {office && on && (
                     <td className="actions">
                       {correcting === p.groupId ? (
-                        <form className="stack" onSubmit={correcting_.form}>
+                        <form className="stack" onSubmit={correction.form}>
                           <div className="row">
                             <input name="volume" type="number" min="0.1" step="0.1" required defaultValue={p.enteredVolume} aria-label="Volume" />
                             <select name="unit" defaultValue={p.enteredUnit} aria-label="Unit">
@@ -110,7 +110,7 @@ export function PumpingHistory({ siteId, workOrderId }: { siteId?: string; workO
                           <input name="wasteTypeNote" maxLength={500} defaultValue={p.wasteTypeNote ?? ""} placeholder="Waste note" aria-label="Waste note" />
                           <input name="reason" required minLength={3} maxLength={2000} placeholder="Reason for the correction" aria-label="Reason for the correction" />
                           <div className="row">
-                            <SubmitButton busy={correcting_.busy}>Save</SubmitButton>
+                            <SubmitButton busy={correction.busy}>Save</SubmitButton>
                             <button type="button" className="secondary" onClick={() => setCorrecting(null)}>
                               Cancel
                             </button>
