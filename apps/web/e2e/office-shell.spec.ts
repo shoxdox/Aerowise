@@ -56,6 +56,35 @@ test("the sign-in page says what went wrong and can show the password", async ({
   await expect(page.locator("form").getByRole("alert")).toHaveText("That email and password don't match. Check both, or reset your password below.");
 });
 
+test("on a phone, the menu folds again when the page changes, by a link or by Back", async ({ page }) => {
+  await signIn(page, "owner@example.com");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await page.getByRole("button", { name: "Menu" }).click();
+  await nav.getByRole("link", { name: "Schedule" }).click();
+  await page.waitForURL("**/schedule");
+  await expect(nav).toBeHidden();
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(nav).toBeVisible();
+  await page.goBack();
+  await page.waitForURL("**/inbox");
+  await expect(nav).toBeHidden();
+  await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
+});
+
+test.describe("on a 1280px laptop", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false });
+
+  test("an owner's longer menu still fits on one row, beside the logo alone", async ({ page }) => {
+    await signIn(page, "owner@example.com");
+    const nav = page.getByRole("navigation", { name: "Main" });
+    await expect(nav.getByRole("link", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Menu" })).toBeHidden();
+    expect((await page.locator("header.topbar").boundingBox())!.height).toBeLessThanOrEqual(58);
+    // The logo link keeps its name for screen readers.
+    await expect(page.locator("header.topbar").getByRole("link", { name: "Aerowise" })).toHaveAttribute("href", "/inbox");
+  });
+});
+
 test.describe("on a laptop", () => {
   test.use({ viewport: { width: 1366, height: 800 }, isMobile: false, hasTouch: false });
 

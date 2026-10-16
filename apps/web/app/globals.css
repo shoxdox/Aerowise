@@ -64,11 +64,12 @@
 /* ---------- Base ---------- */
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body { margin: 0; background: var(--bg); color: var(--text); font: var(--text-base)/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--text); font: var(--text-base)/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-wrap: break-word; }
+/* Headings keep the browser's bold, as the homepage's do. */
 h1, h2, h3 { margin: 0; color: var(--ink); letter-spacing: -0.01em; }
-h1 { font-size: var(--text-2xl); line-height: 1.2; font-weight: 700; }
-h2 { font-size: var(--text-xl); line-height: 1.3; font-weight: 650; }
-h3 { font-size: var(--text-lg); line-height: 1.35; font-weight: 600; }
+h1 { font-size: var(--text-2xl); line-height: 1.2; }
+h2 { font-size: var(--text-xl); line-height: 1.3; }
+h3 { font-size: var(--text-lg); line-height: 1.35; }
 /* Spacing between blocks comes from the containers' gaps (.stack, .row, .grid), not from margins. */
 p { margin: 0; }
 a { color: var(--accent); text-underline-offset: 2px; }
@@ -115,6 +116,10 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-s
 label.check, label.row { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-weight: 400; }
 label.check { display: inline-flex; margin-right: 16px; }
 label.row { flex-wrap: nowrap; }
+/* Beside a box, text that wraps starts level with it rather than centered on it. */
+label:is(.check, .row):has(> input:is([type="checkbox"], [type="radio"])) { align-items: flex-start; }
+label:is(.check, .row) > input:is([type="checkbox"], [type="radio"]) { margin-top: 1px; }
+label.row > :is(input:not([type="checkbox"], [type="radio"]), select) { min-width: 0; }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); }
 legend { font-weight: 600; color: var(--ink); padding: 0 4px; }
 /* 16px text in fields, wherever they sit: iPhones zoom into anything smaller. */
@@ -166,7 +171,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:not(mai
 .segmented, .renewal-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 :is(.segmented, .renewal-tabs) > button { min-height: 36px; padding: 4px 14px; border-radius: 999px; background: var(--surface); color: var(--ink); border: 1px solid var(--control-border); font-size: var(--text-sm); font-weight: 500; }
 :is(.segmented, .renewal-tabs) > button:not(:disabled):hover { background: var(--tint); border-color: var(--field-border); color: var(--ink); }
-:is(.segmented, .renewal-tabs) > button:is([aria-pressed="true"], :not(.secondary)) { background: var(--accent-tint); color: var(--green-dark); border-color: var(--accent); }
+/* The chosen one is aria-pressed; groups written before that mark the others .secondary instead. */
+:is(.segmented, .renewal-tabs) > button[aria-pressed="true"], :is(.segmented, .renewal-tabs):not(:has(> [aria-pressed])) > button:not(.secondary) { background: var(--accent-tint); color: var(--green-dark); border-color: var(--accent); }
 [role="tablist"] { display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto; border-bottom: 1px solid var(--border); }
 [role="tablist"] > [role="tab"] { flex: none; min-height: 40px; padding: 8px 12px; margin-bottom: -1px; background: none; color: var(--soft); border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-weight: 500; }
 [role="tablist"] > [role="tab"]:not(:disabled):hover { background: none; color: var(--ink); border-bottom-color: var(--control-border); }
@@ -237,9 +243,10 @@ table.compact th, table.compact td { padding: 6px 10px; }
 
 /* ---------- Office header ----------
  * One row: the logo (to the inbox), the menu's five groups, and an account button holding who
- * is signed in and Sign out. Where the links don't fit (the shell measures it and adds .folded)
- * they fold behind a Menu button, and the row shows the current page instead. Padding and gaps
- * stay the same folded or not, so the measurement doesn't flip back and forth. */
+ * is signed in and Sign out. Where the links don't fit, the word beside the logo goes first
+ * (.compact), then the links fold behind a Menu button and the row shows the current page
+ * instead (.folded); the shell measures which. Padding and gaps stay the same either way, so the
+ * measurement doesn't flip back and forth. */
 .skip-link { position: absolute; left: 12px; top: -200px; z-index: 50; padding: 10px 16px; background: var(--surface); color: var(--accent); border-radius: var(--radius); box-shadow: var(--shadow-pop); font-weight: 600; }
 .skip-link:focus { top: 8px; }
 .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
@@ -250,6 +257,8 @@ table.compact th, table.compact td { padding: 6px 10px; }
 :root:has(.topbar.office) { scroll-padding-top: 72px; }
 .topbar.office .brand { flex: none; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 1.0625rem; letter-spacing: -0.01em; }
 .topbar.office .brand img { border-radius: 7px; }
+/* Compact: the links fit once the word beside the logo goes (the shell measures it). */
+.topbar.office.compact .brand-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .topbar.office nav { flex: 1; min-width: 0; flex-wrap: nowrap; gap: 0; padding: 4px; overflow-x: auto; scrollbar-width: thin; }
 .topbar.office .nav-group { flex: none; display: flex; align-items: center; gap: 2px; }
 .topbar.office .nav-group + .nav-group { border-left: 1px solid var(--border); margin-left: 4px; padding-left: 4px; }

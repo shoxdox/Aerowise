@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createSession, revokeSession, SESSION_COOKIE, type AuthContext } from "../auth/sessions.ts";
 import { HttpError } from "../lib/errors.ts";
 import { loadLegalStatus } from "../lib/legal.ts";
+import { perAddress } from "../lib/rate-limits.ts";
 
 // Used when the email is unknown so a failed login takes the same time either way.
 const DUMMY_HASH =
@@ -103,7 +104,7 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
   // A second sign-in limit, per address alone: the per-email one below lets a single address try
   // one password against any number of emails. Three times the per-email allowance, so a few
   // people behind one office address can still each sign in.
-  const loginsFromAddress = app.createRateLimit({ max: loginRateLimit * 3, timeWindow: "1 minute", keyGenerator: (req) => `login-address:${req.ip}` });
+  const loginsFromAddress = app.createRateLimit(perAddress("login", loginRateLimit * 3));
 
   app.post(
     "/auth/login",

@@ -23,7 +23,7 @@ Paragraphs have no margins. Space comes from the container: `.stack` (a column, 
 | Cancel, Retire, Deactivate, Void, Refund | `className="danger"` (red outline), or `"link danger"` for a text link. A `danger` button that is a form's `type="submit"` is filled red: the step that confirms. |
 | Text that acts | `className="link"`. |
 | A link that looks like a button | `<a className="button">` (add `secondary` as above). |
-| List filters | `<div className="segmented" role="group" aria-label="Show">` around the buttons; mark the chosen one `aria-pressed={true}`. Never the primary style: that is for actions. |
+| List filters | `<div className="segmented" role="group" aria-label="Show">` around the buttons; mark each `aria-pressed` (true on the chosen one). Groups without `aria-pressed` fall back to the old marking: the chosen one has no class, the rest `secondary`. Never the primary style: that is for actions. |
 | Sections of one record | `role="tablist"` with `role="tab"` buttons and `aria-selected`: underlined tabs. |
 | A checkbox and its text | `<label className="check">` (inline) or `<label className="row">` (its own line). |
 | Status | `<span className="badge ok|warn|danger|upcoming|work|cancelled|inactive">`. In a column it keeps its own width. |
@@ -34,6 +34,6 @@ Paragraphs have no margins. Space comes from the container: `.stack` (a column, 
 
 ## The office shell
 
-`app/(office)/layout.tsx` draws the header: the logo (to the inbox), the menu's five groups, and an account button with the signed-in person, their role and company, and Sign out. The links fold behind Menu wherever they don't fit on one row; the shell measures that, so adding a link needs no CSS. A link shows only to roles that can open its page. Technicians are sent to `/tech`. The tab is named after the menu item ("Schedule · Aerowise"); a detail page names it after its record with `usePageTitle`.
+`app/(office)/layout.tsx` draws the header: the logo (to the inbox), the menu's five groups, and an account button with the signed-in person, their role and company, and Sign out. Where the links don't fit on one row the word beside the logo goes first, then the links fold behind Menu; the shell measures that, so adding a link needs no CSS. The menu folds again whenever the page changes. A link shows only to roles that can open its page. Technicians are sent to `/tech`. The tab is named after the menu item ("Schedule · Aerowise"); a detail page names it after its record with `usePageTitle`.
 
 Sign-in pages read `?next=` only through `safeNext` (`lib/safe-next.ts`), which keeps it on this site.

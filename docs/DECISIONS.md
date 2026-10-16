@@ -12,7 +12,7 @@ Choices made where the spec was silent or ambiguous. Newest at the bottom.
 - **One session = one organization.** A user in several organizations picks one at sign-in (`organizationId`, defaulting to their oldest membership). An organization switcher can be added when someone needs it.
 - **Deny by default is checked at startup.** Every route must declare `config.permission` (or `config.public`), or the app refuses to register it. Role → permission mapping lives only in `packages/domain/src/roles.ts`. Technicians and read-only users can read CRM records but not change them.
 - **CSRF:** `SameSite=Lax` plus a rule that every state-changing request must be `application/json`, which a cross-site form cannot send without a CORS preflight.
-- **Sign-in rate limit:** 10 attempts per minute per IP + email.
+- **Sign-in rate limit:** 10 attempts per minute per IP + email, and 30 per minute per IP across all emails (three times the first, so a few people behind one office address can each sign in), so one address can't try a password against every account.
 - **Audit log:** `audit_events` is append-only (a trigger rejects UPDATE/DELETE). Every create/update in the API writes one event with the actor, request id and submitted fields. The per-site compliance ledger (`compliance_events`) is a separate table that arrives with the reports module.
 - **Sites, not jurisdictions yet.** `sites.jurisdiction_id` is left out until the compliance module adds the `jurisdictions` table, so there is no dangling column. `sites.county` holds the free-text county for now.
 - **Equipment table deferred.** Not needed for the core loop; `wastewater_systems` carries manufacturer/model/serial.

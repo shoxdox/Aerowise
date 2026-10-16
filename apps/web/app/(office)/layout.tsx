@@ -79,13 +79,17 @@ function AccountMenu({ me }: { me: Me }) {
 }
 
 /**
- * Whether the menu's links fit on one row between the logo and the account button. How wide
- * they are depends on the role and the company's features, so it is measured rather than tied to
- * a screen width: where they don't fit (phones, tablets, a narrow laptop) they fold behind Menu.
- * Folded, the links stay laid out in a hidden zero-width row, so they can still be measured.
+ * Whether the menu's links fit on one row between the logo and the account button: "full", or
+ * "compact" when they fit only once the word "Aerowise" beside the logo is dropped (a 1280px
+ * laptop, for an owner's longer menu), or "folded". How wide the links are depends on the role
+ * and the company's features, so it is measured rather than tied to a screen width: where they
+ * don't fit (phones, tablets) they fold behind Menu. Folded, the links stay laid out in a hidden
+ * zero-width row, so they can still be measured.
  */
 function useLinksFit(header: RefObject<HTMLElement | null>, links: string, menuOpen: boolean) {
-  const [fit, setFit] = useState(true);
+  const [fit, setFit] = useState<"full" | "compact" | "folded">("full");
+  // The word's width, measured while it shows (it does on the first render).
+  const nameWidth = useRef(0);
   useLayoutEffect(() => {
     const h = header.current;
     if (!h) return;
@@ -93,13 +97,16 @@ function useLinksFit(header: RefObject<HTMLElement | null>, links: string, menuO
       // The open menu is laid out as a panel; measure again once it closes.
       if (h.classList.contains("menu-open")) return;
       const groups = h.querySelectorAll("nav > .nav-group");
-      const brand = h.querySelector(".brand");
+      const logo = h.querySelector(".brand img");
+      const name = h.querySelector(".brand-name");
       const account = h.querySelector(".account");
-      if (groups.length === 0 || !brand || !account) return;
+      if (groups.length === 0 || !logo || !name || !account) return;
+      if (!h.classList.contains("compact")) nameWidth.current = name.getBoundingClientRect().width;
       const style = getComputedStyle(h);
       const needed = groups[groups.length - 1]!.getBoundingClientRect().right - groups[0]!.getBoundingClientRect().left + 8;
-      const room = h.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - brand.getBoundingClientRect().width - account.getBoundingClientRect().width - 2 * parseFloat(style.columnGap);
-      setFit(needed <= room);
+      const room = h.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - logo.getBoundingClientRect().width - account.getBoundingClientRect().width - 2 * parseFloat(style.columnGap);
+      // The word sits 8px from the logo.
+      setFit(needed <= room - nameWidth.current - 8 ? "full" : needed <= room ? "compact" : "folded");
     };
     check();
     const observer = new ResizeObserver(check);
@@ -165,6 +172,8 @@ function Shell({ children }: { children: ReactNode }) {
   const current = nav.find((item) => path === item.href || path.startsWith(`${item.href}/`));
   // Where the links don't fit they fold behind a Menu button; choosing one folds them again.
   const [menuOpen, setMenuOpen] = useState(false);
+  // Back, Forward or a link in the page also change the page; a menu left open would cover it.
+  useEffect(() => setMenuOpen(false), [path]);
   const header = useRef<HTMLElement>(null);
   const fit = useLinksFit(header, nav.map((item) => item.href).join(" "), menuOpen);
 
@@ -216,7 +225,7 @@ function Shell({ children }: { children: ReactNode }) {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <header ref={header} className={`topbar office${fit ? "" : " folded"}${menuOpen && !fit ? " menu-open" : ""}`}>
+      <header ref={header} className={`topbar office${fit === "full" ? "" : ` ${fit}`}${menuOpen && fit === "folded" ? " menu-open" : ""}`}>
         <Link href="/inbox" className="brand">
           <img src="/icons/icon.svg" alt="" width={28} height={28} />
           <span className="brand-name">Aerowise</span>
