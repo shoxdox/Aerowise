@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { local } from "./origin.ts";
 
-const local = (link: string) => link.replace(/^https?:\/\/[^/]+/, "http://localhost:3000");
 
 /** Opens an invitation on its own device (a fresh browser) and joins with a new password. */
 async function accept(browser: Browser, link: string, password: string): Promise<Page> {
