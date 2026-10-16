@@ -47,7 +47,7 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
           </p>
           <blockquote className="small" style={{ margin: 0, paddingLeft: 12, borderLeft: "3px solid #d9dfdc" }}>{s.statement}</blockquote>
           {s.delegationNote && <div className="small">Signed under a documented delegation: {s.delegationNote}</div>}
-          <div className="muted small">Signed copy SHA-256 {s.sha256}</div>
+          <div className="muted small wrap-anywhere">Signed copy SHA-256 {s.sha256}</div>
           {data.customerCopy && <div className="muted small">Customer copy version {data.customerCopy.version}: {data.customerCopy.signed ? "signed, and the only copy the customer gets" : "not signed"}</div>}
         </>
       ) : (

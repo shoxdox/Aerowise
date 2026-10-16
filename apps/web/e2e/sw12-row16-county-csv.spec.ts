@@ -8,10 +8,11 @@ import { failFilingSendOnce, prepareFilingOnce } from "./sw12-worker-steps.ts";
 // filed; confirming is a separate step that needs the authority's acknowledgment.
 //
 // How the filing gets there (the e2e harness runs no worker): one run of the report step makes it,
-// and Example County's fictional rules queue it to send by email at once. The office can switch only
-// a ready or failed filing to CSV, so its queued send is run once with the mail provider down
-// (a forced, test-only failure) and the office takes the CSV path from the failed filing. In the
-// demo with the email outbox the send would succeed instead; the CSV path is the fallback.
+// and it waits for the MP's signature like any Texas report; once Olivia signs, Example County's
+// fictional rules queue it to send by email. The office can switch only a ready or failed filing to
+// CSV, so its queued send is run once with the mail provider down (a forced, test-only failure) and
+// the office takes the CSV path from the failed filing. In the demo with the email outbox the send
+// would succeed instead; the CSV path is the fallback.
 const databaseUrl = process.env.E2E_DATABASE_URL ?? "postgres://aerowise:aerowise@localhost:5432/aerowise_e2e";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
@@ -66,8 +67,12 @@ test("an Example County filing exported as CSV carries the demo column, stays un
     ).rows[0] as { id: string; organization_id: string; county: string };
     expect(insp.county).toBe("Example County");
     prepareFilingOnce(insp.organization_id, insp.id);
-    const filing = (await db.query("select id, status, submission_method from filings where inspection_id = $1", [insp.id])).rows[0] as { id: string; status: string; submission_method: string };
-    expect(filing, "the report step queues it to send by email").toMatchObject({ status: "queued", submission_method: "email" });
+    const filingRow = async () => (await db.query("select id, status, submission_method from filings where inspection_id = $1", [insp.id])).rows[0] as { id: string; status: string; submission_method: string };
+    expect(await filingRow(), "the report waits for the MP's signature").toMatchObject({ status: "needs_review", submission_method: "email" });
+    const signed = await office.post(`/api/inspections/${insp.id}/signature`, { data: { typedName: "Olivia Owner" } });
+    expect(signed.status(), await signed.text()).toBe(200);
+    const filing = await filingRow();
+    expect(filing, "signed, it is queued to send by email").toMatchObject({ status: "queued", submission_method: "email" });
     failFilingSendOnce(insp.organization_id, filing.id);
     expect((await db.query("select status from filings where id = $1", [filing.id])).rows[0].status, "the send failed while the mail provider was down").toBe("failed");
 
