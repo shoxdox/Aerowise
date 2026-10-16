@@ -466,6 +466,8 @@ export interface IssuesTable {
   resolvedBy: ColumnType<string | null, string | null | undefined, string | null>;
   resolution: ColumnType<string | null, string | null | undefined, string | null>;
   workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The form item an issue opened by the server is about (migration 0067); null when a person raised it. */
+  fieldKey: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }

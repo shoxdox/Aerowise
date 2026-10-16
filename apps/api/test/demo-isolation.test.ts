@@ -406,6 +406,13 @@ describe("queued and follow-on work of a demo company", () => {
     const done = await techApi.put("/inspections/sync", { ...base, status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } });
     expect(done.json().status).toBe("completed");
     await drainTasks(worker);
+    // The demo's MP signs it first, as every Texas report is (30 TAC 285.7(b)(3)).
+    const mp = (await demo.api.post("/credentials", { userId: demo.owner.id, holderName: "Demo Owner", kind: "tceq_maintenance_provider", number: "MP-DEMO-0002", verifiedOn: "2026-02-20", verificationSource: "Fictional: demo company" })).json();
+    await demo.api.post("/credentials", { userId: tech.id, holderName: "Demo Tech", kind: "tceq_maintenance_technician", number: "MT-DEMO-0002", expiresOn: "2027-01-31" });
+    expect((await demo.api.put("/settings/responsible-provider", { credentialId: mp.id })).statusCode).toBe(200);
+    const signed = await demo.api.post(`/inspections/${done.json().id}/signature`, { typedName: "Demo Owner" });
+    expect(signed.statusCode, signed.body).toBe(200);
+    await drainTasks(worker);
     const filing = await ctx.db.selectFrom("filings").select("status").where("organizationId", "=", demo.org.id).executeTakeFirstOrThrow();
     expect(filing.status).toBe("sent");
     expect(live.mail.sent).toEqual([]);

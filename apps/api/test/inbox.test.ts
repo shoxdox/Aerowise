@@ -2,7 +2,7 @@ import type { EmailTransport } from "@aerowise/compliance";
 import { drainTasks } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, JPEG, payload, photoUrl, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 
@@ -16,7 +16,7 @@ const mail: EmailTransport = {
 };
 const runWorker = (c: TestContext) => drainTasks({ db: c.db, store: c.store, now: () => c.now, mail });
 
-type Item = { key: string; kind: string; severity: string; title: string; detail: string | null; dueOn: string | null; target: { type: string; id: string } };
+type Item = { key: string; kind: string; severity: string; title: string; detail: string | null; dueOn: string | null; target: { type: string; id: string }; canOverride?: boolean; booking?: object | null };
 const inboxOf = async (s: Setup) => {
   const res = await s.api.get("/inbox");
   expect(res.statusCode).toBe(200);
@@ -56,27 +56,48 @@ describe("exception inbox", () => {
       dueOn: "2026-03-31",
       detail: "Scheduled for 2026-03-01 with technician user",
       target: { type: "obligation", id: s.visit.id },
+      // Booked for a day already gone: missed, not handled.
+      booking: null,
+    });
+    // Booked again for a day to come: handled, and the item says when and with whom.
+    expect((await s.api.patch(`/jobs/${s.job.jobId}`, { scheduledDate: "2026-04-03" })).statusCode).toBe(200);
+    expect((await inboxOf(s)).items.find((i) => i.kind === "inspection_overdue")).toMatchObject({
+      severity: "medium",
+      booking: { jobId: s.job.jobId, scheduledDate: "2026-04-03", technicianId: s.tech.id, technicianName: "technician user" },
     });
     await complete(s);
     expect(await kinds(s)).not.toContain("inspection_overdue");
   });
 
-  it("shows an inspection the technician could not finish, until the office accepts it", async () => {
+  it("shows an inspection the technician could not finish, and whether the person looking may accept it anyway", async () => {
     const s = await countySetup(ctx);
     const insp = await complete(s, { photos: false });
     expect(insp.status).toBe("draft");
-    const item = (await inboxOf(s)).items.find((i) => i.kind === "inspection_incomplete")!;
-    expect(item).toMatchObject({ title: "Missing required readings", target: { type: "inspection", id: insp.id } });
-    expect(item.detail).toContain("Overview of the unit: 1 more photo needed");
+    const item = async (api = s.api) => ((await api.get("/inbox")).json().items as Item[]).find((i) => i.kind === "inspection_incomplete")!;
+    expect(await item()).toMatchObject({ title: "Missing required readings", target: { type: "inspection", id: insp.id }, canOverride: false });
+    expect((await item()).detail).toContain("Overview of the unit: 1 more photo needed");
+    // The county requires the overview photo, so it is never waived.
+    expect((await s.api.post(`/inspections/${insp.id}/override`, { reason: "Camera broke; photos by text" })).statusCode).toBe(422);
 
-    await s.api.post(`/inspections/${insp.id}/override`, { reason: "Camera broke; photos by text" });
+    // Once it arrives, only the chlorinator photo the company's own form asks for is missing: the owner may accept that.
+    expect((await s.techApi.putImage(photoUrl(payload(s).clientId, 1), JPEG, { "x-photo-key": "overview" })).statusCode).toBe(201);
+    expect(await item()).toMatchObject({ canOverride: true });
+    const office = client(ctx.app, await login(ctx.app, (await createUser(ctx.db, s.org.id, "office")).email));
+    expect(await item(office)).toMatchObject({ canOverride: false });
+
+    expect((await s.api.post(`/inspections/${insp.id}/override`, { reason: "Camera broke; photos by text" })).statusCode).toBe(200);
     expect(await kinds(s)).not.toContain("inspection_incomplete");
   });
 
   it("shows failed filings and the authority's next due date being missed by the next visit", async () => {
     mailFails = true;
     const s = await countySetup(ctx);
-    await complete(s);
+    const insp = await complete(s);
+    await runWorker(ctx);
+    // Held for the MP's signature: the inspection happened, so the authority's next date already counts.
+    expect((await inboxOf(s)).items.find((i) => i.kind === "report_unsigned")).toMatchObject({ severity: "high" });
+    expect(await kinds(s)).not.toContain("next_visit_late");
+    await signAsProvider(s, insp.id);
     await runWorker(ctx);
     let inbox = await inboxOf(s);
     expect(inbox.items.find((i) => i.kind === "filing_failed")).toMatchObject({ severity: "high", detail: "SMTP 451 temporary failure", dueOn: "2026-03-15" });
@@ -118,6 +139,45 @@ describe("exception inbox", () => {
     expect((await inboxOf(s)).items.find((i) => i.kind === "next_visit_late")?.detail).toBe("It is on the route for 2026-07-10, after the authority's date");
     await s.api.patch(`/jobs/${job.jobId}`, { scheduledDate: "2026-06-20" });
     expect(await kinds(s)).not.toContain("next_visit_late");
+  });
+
+  it("gives a site one next due date: the authority's, when the contract's calendar had it later", async () => {
+    const s = await countySetup(ctx);
+    const [, visit2, visit3] = s.contract.obligations;
+    expect(visit2).toMatchObject({ dueOn: "2026-07-31", windowStart: "2026-04-01", windowEnd: "2026-07-31" });
+    const insp = await complete(s);
+    // Done 2026-03-01: the county wants the next one within 4 months, by 2026-07-01.
+    const filing = (await s.api.get("/filings?view=all")).json().items[0];
+    expect(filing.nextDueOn).toBe("2026-07-01");
+    const due = (await s.api.get("/obligations/due?through=2026-12-31")).json().items as { id: string; dueOn: string; windowEnd: string; effectiveDueOn: string }[];
+    expect(due.map((o) => [o.id, o.dueOn, o.windowEnd, o.effectiveDueOn])).toEqual([
+      [visit2.id, "2026-07-01", "2026-07-01", "2026-07-01"],
+      // The one after keeps its own date.
+      [visit3.id, "2026-11-30", "2026-11-30", "2026-11-30"],
+    ]);
+    const events = (await s.api.get(`/sites/${s.site.id}/compliance-events`)).json().items as { eventType: string; summary: string }[];
+    expect(events.find((e) => e.eventType === "filing_opened")?.summary).toContain("visit 2 moved from 2026-07-31 to that date");
+    // The technician's stop says the same date.
+    const stop = (await s.api.post("/jobs", { obligationId: visit2.id, technicianId: s.tech.id, scheduledDate: "2026-06-20" })).json();
+    expect(stop.obligation).toMatchObject({ id: visit2.id, dueOn: "2026-07-01", mustBeDoneBy: "2026-07-01" });
+    expect(insp.status).toBe("completed");
+
+    // A visit made after the report (a renewal's, say) still lists by the authority's date.
+    await ctx.db.updateTable("serviceObligations").set({ dueOn: "2026-07-31", windowEnd: "2026-07-31" }).where("id", "=", visit2.id).execute();
+    expect((await s.api.get("/obligations/due?through=2026-07-15")).json().items).toEqual([expect.objectContaining({ id: visit2.id, dueOn: "2026-07-31", effectiveDueOn: "2026-07-01", overdue: false })]);
+    ctx.now = new Date("2026-07-02T18:00:00Z");
+    expect((await s.api.get(`/obligations/due?overdueOnly=true`)).json()).toMatchObject({ overdueTotal: 1, items: [{ id: visit2.id, overdue: true }] });
+  });
+
+  it("raises no visit before the authority's date as urgent only within 30 days of it", async () => {
+    const s = await countySetup(ctx);
+    await complete(s);
+    // The rest of the contract's visits are gone (say, it was cancelled): nothing meets 2026-07-01.
+    await ctx.db.updateTable("serviceObligations").set({ status: "cancelled" }).where("contractId", "=", s.contract.id).where("status", "=", "open").execute();
+    const item = async () => (await inboxOf(s)).items.find((i) => i.kind === "next_visit_late");
+    expect(await item()).toMatchObject({ title: "No visit before the authority's next due date", severity: "low", dueOn: "2026-07-01" });
+    ctx.now = new Date("2026-06-05T18:00:00Z");
+    expect(await item()).toMatchObject({ severity: "high" });
   });
 
   it("shows issues found on finished inspections until someone resolves them", async () => {

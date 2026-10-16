@@ -182,6 +182,11 @@ export const contractDetail = contract.extend({
 });
 
 export const dueObligation = obligation.extend({
+  /**
+   * The day it must be done by: `dueOn`, or the authority's next due date from the site's latest
+   * report when that comes first. The list is sorted by it, and `overdue` is counted from it.
+   */
+  effectiveDueOn: date,
   overdue: z.boolean(),
   /** The live job this visit is scheduled as, if any. */
   job: z.object({ id, scheduledDate: date, technicianId: id, technicianName: z.string() }).nullable(),

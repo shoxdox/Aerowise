@@ -42,6 +42,7 @@ import { HttpError, notFound, unprocessable } from "../lib/errors.ts";
 import { currentForms } from "../lib/forms.ts";
 import { organizationToday } from "../lib/today.ts";
 import { lockWorkOrder, setWorkOrderStatus, workOrderEvent } from "../lib/work-orders.ts";
+import { closeWorkSources } from "../lib/work-sources.ts";
 import { insertPumpOut, pumpOutRequired, pumpOutVehicleProblems } from "../lib/pumping.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 
@@ -481,8 +482,10 @@ export const workSyncRoutes: FastifyPluginAsyncZod<{
       .execute();
     const live = a.wo.status === "open" || a.wo.status === "scheduled" || a.wo.status === "in_progress";
     if (live) {
-      if (a.finalVisit) await setWorkOrderStatus(trx, a.organizationId, a.wo, "completed", a.at, { completedAt: a.at });
-      else if (a.wo.status !== "open") await setWorkOrderStatus(trx, a.organizationId, a.wo, "open", a.at);
+      if (a.finalVisit) {
+        await setWorkOrderStatus(trx, a.organizationId, a.wo, "completed", a.at, { completedAt: a.at });
+        await closeWorkSources(trx, req, { organizationId: a.organizationId, workOrderId: a.wo.id, at: a.at });
+      } else if (a.wo.status !== "open") await setWorkOrderStatus(trx, a.organizationId, a.wo, "open", a.at);
     }
     await workOrderEvent(trx, req, {
       organizationId: a.organizationId,

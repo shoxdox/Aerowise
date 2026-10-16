@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_TEMPLATE, templateDefinition, validateInspection, visibleFields, type InspectionValues } from "./inspections.ts";
+import { DEFAULT_TEMPLATE, overrideBlockers, templateDefinition, validateInspection, visibleFields, type InspectionValues } from "./inspections.ts";
 
 const def = DEFAULT_TEMPLATE.definition;
 
@@ -21,6 +21,18 @@ const complete: InspectionValues = {
   odor: "none",
   pumping_needed: false,
 };
+
+describe("accepting a failed inspection anyway", () => {
+  it("waives only photos the company's own form asks for", () => {
+    const problems = validateInspection(def, { ...complete, aerator: null, chlorine_level: 25 }, {});
+    expect(problems.map((p) => `${p.key}:${p.problem}`)).toEqual(["aerator:missing", "chlorine_level:invalid", "overview:photos", "chlorinator:photos"]);
+    // Readings are never waived; a photo the authority requires is not either.
+    expect(overrideBlockers(problems).map((p) => p.key)).toEqual(["aerator", "chlorine_level"]);
+    const photos = problems.filter((p) => p.problem === "photos");
+    expect(overrideBlockers(photos, [{ key: "overview" }]).map((p) => p.key)).toEqual(["overview"]);
+    expect(overrideBlockers(photos)).toEqual([]);
+  });
+});
 
 describe("default template", () => {
   it("is a valid template definition", () => {

@@ -69,10 +69,10 @@ test("second walk: a demo filing reads consistently and fits a phone", async ({ 
   const filings = (await (await page.request.get("/api/filings?view=all&kind=inspection_report")).json()).items as { id: string; jurisdiction: { key: string } | null }[];
   const example = filings.find((f) => f.jurisdiction?.key === "tx-example-county")!;
   await page.goto(`/filings/${example.id}`);
-  // R1: the fictional county's rules don't wait for the signature, and the panel says so.
+  // R1: the fictional county holds for the MP's signature like a real one, so the report it got was signed first.
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "Maintenance provider signature" }) });
-  await expect(panel).toContainText("example county rules don't hold the filing");
-  await expect(panel).not.toContainText("so it cannot be filed");
+  await expect(panel).toContainText("signed by Olivia Owner");
+  await expect(panel).not.toContainText("example county rules don't hold the filing");
   // R2: the manifest hash wraps instead of widening the page.
   await expect(page.getByText(/Manifest SHA-256/).first()).toBeVisible();
   expect(await sideways(page)).toBeLessThanOrEqual(0);

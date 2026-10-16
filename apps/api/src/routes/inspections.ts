@@ -20,15 +20,18 @@ import {
   type InspectionTemplate,
   inspectionTemplate,
   type InspectionValues,
+  type IssueType,
   type JobStatus,
+  overrideBlockers,
   overrideInput,
+  type Role,
   type TemplateDefinition,
   templateInput,
   unknownKeys,
   validateInspection,
   visibleFields,
 } from "@aerowise/domain";
-import { openFiling, siteRequirements } from "@aerowise/compliance";
+import { holdsProviderLicense, openFiling, siteRequirements } from "@aerowise/compliance";
 import { enqueue, GENERATE_REPORTS, queueSms } from "@aerowise/tasks";
 import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -41,6 +44,7 @@ import { perAddress, type PublicLinkLimits } from "../lib/rate-limits.ts";
 import type { UrlSigner } from "../storage/signed-urls.ts";
 import type { ObjectStore } from "@aerowise/storage";
 import { readForDownload } from "../lib/demo.ts";
+import { organizationToday } from "../lib/today.ts";
 
 type Executor = Database | Transaction<DB>;
 
@@ -226,9 +230,54 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
     return Object.fromEntries(rows.map((r) => [r.photoKey, Number(r.n)]));
   };
 
+  /** The owner, or a member with an active maintenance provider license, may accept a failed inspection anyway. */
+  async function mayAcceptAnyway(organizationId: string, userId: string, role: Role, at: Date) {
+    return role === "owner" || holdsProviderLicense(db, organizationId, userId, await organizationToday(db, organizationId, at));
+  }
+
   /**
-   * Marks the job, and the visit it fulfils, as done; records it on the site's compliance
-   * ledger; opens the filing; and queues the report PDFs. All in the caller's transaction.
+   * What the finished inspection says needs work, as issues the office turns into work orders:
+   * a repair for each item marked Fail and a pump-out when pumping is needed. None where the
+   * technician raised one of that type on this inspection, or the site already has it open.
+   */
+  async function openFollowUpIssues(trx: Transaction<DB>, req: FastifyRequest, a: { organizationId: string; inspectionId: string; siteId: string; at: Date }) {
+    const [insp, answers, open] = await Promise.all([
+      trx.selectFrom("inspections as i").innerJoin("inspectionTemplates as t", "t.id", "i.templateId").select("t.definition").where("i.organizationId", "=", a.organizationId).where("i.id", "=", a.inspectionId).executeTakeFirstOrThrow(),
+      trx.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", a.organizationId).where("inspectionId", "=", a.inspectionId).execute(),
+      trx.selectFrom("issues").select(["type", "fieldKey", "inspectionId"]).where("organizationId", "=", a.organizationId).where("siteId", "=", a.siteId).where("status", "=", "open").execute(),
+    ]);
+    const values = Object.fromEntries(answers.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]]));
+    const raisedHere = (type: IssueType) => open.some((x) => x.inspectionId === a.inspectionId && x.type === type && x.fieldKey === null);
+    const wanted: { type: IssueType; fieldKey: string; description: string }[] = [];
+    if (!raisedHere("repair_needed")) {
+      for (const f of visibleFields(insp.definition as TemplateDefinition, values)) {
+        if (f.type !== "pass_fail" || values[f.key] !== "fail") continue;
+        if (open.some((x) => x.type === "repair_needed" && x.fieldKey === f.key)) continue;
+        wanted.push({ type: "repair_needed", fieldKey: f.key, description: `${f.label} failed at the inspection` });
+      }
+    }
+    // One pump-out covers the tanks, whoever asked for it first.
+    if (values.pumping_needed === true && !open.some((x) => x.type === "pump_out")) {
+      wanted.push({ type: "pump_out", fieldKey: "pumping_needed", description: "The technician marked pumping needed" });
+    }
+    for (const w of wanted) {
+      // The same id every time for this inspection and item, so nothing can make it twice.
+      const h = createHash("sha256").update(`follow-up:${a.inspectionId}:${w.fieldKey}`).digest("hex");
+      const clientId = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+      const created = await trx
+        .insertInto("issues")
+        .values({ organizationId: a.organizationId, clientId, inspectionId: a.inspectionId, siteId: a.siteId, type: w.type, severity: "medium", description: w.description, fieldKey: w.fieldKey, updatedAt: a.at })
+        .onConflict((oc) => oc.columns(["organizationId", "clientId"]).doNothing())
+        .returning("id")
+        .executeTakeFirst();
+      if (created) await audit(trx, req, { action: "issue.opened_from_inspection", entityType: "issue", entityId: created.id, changes: { inspectionId: a.inspectionId, type: w.type, fieldKey: w.fieldKey } });
+    }
+  }
+
+  /**
+   * Marks the job, and the visit it fulfils, as done; opens issues for what it found; records
+   * it on the site's compliance ledger; opens the filing; and queues the report PDFs. All in
+   * the caller's transaction.
    */
   async function completeJob(
     trx: Transaction<DB>,
@@ -255,6 +304,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         .where("status", "=", "open")
         .execute();
     }
+    await openFollowUpIssues(trx, req, { organizationId, inspectionId, siteId: job.siteId, at });
     await trx
       .insertInto("complianceEvents")
       .values({
@@ -908,18 +958,24 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
       schema: {
         tags: ["inspections"],
         summary: "Accept an inspection that failed validation, with a reason",
+        description:
+          "For the owner, or a member with an active maintenance provider license on file. Only missing photos the company's own form asks for can be " +
+          "accepted: a missing or out-of-range reading, or a photo the site's authority requires, is refused (422) and stays for the technician to finish.",
         params,
         body: overrideInput,
         response: { 200: inspection },
       },
     },
     async (req) => {
-      const { organizationId, userId } = req.requireAuth();
+      const { organizationId, userId, role } = req.requireAuth();
       const at = now();
+      if (!(await mayAcceptAnyway(organizationId, userId, role, at))) {
+        throw new HttpError(403, "forbidden", "Only the owner or a licensed maintenance provider can accept an inspection anyway");
+      }
       await db.transaction().execute(async (trx) => {
         const row = await trx
           .selectFrom("inspections")
-          .select(["id", "jobId", "status", "validationStatus", "validationProblems"])
+          .select(["id", "jobId", "siteId", "templateId", "status", "validationStatus"])
           .where("organizationId", "=", organizationId)
           .where("id", "=", req.params.id)
           .forUpdate()
@@ -928,9 +984,20 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         if (row.status !== "draft" || row.validationStatus !== "invalid") {
           throw conflict("not_overridable", "Only an inspection whose completion failed validation can be overridden");
         }
+        // Checked again now: photos may have arrived since the phone tried to finish.
+        const template = (await findTemplate(organizationId, row.templateId))!;
+        const answers = await trx.selectFrom("inspectionValues").select(["fieldKey", "valueJson"]).where("organizationId", "=", organizationId).where("inspectionId", "=", row.id).execute();
+        const requirements = await siteRequirements(trx, organizationId, row.siteId, at);
+        const problems = validateInspection(
+          applyRequirements(template.definition as TemplateDefinition, requirements),
+          Object.fromEntries(answers.map((v) => [v.fieldKey, v.valueJson as InspectionValues[string]])),
+          await photoCounts(trx, organizationId, row.id),
+        );
+        const blockers = overrideBlockers(problems, requirements?.requiredPhotos);
+        if (blockers.length) throw unprocessable(`Only missing photos the company's own form asks for can be accepted anyway. Still needed: ${blockers.map((p) => p.message).join("; ")}`);
         await trx
           .updateTable("inspections")
-          .set({ status: "completed", completedAt: at, validationStatus: "overridden", overrideReason: req.body.reason, overrideBy: userId, updatedAt: at })
+          .set({ status: "completed", completedAt: at, validationStatus: "overridden", validationProblems: JSON.stringify(problems), overrideReason: req.body.reason, overrideBy: userId, updatedAt: at })
           .where("organizationId", "=", organizationId)
           .where("id", "=", row.id)
           .execute();
@@ -939,7 +1006,7 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
           action: "inspection.overridden",
           entityType: "inspection",
           entityId: row.id,
-          changes: { reason: req.body.reason, problems: row.validationProblems },
+          changes: { reason: req.body.reason, problems },
         });
       });
       return loadInspection(db, organizationId, req.params.id);

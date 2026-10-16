@@ -1,4 +1,4 @@
-import { openContractFiling } from "@aerowise/compliance";
+import { openContractFiling, visitDeadline } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms, type ContractCycles } from "@aerowise/renewals";
 import { FORM_COLUMNS, toForm } from "../lib/forms.ts";
@@ -848,6 +848,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       schema: {
         tags: ["obligations"],
         summary: "Open visits due by a date, overdue first: aerobic inspections unless another kind is asked for",
+        description:
+          "Dated and sorted by `effectiveDueOn`: the visit's due date, or for the site's next inspection visit the authority's next due date from the latest report when that is earlier.",
         querystring: dueQuery,
         response: { 200: z.object({ items: z.array(dueObligation), total: z.number().int(), overdueTotal: z.number().int(), today: z.iso.date() }) },
       },
@@ -871,11 +873,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         // One kind at a time (SW-9): the inspection list never shows pumping or maintenance.
         .where("o.serviceType", "=", serviceType)
         .where("o.status", "=", "open");
+      // The date that counts: the authority's when it comes before the contract's.
+      const dueBy = visitDeadline("o");
       if (obligationId) base = base.where("o.id", "=", obligationId);
-      else base = base.where("o.dueOn", "<=", through);
+      else base = base.where(dueBy, "<=", through);
       if (siteId) base = base.where("o.siteId", "=", siteId);
-      if (overdueOnly) base = base.where("o.dueOn", "<", asOf);
-      if (upcomingOnly) base = base.where("o.dueOn", ">=", asOf);
+      if (overdueOnly) base = base.where(dueBy, "<", asOf);
+      if (upcomingOnly) base = base.where(dueBy, ">=", asOf);
       // Not yet booked: no live inspection job, or for pumping and maintenance no work order.
       if (unscheduledOnly) base = base.where("j.id", "is", null).where("wo.id", "is", null);
       const [rows, count] = await Promise.all([
@@ -892,21 +896,23 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             "j.scheduledDate as jobDate",
             "j.technicianUserId as jobTechnicianId",
             "tu.name as jobTechnicianName",
+            dueBy.as("effectiveDueOn"),
           ])
-          .orderBy("o.dueOn")
+          .orderBy(dueBy)
           .orderBy("o.id")
           .limit(limit)
           .offset(offset)
           .execute(),
-        base.select([sql<number>`count(*)::int`.as("total"), sql<number>`count(*) filter (where o.due_on < ${asOf}::date)::int`.as("overdueTotal")]).executeTakeFirstOrThrow(),
+        base.select([sql<number>`count(*)::int`.as("total"), sql<number>`count(*) filter (where ${dueBy} < ${asOf}::date)::int`.as("overdueTotal")]).executeTakeFirstOrThrow(),
       ]);
       return {
         today: asOf,
         overdueTotal: count.overdueTotal,
         total: count.total,
-        items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, ...o }) => ({
+        items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, effectiveDueOn, ...o }) => ({
           ...obligation.parse(toObligation(o)),
-          overdue: o.dueOn < asOf,
+          effectiveDueOn,
+          overdue: effectiveDueOn < asOf,
           job:
             jobId && jobDate && jobTechnicianId
               ? { id: jobId, scheduledDate: jobDate, technicianId: jobTechnicianId, technicianName: jobTechnicianName ?? "" }
