@@ -9,7 +9,7 @@ import { sql } from "kysely";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { FakeMail } from "./fake-mail.ts";
 import { createTenant, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 // Today is 2026-03-01 (setupTestApp's clock); inspections complete that day, so a filing
 // with a 14-day deadline is due 2026-03-15.
@@ -35,6 +35,12 @@ afterAll(async () => {
 async function inspected(c: TestContext, county: string, name = "Org A") {
   const s = await setup(c, name);
   return { ...s, inspectionId: await inspectedAt(s, county) };
+}
+
+/** The reports are made and the MP signs them: no filing goes before that (30 TAC 285.7(b)(3)). */
+async function reportAndSign(s: Setup, inspectionId: string) {
+  await runWorker(ctx);
+  await signAsProvider(s, inspectionId);
 }
 
 const filingOf = async (s: Setup) => (await s.api.get("/filings?view=all")).json().items[0];
@@ -85,7 +91,7 @@ describe("an authority's report layout", () => {
     // No chlorinator: the chlorine reading is never asked for, and no repairs were made.
     const values = { ...completeValues(), chlorinator: "not_present", chlorine_level: undefined, air_pressure: 4.5 };
     const done = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values }))).json();
-    await runWorker(ctx);
+    await reportAndSign(s, done.id);
     const { authority } = await snapshots(ctx, done.id);
     expect(authority!.sections[1]).toEqual({ title: "Disinfection", rows: [{ label: "Chlorinator", value: "Not present", failed: false }] });
 
@@ -136,7 +142,7 @@ describe("filing fees", () => {
     const opened = await filingOf(s);
     expect(opened).toMatchObject({ status: "pending", deadlineOn: "2026-03-15", fees: { filingFeeCents: 1000, lateFeeIfLateCents: 2500, lateFeeCents: null, totalCents: 1000, basis: "FICTIONAL: Fee Fixture County fee schedule" } });
 
-    await runWorker(ctx);
+    await reportAndSign(s, s.inspectionId);
     expect((await filingOf(s)).status).toBe("ready");
     ctx.now = new Date("2026-03-15T20:00:00Z"); // the deadline day itself is on time
     expect((await s.api.post(`/filings/${opened.id}/submit`, {})).statusCode).toBe(200);
@@ -146,7 +152,7 @@ describe("filing fees", () => {
 
   it("add the late fee when the filing first reaches the authority after the deadline, and only once", async () => {
     const s = await inspected(ctx, FEES);
-    await runWorker(ctx);
+    await reportAndSign(s, s.inspectionId);
     const f = await filingOf(s);
     ctx.now = new Date("2026-03-20T16:00:00Z");
     expect((await s.api.post(`/filings/${f.id}/submit`, {})).statusCode).toBe(200);
@@ -170,7 +176,7 @@ describe("filing fees", () => {
 
   it("count a late filing by hand the same way, on the organization's date", async () => {
     const s = await inspected(ctx, FEES);
-    await runWorker(ctx);
+    await reportAndSign(s, s.inspectionId);
     const f = await filingOf(s);
     expect((await s.api.post(`/filings/${f.id}/manual`, {})).statusCode).toBe(200);
     // 03:00 UTC on the 16th is still the 15th in Central time: on time.
@@ -179,7 +185,7 @@ describe("filing fees", () => {
     expect((await filingOf(s)).fees).toMatchObject({ lateFeeCents: 0, totalCents: 1000 });
 
     const u = await inspected(ctx, FEES, "Org B");
-    await runWorker(ctx);
+    await reportAndSign(u, u.inspectionId);
     const g = await filingOf(u);
     await u.api.post(`/filings/${g.id}/manual`, {});
     ctx.now = new Date("2026-03-16T16:00:00Z");
@@ -202,7 +208,7 @@ describe("filing fees on the homeowner's invoice", () => {
   /** A Fee Fixture County site whose inspection report reached the authority on time, billed quarterly. */
   async function filed(name: string) {
     const s = await inspected(ctx, FEES, name);
-    await runWorker(ctx);
+    await reportAndSign(s, s.inspectionId);
     const f = await filingOf(s);
     ctx.now = new Date("2026-03-15T20:00:00Z");
     expect((await s.api.post(`/filings/${f.id}/submit`, {})).statusCode).toBe(200);
