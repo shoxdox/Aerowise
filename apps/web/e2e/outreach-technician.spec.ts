@@ -212,7 +212,9 @@ test("quota failure never claims the latest edit is saved, retry recovers, and y
   await page.getByLabel("Notes for the customer").fill("Latest edit must not be called safe before commit");
   await expect(page.getByTestId("local-save-status")).toContainText("not saved on this phone");
   await expect(page.getByTestId("storage-full-banner")).toBeVisible();
-  await expect(page.getByTestId("offline-status")).toContainText("Offline");
+  // One line about signal, the one that counts what waits.
+  await expect(page.getByTestId("sync-status")).toContainText("No signal.");
+  await expect(page.getByTestId("offline-status")).toHaveCount(0);
   await page.evaluate(() => { (window as unknown as { editsFull: boolean }).editsFull = false; });
   await page.getByRole("button", { name: "Retry local save" }).click();
   await expect(page.getByTestId("local-save-status")).toContainText("Saved on this phone");

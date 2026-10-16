@@ -4,6 +4,7 @@ import type { Stop, WorkStop } from "@aerowise/domain";
 import { useMemo } from "react";
 import { StreetMap, type StreetMapStop } from "@/components/map/StreetMap";
 import type { LocalInspection } from "@/lib/offline/db";
+import { plural } from "./plural";
 import { stopStatus } from "./StopList";
 
 /**
@@ -56,5 +57,5 @@ export function TechRouteMap({
     return [{ id: "mine", color: "#1f6f5c", stops }];
   }, [route, inspections, work, numbers]);
   const count = routes[0]!.stops.length;
-  return <StreetMap routes={routes} onSelect={onOpen} fitKey={route.date} label={`Map of your ${count} stops`} onUnavailable={onUnavailable} />;
+  return <StreetMap routes={routes} onSelect={onOpen} fitKey={route.date} label={`Map of your ${plural(count, "stop")}`} onUnavailable={onUnavailable} />;
 }

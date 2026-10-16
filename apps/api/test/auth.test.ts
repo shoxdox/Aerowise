@@ -80,6 +80,28 @@ describe("sessions", () => {
     expect((await api.get("/auth/me")).statusCode).toBe(401);
   });
 
+  it("ends a phone's session from before a sign-out made with no signal, never one signed in since", async () => {
+    const org = await createOrg(ctx.db, "Org A");
+    const user = await createUser(ctx.db, org.id, "technician");
+    const old = client(ctx.app, await login(ctx.app, user.email));
+    await sql`update sessions set created_at = now() - interval '1 hour' where user_id = ${user.id}`.execute(ctx.db);
+    const signedOutAt = new Date(Date.now() - 60_000).toISOString();
+    const since = client(ctx.app, await login(ctx.app, user.email));
+
+    // Signed in again after it: kept, cookie and all.
+    const kept = await since.post("/auth/logout", { signedInBefore: signedOutAt });
+    expect(kept.statusCode).toBe(204);
+    expect(kept.cookies.find((c) => c.name === "aw_session")).toBeUndefined();
+    expect((await since.get("/auth/me")).statusCode).toBe(200);
+
+    // Still the session from before it: ended.
+    const ended = await old.post("/auth/logout", { signedInBefore: signedOutAt });
+    expect(ended.statusCode).toBe(204);
+    expect(ended.cookies.find((c) => c.name === "aw_session")?.value).toBe("");
+    expect((await old.get("/auth/me")).statusCode).toBe(401);
+    expect((await since.get("/auth/me")).statusCode).toBe(200);
+  });
+
   it("rejects expired sessions", async () => {
     const org = await createOrg(ctx.db, "Org A");
     const user = await createUser(ctx.db, org.id, "owner");

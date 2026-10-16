@@ -23,9 +23,16 @@ export function SyncBanner({
     window.addEventListener("online", listener); window.addEventListener("offline", listener);
     return () => { window.removeEventListener("online", listener); window.removeEventListener("offline", listener); };
   }, () => navigator.onLine, () => true);
+  // The phone knows before a send fails that it has no signal; the line about what waits says so then.
+  const noSignal = !online || state.kind === "offline";
   return (
     <div className="sync-area">
-      {!online && <p className="sync warn" role="status" data-testid="offline-status">Offline. Saved work stays on this phone; office delivery waits for signal.</p>}
+      {/* One line about signal: with changes waiting, theirs says it. */}
+      {!online && (needsSignIn || state.pending === 0) && (
+        <p className="sync warn" role="status" data-testid="offline-status">
+          No signal. New work is saved on this phone and sends when you&apos;re back online.
+        </p>
+      )}
       {needsSignIn ? (
         // A send was refused under this sign-in: one line, with what waits, never next to "All changes sent".
         <p className="sync warn" role="status" data-testid="sync-status">
@@ -43,8 +50,8 @@ export function SyncBanner({
           )}
         </p>
       ) : state.pending > 0 ? (
-        <p className={`sync ${state.kind === "offline" || state.kind === "read_only" ? "warn" : ""}`} role="status" data-testid="sync-status">
-          {state.kind === "offline"
+        <p className={`sync ${noSignal || state.kind === "read_only" ? "warn" : ""}`} role="status" data-testid="sync-status">
+          {noSignal
             ? `No signal. ${plural(state.pending, "change")} saved on this phone, will send when you're back online.`
             : state.kind === "read_only"
               ? `Your company's account is read-only. ${plural(state.pending, "change")} saved on this phone, will send once it is reactivated.`

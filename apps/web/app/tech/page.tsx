@@ -17,7 +17,7 @@ import { setDisplayTimeZone } from "@/lib/format";
 import { activeStore, activeTenant, allInspections, allOps, sameTenant, storeFor, type CachedRoute, type KnownTenant, type LocalInspection } from "@/lib/offline/db";
 import { assumingOffline, locate, fetchInspectionForJob, fetchMe, loadActiveTemplate, loadPumpingField, loadRoute, loadWorkRoute } from "@/lib/offline/data";
 import { retryFailed, startBackgroundSync, subscribe, syncNow, unsentFor, type SyncState } from "@/lib/offline/sync";
-import { endServerSession, openTechSession, setSignOutPending, signOutOnPhone, type EndedAccess } from "@/lib/offline/tenant";
+import { endServerSession, noteSignOut, openTechSession, signOutOnPhone, type EndedAccess } from "@/lib/offline/tenant";
 import { saveOrReport } from "@/lib/offline/storage";
 import { flushUnsaved } from "@/lib/offline/unsaved";
 import { workStoreFor, type LocalWork } from "@/lib/offline/work";
@@ -147,6 +147,8 @@ export default function TechApp() {
   /** Opens a screen one step on: the phone's Back, or ‹ Back, comes back here. */
   const open = useCallback(
     (next: View) => {
+      // A second tap on the same stop, before the list has gone, adds no second entry to step back through.
+      if (sameView(next, viewRef.current)) return;
       window.history.pushState({ techView: next } satisfies Entry, "", urlOf(next));
       show(next);
     },
@@ -361,7 +363,14 @@ export default function TechApp() {
       if (e.persisted) void recheck();
     };
     const onVisible = () => {
-      if (document.visibilityState === "visible" && needsSignInRef.current) void recheck();
+      if (document.visibilityState !== "visible") return;
+      if (needsSignInRef.current) void recheck();
+      // Picked up again: a session that ended meanwhile (the person deactivated, signed out
+      // elsewhere, expired) clears the screen now, not at the next start.
+      else if (activeTenant())
+        void fetchMe().then((res) => {
+          if (!res.ok && res.reason === "signed_out") void recheck();
+        });
     };
     window.addEventListener("pageshow", onShow);
     document.addEventListener("visibilitychange", onVisible);
@@ -449,22 +458,28 @@ export default function TechApp() {
     });
   }
 
+  const signingOut = useRef(false);
   async function signOut() {
-    const tenant = activeTenant();
-    // The open form's last answers are saved first, so they are counted and kept.
-    await flushUnsaved();
-    const { unsent: runnable, later } = tenant ? await unsentFor(tenant) : { unsent: 0, later: 0 };
-    const unsent = `Some changes have not reached the office yet.${later > 0 ? ` ${later} of them will send only after the app updates.` : ""}`;
-    if (runnable + later > 0 && !window.confirm(`${unsent} Sign out anyway? They stay on this phone.`)) return;
-    // Noted first: if the phone has no signal (or the page goes), the next start ends the session.
-    setSignOutPending(true);
-    const serverDone = await endServerSession();
-    if (serverDone) setSignOutPending(false);
-    // Nothing of this sign-in stays readable here; what waits to send stays for the same person.
-    const pending = tenant ? await signOutOnPhone(tenant) : 0;
-    // Drawn before leaving, so Back to this page (kept as it was by the phone) shows none of it either.
-    flushSync(() => clearScreen({ locked: pending > 0 && tenant ? { name: tenant.userName, pending } : undefined }));
-    if (serverDone) window.location.href = "/login?next=/tech";
+    if (signingOut.current) return;
+    signingOut.current = true;
+    try {
+      const tenant = activeTenant();
+      // The open form's last answers are saved first, so they are counted and kept.
+      await flushUnsaved();
+      const { unsent: runnable, later } = tenant ? await unsentFor(tenant) : { unsent: 0, later: 0 };
+      const unsent = `Some changes have not reached the office yet.${later > 0 ? ` ${later} of them will send only after the app updates.` : ""}`;
+      if (runnable + later > 0 && !window.confirm(`${unsent} Sign out anyway? They stay on this phone and send when you sign in again.`)) return;
+      // Noted first: if the phone has no signal (or the page goes), the next start ends the session.
+      noteSignOut();
+      // From here nothing of this sign-in is readable on the phone; what waits to send stays for the same person.
+      const pending = tenant ? await signOutOnPhone(tenant) : 0;
+      // Drawn before leaving, so Back to this page (kept as it was by the phone) shows none of it either.
+      flushSync(() => clearScreen({ locked: pending > 0 && tenant ? { name: tenant.userName, pending } : undefined }));
+      // With no signal the card stays, and the next start ends the session.
+      if (await endServerSession()) window.location.href = "/login?next=/tech";
+    } finally {
+      signingOut.current = false;
+    }
   }
 
   // One store object per sign-in, so the work form does not reload on every render.

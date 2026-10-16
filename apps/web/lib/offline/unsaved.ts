@@ -31,14 +31,18 @@ export function mirrorUnsaved(t: Tenant, edit: UnsavedEdit, form: string, versio
   }
 }
 
-/** The form has saved its edits up to `version` on the phone: its copy here is no longer needed. */
+/**
+ * The form has saved its edits up to `version` on the phone: its copy here is no longer needed. A
+ * copy another form wrote is older than this save (that form was closed before this one opened),
+ * so it goes too, rather than being put back over these answers at the next start.
+ */
 export function clearUnsaved(t: Tenant, kind: UnsavedEdit["kind"], clientId: string, form: string, version: number) {
   try {
     const key = keyOf(t, kind, clientId);
     const raw = localStorage.getItem(key);
     if (!raw) return;
     const m = JSON.parse(raw) as Mirror;
-    if (m.form === form && m.version <= version) localStorage.removeItem(key);
+    if (m.form !== form || m.version <= version) localStorage.removeItem(key);
   } catch {
     // Nothing to clear.
   }
@@ -73,11 +77,11 @@ export async function restoreUnsaved(t: KnownTenant) {
       if (m.kind === "inspection") {
         const store = storeFor(t);
         const stored = await store.getInspection(m.jobId);
-        if (stored && stored.clientId === m.clientId && stored.status === "draft") await store.saveInspection({ ...stored, values: m.values, issues: m.issues, accessIssue: m.accessIssue });
+        if (stored && stored.clientId === m.clientId && stored.status === "draft" && !stored.held) await store.saveInspection({ ...stored, values: m.values, issues: m.issues, accessIssue: m.accessIssue });
       } else {
         const store = workStoreFor(t);
         const stored = (await store.allRecords()).find((r) => r.clientId === m.clientId);
-        if (stored?.status === "draft") await store.saveWork({ ...stored, values: m.values, finalVisit: m.finalVisit, ...(m.pumpOut !== undefined ? { pumpOut: m.pumpOut } : {}) });
+        if (stored?.status === "draft" && !stored.held && !stored.resolved) await store.saveWork({ ...stored, values: m.values, finalVisit: m.finalVisit, ...(m.pumpOut !== undefined ? { pumpOut: m.pumpOut } : {}) });
       }
     } catch (err) {
       if (isQuotaError(err)) continue;

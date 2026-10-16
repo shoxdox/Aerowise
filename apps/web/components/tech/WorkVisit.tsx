@@ -458,8 +458,10 @@ function WorkForm({ stop, store, initial, onSaved, onFinished }: { stop: WorkSto
                 vehicles={field?.vehicles ?? []}
                 problem={problemFor("pump_out")?.message ?? null}
                 onChange={(pumpOut) => {
-                  // Mostly typed: the amount pumped.
-                  update({ ...latest.current, pumpOut }, true);
+                  // The amount pumped (or the kind of waste) is typed; a unit, waste or truck chosen saves at once.
+                  const before = latest.current.pumpOut;
+                  const typed = !!before && !!pumpOut && before.unit === pumpOut.unit && before.wasteType === pumpOut.wasteType && (before.vehicleId ?? null) === (pumpOut.vehicleId ?? null);
+                  update({ ...latest.current, pumpOut }, typed);
                   if (problems.length) setProblems((ps) => ps.filter((p) => p.key !== "pump_out"));
                 }}
               />

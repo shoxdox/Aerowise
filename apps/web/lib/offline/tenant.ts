@@ -95,56 +95,67 @@ async function tidyOthers(current: KnownTenant) {
 }
 
 // A Sign out tapped with no signal: the server still has the session, so the next start ends it
-// before reading anything as that person.
+// before reading anything as that person. Only a session from before the tap: one signed in since
+// on this phone (Sign in on the card, a demo, an invitation) is not the one that was signed out.
 const SIGN_OUT_PENDING_KEY = "aerowise-tech:sign-out-pending";
 
-export function setSignOutPending(pending: boolean) {
+/** Notes the tap, before anything else, so a sign-out the page does not live to finish still happens. */
+export function noteSignOut() {
   try {
-    if (pending) localStorage.setItem(SIGN_OUT_PENDING_KEY, "1");
-    else localStorage.removeItem(SIGN_OUT_PENDING_KEY);
+    localStorage.setItem(SIGN_OUT_PENDING_KEY, new Date().toISOString());
   } catch {
     // Private mode: the session cookie is all there is.
   }
 }
 
-const signOutPending = () => {
+function signOutNoted(): string | null {
   try {
-    return localStorage.getItem(SIGN_OUT_PENDING_KEY) === "1";
+    const at = localStorage.getItem(SIGN_OUT_PENDING_KEY);
+    return at && !Number.isNaN(Date.parse(at)) ? at : null;
   } catch {
-    return false;
+    return null;
   }
-};
+}
 
-/** Ends this browser's session on the server; false when it could not be asked. */
-export async function endServerSession(): Promise<boolean> {
+/**
+ * Ends this browser's session on the server, or with `signedInBefore`, only a session signed in
+ * before then. True once the server has answered, which also clears a noted sign-out; false when
+ * it could not be asked.
+ */
+export async function endServerSession(signedInBefore?: string): Promise<boolean> {
   try {
     const res = await fetch("/api/auth/logout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify(signedInBefore ? { signedInBefore } : {}),
       credentials: "same-origin",
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    try {
+      localStorage.removeItem(SIGN_OUT_PENDING_KEY);
+    } catch {
+      // Nothing was noted.
+    }
+    return true;
   } catch {
     return false;
   }
 }
 
-const locked = async (t: KnownTenant): Promise<TechSession> => {
+/** Signed out on this phone: what waits for this person, or, with nothing, `none` for `reason`. */
+const locked = async (t: KnownTenant, reason: "offline" | "signed_out"): Promise<TechSession> => {
   const pending = await signOutOnPhone(t);
-  return pending > 0 ? { kind: "locked", tenant: { ...t, signedOut: true }, pending } : { kind: "none", reason: "signed_out" };
+  return pending > 0 ? { kind: "locked", tenant: { ...t, signedOut: true }, pending } : { kind: "none", reason };
 };
 
 export async function openTechSession(): Promise<TechSession> {
   await adoptLegacyStore();
   const last = lastActiveTenant();
-  if (signOutPending()) {
-    if (await endServerSession()) setSignOutPending(false);
-    // Still no signal: signed out on the phone already, so nothing is shown as anyone.
-    else return last ? locked(last) : { kind: "none", reason: "offline" };
-  }
+  const signedOutAt = signOutNoted();
+  // A Sign out noted with no signal is finished first. Still none: the phone is signed out already, so nothing shows as anyone.
+  if (signedOutAt && !(await endServerSession(signedOutAt))) return last ? locked(last, "offline") : { kind: "none", reason: "offline" };
   const res = await fetchMe();
   if (res.ok) {
     const me = res.data;
@@ -163,9 +174,9 @@ export async function openTechSession(): Promise<TechSession> {
   if (res.reason === "signed_out") {
     const ended = await discardIfEnded(last);
     if (ended) return { kind: "ended", ended };
-    return locked(last);
+    return locked(last, "signed_out");
   }
-  if (last.signedOut || res.reason === "other_account") return locked(last);
+  if (last.signedOut || res.reason === "other_account") return locked(last, res.reason === "offline" ? "offline" : "signed_out");
   activateTenant(last);
   await restoreUnsaved(last);
   return { kind: "cached", reason: res.reason, me: await activeStore().kvGet<Me>("me") };

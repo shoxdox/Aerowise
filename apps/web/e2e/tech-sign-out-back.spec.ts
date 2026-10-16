@@ -158,19 +158,73 @@ test("signing out with work not yet sent keeps only that work, locked with its c
   }
 });
 
-test("a session the server ended (expired, or the person deactivated) clears the phone the same way", async ({ page, browser, context }) => {
-  const me = await enterAsTechnician(page, await makeProspectDemo(browser, "Ended Session Septic"));
+test("deactivating the technician, or the session expiring, clears the phone the same way", async ({ page, browser, context }) => {
+  const demo = await makeProspectDemo(browser, "Ended Session Septic");
+  const me = await enterAsTechnician(page, demo);
   const route = (await (await page.request.get("/api/route")).json()).items;
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
 
-  // The session ends while the phone is away; nothing waits to send.
-  await context.clearCookies();
-  await page.reload();
+  // The owner deactivates the technician from the office; nothing waits to send on the phone.
+  const office = await browser.newContext();
+  const owner = await office.newPage();
+  await owner.goto(demo.pathname + demo.hash);
+  await owner.waitForURL("**/inbox");
+  expect((await owner.request.post(`/api/users/${me.user.id}/deactivate`, { data: {} })).status()).toBe(204);
+  await office.close();
+  // The phone, left open, is picked up again.
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await page.waitForURL("**/login**");
   expect(await databases(page)).not.toContain(scoped(me));
   await page.goto("/tech");
   await page.waitForURL("**/login**");
   await showsNothingOf(page, route);
+
+  // A session that ran out (no cookie left) does the same.
+  const other = await enterAsTechnician(page, await makeProspectDemo(browser, "Expired Session Septic"));
+  await context.clearCookies();
+  await page.reload();
+  await page.waitForURL("**/login**");
+  expect(await databases(page)).not.toContain(scoped(other));
+});
+
+test("signed out with no signal, the phone ends that session once it has signal, and a sign-in made since is kept", async ({ page, browser, context }) => {
+  const demo = await makeProspectDemo(browser, "No Signal Sign-out Septic");
+  const me = await enterAsTechnician(page, demo);
+  const route = (await (await page.request.get("/api/route")).json()).items;
+  await waitForOfflineShell(page);
+  const session = async () => (await context.cookies()).find((c) => c.name === "aw_session")?.value;
+  const old = await session();
+
+  // No signal: the route leaves the phone at once, and the card asks for a sign-in, also opened again.
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByTestId("signed-out")).toContainText("Sign in with signal");
+  await showsNothingOf(page, route);
+  expect(await databases(page)).not.toContain(scoped(me));
+  await page.reload();
+  await expect(page.getByTestId("signed-out")).toBeVisible();
+  await showsNothingOf(page, route);
+
+  // Opened with signal and no new sign-in: that session ends before anything is read as that person.
+  await context.setOffline(false);
+  await page.goto("/tech");
+  await page.waitForURL("**/login**");
+  const stale = await browser.newContext();
+  expect((await stale.request.get("/api/auth/me", { headers: { cookie: `aw_session=${old}` } })).status()).toBe(401);
+  await stale.close();
+
+  // Again with no signal, but signed in again before the app is opened: one sign-in is enough.
+  await enterAsTechnician(page, demo);
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByTestId("signed-out")).toBeVisible();
+  await context.setOffline(false);
+  await enterAsTechnician(page, demo);
+  const since = await session();
+  await page.reload();
+  await expect(page.locator(".stop-card").first()).toBeVisible();
+  await expect(page.locator(".tech-bar")).toContainText(me.user.name);
+  expect(await session()).toBe(since);
 });
 
 test("the phone's Back steps from the inspection to its stop to the list, each opening at its top and the list where it was left", async ({ page, browser }) => {
@@ -186,6 +240,8 @@ test("the phone's Back steps from the inspection to its stop to the list, each o
   await expect(page.getByRole("heading", { level: 1, name: customer })).toBeVisible();
   await expect(page).toHaveURL(/\/tech\?jobId=/);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // Texting is off in a new demo: no On my way button that could only say so.
+  await expect(page.getByRole("button", { name: "On my way" })).toHaveCount(0);
   const stopUrl = page.url();
   await page.getByRole("button", { name: "Arrive and start inspection" }).click();
   await expect(page.getByRole("group", { name: "Aerator" })).toBeVisible();
@@ -213,10 +269,16 @@ test("the phone's Back steps from the inspection to its stop to the list, each o
   await page.goBack();
   await expect(page.locator(".stop-card", { hasText: customer })).toBeVisible();
   await expect(page).toHaveURL(/\/tech$/);
+
+  // An owner doing their own visits gets back to the office screens from here; a technician has no such link.
+  await expect(page.locator(".tech-bar").getByRole("link", { name: "Office" })).toHaveCount(0);
+  expect((await page.request.post("/api/demo/switch", { data: { role: "owner" } })).ok()).toBe(true);
+  await page.goto("/tech");
+  await expect(page.locator(".tech-bar").getByRole("link", { name: "Office" })).toHaveAttribute("href", "/inbox");
 });
 
 test("an answer tapped or typed just before a reload is still there after it, and reaches the office", async ({ page, browser, context }) => {
-  await enterAsTechnician(page, await makeProspectDemo(browser, "Quick Reload Septic"));
+  const me = await enterAsTechnician(page, await makeProspectDemo(browser, "Quick Reload Septic"));
   await waitForOfflineShell(page);
   const card = page.locator(".stop-card", { hasText: "To do" }).first();
   await card.click();
@@ -255,4 +317,17 @@ test("an answer tapped or typed just before a reload is still there after it, an
 
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent", { timeout: 30_000 });
   await expect.poll(async () => (await (await page.request.get(`/api/jobs/${jobId}/inspection`)).json()).values).toMatchObject({ aerator: "pass", air_pressure: 4.5 });
+
+  // A copy left by a form closed earlier (say its save did not fit on a full phone) is older than
+  // what this form saves since: it goes then, and is not put back over these answers at the next start.
+  const [kept] = (await rows(page, scoped(me), "inspections")).filter((i) => i.jobId === jobId);
+  await page.evaluate(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+    key: `aerowise-tech:unsaved:${me.organization.id}:${me.user.id}:inspection:${kept!.clientId}`,
+    value: { kind: "inspection", jobId, clientId: kept!.clientId, values: { aerator: "fail" }, issues: [], accessIssue: null, form: "an-earlier-form", version: 9 },
+  });
+  await page.getByLabel("Air pressure").fill("4.6");
+  await expect(page.getByTestId("local-save-status")).toContainText("Saved on this phone");
+  await page.reload();
+  await expect(page.getByLabel("Air pressure")).toHaveValue("4.6");
+  await expect(pass).toHaveAttribute("aria-pressed", "true");
 });
