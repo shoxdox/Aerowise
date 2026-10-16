@@ -1,12 +1,16 @@
 "use client";
 
-import type { Plan } from "@aerowise/domain";
+import { BILLING_FREQUENCY_LABELS, CUSTOMER_TYPE_LABELS, type Plan } from "@aerowise/domain";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { money } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { money, plural } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -15,13 +19,9 @@ export default function PlansPage() {
   const recordLoad = useLoad<{ items: Plan[] }>("/plans");
   const { data, reload } = recordLoad;
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function onCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const create = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       await api("/plans", {
         method: "POST",
         body: {
@@ -35,19 +35,19 @@ export default function PlansPage() {
       });
       setCreating(false);
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create plan");
-    }
-  }
-
-  async function toggle(p: Plan) {
-    await api(`/plans/${p.id}`, { method: "PATCH", body: { active: !p.active } });
-    await reload();
-  }
+    },
+    { fallback: "Could not create the plan.", labels: { termMonths: "Term", visitsPerTerm: "Visits per term", priceCents: "Price" } },
+  );
+  const toggling = useSubmit(
+    async (p: Plan) => {
+      await api(`/plans/${p.id}`, { method: "PATCH", body: { active: !p.active } });
+      await reload();
+    },
+    { fallback: "Could not change the plan." },
+  );
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
       <div className="row">
         <h1>Maintenance plans</h1>
         <span className="spacer" />
@@ -56,7 +56,7 @@ export default function PlansPage() {
       <p className="muted">Contracts copy a plan&apos;s term, visits and price when they start, so editing a plan never changes existing contracts.</p>
 
       {creating && (
-        <form className="card grid" onSubmit={onCreate}>
+        <form className="card grid" onSubmit={create.form}>
           <label className="wide">
             Name
             <input name="name" required placeholder="Residential annual" />
@@ -89,51 +89,70 @@ export default function PlansPage() {
               <option value="monthly">Monthly</option>
             </select>
           </label>
-          {error && <p className="error wide">{error}</p>}
+          <FormError error={create.error} className="wide" />
           <div className="wide">
-            <button type="submit">Create plan</button>
+            <SubmitButton busy={create.busy}>Create plan</SubmitButton>
           </div>
         </form>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Plan</th>
-            <th>Term</th>
-            <th>Visits</th>
-            <th>Price</th>
-            <th>Status</th>
-            {editable && <th />}
-          </tr>
-        </thead>
-        <tbody>
-          {data?.items.map((p) => (
-            <tr key={p.id}>
-              <td>
-                <Link href={`/plans/${p.id}`}>{p.name}</Link> <span className="muted">· {p.customerType} · version {p.version}</span>
-              </td>
-              <td>{p.termMonths} months</td>
-              <td>
-                {p.visitsPerTerm} (every {p.termMonths / p.visitsPerTerm} months)
-              </td>
-              <td>
-                {money(p.priceCents)} <span className="muted">billed {p.billingFrequency}</span>
-              </td>
-              <td>
-                <span className={`badge ${p.active ? "active" : "inactive"}`}>{p.active ? "offered" : "retired"}</span>
-              </td>
-              {editable && (
-                <td>
-                  <button className="link" onClick={() => toggle(p)}>
-                    {p.active ? "Retire" : "Offer again"}
-                  </button>
-                </td>
-              )}
+      <LoadState load={recordLoad} label="plans" />
+      <FormError error={toggling.error} />
+      {data && data.items.length > 0 && (
+        <table className="stack">
+          <thead>
+            <tr>
+              <th>Plan</th>
+              <th>Term</th>
+              <th>Visits</th>
+              <th className="num">Price</th>
+              <th>Status</th>
+              {editable && <th />}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.items.map((p) => (
+              <tr key={p.id}>
+                <td data-label="Plan">
+                  <Link href={`/plans/${p.id}`}>{p.name}</Link>{" "}
+                  <span className="muted">
+                    · {CUSTOMER_TYPE_LABELS[p.customerType]} · version {p.version}
+                  </span>
+                </td>
+                <td data-label="Term">{plural(p.termMonths, "month")}</td>
+                <td data-label="Visits">
+                  {p.visitsPerTerm} (every {plural(p.termMonths / p.visitsPerTerm, "month")})
+                </td>
+                <td data-label="Price" className="num">
+                  {money(p.priceCents)} <span className="muted">billed {BILLING_FREQUENCY_LABELS[p.billingFrequency]}</span>
+                </td>
+                <td data-label="Status">
+                  <StatusBadge of="plan" value={p.active ? "offered" : "retired"} />
+                </td>
+                {editable && (
+                  <td className="actions">
+                    {p.active ? (
+                      <ConfirmButton
+                        className="link danger"
+                        question="Stop offering this plan? Its contracts keep their terms."
+                        confirmLabel="Retire"
+                        busy={toggling.busy}
+                        onConfirm={() => toggling.run(p)}
+                      >
+                        Retire
+                      </ConfirmButton>
+                    ) : (
+                      <SubmitButton type="button" className="link" busy={toggling.busy} onClick={() => void toggling.run(p)}>
+                        Offer again
+                      </SubmitButton>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       {data?.items.length === 0 && (
         <EmptyState title="No plans yet">
           A plan is what you sell: how many visits a year, what they include and the price. Create one here, then start contracts on it from each site.

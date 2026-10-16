@@ -3,30 +3,32 @@
 import type { RoutingSettings } from "@aerowise/domain";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
 export default function RoutingSettingsPage() {
   const { role } = useSession();
   const owner = role === "owner";
   const canSchedule = role === "owner" || role === "office";
-  const { data, error, reload } = useLoad<RoutingSettings>("/routing/settings");
+  const settings = useLoad<RoutingSettings>("/routing/settings");
+  const { data, reload } = settings;
   const [message, setMessage] = useState<string | null>(null);
-
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
-
-  async function send(action: () => Promise<unknown>, done: string) {
-    setMessage(null);
-    try {
+  const sending = useSubmit(
+    async (action: () => Promise<unknown>, done: string) => {
+      setMessage(null);
       await action();
       await reload();
       setMessage(done);
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save.", labels: { addressLine1: "Address", postalCode: "ZIP", stopMinutes: "Minutes per stop", dayMinutes: "Working day", speedMph: "Average speed" } },
+  );
+  const send = (action: () => Promise<unknown>, done: string) => sending.run(action, done);
+
+  if (!data) return <LoadState load={settings} label="route settings" />;
 
   function saveStart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,6 +66,7 @@ export default function RoutingSettingsPage() {
       </p>
       <h1>Route settings</h1>
       {message && <p className="muted">{message}</p>}
+      <FormError error={sending.error} />
 
       <section className="card stack">
         <h2>Where the day starts</h2>
@@ -112,9 +115,9 @@ export default function RoutingSettingsPage() {
               </div>
             </details>
             <div className="row">
-              <button type="submit">Save start</button>
+              <SubmitButton busy={sending.busy}>Save start</SubmitButton>
               {data.start && (
-                <button type="button" className="secondary" onClick={() => void send(() => api("/routing/settings", { method: "PATCH", body: { start: null } }), "Start removed")}>
+                <button type="button" className="secondary danger" disabled={sending.busy} onClick={() => void send(() => api("/routing/settings", { method: "PATCH", body: { start: null } }), "Start removed")}>
                   Remove start
                 </button>
               )}
@@ -149,7 +152,7 @@ export default function RoutingSettingsPage() {
           </label>
           {owner && (
             <div>
-              <button type="submit">Save</button>
+              <SubmitButton busy={sending.busy}>Save</SubmitButton>
             </div>
           )}
         </form>
@@ -176,9 +179,9 @@ export default function RoutingSettingsPage() {
         {s.notFound > 0 && <p className="small muted">Fix the address on the site, or enter its latitude and longitude there.</p>}
         {canSchedule && data.geocoder !== "off" && s.pending + s.notFound > 0 && (
           <div>
-            <button className="secondary" onClick={() => void send(() => api("/routing/locate-sites", { method: "POST", body: { retryNotFound: true } }), "Looking up sites")}>
+            <SubmitButton type="button" className="secondary" busy={sending.busy} onClick={() => void send(() => api("/routing/locate-sites", { method: "POST", body: { retryNotFound: true } }), "Looking up sites")}>
               Look up sites again
-            </button>
+            </SubmitButton>
           </div>
         )}
       </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { SAFETY_FLAGS, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, SYSTEM_CATEGORIES, SYSTEM_CATEGORY_LABELS, type SiteDetail, type SystemCategory } from "@aerowise/domain";
+import { CHLORINATION_LABELS, DISPOSAL_TYPE_LABELS, humanize, SAFETY_FLAGS, SITE_USE_CATEGORIES, SITE_USE_CATEGORY_LABELS, SYSTEM_CATEGORIES, SYSTEM_CATEGORY_LABELS, type SiteDetail, type SystemCategory } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -15,31 +15,35 @@ import { SiteServiceRequests } from "@/components/SiteServiceRequests";
 import { SiteWorkOrders } from "@/components/SiteWorkOrders";
 import { SystemMonitoring } from "@/components/SystemMonitoring";
 import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { day, phone, plural } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { usePageTitle } from "@/lib/title";
+
+const FIELDS = { addressLine1: "Address", postalCode: "ZIP", permitIntervalMonths: "Inspection interval", permitIntervalNote: "Where it says so", lat: "Latitude", lng: "Longitude" };
 
 export default function SitePage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
   const recordLoad = useLoad<SiteDetail>(`/sites/${id}`);
-  const { data: site, error, reload } = recordLoad;
+  const { data: site, reload } = recordLoad;
   const [editing, setEditing] = useState<"site" | "system" | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  if (error && !site) return <LoadState load={recordLoad} label="record" />;
-  if (!site) return <LoadState load={recordLoad} label="record" />;
-
-  async function save(path: string, method: "POST" | "PATCH", body: object) {
-    setFormError(null);
-    try {
+  usePageTitle(site ? `${site.addressLine1}, ${site.city}` : null);
+  const saving = useSubmit(
+    async (path: string, method: "POST" | "PATCH", body: object) => {
       await api(path, { method, body });
       setEditing(null);
       await reload();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save.", labels: FIELDS },
+  );
+  const save = (path: string, method: "POST" | "PATCH", body: object) => saving.run(path, method, body);
+  const formError = saving.error;
+
+  if (!site) return <LoadState load={recordLoad} label="site" back={{ href: "/sites", label: "Sites" }} />;
 
   function onSaveSite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,7 +91,7 @@ export default function SitePage() {
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="site" back={{ href: "/sites", label: "Sites" }} />
       <p>
         <Link href={`/customers/${site.customer.id}`}>← {site.customer.displayName}</Link>
       </p>
@@ -189,9 +193,9 @@ export default function SitePage() {
             Scheduling requirements
             <textarea name="schedulingNotes" defaultValue={site.schedulingNotes ?? ""} rows={2} />
           </label>
-          {formError && <p className="error wide">{formError}</p>}
+          <FormError error={formError} className="wide" />
           <div className="wide">
-            <button type="submit">Save</button>
+            <SubmitButton busy={saving.busy}>Save</SubmitButton>
           </div>
         </form>
       ) : (
@@ -202,7 +206,7 @@ export default function SitePage() {
             <>
               <dt>Recorded interval</dt>
               <dd>
-                Every {site.permitIntervalMonths} month{site.permitIntervalMonths === 1 ? "" : "s"} ({site.permitIntervalNote})
+                Every {plural(site.permitIntervalMonths, "month")} ({site.permitIntervalNote})
               </dd>
             </>
           )}
@@ -296,13 +300,13 @@ export default function SitePage() {
                 <option value="none">None</option>
               </select>
             </label>
-            {formError && <p className="error wide">{formError}</p>}
+            <FormError error={formError} className="wide" />
             <div className="wide">
-              <button type="submit">Add system</button>
+              <SubmitButton busy={saving.busy}>Add system</SubmitButton>
             </div>
           </form>
         )}
-        {formError && editing === null && <p className="error">{formError}</p>}
+        {editing === null && <FormError error={formError} />}
         {site.systems.length === 0 && <p className="muted">No systems recorded.</p>}
         {site.systems.map((s) => (
           <dl key={s.id} className="card details" data-testid="system">
@@ -312,6 +316,7 @@ export default function SitePage() {
                 <select
                   aria-label="Kind of system"
                   value={s.systemCategory ?? ""}
+                  disabled={saving.busy}
                   onChange={(e) => void save(`/systems/${s.id}`, "PATCH", { systemCategory: (e.target.value || null) as SystemCategory | null })}
                 >
                   <option value="">Not recorded</option>
@@ -332,11 +337,11 @@ export default function SitePage() {
             <dt>Serial</dt>
             <dd>{s.serial ?? "—"}</dd>
             <dt>Installed</dt>
-            <dd>{s.installedAt ?? "—"}</dd>
+            <dd>{s.installedAt ? day(s.installedAt) : "—"}</dd>
             <dt>Disposal</dt>
-            <dd>{s.disposalType ?? "—"}</dd>
+            <dd>{s.disposalType ? (DISPOSAL_TYPE_LABELS[s.disposalType] ?? humanize(s.disposalType)) : "—"}</dd>
             <dt>Chlorination</dt>
-            <dd>{s.chlorinationMethod ?? "—"}</dd>
+            <dd>{s.chlorinationMethod ? (CHLORINATION_LABELS[s.chlorinationMethod] ?? humanize(s.chlorinationMethod)) : "—"}</dd>
           </dl>
         ))}
       </section>
@@ -347,7 +352,7 @@ export default function SitePage() {
         <h2>Contacts</h2>
         {site.contacts.map((c) => (
           <p key={c.id}>
-            {c.name} {c.phone && <a href={`tel:${c.phone}`}>{c.phone}</a>}
+            {c.name} {c.phone && <a href={`tel:${c.phone}`}>{phone(c.phone)}</a>}
           </p>
         ))}
       </section></details>

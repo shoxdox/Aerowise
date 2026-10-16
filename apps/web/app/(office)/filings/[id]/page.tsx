@@ -3,39 +3,37 @@
 import { CONFIRMATION_EVIDENCE_KINDS, CONFIRMATION_EVIDENCE_LABELS, LOCATION_STATUS_TEXT, type FilingDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { type FormEvent } from "react";
 import { DeadlineCell, FilingStatusBadge, VerifiedBadge } from "@/components/FilingBadges";
 import { ReportCorrection } from "@/components/ReportCorrection";
 import { ReportSignature } from "@/components/ReportSignature";
 import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { usePageTitle } from "@/lib/title";
 
 export default function FilingPage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
   const recordLoad = useLoad<FilingDetail>(`/filings/${id}`);
-  const { data: f, error, reload } = recordLoad;
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  if (error && !f) return <LoadState load={recordLoad} label="record" />;
-  if (!f) return <LoadState load={recordLoad} label="record" />;
-
-  async function run(path: string, body: object = {}) {
-    setBusy(true);
-    setActionError(null);
-    try {
+  const { data: f, reload } = recordLoad;
+  usePageTitle(f ? `Filing · ${f.site.addressLine1}` : null);
+  // One filing action at a time: a second click on Submit or Retry waits for the first.
+  const acting = useSubmit(
+    async (path: string, body: object = {}) => {
       await api(`/filings/${id}/${path}`, { method: "POST", body });
       await reload();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not save");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const run = (path: string, body: object = {}) => acting.run(path, body);
+  const busy = acting.busy;
+  const actionError = acting.error;
+
+  if (!f) return <LoadState load={recordLoad} label="filing" back={{ href: "/filings", label: "Filings" }} />;
 
   const onForm = (path: string) => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -51,7 +49,7 @@ export default function FilingPage() {
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="filing" back={{ href: "/filings", label: "Filings" }} />
       <p>
         <Link href="/filings">← Filings</Link>
       </p>
@@ -440,7 +438,7 @@ export default function FilingPage() {
         <h2>Attempts</h2>
         {f.attempts.length === 0 && <p className="muted">Not sent yet.</p>}
         {f.attempts.length > 0 && (
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>#</th>
@@ -453,14 +451,14 @@ export default function FilingPage() {
             <tbody>
               {f.attempts.map((a) => (
                 <tr key={a.attemptNo}>
-                  <td>
+                  <td data-label="#">
                     {a.attemptNo}
                     {f.submissionNo > 1 && <span className="muted small"> (submission {a.submissionNo})</span>}
                   </td>
-                  <td>{when(a.startedAt)}</td>
-                  <td>{a.method === "email" ? "Email" : a.method === "csv_export" ? "CSV upload" : "By hand"}</td>
-                  <td>{a.recipient ?? "—"}</td>
-                  <td>{a.status === "failed" ? <span className="error">{a.error}</span> : a.status === "succeeded" ? (a.method === "email" ? "Accepted by the mail provider" : "Recorded as filed") : "In progress"}</td>
+                  <td data-label="Started">{when(a.startedAt)}</td>
+                  <td data-label="Method">{a.method === "email" ? "Email" : a.method === "csv_export" ? "CSV upload" : "By hand"}</td>
+                  <td data-label="To">{a.recipient ?? "—"}</td>
+                  <td data-label="Result">{a.status === "failed" ? <span className="error">{a.error}</span> : a.status === "succeeded" ? (a.method === "email" ? "Accepted by the mail provider" : "Recorded as filed") : "In progress"}</td>
                 </tr>
               ))}
             </tbody>

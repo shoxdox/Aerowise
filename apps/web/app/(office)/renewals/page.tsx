@@ -7,9 +7,12 @@ import { Pagination } from "@/components/Pagination";
 import { useQueryState } from "@/components/useQueryState";
 import { RenewalBadge } from "@/components/RenewalBadge";
 import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, money, when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { day, money, plural, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -43,13 +46,11 @@ export default function RenewalsPage() {
   const recordLoad = useLoad<{ items: RenewalListItem[]; total: number; counts: Partial<Record<RenewalStatus, number>>; notStarted: number }>(`/renewals?limit=50&offset=${offset}${statuses ? `&statuses=${statuses.join(",")}` : ""}`);
   const { data, reload } = recordLoad;
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  async function runCampaign() {
-    setBusy(true);
-    setMessage(null);
-    try {
+  const campaign = useSubmit(
+    async () => {
+      setMessage(null);
       const r = await api<{ created: number; sent: number; reminded: number; expired: number; activated: number }>("/renewals/campaign", { method: "POST", body: {} });
       const parts = [
         `${r.created} started`,
@@ -60,19 +61,15 @@ export default function RenewalsPage() {
       ].filter(Boolean);
       setMessage(`Campaign run: ${parts.join(", ")}.`);
       await reload();
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not run the campaign");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not run the campaign." },
+  );
 
   const items = data?.items.filter((r) => !statuses || statuses.includes(r.status)) ?? [];
   const count = (t: (typeof TABS)[number]) => (t.statuses ? t.statuses.reduce((n, s) => n + (data?.counts[s] ?? 0), 0) : Object.values(data?.counts ?? {}).reduce((n, c) => n + (c ?? 0), 0));
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
       <div className="row">
         <h1>Renewals</h1>
         <span className="spacer" />
@@ -81,18 +78,19 @@ export default function RenewalsPage() {
             <button className="secondary" onClick={() => setShowSettings((s) => !s)}>
               {showSettings ? "Hide settings" : "Settings and add-ons"}
             </button>
-            <button onClick={() => void runCampaign()} disabled={busy}>
+            <SubmitButton type="button" busy={campaign.busy} busyLabel="Running…" onClick={() => void campaign.run()}>
               Run campaign now
-            </button>
+            </SubmitButton>
           </>
         )}
       </div>
       {data && data.notStarted > 0 && (
         <p className="muted">
-          {data.notStarted} contract{data.notStarted === 1 ? "" : "s"} inside the renewal window {data.notStarted === 1 ? "has" : "have"} no renewal yet. The campaign starts them every hour, or run it now.
+          {plural(data.notStarted, "contract")} inside the renewal window {data.notStarted === 1 ? "has" : "have"} no renewal yet. The campaign starts them every hour, or run it now.
         </p>
       )}
       {message && <p>{message}</p>}
+      <FormError error={campaign.error} />
       {showSettings && editable && <RenewalSettingsPanel />}
 
       <div className="renewal-tabs">
@@ -103,38 +101,41 @@ export default function RenewalsPage() {
         ))}
       </div>
 
+      <LoadState load={recordLoad} label="renewals" />
       {data && items.length === 0 && (
         <EmptyState title="No renewals in this list">
           Renewals start on their own for contracts ending inside the renewal window, and go to the customer to sign and pay. Change the window under Settings and add-ons, or run the campaign now.
         </EmptyState>
       )}
       {items.length > 0 && (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Customer</th>
               <th>Contract ends</th>
               <th>Status</th>
               <th>Latest</th>
-              <th style={{ textAlign: "right" }}>Next term</th>
+              <th className="num">Next term</th>
             </tr>
           </thead>
           <tbody>
             {items.map((r) => (
               <tr key={r.id}>
-                <td>
+                <td data-label="Customer">
                   <Link href={`/renewals/${r.id}`}>{r.customer.displayName}</Link>
                   <div className="muted small">
                     {r.site.addressLine1}, {r.site.city}
                   </div>
                 </td>
-                <td>{day(r.contractEndOn)}</td>
-                <td>
+                <td data-label="Contract ends">{day(r.contractEndOn)}</td>
+                <td data-label="Status">
                   <RenewalBadge status={r.status} />
                   {r.reviewReason && <div className="error small">{r.reviewReason}</div>}
                 </td>
-                <td className="small">{lastStep(r)}</td>
-                <td style={{ textAlign: "right" }}>
+                <td data-label="Latest" className="small">
+                  {lastStep(r)}
+                </td>
+                <td data-label="Next term" className="num">
                   {money(r.priceCents)}
                   <div className="muted small">{r.planName}</div>
                 </td>
@@ -151,20 +152,18 @@ export default function RenewalsPage() {
 function RenewalSettingsPanel() {
   const settings = useLoad<RenewalSettings>("/renewals/settings");
   const addons = useLoad<{ items: RenewalAddon[] }>("/renewals/addons");
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
-    setSaved(false);
-    try {
+  const acting = useSubmit(
+    async (action: () => Promise<unknown>) => {
+      setSaved(false);
       await action();
       setSaved(true);
       await Promise.all([settings.reload(), addons.reload()]);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const run = (action: () => Promise<unknown>) => acting.run(action);
+  const error = acting.error;
 
   function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -220,10 +219,10 @@ function RenewalSettingsPanel() {
             <textarea name="terms" rows={8} defaultValue={s.terms} />
           </label>
           <div className="row">
-            <button type="submit">Save</button>
+            <SubmitButton busy={acting.busy}>Save</SubmitButton>
             {saved && <span className="muted">Saved</span>}
           </div>
-          {error && <p className="error">{error}</p>}
+          <FormError error={error} />
         </form>
       )}
       <div className="card stack">
@@ -235,10 +234,15 @@ function RenewalSettingsPanel() {
             <span>
               {a.name} · {money(a.priceCents)}
               {a.taxable ? " · taxed" : ""}
-              {!a.active && <span className="badge inactive"> retired</span>}
+              {!a.active && (
+                <>
+                  {" "}
+                  <Badge tone="muted">Retired</Badge>
+                </>
+              )}
             </span>
             <span className="spacer" />
-            <button className="link" onClick={() => void run(() => api(`/renewals/addons/${a.id}`, { method: "PATCH", body: { active: !a.active } }))}>
+            <button className={a.active ? "link danger" : "link"} disabled={acting.busy} onClick={() => void run(() => api(`/renewals/addons/${a.id}`, { method: "PATCH", body: { active: !a.active } }))}>
               {a.active ? "Retire" : "Offer again"}
             </button>
           </div>
@@ -260,9 +264,11 @@ function RenewalSettingsPanel() {
             <input type="checkbox" name="taxable" />
             Charge sales tax
           </label>
-          <button type="submit" className="secondary">
-            Add add-on
-          </button>
+          <div>
+            <SubmitButton className="secondary" busy={acting.busy}>
+              Add add-on
+            </SubmitButton>
+          </div>
         </form>
       </div>
     </div>

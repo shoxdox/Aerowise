@@ -20,8 +20,11 @@ import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
-import { day } from "@/lib/format";
+import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { day, plural } from "@/lib/format";
 
 const STATE_BADGE: Record<QuestionState, string> = {
   authority_confirmed: "ok",
@@ -59,18 +62,12 @@ const blankAnswer = { question: "", unresolvedItem: "", topic: "report_channel",
 
 function RecordEvidence({ page, onSaved }: { page: RulesetEvidencePage; onSaved: () => Promise<void> }) {
   const [answers, setAnswers] = useState([{ ...blankAnswer }]);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const set = (i: number, k: keyof typeof blankAnswer, v: string) => setAnswers((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
 
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const f = new FormData(form);
-    const get = (k: string) => String(f.get(k) ?? "").trim() || null;
-    setError(null);
-    setSaving(true);
-    try {
+  const saving = useSubmit(
+    async (form: HTMLFormElement) => {
+      const f = new FormData(form);
+      const get = (k: string) => String(f.get(k) ?? "").trim() || null;
       await api(`/admin/rulesets/${page.key}/evidence`, {
         method: "POST",
         body: {
@@ -91,11 +88,12 @@ function RecordEvidence({ page, onSaved }: { page: RulesetEvidencePage; onSaved:
       form.reset();
       setAnswers([{ ...blankAnswer }]);
       await onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the evidence");
-    } finally {
-      setSaving(false);
-    }
+    },
+    { fallback: "Could not save the evidence." },
+  );
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void saving.run(e.currentTarget);
   }
 
   return (
@@ -202,11 +200,9 @@ function RecordEvidence({ page, onSaved }: { page: RulesetEvidencePage; onSaved:
           Add another question
         </button>
         <span className="spacer" />
-        <button type="submit" disabled={saving}>
-          Save evidence
-        </button>
+        <SubmitButton busy={saving.busy}>Save evidence</SubmitButton>
       </div>
-      {error && <p className="error">{error}</p>}
+      <FormError error={saving.error} />
     </form>
   );
 }
@@ -214,14 +210,11 @@ function RecordEvidence({ page, onSaved }: { page: RulesetEvidencePage; onSaved:
 function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: string[] }) {
   const [verify, setVerify] = useState(false);
   const [result, setResult] = useState<RulesetProposal | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const get = (k: string) => String(f.get(k) ?? "").trim();
-    setError(null);
-    try {
+  const preparing = useSubmit(
+    async (form: HTMLFormElement) => {
+      const f = new FormData(form);
+      const get = (k: string) => String(f.get(k) ?? "").trim();
+      setResult(null);
       setResult(
         await api<RulesetProposal>(`/admin/rulesets/${page.key}/proposal`, {
           method: "POST",
@@ -232,10 +225,13 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
           },
         }),
       );
-    } catch (err) {
-      setResult(null);
-      setError(err instanceof ApiError ? err.message : "Could not prepare the next version");
-    }
+    },
+    { fallback: "Could not prepare the next version." },
+  );
+  const error = preparing.error;
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void preparing.run(e.currentTarget);
   }
 
   return (
@@ -282,7 +278,9 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
           </label>
         </div>
       )}
-      <button type="submit">Prepare v{page.version + 1}</button>
+      <SubmitButton busy={preparing.busy} busyLabel="Preparing…">
+        Prepare v{page.version + 1}
+      </SubmitButton>
       {error && <p className="error">{error}</p>}
       {result && (
         <section className="stack" aria-label="Proposed version">
@@ -340,12 +338,12 @@ function Proposal({ page, selected }: { page: RulesetEvidencePage; selected: str
 /** One authority: what is still open, what has been answered and by whom, and the next version. */
 export default function AuthorityEvidencePage() {
   const { key } = useParams<{ key: string }>();
-  const { data, error, reload } = useLoad<RulesetEvidencePage>(`/admin/rulesets/${key}`);
+  const evidence = useLoad<RulesetEvidencePage>(`/admin/rulesets/${key}`);
+  const { data, reload } = evidence;
   const [selected, setSelected] = useState<string[]>([]);
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <LoadState load={evidence} label="ruleset" back={{ href: "/admin/rulesets", label: "Ruleset coverage" }} />;
   return (
     <div className="stack">
       <p className="small">
@@ -412,7 +410,7 @@ export default function AuthorityEvidencePage() {
         {data.otherAnswers.length > 0 && (
           <details className="card">
             <summary>
-              {data.otherAnswers.length} answer{data.otherAnswers.length === 1 ? "" : "s"} not tied to a current open question
+              {plural(data.otherAnswers.length, "answer")} not tied to a current open question
             </summary>
             <ul className="stack">
               {data.otherAnswers.map((a) => (
@@ -448,7 +446,7 @@ export default function AuthorityEvidencePage() {
             </ul>
             {e.note && <p className="small">{e.note}</p>}
             <p className="muted small">
-              {e.answers.length} question{e.answers.length === 1 ? "" : "s"}: {e.answers.map((a) => QUESTION_TOPIC_LABELS[a.topic]).join(", ")}
+              {plural(e.answers.length, "question")}: {e.answers.map((a) => QUESTION_TOPIC_LABELS[a.topic]).join(", ")}
             </p>
           </article>
         ))}

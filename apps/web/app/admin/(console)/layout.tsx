@@ -3,19 +3,20 @@
 import type { PlatformAdminMe } from "@aerowise/domain";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { api } from "@/lib/api";
+import { Unreachable, useSessionLoad } from "@/lib/session";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const [me, setMe] = useState<PlatformAdminMe | null>(null);
+  // A failed sign-in check offers Retry; only a 401 goes to the sign-in page (api() sends it there).
+  const { value: me, failed, retry } = useSessionLoad<PlatformAdminMe>("/admin/auth/me");
   const path = usePathname();
-  useEffect(() => {
-    api<PlatformAdminMe>("/admin/auth/me").then(setMe, () => {});
-  }, []);
-  if (!me) return <p className="muted pad">Loading…</p>;
+  if (failed) return <Unreachable onRetry={retry} signIn="/admin/login" />;
+  if (!me) return <p className="muted pad" role="status">Loading…</p>;
 
   async function signOut() {
-    await api("/admin/auth/logout", { method: "POST", body: {} });
+    // Leave even if the server could not be told: the sign-in page is where this ends either way.
+    await api("/admin/auth/logout", { method: "POST", body: {} }).catch(() => undefined);
     window.location.href = "/admin/login";
   }
   return (

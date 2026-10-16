@@ -53,7 +53,7 @@ test("the office gives a plan a coverage rule, and a work order at a site on it 
   const coverage = page.getByTestId("work-coverage");
   await expect(coverage).toContainText(`Gold TEST ${stamp}`);
   await coverage.getByRole("button", { name: "Apply coverage" }).click();
-  await expect(coverage).toContainText("applied");
+  await expect(coverage).toContainText("Applied");
   await expect(coverage).toContainText("1 of 1 used this term");
 
   await page.getByRole("button", { name: "Create invoice" }).click();

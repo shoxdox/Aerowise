@@ -1,52 +1,66 @@
 "use client";
 
-import type { CustomerDetail } from "@aerowise/domain";
+import { statusLabel, type CustomerDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { CustomerNextActions } from "@/components/CustomerNextActions";
 import { CustomerInvoices } from "@/components/CustomerInvoices";
 import { CustomerPortal } from "@/components/CustomerPortal";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { LoadState } from "@/components/LoadState";
+import { Badge, StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { phone } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { usePageTitle } from "@/lib/title";
+
+/** Field names the API may refuse, as the form calls them. */
+const FIELDS = { displayName: "Name", billingLine1: "Billing address", billingCity: "City", billingPostalCode: "ZIP", postalCode: "ZIP", addressLine1: "Address", permitNumber: "Permit number" };
 
 export default function CustomerPage() {
   const { id } = useParams<{ id: string }>();
   const me = useSession();
   const editable = canEdit(me);
   const recordLoad = useLoad<CustomerDetail>(`/customers/${id}`);
-  const { data: customer, error, reload } = recordLoad;
-  const [editing, setEditing] = useState<"customer" | "contact" | "site" | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const { data: customer, reload } = recordLoad;
+  const [editing, setEditingState] = useState<"customer" | "contact" | "site" | null>(null);
+  // The new contact's own id, chosen when its form opens: a second click or a retry adds it once.
+  const contactId = useRef<string | null>(null);
+  usePageTitle(customer?.displayName);
+  const setEditing = (next: typeof editing) => {
+    contactId.current = next === "contact" ? crypto.randomUUID() : null;
+    save.clear();
+    setEditingState(next);
+  };
 
-  if (error && !customer) return <LoadState load={recordLoad} label="record" />;
-  if (!customer) return <LoadState load={recordLoad} label="record" />;
+  const save = useSubmit(
+    async (path: string, method: "POST" | "PATCH", body: object) => {
+      await api(path, { method, body });
+      setEditingState(null);
+      await reload();
+    },
+    { fallback: "Could not save.", labels: FIELDS },
+  );
+  const submit = (path: string, method: "POST" | "PATCH", toBody: (v: Record<string, string | undefined>) => object) => (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void save.run(path, method, toBody(formValues(event.currentTarget)));
+  };
 
-  const submit = (path: string, method: "POST" | "PATCH", toBody: (v: Record<string, string | undefined>) => object) =>
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setFormError(null);
-      try {
-        await api(path, { method, body: toBody(formValues(event.currentTarget)) });
-        setEditing(null);
-        await reload();
-      } catch (err) {
-        setFormError(err instanceof ApiError ? err.message : "Could not save");
-      }
-    };
+  if (!customer) return <LoadState load={recordLoad} label="customer" back={{ href: "/customers", label: "Customers" }} />;
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="customer" back={{ href: "/customers", label: "Customers" }} />
       <p>
         <Link href="/customers">← Customers</Link>
       </p>
       <div className="row">
         <h1>{customer.displayName}</h1>
-        <span className={`badge ${customer.status}`}>{customer.status}</span>
+        <StatusBadge of="customer" value={customer.status} />
         <span className="spacer" />
         {editable && (
           <button className="secondary" onClick={() => setEditing(editing === "customer" ? null : "customer")}>
@@ -83,7 +97,7 @@ export default function CustomerPage() {
           </label>
           <label>
             ZIP
-            <input name="billingPostalCode" defaultValue={customer.billingPostalCode ?? ""} />
+            <input name="billingPostalCode" inputMode="numeric" defaultValue={customer.billingPostalCode ?? ""} aria-invalid={save.fieldError("/billingPostalCode") ? true : undefined} />
           </label>
           <label>
             Status
@@ -97,9 +111,9 @@ export default function CustomerPage() {
             Notes
             <textarea name="notes" defaultValue={customer.notes ?? ""} rows={3} />
           </label>
-          {formError && <p className="error wide">{formError}</p>}
+          <FormError error={save.error} className="wide" />
           <div className="wide">
-            <button type="submit">Save</button>
+            <SubmitButton busy={save.busy}>Save</SubmitButton>
           </div>
         </form>
       ) : (
@@ -143,7 +157,7 @@ export default function CustomerPage() {
             </label>
             <label>
               ZIP
-              <input name="postalCode" inputMode="numeric" />
+              <input name="postalCode" inputMode="numeric" aria-invalid={save.fieldError("/postalCode") ? true : undefined} />
             </label>
             <label>
               County
@@ -153,9 +167,9 @@ export default function CustomerPage() {
               Permit number
               <input name="permitNumber" />
             </label>
-            {formError && <p className="error wide">{formError}</p>}
+            <FormError error={save.error} className="wide" />
             <div className="wide">
-              <button type="submit">Add site</button>
+              <SubmitButton busy={save.busy}>Add site</SubmitButton>
             </div>
           </form>
         )}
@@ -166,7 +180,7 @@ export default function CustomerPage() {
               {s.addressLine1}, {s.city}
             </strong>
             <span className="muted"> Permit {s.permitNumber ?? "not recorded"}</span> <SafetyBadges flags={s.safetyFlags} />
-            {!s.active && <span className="badge inactive">inactive</span>}
+            {!s.active && <Badge tone="muted">Inactive</Badge>}
           </Link>
         ))}
       </section>
@@ -187,6 +201,7 @@ export default function CustomerPage() {
           <form
             className="card grid"
             onSubmit={submit(`/customers/${id}/contacts`, "POST", (v) => ({
+              creationId: contactId.current ?? undefined,
               name: v.name,
               phone: v.phone,
               email: v.email,
@@ -211,7 +226,7 @@ export default function CustomerPage() {
               <select name="type" defaultValue="primary">
                 <option value="primary">Primary</option>
                 <option value="billing">Billing</option>
-                <option value="site">Site</option>
+                <option value="site">At the site</option>
                 <option value="other">Other</option>
               </select>
             </label>
@@ -226,24 +241,34 @@ export default function CustomerPage() {
                 ))}
               </select>
             </label>
-            {formError && <p className="error wide">{formError}</p>}
+            <FormError error={save.error} className="wide" />
             <div className="wide">
-              <button type="submit">Add contact</button>
+              <SubmitButton busy={save.busy}>Add contact</SubmitButton>
             </div>
           </form>
         )}
-        <table>
-          <tbody>
-            {customer.contacts.map((c) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td>{c.type}</td>
-                <td>{c.phone ? <a href={`tel:${c.phone}`}>{c.phone}</a> : "—"}</td>
-                <td>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : "—"}</td>
+        {customer.contacts.length > 0 && (
+          <table className="stack">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Kind</th>
+                <th>Phone</th>
+                <th>Email</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {customer.contacts.map((c) => (
+                <tr key={c.id}>
+                  <td data-label="Name">{c.name}</td>
+                  <td data-label="Kind">{statusLabel("contact", c.type).label}</td>
+                  <td data-label="Phone">{c.phone ? <a href={`tel:${c.phone}`}>{phone(c.phone)}</a> : "—"}</td>
+                  <td data-label="Email">{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
     </div>
   );

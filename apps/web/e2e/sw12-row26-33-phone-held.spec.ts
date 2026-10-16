@@ -169,7 +169,7 @@ for (const when of ["before the first draft sync", "after the draft sync, before
         await officePage.waitForURL("**/inbox");
         await officePage.goto(`/work/${wo.id}`);
         const held = officePage.getByTestId("held-records");
-        await expect(held).toContainText("finished on the phone · 2 photos · 1 signatures");
+        await expect(held).toContainText("finished on the phone · 2 photos · 1 signature");
 
         if (how === "reassigned") {
           // The new technician finishes their own record for the same visit.
@@ -195,7 +195,7 @@ for (const when of ["before the first draft sync", "after the draft sync, before
         } else {
           // The phone's work is kept: the office accepts it onto the work order.
           await held.getByRole("button", { name: "Accept this record" }).click();
-          await expect(held).toContainText("accepted");
+          await expect(held).toContainText("Accepted");
           expect(((await (await api.get("/api/work/conflicts")).json()).items as Conflict[]).find((c) => c.jobId === wo.jobId)!.status).toBe("attached");
           // Completed on paper, then the phone's record accepted: the paper reason gives way to the record.
           if (how === "office_completed") expect(await (await api.get(`/api/work-orders/${wo.id}`)).json()).toMatchObject({ status: "completed", completedWithoutRecordReason: null });

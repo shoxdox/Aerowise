@@ -186,7 +186,7 @@ test("a pump-out done with no signal reaches the office once, then its disposal 
     const row = officePage.getByTestId("disposal-loads").locator("tr", { hasText: "E2E-M-1" });
     await expect(row).toContainText(wo.facility.name);
     await row.getByRole("link").click();
-    await expect(officePage.getByTestId("load-items")).toContainText("1,000.0 gallons");
+    await expect(officePage.getByTestId("load-items")).toContainText("1,000 gallons");
     await expect(officePage.getByRole("img", { name: "Manifest photo" })).toHaveCount(1);
     await officePage.goto(`/work/${wo.id}`);
     await expect(officePage.getByTestId("pumping-history")).toContainText("Recorded");

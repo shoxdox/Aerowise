@@ -17,7 +17,7 @@ test("the owner invites a technician, who sets a password from the link and land
   // The e2e API has no mail provider: the invitation stays in the local outbox (STG-08).
   await expect(page.getByRole("status")).toContainText("Invitation for terry.tech@example.com recorded in the test outbox; no email was delivered.");
   const link = await page.getByLabel("Invitation link").inputValue();
-  await expect(page.getByRole("row", { name: /terry\.tech@example\.com/ })).toContainText("pending");
+  await expect(page.getByRole("row", { name: /terry\.tech@example\.com/ })).toContainText("Pending");
 
   // The technician opens the link on their own phone.
   const phone = await browser.newContext({ ...test.info().project.use });

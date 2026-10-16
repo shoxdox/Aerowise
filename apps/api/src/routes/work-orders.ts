@@ -298,6 +298,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       createdSummary: string;
       /** The pumping or maintenance visit it is done for (SW-9). */
       obligationId?: string;
+      /** The id the office's form chose, so a repeated save finds this order (see POST /work-orders). */
+      id?: string;
     },
   ) {
     const { organizationId, userId } = req.requireAuth();
@@ -307,6 +309,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
     const created = await trx
       .insertInto("workOrders")
       .values({
+        ...(o.id ? { id: o.id } : {}),
         organizationId,
         number,
         customerId: o.customerId,
@@ -444,7 +447,16 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
 
   app.post(
     "/work-orders",
-    { config: { permission: "work:write" }, schema: { tags: ["work"], summary: "Create a work order at a site", body: workOrderInput, response: { 201: workOrderDetail } } },
+    {
+      config: { permission: "work:write" },
+      schema: {
+        tags: ["work"],
+        summary: "Create a work order at a site",
+        description: "With a `creationId`, a repeated save (a double click, a retry after a lost answer) returns the order the first one made instead of making another.",
+        body: workOrderInput,
+        response: { 201: workOrderDetail },
+      },
+    },
     async (req, reply) => {
       requireFeature();
       const { organizationId } = req.requireAuth();
@@ -452,6 +464,13 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
       const site = await db.selectFrom("sites").select(["id", "customerId"]).where("organizationId", "=", organizationId).where("id", "=", b.siteId).executeTakeFirst();
       if (!site) throw notFound("Site");
       const id = await db.transaction().execute(async (trx) => {
+        if (b.creationId) {
+          // Two clicks at once take turns here; the second finds the first's order.
+          await sql`select pg_advisory_xact_lock(hashtextextended(${`work-order:${b.creationId}`}, 0))`.execute(trx);
+          const prior = await trx.selectFrom("workOrders").select(["id", "organizationId", "siteId"]).where("id", "=", b.creationId).executeTakeFirst();
+          if (prior && (prior.organizationId !== organizationId || prior.siteId !== site.id)) throw unprocessable("This save id belongs to a different work order. Open the saved one before starting another.");
+          if (prior) return prior.id;
+        }
         const type = await activeWorkType(trx, organizationId, b.workTypeId);
         return insertWorkOrder(trx, req, {
           siteId: site.id,
@@ -466,6 +485,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => D
           sourceId: null,
           lines: b.lines,
           createdSummary: "Created by the office",
+          id: b.creationId,
         });
       });
       return reply.status(201).send(await loadDetail(req, id));

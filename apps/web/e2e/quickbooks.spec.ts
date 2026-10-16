@@ -44,8 +44,11 @@ test("the owner connects QuickBooks, reviews customer matches and starts syncing
   await expect(needChoice).toHaveText(String(before - 1));
 
   // Anything left undecided waits in the conflict center.
-  page.once("dialog", (d) => void d.accept());
   await page.getByRole("button", { name: "Start syncing" }).click();
+  // With customers still undecided, it asks first, right there.
+  const confirmSync = page.getByRole("group", { name: "Confirm" }).getByRole("button", { name: "Start syncing" });
+  await expect(confirmSync.or(page.getByRole("heading", { name: "Sync health" }))).toBeVisible();
+  if (await confirmSync.isVisible()) await confirmSync.click();
   await page.waitForURL(/\/quickbooks$/);
   await expect(page.getByRole("heading", { name: "Sync health" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs a decision" })).toBeVisible();

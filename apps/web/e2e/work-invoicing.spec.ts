@@ -55,7 +55,7 @@ test("the office adds a service item, bills a work order by the hour from it, an
   // The order is invoiced; asking again finds the same draft.
   await page.goto(`/work/${workOrderId}`);
   await expect(page.getByRole("button", { name: "Create invoice" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Draft · \$137\.50 · draft/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Draft invoice · \$137\.50/ })).toBeVisible();
   const again = await page.request.post(`/api/work-orders/${workOrderId}/invoice`, { data: {} });
   expect(again.status()).toBe(200);
   expect((await again.json()).invoiceId).toBe(invoiceId);
@@ -67,12 +67,14 @@ test("with service items switched off, the office still saves a draft that has a
   const draft = await (
     await page.request.post("/api/invoices", { data: { customerId: customers.items[0].id, lines: [{ description: "Labor (TEST)", quantity: 1.5, unitPriceCents: 9500 }] } })
   ).json();
-  // The browser sees a deployment with service items off.
-  await page.route("**/api/app-info", async (route) => {
-    const res = await route.fetch();
-    const body = await res.json();
-    await route.fulfill({ response: res, json: { ...body, features: (body.features as string[]).filter((f) => f !== "service_items") } });
-  });
+  // The browser sees a deployment with service items off (the office reads its features from the session).
+  for (const path of ["**/api/app-info", "**/api/auth/me"]) {
+    await page.route(path, async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      await route.fulfill({ response: res, json: { ...body, features: (body.features as string[]).filter((f) => f !== "service_items") } });
+    });
+  }
   const sent: { lines: { id?: string; quantity: number; unitPriceCents: number }[] }[] = [];
   page.on("request", (r) => {
     if (r.method() === "PATCH" && r.url().endsWith(`/api/invoices/${draft.id}`)) sent.push(r.postDataJSON());

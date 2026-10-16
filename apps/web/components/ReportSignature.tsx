@@ -1,11 +1,12 @@
 "use client";
 
 import type { ReportSigning } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
 import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { mpNumber, when } from "@/lib/format";
 
 /**
  * The licensed maintenance provider's signature on the latest authority report
@@ -15,25 +16,15 @@ import { when } from "@/lib/format";
 export function ReportSignature({ inspectionId, editable, onSigned }: { inspectionId: string; editable: boolean; onSigned: () => void }) {
   const recordLoad = useLoad<ReportSigning>(`/inspections/${inspectionId}/signature`);
   const { data, reload } = recordLoad;
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  if (!data) return <LoadState load={recordLoad} label="provider signature" />;
-
-  async function sign(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const signing = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       await api(`/inspections/${inspectionId}/signature`, { method: "POST", body: { typedName: v.typedName, delegationNote: v.delegationNote || null } });
       await reload();
       onSigned();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not sign");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not sign the report." },
+  );
+  if (!data) return <LoadState load={recordLoad} label="provider signature" />;
 
   const s = data.signature;
   return (
@@ -43,7 +34,7 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
       {s ? (
         <>
           <p className="small">
-            Report version {data.version} signed by <strong>{s.signedByName}</strong>, MP {s.licenseNumber}, {when(s.signedAt)}. The filing sends this signed copy.
+            Report version {data.version} signed by <strong>{s.signedByName}</strong>, {mpNumber(s.licenseNumber)}, {when(s.signedAt)}. The filing sends this signed copy.
           </p>
           <blockquote className="small" style={{ margin: 0, paddingLeft: 12, borderLeft: "3px solid #d9dfdc" }}>{s.statement}</blockquote>
           {s.delegationNote && <div className="small">Signed under a documented delegation: {s.delegationNote}</div>}
@@ -65,7 +56,7 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
           )}
           {data.provider && (
             <p className="small">
-              Signs by default: <strong>{data.provider.name}</strong>, MP {data.provider.number} ({data.provider.source === "contract" ? "named on the site's contract" : "the organization's responsible MP"}).
+              Signs by default: <strong>{data.provider.name}</strong>, {mpNumber(data.provider.number)} ({data.provider.source === "contract" ? "named on the site's contract" : "the organization's responsible MP"}).
             </p>
           )}
           <blockquote className="small" style={{ margin: 0, paddingLeft: 12, borderLeft: "3px solid #d9dfdc" }}>{data.statement}</blockquote>
@@ -77,7 +68,7 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
             </ul>
           ) : (
             editable && (
-              <form className="stack" onSubmit={sign}>
+              <form className="stack" onSubmit={signing.form}>
                 <label>
                   Type your name as it appears on your MP license{data.holderName ? ` (${data.holderName})` : ""} to sign
                   <input name="typedName" required autoComplete="off" />
@@ -88,13 +79,15 @@ export function ReportSignature({ inspectionId, editable, onSigned }: { inspecti
                     <textarea name="delegationNote" required minLength={20} rows={3} />
                   </label>
                 )}
-                <button className="primary" disabled={busy}>
-                  Sign report version {data.version}
-                </button>
+                <div>
+                  <SubmitButton busy={signing.busy} busyLabel="Signing…">
+                    Sign report version {data.version}
+                  </SubmitButton>
+                </div>
               </form>
             )
           )}
-          {error && <p className="error">{error}</p>}
+          <FormError error={signing.error} />
         </>
       )}
     </section>

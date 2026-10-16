@@ -13,9 +13,11 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { FilingStatusBadge } from "@/components/FilingBadges";
 import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { day, mpNumber, when } from "@/lib/format";
 
 interface Status {
   signedAt: string | null;
@@ -50,58 +52,45 @@ interface CredentialRow {
 export function ContractFilingStatus({ contractId, editable }: { contractId: string; editable: boolean }) {
   const load = useLoad<Status>(`/contracts/${contractId}/filing-status`);
   const { data, reload } = load;
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function upload(file: File) {
-    setBusy(true);
-    setError(null);
-    try {
+  const uploading = useSubmit(
+    async (file: File) => {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
       await api(`/contracts/${contractId}/document`, { method: "POST", body: { filename: file.name, contentBase64: btoa(binary) } });
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not upload");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not upload the signed copy." },
+  );
+  const saving = useSubmit(
+    async (path: string, method: "PUT" | "POST", body: object) => {
+      await api(`/contracts/${contractId}/${path}`, { method, body });
+      setEditingBasis(false);
+      setMps(null);
+      await reload();
+    },
+    { fallback: "Could not save." },
+  );
+  const listing = useSubmit(
+    async () => {
+      const all = await api<{ items: CredentialRow[] }>("/credentials");
+      setMps(all.items.filter((c) => c.kind === "tceq_maintenance_provider" && c.active));
+    },
+    { fallback: "Could not load the licenses." },
+  );
+  const busy = uploading.busy || saving.busy;
+  const error = uploading.error ?? saving.error ?? listing.error;
 
   const [basisChoice, setBasisChoice] = useState<ContractFilingBasis | "">("");
   const [editingBasis, setEditingBasis] = useState(false);
   const [mps, setMps] = useState<CredentialRow[] | null>(null);
 
-  async function chooseProvider() {
-    setError(null);
-    try {
-      const all = await api<{ items: CredentialRow[] }>("/credentials");
-      setMps(all.items.filter((c) => c.kind === "tceq_maintenance_provider" && c.active));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load licenses");
-    }
-  }
+  const save = (path: string, method: "PUT" | "POST", body: object) => saving.run(path, method, body);
 
-  async function saveProvider(event: FormEvent<HTMLFormElement>) {
+  function saveProvider(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const v = formValues(event.currentTarget);
-    await save("provider", "PUT", { credentialId: v.credentialId || null });
-    setMps(null);
-  }
-
-  async function save(path: string, method: "PUT" | "POST", body: object) {
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/contracts/${contractId}/${path}`, { method, body });
-      setEditingBasis(false);
-      await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    } finally {
-      setBusy(false);
-    }
+    void save("provider", "PUT", { credentialId: v.credentialId || null });
   }
 
   function saveBasis(event: FormEvent<HTMLFormElement>) {
@@ -140,16 +129,16 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
           <label className="link">
             {" "}
             {data.uploadedDocuments.length ? "Upload a newer copy" : "Upload signed PDF"}
-            <input type="file" accept="application/pdf" hidden disabled={busy} onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
+            <input type="file" accept="application/pdf" hidden disabled={busy} onChange={(e) => e.target.files?.[0] && void uploading.run(e.target.files[0])} />
           </label>
         )}
-        {error && <p className="error">{error}</p>}
+        <FormError error={error} />
       </dd>
       <dt>Signing MP</dt>
       <dd>
         {data.provider ? (
           <>
-            {data.provider.name}, MP {data.provider.number}
+            {data.provider.name}, {mpNumber(data.provider.number)}
             <span className="muted">{data.provider.source === "contract" ? " (named on this contract)" : " (the organization's responsible MP)"}</span>
           </>
         ) : (
@@ -157,23 +146,21 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
         )}
         <div className="muted small">Signs this site&apos;s reports. Anyone else needs a documented delegation and supervision.</div>
         {editable && !mps && (
-          <button className="link" onClick={() => void chooseProvider()}>
+          <button className="link" disabled={listing.busy} onClick={() => void listing.run()}>
             {data.provider?.source === "contract" ? "Change" : "Name the MP on this contract"}
           </button>
         )}
         {editable && mps && (
-          <form className="stack" onSubmit={(e) => void saveProvider(e)}>
+          <form className="stack" onSubmit={saveProvider}>
             <select name="credentialId" defaultValue={data.provider?.source === "contract" ? data.provider.credentialId : ""}>
               <option value="">The organization&apos;s responsible MP</option>
               {mps.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.holderName}, MP {c.number}
+                  {c.holderName}, {mpNumber(c.number)}
                 </option>
               ))}
             </select>
-            <button className="primary" disabled={busy}>
-              Save
-            </button>
+            <SubmitButton busy={saving.busy}>Save</SubmitButton>
           </form>
         )}
       </dd>
@@ -208,7 +195,7 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
         <>
           <dt>Deadline</dt>
           <dd>
-            {data.basis.basis ? CONTRACT_FILING_BASIS_LABELS[data.basis.basis] : <span className="muted">Kind of contract not recorded</span>}
+            {data.basis.basis ? CONTRACT_FILING_BASIS_LABELS[data.basis.basis] : <span className="muted">Kind of contract not recorded</span>}{" "}
             {a.deadlineBasis && <div className="muted small">{a.deadlineBasis}</div>}
             {data.basis.note && <div className="muted small">Note: {data.basis.note}</div>}
             {editable && !editingBasis && (
@@ -235,9 +222,9 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
                   </label>
                 )}
                 <input name="note" placeholder="Where this came from (optional)" />
-                <button className="primary" disabled={busy}>
-                  Save
-                </button>
+                <div>
+                  <SubmitButton busy={saving.busy}>Save</SubmitButton>
+                </div>
               </form>
             )}
           </dd>
@@ -275,9 +262,9 @@ export function ContractFilingStatus({ contractId, editable }: { contractId: str
                       <input name="sentOn" type="date" required />
                     </label>
                     <input name="note" required placeholder="Who you wrote to, and how" />
-                    <button className="primary" disabled={busy}>
-                      Record notice
-                    </button>
+                    <div>
+                      <SubmitButton busy={saving.busy}>Record notice</SubmitButton>
+                    </div>
                   </form>
                 )}
               </>

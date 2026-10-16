@@ -74,7 +74,7 @@ describe("lab tests a ruleset requires", () => {
     expect((await labTestsOf(t)).requirement).toMatchObject({ dueOn: "2025-06-01", state: "late" });
     const [item] = await lateItems(t);
     expect(item).toMatchObject({ key: `lab_test_late:${t.site.id}`, title: "BOD and TSS lab test overdue" });
-    expect(item!.detail).toContain("due 2025-06-01");
+    expect(item!.detail).toContain("due Jun 1, 2025");
 
     const res = await record(t, {});
     expect(res.statusCode, res.body).toBe(201);
@@ -122,7 +122,7 @@ describe("lab tests a ruleset requires", () => {
       expect.objectContaining({
         key: `lab_result_over_limit:${t.site.id}`,
         title: "BOD above Annual Lab Fixture County (fictional)'s limit",
-        detail: "Sample of 2026-02-20: BOD 34 mg/L (limit 20)",
+        detail: "Sample of Feb 20, 2026: BOD 34 mg/L (limit 20)",
       }),
     ]);
     // A result at the limit is within it; a correction or a newer sample within limits clears it.

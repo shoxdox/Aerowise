@@ -15,7 +15,9 @@ import { useState } from "react";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { LoadState } from "@/components/LoadState";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { day, when } from "@/lib/format";
 
 type EvidenceKind = (typeof AUTHORITY_EVIDENCE_KINDS)[number];
@@ -33,7 +35,6 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
   // How far the authority itself has confirmed each line (W12.V4). Example rules have no authority to ask.
   const authorityId = data?.profile && data.profile.status !== "fictional" ? data.jurisdiction?.id : undefined;
   const confirmation = useLoad<AuthorityConfirmation>(authorityId ? `/jurisdictions/${authorityId}/confirmation` : null);
-  const [error, setError] = useState<string | null>(null);
   const [choice, setChoice] = useState("");
   const [evidenceKind, setEvidenceKind] = useState<EvidenceKind>("authority_map");
   const [evidenceReference, setEvidenceReference] = useState("");
@@ -46,9 +47,8 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
     void reload();
   }
 
-  async function save(jurisdictionId: string | null) {
-    setError(null);
-    try {
+  const saving = useSubmit(
+    async (jurisdictionId: string | null) => {
       await api(`/sites/${siteId}/jurisdiction`, {
         method: "PUT",
         body: jurisdictionId ? { jurisdictionId, evidenceKind, evidenceReference, evidenceNote: evidenceNote || null } : { jurisdictionId: null },
@@ -57,21 +57,20 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
       setEvidenceReference("");
       setEvidenceNote("");
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
-
-  async function saveIdentifier(key: string, value: string) {
-    if (!data?.jurisdiction) return;
-    setError(null);
-    try {
+    },
+    { fallback: "Could not save the authority." },
+  );
+  const savingIdentifier = useSubmit(
+    async (key: string, value: string) => {
+      if (!data?.jurisdiction) return;
       await api(`/sites/${siteId}/authority-identifiers/${key}`, { method: "PUT", body: { jurisdictionId: data.jurisdiction.id, value: value.trim() || null, sourceNote: null } });
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const save = (jurisdictionId: string | null) => saving.run(jurisdictionId);
+  const saveIdentifier = (key: string, value: string) => savingIdentifier.run(key, value);
+  const error = saving.error ?? savingIdentifier.error;
 
   if (!data) return <LoadState load={recordLoad} label="authority assignment" />;
   const startEditing = () => {
@@ -174,9 +173,7 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
               </>
             )}
             <div className="row">
-              <button type="submit" className="primary">
-                Save
-              </button>
+              <SubmitButton busy={saving.busy}>Save</SubmitButton>
               <button type="button" className="link" onClick={() => setEditing(false)}>
                 Cancel
               </button>
@@ -186,7 +183,7 @@ export function SiteAuthority({ siteId, county, editable }: { siteId: string; co
         {!data.jurisdiction && data.candidates.length > 0 && !editing && (
           <p className="muted small">May be: {data.candidates.map((c) => c.authorityName).join(", ")}. Check the authority&apos;s map or ask it, then choose it here with what you checked.</p>
         )}
-        {error && <p className="error">{error}</p>}
+        <FormError error={error} />
       </dd>
       {data.scheduleNotice && (
         <>
@@ -278,9 +275,7 @@ function IdentifierRow({ identifier: i, editable, onSave }: { identifier: SiteJu
             }}
           >
             <input aria-label={i.label} value={value} onChange={(e) => setValue(e.target.value)} />
-            <button type="submit" className="primary">
-              Save
-            </button>
+            <button type="submit">Save</button>
             <button type="button" className="link" onClick={() => setEditing(false)}>
               Cancel
             </button>

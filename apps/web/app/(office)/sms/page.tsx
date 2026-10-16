@@ -3,9 +3,13 @@
 import { formatPhone, SMS_KIND_LABELS, SMS_KINDS, SMS_SKIP_LABELS, type SmsKind, type SmsMessage, type SmsOptOut, type SmsSettings } from "@aerowise/domain";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useState } from "react";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 import { EmptyState } from "@/components/EmptyState";
@@ -39,10 +43,13 @@ function Texts() {
   const optOuts = useLoad<{ items: SmsOptOut[] }>("/sms/opt-outs");
   const reloadAll = () => Promise.all([settings.reload(), messages.reload(), optOuts.reload()]);
 
-  async function handled(id: string) {
-    await api(`/sms/messages/${id}/handled`, { method: "POST", body: {} });
-    await messages.reload();
-  }
+  const handling = useSubmit(
+    async (id: string) => {
+      await api(`/sms/messages/${id}/handled`, { method: "POST", body: {} });
+      await messages.reload();
+    },
+    { fallback: "Could not mark it handled." },
+  );
 
   const s = settings.data;
   return (
@@ -51,9 +58,7 @@ function Texts() {
         <h1>Texts</h1>
         <span className="spacer" />
         {s && (
-          <span className={`badge ${s.enabled ? "ok" : ""}`}>
-            {s.mode === "off" ? "Not set up" : s.enabled ? `On · from ${s.fromNumber ? formatPhone(s.fromNumber) : "—"}` : "Off"}
-          </span>
+          <Badge tone={s.enabled ? "success" : "neutral"}>{s.mode === "off" ? "Not set up" : s.enabled ? `On · from ${s.fromNumber ? formatPhone(s.fromNumber) : "—"}` : "Off"}</Badge>
         )}
       </div>
       {s?.mode === "test" && (
@@ -61,7 +66,7 @@ function Texts() {
           Test mode: no texts leave Aerowise. Each one is recorded below as if a phone got it. Add a Twilio account to send real texts.
         </p>
       )}
-      {settings.error && <p className="error">{settings.error}</p>}
+      <LoadState load={settings} label="texting settings" quiet />
 
       <div className="columns">
         {s && <SettingsCard s={s} owner={owner} onSaved={() => void reloadAll()} />}
@@ -93,14 +98,15 @@ function Texts() {
           </button>
         ))}
       </div>
-      {messages.error && <p className="error">{messages.error}</p>}
+      <LoadState load={messages} label="texts" quiet />
+      <FormError error={handling.error} />
       {messages.data?.items.length === 0 && (
         <EmptyState title="No texts here">
           Visit reminders and invoice links texted to customers show here, with their delivery and any replies. Customers get texts once they have a mobile number on file, until they reply STOP.
         </EmptyState>
       )}
       {messages.data && messages.data.items.length > 0 && (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>When</th>
@@ -112,19 +118,21 @@ function Texts() {
           <tbody>
             {messages.data.items.map((m) => (
               <tr key={m.id}>
-                <td className="small">{when(m.createdAt)}</td>
-                <td>
+                <td data-label="When" className="small">
+                  {when(m.createdAt)}
+                </td>
+                <td data-label="Customer">
                   {m.customer ? <Link href={`/customers/${m.customer.id}`}>{m.customer.displayName}</Link> : <span className="muted">Unknown number</span>}
                   <div className="muted small">
                     {m.direction === "inbound" ? "From" : "To"} {phone(m.phone)}
                     {m.contactName ? ` · ${m.contactName}` : ""}
                   </div>
                 </td>
-                <td>
+                <td data-label="Text">
                   <div className="muted small">{m.kind ? SMS_KIND_LABELS[m.kind] : "Customer's reply"}</div>
                   {m.body}
                 </td>
-                <td>
+                <td data-label="Status">
                   <span className={`badge ${STATUS_CLASS[m.status] ?? ""}`}>{STATUS_LABEL[m.status]}</span>
                   {m.skipReason && <div className="muted small">{SMS_SKIP_LABELS[m.skipReason]}</div>}
                   {m.error && <div className="error small">{m.error}</div>}
@@ -134,9 +142,9 @@ function Texts() {
                     ) : (
                       editable && (
                         <div>
-                          <button className="link" onClick={() => void handled(m.id)}>
+                          <SubmitButton type="button" className="link" busy={handling.busy} onClick={() => void handling.run(m.id)}>
                             Mark handled
-                          </button>
+                          </SubmitButton>
                         </div>
                       )
                     ))}
@@ -151,24 +159,17 @@ function Texts() {
 }
 
 function SettingsCard({ s, owner, onSaved }: { s: SmsSettings; owner: boolean; onSaved: () => void }) {
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const v = formValues(form);
-    const kinds = SMS_KINDS.filter((k) => (form.elements.namedItem(`kind_${k}`) as HTMLInputElement | null)?.checked);
-    setError(null);
-    setSaved(false);
-    try {
+  const saving = useSubmit(
+    async (v: Record<string, string | undefined>, form: HTMLFormElement) => {
+      const kinds = SMS_KINDS.filter((k) => (form.elements.namedItem(`kind_${k}`) as HTMLInputElement | null)?.checked);
+      setSaved(false);
       await api("/sms/settings", { method: "PATCH", body: { enabled: v.enabled === "on", kinds, ...(s.mode === "live" ? { fromNumber: v.fromNumber ?? null } : {}) } });
       setSaved(true);
       onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save the texting settings." },
+  );
 
   if (s.mode === "off") {
     return (
@@ -179,7 +180,7 @@ function SettingsCard({ s, owner, onSaved }: { s: SmsSettings; owner: boolean; o
     );
   }
   return (
-    <form className="card stack" onSubmit={onSubmit}>
+    <form className="card stack" onSubmit={saving.form}>
       <h2>Texting</h2>
       <p className="muted small">Texts go only to contacts who agreed to them (the “texts” box on the contact), never to a number that replied STOP, and automatic ones only between 8 am and 9 pm.</p>
       <fieldset disabled={!owner} className="plain stack">
@@ -209,13 +210,13 @@ function SettingsCard({ s, owner, onSaved }: { s: SmsSettings; owner: boolean; o
         )}
         {owner && (
           <div className="row">
-            <button type="submit">Save</button>
+            <SubmitButton busy={saving.busy}>Save</SubmitButton>
             {saved && <span className="muted">Saved</span>}
           </div>
         )}
       </fieldset>
       {!owner && <p className="muted small">Only the owner can change these.</p>}
-      {error && <p className="error">{error}</p>}
+      <FormError error={saving.error} />
     </form>
   );
 }
@@ -223,22 +224,18 @@ function SettingsCard({ s, owner, onSaved }: { s: SmsSettings; owner: boolean; o
 /** Test mode only: play a text from a customer, to see STOP, START and replies at work. */
 function TestReply({ onSent }: { onSent: () => void }) {
   const [message, setMessage] = useState<string | null>(null);
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const v = formValues(form);
-    setMessage(null);
-    try {
+  const sending = useSubmit(
+    async (v: Record<string, string | undefined>, form: HTMLFormElement) => {
+      setMessage(null);
       const r = await api<{ keyword: string | null }>("/sms/test/inbound", { method: "POST", body: { from: v.from, body: v.body } });
       setMessage(r.keyword === "stop" ? "Opted out." : r.keyword === "start" ? "Opted back in." : r.keyword === "help" ? "Help request recorded." : "Reply received. It is in the inbox.");
       form.reset();
       onSent();
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not send");
-    }
-  }
+    },
+    { fallback: "Could not send." },
+  );
   return (
-    <form className="card stack" onSubmit={onSubmit}>
+    <form className="card stack" onSubmit={sending.form}>
       <h2>Pretend a customer texted</h2>
       <label>
         From
@@ -249,11 +246,12 @@ function TestReply({ onSent }: { onSent: () => void }) {
         <input name="body" required placeholder="STOP" />
       </label>
       <div className="row">
-        <button type="submit" className="secondary">
+        <SubmitButton className="secondary" busy={sending.busy}>
           Receive text
-        </button>
+        </SubmitButton>
         {message && <span className="muted">{message}</span>}
       </div>
+      <FormError error={sending.error} />
     </form>
   );
 }

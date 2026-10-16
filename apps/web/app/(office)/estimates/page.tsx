@@ -1,12 +1,12 @@
 "use client";
 
-import { ESTIMATE_STATUS_LABELS, type EstimateSummary } from "@aerowise/domain";
+import type { EstimateSummary } from "@aerowise/domain";
 import Link from "next/link";
 import { useQueryState } from "@/components/useQueryState";
 import { LoadState } from "@/components/LoadState";
 import { Pagination } from "@/components/Pagination";
 import { EmptyState } from "@/components/EmptyState";
-import { estimateBadge } from "@/components/EstimateLineEditor";
+import { StatusBadge } from "@/components/StatusBadge";
 import { useLoad } from "@/components/useLoad";
 import { useFeature } from "@/lib/features";
 import { day, money } from "@/lib/format";
@@ -51,7 +51,7 @@ export default function EstimatesPage() {
       <LoadState load={load} label="estimates" />
       {data && data.items.length > 0 && (
         <div className="table-scroll">
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Estimate</th>
@@ -65,19 +65,21 @@ export default function EstimatesPage() {
             <tbody>
               {data.items.map((e) => (
                 <tr key={e.id}>
-                  <td>
+                  <td data-label="Estimate">
                     <Link href={`/estimates/${e.id}`}>
                       {e.label} · {e.title}
                     </Link>
                   </td>
-                  <td>{e.customer.displayName}</td>
-                  <td>
+                  <td data-label="Customer">{e.customer.displayName}</td>
+                  <td data-label="Site">
                     {e.site.addressLine1}, {e.site.city}
                   </td>
-                  <td className="num">{money(e.totalCents)}</td>
-                  <td>{e.expiresOn ? day(e.expiresOn) : "—"}</td>
-                  <td>
-                    <span className={`badge ${estimateBadge(e.status)}`}>{ESTIMATE_STATUS_LABELS[e.status]}</span>
+                  <td data-label="Total" className="num">
+                    {money(e.totalCents)}
+                  </td>
+                  <td data-label="Good until">{e.expiresOn ? day(e.expiresOn) : "—"}</td>
+                  <td data-label="Status">
+                    <StatusBadge of="estimate" value={e.status} />
                   </td>
                 </tr>
               ))}

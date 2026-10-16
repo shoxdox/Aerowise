@@ -8,6 +8,8 @@ import {
   type ExceptionSeverity,
   FILING_OPEN_STATUSES,
   FILING_ATTENTION_STATUSES,
+  formatDate,
+  formatDateOf,
   formatGallons,
   formatPhone,
   id,
@@ -37,7 +39,7 @@ import { HttpError, notFound } from "../lib/errors.ts";
 import { dollars } from "@aerowise/payments";
 import { listQuickBooksRecords } from "../lib/quickbooks.ts";
 import { expiringContracts } from "../lib/expiring-contracts.ts";
-import { organizationToday } from "../lib/today.ts";
+import { dateInZone } from "../lib/today.ts";
 import { readPumpingRecords } from "../lib/pumping.ts";
 
 const params = z.object({ id });
@@ -47,6 +49,10 @@ const PER_KIND = 200;
 
 const site = (r: { siteId: string; addressLine1: string; city: string }) => ({ id: r.siteId, addressLine1: r.addressLine1, city: r.city });
 const customer = (r: { customerId: string; displayName: string }) => ({ id: r.customerId, displayName: r.displayName });
+
+// Dates in these sentences read like the dates beside them on screen ("Oct 25, 2026"). A
+// moment is dated in the company's time zone: its UTC date is tomorrow from 7 PM in Texas.
+const on = (date: string | null) => (date ? formatDate(date) : "an unrecorded date");
 
 /**
  * Exceptions are derived from the records themselves every time, not stored: one goes
@@ -82,7 +88,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "inspection_overdue",
       severity: "high",
       title: "Inspection overdue",
-      detail: r.scheduledDate ? `Scheduled for ${r.scheduledDate} with ${r.technicianName}` : "Not scheduled",
+      detail: r.scheduledDate ? `Scheduled for ${on(r.scheduledDate)} with ${r.technicianName}` : "Not scheduled",
       dueOn: r.dueOn,
       site: site(r),
       customer: customer(r),
@@ -114,7 +120,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   }
 
   /** Inspections a phone sent for a visit the office changed meanwhile: accept them or set them aside. */
-  async function heldInspectionExceptions(organizationId: string): Promise<InboxException[]> {
+  async function heldInspectionExceptions(organizationId: string, zone: string): Promise<InboxException[]> {
     const rows = await db
       .selectFrom("inspectionSyncConflicts as ic")
       .innerJoin("sites as s", (j) => j.onRef("s.id", "=", "ic.siteId").onRef("s.organizationId", "=", "ic.organizationId"))
@@ -137,7 +143,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "inspection_held" as const,
       severity: "high" as const,
       title: `${r.technicianName}'s inspection is held: ${INSPECTION_CONFLICT_REASON_LABELS[r.reason].toLowerCase()} while the phone was offline`,
-      detail: `${r.phoneStatus === "completed" ? "Finished on the phone" : "Not finished on the phone"} and sent ${r.createdAt.toISOString().slice(0, 10)}. ${
+      detail: `${r.phoneStatus === "completed" ? "Finished on the phone" : "Not finished on the phone"} and sent ${formatDateOf(r.createdAt, zone)}. ${
         r.otherInspectionId
           ? "The visit already has another inspection, so set this one aside with a reason; its photos are kept."
           : "Accept it as the visit's inspection, or set it aside with a reason; its photos are kept either way."
@@ -146,7 +152,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     }));
   }
 
-  async function filingExceptions(organizationId: string, today: string): Promise<InboxException[]> {
+  async function filingExceptions(organizationId: string, today: string, zone: string): Promise<InboxException[]> {
     const unconfirmedBefore = new Date(now().getTime() - UNCONFIRMED_AFTER_DAYS * 86_400_000);
     const rows = await sites(organizationId)
       .innerJoin("filings as f", (j) => j.onRef("f.siteId", "=", "s.id").onRef("f.organizationId", "=", "s.organizationId"))
@@ -229,7 +235,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
             kind: "filing_unconfirmed",
             severity: "medium",
             title: `No confirmation from ${authority(r.authorityName)}`,
-            detail: `Sent ${r.sentAt!.toISOString().slice(0, 10)}, ${UNCONFIRMED_AFTER_DAYS}+ days without a confirmation`,
+            detail: `Sent ${formatDateOf(r.sentAt!, zone)}, ${UNCONFIRMED_AFTER_DAYS}+ days without a confirmation`,
             dueOn: null,
           };
         default:
@@ -292,10 +298,10 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       limit ${PER_KIND}`.execute(db);
     return rows.rows.map((r) => {
       const [title, detail] = !r.visitId
-        ? ["No visit before the authority's next due date", `The authority requires the next inspection by ${r.nextDueOn}, and the site has no open visit`]
+        ? ["No visit before the authority's next due date", `The authority requires the next inspection by ${on(r.nextDueOn)}, and the site has no open visit`]
         : r.windowStart! > r.nextDueOn
-          ? ["Next visit starts later than the authority allows", `The next visit window opens ${r.windowStart}; the authority requires an inspection by ${r.nextDueOn}`]
-          : [`Schedule the next visit by ${r.nextDueOn}`, r.scheduledDate ? `It is on the route for ${r.scheduledDate}, after the authority's date` : "The authority's date is close and the visit is not scheduled"];
+          ? ["Next visit starts later than the authority allows", `The next visit window opens ${on(r.windowStart)}; the authority requires an inspection by ${on(r.nextDueOn)}`]
+          : [`Schedule the next visit by ${on(r.nextDueOn)}`, r.scheduledDate ? `It is on the route for ${on(r.scheduledDate)}, after the authority's date` : "The authority's date is close and the visit is not scheduled"];
       return {
         key: `next_visit_late:${r.siteId}`,
         kind: "next_visit_late" as const,
@@ -329,7 +335,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "lab_test_late" as const,
       severity: "high" as const,
       title: `${t.analytes.map((a) => LAB_ANALYTE_LABELS[a]).join(" and ")} lab test overdue`,
-      detail: `${t.authorityName} requires one every ${t.everyMonths} months; due ${t.dueOn} (${t.dueBasis})`,
+      detail: `${t.authorityName} requires one every ${t.everyMonths} months; due ${on(t.dueOn)} (${t.dueBasis})`,
       dueOn: t.dueOn,
       site: site(at(t.siteId)),
       customer: customer(at(t.siteId)),
@@ -340,7 +346,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "lab_result_over_limit" as const,
       severity: "high" as const,
       title: `${t.overLimit.map((o) => LAB_ANALYTE_LABELS[o.analyte]).join(" and ")} above ${t.authorityName}'s limit`,
-      detail: `Sample of ${t.lastSampledOn}: ${t.overLimit.map((o) => `${LAB_ANALYTE_LABELS[o.analyte]} ${o.value} mg/L (limit ${o.limit})`).join(", ")}`,
+      detail: `Sample of ${on(t.lastSampledOn)}: ${t.overLimit.map((o) => `${LAB_ANALYTE_LABELS[o.analyte]} ${o.value} mg/L (limit ${o.limit})`).join(", ")}`,
       dueOn: null,
       site: site(at(t.siteId)),
       customer: customer(at(t.siteId)),
@@ -419,8 +425,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         title: "Fix, retest and report again",
         detail:
           `The report showed low or no chlorine, or an item that failed. ${r.authorityName} wants the system fixed, retested and reported again within ${r.withinDays} days of the previous report ` +
-          `(${r.sent ? `sent ${r.reportOn}` : `counted from the report's date, ${r.reportOn}, until it is sent`}; Aerowise's reading, not confirmed by ${r.authorityName}). ` +
-          (r.retestOn ? `Retest booked for ${r.retestOn}.` : "Book the retest as an extra visit; the contract's visits stay as they are."),
+          `(${r.sent ? `sent ${on(r.reportOn)}` : `counted from the report's date, ${on(r.reportOn)}, until it is sent`}; Aerowise's reading, not confirmed by ${r.authorityName}). ` +
+          (r.retestOn ? `Retest booked for ${on(r.retestOn)}.` : "Book the retest as an extra visit; the contract's visits stay as they are."),
         dueOn,
         site: site(r),
         customer: customer(r),
@@ -429,7 +435,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     });
   }
 
-  async function openIssues(organizationId: string): Promise<InboxException[]> {
+  async function openIssues(organizationId: string, zone: string): Promise<InboxException[]> {
     const rows = await sites(organizationId)
       .innerJoin("issues as x", (j) => j.onRef("x.siteId", "=", "s.id").onRef("x.organizationId", "=", "s.organizationId"))
       .innerJoin("inspections as i", (j) => j.onRef("i.id", "=", "x.inspectionId").onRef("i.organizationId", "=", "x.organizationId"))
@@ -446,7 +452,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "issue_open",
       severity: r.severity as ExceptionSeverity,
       title: ISSUE_LABELS[r.type as keyof typeof ISSUE_LABELS] ?? r.type,
-      detail: [r.description || null, r.completedAt ? `found ${r.completedAt.toISOString().slice(0, 10)}` : null].filter(Boolean).join(" · ") || null,
+      detail: [r.description || null, r.completedAt ? `found ${formatDateOf(r.completedAt, zone)}` : null].filter(Boolean).join(" · ") || null,
       dueOn: null,
       site: site(r),
       customer: customer(r),
@@ -491,7 +497,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         kind: expired ? "contract_expired" : "contract_expiring",
         severity: expired ? "medium" : "low",
         title: expired ? "Contract expired without renewal" : "Contract ending, not renewed",
-        detail: `${r.planName} ${expired ? "ended" : "ends"} ${r.endOn}${r.renewalStatus ? ` · renewal: ${RENEWAL_STATUS_LABELS[r.renewalStatus].toLowerCase()}` : ""}`,
+        detail: `${r.planName} ${expired ? "ended" : "ends"} ${on(r.endOn)}${r.renewalStatus ? ` · renewal: ${RENEWAL_STATUS_LABELS[r.renewalStatus].toLowerCase()}` : ""}`,
         dueOn: r.endOn,
         site: site(r),
         customer: customer(r),
@@ -526,13 +532,13 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   }
 
   /** What customers asked for from the portal and nobody has closed yet. */
-  async function serviceRequests(organizationId: string): Promise<InboxException[]> {
+  async function serviceRequests(organizationId: string, zone: string): Promise<InboxException[]> {
     const rows = await db
       .selectFrom("serviceRequests as r")
       .innerJoin("sites as s", "s.id", "r.siteId")
       .innerJoin("customers as c", "c.id", "r.customerId")
       .leftJoin("workOrders as wo", (j) => j.onRef("wo.id", "=", "r.workOrderId").onRef("wo.organizationId", "=", "r.organizationId").on("wo.status", "<>", "cancelled"))
-      .select(["r.id", "r.kind", "r.description", "r.contactPhone", "r.createdAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName", "wo.id as woId", "wo.number as woNumber", "wo.status as woStatus"])
+      .select(["r.id", "r.kind", "r.description", "r.contactPhone", "r.receivedAt", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName", "wo.id as woId", "wo.number as woNumber", "wo.status as woStatus"])
       .where("r.organizationId", "=", organizationId)
       .where("r.status", "=", "open")
       .orderBy("r.createdAt")
@@ -544,7 +550,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       // An alarm or a smell can mean the system is failing; everything else can wait a little.
       severity: r.kind === "alarm" || r.kind === "odor" ? "high" : "medium",
       title: `Customer asked for service: ${SERVICE_REQUEST_LABELS[r.kind].toLowerCase()}`,
-      detail: [r.description, r.contactPhone ? `call ${r.contactPhone}` : null, `sent ${r.createdAt.toISOString().slice(0, 10)}`].filter(Boolean).join(" · "),
+      detail: [r.description, r.contactPhone ? `call ${r.contactPhone}` : null, `received ${formatDateOf(r.receivedAt, zone)}`].filter(Boolean).join(" · "),
       dueOn: null,
       site: site(r),
       customer: customer(r),
@@ -558,7 +564,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
    * response that left the problem outstanding. They go on authority reports as outstanding
    * until resolved, so the office should get them closed.
    */
-  async function unresolvedComplaints(organizationId: string): Promise<InboxException[]> {
+  async function unresolvedComplaints(organizationId: string, zone: string): Promise<InboxException[]> {
     const rows = await db
       .selectFrom("serviceRequests as r")
       .innerJoin("sites as s", "s.id", "r.siteId")
@@ -575,7 +581,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "complaint_unresolved",
       severity: "high",
       title: `${r.reportClassification === "owner_complaint" ? "Owner complaint" : "Monitoring notice"} ${r.responseAction ? "still outstanding" : "with no response yet"}`,
-      detail: [r.description, `received ${r.receivedAt.toISOString().slice(0, 10)}`, "reported to the authority as outstanding until resolved"].join(" · "),
+      detail: [r.description, `received ${formatDateOf(r.receivedAt, zone)}`, "reported to the authority as outstanding until resolved"].join(" · "),
       dueOn: null,
       site: site(r),
       customer: customer(r),
@@ -609,8 +615,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         severity: dueOn <= today ? "high" : "medium",
         title: dueOn < today ? "Notice that service is ending is late" : "Send notice that service is ending",
         detail: [
-          `${r.planName} service ends ${r.serviceEndsOn}`,
-          `write to the permitting authority and the manufacturer${r.discontinuedBy === "owner" ? "" : ", and the owner"} by ${dueOn} (30 TAC 285.7(d)(3))`,
+          `${r.planName} service ends ${on(r.serviceEndsOn)}`,
+          `write to the permitting authority and the manufacturer${r.discontinuedBy === "owner" ? "" : ", and the owner"} by ${on(dueOn)} (30 TAC 285.7(d)(3))`,
         ].join(" · "),
         dueOn,
         site: site(r),
@@ -647,7 +653,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "visit_after_service_end",
       severity: "high",
       title: "Visit scheduled after service ends",
-      detail: `Scheduled ${r.scheduledDate}, but service ends after ${r.serviceEndsOn}: move it to ${r.serviceEndsOn} or earlier`,
+      detail: `Scheduled ${on(r.scheduledDate)}, but service ends after ${on(r.serviceEndsOn)}: move it to ${on(r.serviceEndsOn)} or earlier`,
       dueOn: r.serviceEndsOn!,
       site: site(r),
       customer: customer(r),
@@ -708,7 +714,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   }
 
   /** Texts from customers that are not STOP or START and nobody has dealt with yet. */
-  async function smsReplies(organizationId: string): Promise<InboxException[]> {
+  async function smsReplies(organizationId: string, zone: string): Promise<InboxException[]> {
     const rows = await db
       .selectFrom("smsMessages as m")
       .innerJoin("customers as c", (j) => j.onRef("c.id", "=", "m.customerId").onRef("c.organizationId", "=", "m.organizationId"))
@@ -724,7 +730,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
       kind: "sms_reply",
       severity: "medium",
       title: "Customer texted back",
-      detail: [`“${r.body.length > 140 ? `${r.body.slice(0, 140)}…` : r.body}”`, r.phone ? `from ${formatPhone(r.phone)}` : null, `received ${r.createdAt.toISOString().slice(0, 10)}`].filter(Boolean).join(" · "),
+      detail: [`“${r.body.length > 140 ? `${r.body.slice(0, 140)}…` : r.body}”`, r.phone ? `from ${formatPhone(r.phone)}` : null, `received ${formatDateOf(r.createdAt, zone)}`].filter(Boolean).join(" · "),
       dueOn: null,
       site: null,
       customer: customer(r),
@@ -821,7 +827,7 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
         kind: "disposal_overdue" as const,
         severity: "medium" as const,
         title: "Disposal not recorded",
-        detail: `${p.workOrderLabel}: ${formatGallons(p.volumeMilligallons)} pumped on ${p.serviceDate} by ${p.technicianName}${p.vehicleName ? ` (${p.vehicleName})` : ""} is in no disposal record yet.`,
+        detail: `${p.workOrderLabel}: ${formatGallons(p.volumeMilligallons)} pumped on ${on(p.serviceDate)} by ${p.technicianName}${p.vehicleName ? ` (${p.vehicleName})` : ""} is in no disposal record yet.`,
         dueOn: addDays(p.serviceDate, org.disposalOverdueDays),
         site: { id: s.id, addressLine1: s.addressLine1 ?? "", city: s.city ?? "" },
         customer: { id: s.customerId, displayName: s.displayName },
@@ -993,25 +999,26 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
     },
     async (req) => {
       const { organizationId } = req.requireAuth();
-      const today = await organizationToday(db, organizationId, now());
+      const { timezone: zone } = await db.selectFrom("organizations").select("timezone").where("id", "=", organizationId).executeTakeFirstOrThrow();
+      const today = dateInZone(now(), zone);
       const [groups, due, routes, unpaid, atRisk, expiring] = await Promise.all([
         Promise.all([
           overdueVisits(organizationId, today),
           serviceCycleVisits(organizationId, today),
           incompleteInspections(organizationId),
-          filingExceptions(organizationId, today),
-          heldInspectionExceptions(organizationId),
+          filingExceptions(organizationId, today, zone),
+          heldInspectionExceptions(organizationId, zone),
           lateNextVisits(organizationId, today),
           labTestItems(organizationId, today),
           correctiveReports(organizationId, today),
-          openIssues(organizationId),
+          openIssues(organizationId, zone),
           contractEnds(organizationId, today),
           renewalExceptions(organizationId),
-          serviceRequests(organizationId),
-          unresolvedComplaints(organizationId),
+          serviceRequests(organizationId, zone),
+          unresolvedComplaints(organizationId, zone),
           discontinuationNotices(organizationId, today),
           visitsAfterServiceEnd(organizationId),
-          smsReplies(organizationId),
+          smsReplies(organizationId, zone),
           invoiceExceptions(organizationId, today),
           quickbooksExceptions(organizationId),
           depositExceptions(organizationId),

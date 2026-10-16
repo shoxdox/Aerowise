@@ -2,26 +2,28 @@
 
 import type { OrganizationSettings } from "@aerowise/domain";
 import Link from "next/link";
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type ChangeEvent } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { LoadState } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, ApiError } from "@/lib/api";
+import { mpNumber } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 export default function CompanySettingsPage() {
   const me = useSession();
   // Only the owner edits, and nobody does while the plan is read-only or support is looking.
   const owner = me.role === "owner" && canEdit(me);
-  const { data, reload } = useLoad<OrganizationSettings>("/organization/settings");
-  const [error, setError] = useState<string | null>(null);
+  const settings = useLoad<OrganizationSettings>("/organization/settings");
+  const { data, reload } = settings;
   const [saved, setSaved] = useState(false);
   const [logoVersion, setLogoVersion] = useState(0);
 
-  async function onSave(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSaved(false);
-    const v = formValues(event.currentTarget);
-    try {
+  const saving = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      setSaved(false);
       await api("/organization/settings", {
         method: "PATCH",
         body: {
@@ -40,38 +42,43 @@ export default function CompanySettingsPage() {
       });
       setSaved(true);
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save the company details.", labels: { postalCode: "ZIP", emergencyPhone: "Emergency phone" } },
+  );
+  // The logo goes up as the file itself, not JSON, so it is sent with fetch.
+  const logo = useSubmit(
+    async (file: File) => {
+      const res = await fetch("/api/organization/logo", { method: "PUT", headers: { "content-type": file.type }, body: file, credentials: "same-origin" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.error ?? "error", res.status === 413 ? "The logo must be 1 MB or smaller." : (body.message ?? "Could not upload the logo."));
+      }
+      setLogoVersion((n) => n + 1);
+      await reload();
+    },
+    { fallback: "Could not upload the logo." },
+  );
+  const removing = useSubmit(
+    async () => {
+      await api("/organization/logo/remove", { method: "POST", body: {} });
+      await reload();
+    },
+    { fallback: "Could not remove the logo." },
+  );
 
-  async function onLogo(event: ChangeEvent<HTMLInputElement>) {
+  function onLogo(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
-    if (!file) return;
-    setError(null);
-    const res = await fetch("/api/organization/logo", { method: "PUT", headers: { "content-type": file.type }, body: file, credentials: "same-origin" });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(res.status === 413 ? "The logo must be 1 MB or smaller" : (body.message ?? "Could not upload the logo"));
-      return;
-    }
-    setLogoVersion((n) => n + 1);
-    await reload();
+    if (file) void logo.run(file);
   }
 
-  async function removeLogo() {
-    await api("/organization/logo/remove", { method: "POST", body: {} });
-    await reload();
-  }
-
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <LoadState load={settings} label="company details" />;
   return (
     <div className="stack">
       <h1>Company</h1>
       <p className="muted">Shown to your customers and on the reports you send the authorities.{!owner && " Only an owner can change these."}</p>
 
-      <form className="card grid" onSubmit={onSave} key={JSON.stringify(data)}>
+      <form className="card grid" onSubmit={saving.form} key={JSON.stringify(data)}>
         <label className="wide">
           Company name
           <input name="name" defaultValue={data.name} required disabled={!owner} />
@@ -121,11 +128,11 @@ export default function CompanySettingsPage() {
         <p className="wide muted small">
           Off by default. When on, each new contract invoice also bills the filing fees the county charged for that site&apos;s reports, each once. Late fees are never passed on.
         </p>
-        {error && <p className="error wide">{error}</p>}
+        <FormError error={saving.error} className="wide" />
         {saved && <p className="wide" role="status">Saved.</p>}
         {owner && (
           <div className="wide">
-            <button type="submit">Save</button>
+            <SubmitButton busy={saving.busy}>Save</SubmitButton>
           </div>
         )}
       </form>
@@ -142,22 +149,24 @@ export default function CompanySettingsPage() {
           <div className="row">
             <label>
               {data.hasLogo ? "Replace logo" : "Upload logo"}
-              <input type="file" accept="image/png,image/jpeg" onChange={onLogo} aria-label="Logo file" style={{ display: "block" }} />
+              <input type="file" accept="image/png,image/jpeg" onChange={onLogo} disabled={logo.busy} aria-label="Logo file" style={{ display: "block" }} />
             </label>
+            {logo.busy && <span className="muted small">Uploading…</span>}
             {data.hasLogo && (
-              <button className="link" onClick={removeLogo}>
+              <ConfirmButton className="link danger" question="Remove the logo from new reports?" confirmLabel="Remove logo" busy={removing.busy} onConfirm={() => removing.run()}>
                 Remove logo
-              </button>
+              </ConfirmButton>
             )}
           </div>
         )}
+        <FormError error={logo.error ?? removing.error} />
       </section>
 
       <section className="card stack">
         <h2>TCEQ maintenance provider license</h2>
         {data.responsibleProvider ? (
           <p style={{ margin: 0 }}>
-            Reports are filed under <strong>{data.responsibleProvider.holderName}</strong>, MP {data.responsibleProvider.number}.
+            Reports are filed under <strong>{data.responsibleProvider.holderName}</strong>, {mpNumber(data.responsibleProvider.number)}.
           </p>
         ) : (
           <p style={{ margin: 0 }}>No responsible MP is chosen yet. Reports to the authorities need one.</p>

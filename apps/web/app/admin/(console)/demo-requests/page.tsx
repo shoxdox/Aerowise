@@ -1,11 +1,11 @@
 "use client";
 
 import type { DemoRequest } from "@aerowise/domain";
-import { useState } from "react";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" });
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { phone, when } from "@/lib/format";
 
 function EmailStatus({ r }: { r: DemoRequest }) {
   // The local outbox (staging, demo, development) keeps the message in file storage: nobody got it.
@@ -30,22 +30,20 @@ function EmailStatus({ r }: { r: DemoRequest }) {
 /** Requests from the public marketing page, newest first. */
 export default function DemoRequestsPage() {
   const { data, error, reload } = useLoad<{ items: DemoRequest[] }>("/admin/demo-requests");
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  async function setStatus(r: DemoRequest, status: DemoRequest["status"]) {
-    setActionError(null);
-    try {
+  const updating = useSubmit(
+    async (r: DemoRequest, status: DemoRequest["status"]) => {
       await api(`/admin/demo-requests/${r.id}/status`, { method: "PUT", body: { status } });
       await reload();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not update the request");
-    }
-  }
+    },
+    { fallback: "Could not update the request." },
+  );
+  const setStatus = (r: DemoRequest, status: DemoRequest["status"]) => void updating.run(r, status);
 
   return (
     <div className="stack">
       <h1>Demo requests</h1>
-      {(error || actionError) && <p className="error" role="alert">{error ?? actionError}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      <FormError error={updating.error} />
       {error && <button className="secondary" onClick={() => void reload()}>Retry requests</button>}
       {!data && !error && <p role="status">Loading requests…</p>}
       {data && data.items.length === 0 && <p className="muted">No demo requests yet.</p>}
@@ -69,7 +67,7 @@ export default function DemoRequestsPage() {
                 <a href={`mailto:${r.email}`}>{r.email}</a>
               </dd>
               <dt>Phone</dt>
-              <dd>{r.phone ? <a href={`tel:${r.phone.replace(/[^+\d]/g, "")}`}>{r.phone}</a> : "—"}</dd>
+              <dd>{r.phone ? <a href={`tel:${r.phone.replace(/[^+\d]/g, "")}`}>{phone(r.phone)}</a> : "—"}</dd>
               <dt>Counties</dt>
               <dd>{r.counties ?? "—"}</dd>
             </dl>
@@ -77,13 +75,13 @@ export default function DemoRequestsPage() {
             {r.notifyError && <p className="error small">Email failed: {r.notifyError}</p>}
             <div className="row">
               {r.status === "new" ? (
-                <button className="secondary" onClick={() => setStatus(r, "handled")}>
+                <SubmitButton type="button" className="secondary" busy={updating.busy} onClick={() => setStatus(r, "handled")}>
                   Mark handled
-                </button>
+                </SubmitButton>
               ) : (
-                <button className="link" onClick={() => setStatus(r, "new")}>
+                <SubmitButton type="button" className="link" busy={updating.busy} onClick={() => setStatus(r, "new")}>
                   Mark as new
-                </button>
+                </SubmitButton>
               )}
             </div>
           </article>

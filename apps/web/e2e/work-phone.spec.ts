@@ -186,7 +186,7 @@ test("a visit the office completed while the phone was offline is held for the o
   await expect(held).toContainText("Tess Tech");
   await expect(held).toContainText("finished on the phone · 2 photos · 0 signatures");
   await held.getByRole("button", { name: "Accept this record" }).click();
-  await expect(held).toContainText("accepted");
+  await expect(held).toContainText("Accepted");
   await expect(officePage.getByTestId("field-record").first()).toContainText("accepted by the office from a held record");
   await expect(officePage.getByTestId("work-timeline")).toContainText("Held field record accepted by the office");
 });

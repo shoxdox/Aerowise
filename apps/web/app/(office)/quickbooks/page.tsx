@@ -17,7 +17,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
@@ -30,32 +35,25 @@ const RETURN_MESSAGES: Record<string, string> = {
 const ENTITY_LABELS = { customer: "Customers", invoice: "Invoices", payment: "Payments", refund: "Refunds" } as const;
 const HEALTH_ORDER: QuickBooksSyncStatus[] = ["synced", "queued", "syncing", "failed", "conflict", "quarantined", "ignored"];
 
-function errorText(err: unknown, fallback: string) {
-  return err instanceof ApiError ? err.message : fallback;
-}
-
 /** One record waiting on a person, with what it means and the choices that settle it. */
 function RecordCard({ r, editable, onDone }: { r: QuickBooksRecord; editable: boolean; onDone: () => Promise<void> }) {
   const [pick, setPick] = useState<string>(r.candidates[0]?.id ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const details = (r.details ?? {}) as Record<string, unknown>;
 
-  async function act(action: QuickBooksAction) {
-    setBusy(true);
-    setError(null);
-    try {
+  const acting = useSubmit(
+    async (action: QuickBooksAction) => {
       await api(`/quickbooks/records/${r.id}/resolve`, {
         method: "POST",
         body: { action, ...(action === "match" && r.conflictKind === "ambiguous_match" ? { externalId: pick } : {}), ...(action === "keep_remote" ? { reason } : {}) },
       });
       await onDone();
-    } catch (err) {
-      setError(errorText(err, "Could not save that choice"));
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not save that choice." },
+  );
+  const act = (action: QuickBooksAction) => acting.run(action);
+  const busy = acting.busy;
+  const error = acting.error;
 
   const fields = (details.fields ?? []) as { field: string; aerowise: string | null; quickbooks: string | null }[];
   const existing = details.existing as { customerName: string | null; totalCents: number } | undefined;
@@ -187,20 +185,11 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
   const accounts = useLoad<QuickBooksAccount[]>("/quickbooks/accounts");
   const taxCodes = useLoad<QuickBooksTaxCode[]>("/quickbooks/tax-codes");
   const [message, setMessage] = useState<string | null>(null);
-  if (mapping.error) return <p className="error">{mapping.error}</p>;
-  if (!mapping.data) return <p className="muted">Loading…</p>;
-  const m = mapping.data;
-  const active = (items.data ?? []).filter((i) => i.active);
-  const known = new Set(active.map((i) => i.id));
-  const activeAccounts = (accounts.data ?? []).filter((a) => a.active);
-  const knownAccounts = new Set(activeAccounts.map((a) => a.id));
-  const activeCodes = (taxCodes.data ?? []).filter((c) => c.active);
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const f = new FormData(event.currentTarget);
-    setMessage(null);
-    try {
+  const saving = useSubmit(
+    async (form: HTMLFormElement) => {
+      const m = mapping.data!;
+      const f = new FormData(form);
+      setMessage(null);
       await api("/quickbooks/mapping", {
         method: "PUT",
         body: {
@@ -226,9 +215,20 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
       });
       await Promise.all([mapping.reload(), onSaved()]);
       setMessage("Saved");
-    } catch (err) {
-      setMessage(errorText(err, "Could not save"));
-    }
+    },
+    { fallback: "Could not save the mapping." },
+  );
+  if (!mapping.data) return <LoadState load={mapping} label="QuickBooks mapping" />;
+  const m = mapping.data;
+  const active = (items.data ?? []).filter((i) => i.active);
+  const known = new Set(active.map((i) => i.id));
+  const activeAccounts = (accounts.data ?? []).filter((a) => a.active);
+  const knownAccounts = new Set(activeAccounts.map((a) => a.id));
+  const activeCodes = (taxCodes.data ?? []).filter((c) => c.active);
+
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void saving.run(event.currentTarget);
   }
 
   const select = (name: string, value: string | null, empty: string) => (
@@ -345,8 +345,9 @@ function MappingForm({ owner, onSaved }: { owner: boolean; onSaved: () => Promis
       </div>
       {owner && (
         <div className="row">
-          <button type="submit">Save</button>
+          <SubmitButton busy={saving.busy}>Save</SubmitButton>
           {message && <span className="muted">{message}</span>}
+          <FormError error={saving.error} />
         </div>
       )}
     </form>
@@ -358,10 +359,25 @@ function QuickBooks() {
   const owner = me.role === "owner";
   const editable = canEdit(me);
   const params = useSearchParams();
-  const { data, error, reload } = useLoad<QuickBooksStatus>("/quickbooks");
+  const status = useLoad<QuickBooksStatus>("/quickbooks");
+  const { data, reload } = status;
   const records = useLoad<QuickBooksRecord[]>(data?.connection?.setupState === "active" ? "/quickbooks/records" : null);
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const acting = useSubmit(
+    async (path: string, ok: string) => {
+      setMessage(null);
+      const res = await api<{ url?: string }>(path, { method: "POST", body: {} });
+      if (res?.url) {
+        window.location.href = res.url;
+        return;
+      }
+      await Promise.all([reload(), records.reload()]);
+      setMessage(ok);
+    },
+    { fallback: "Something went wrong. Try again." },
+  );
+  const run = (path: string, ok: string) => acting.run(path, ok);
+  const busy = acting.busy;
   const returned = params.get("error");
 
   // While a sync is queued or running, look again shortly.
@@ -372,27 +388,9 @@ function QuickBooks() {
     return () => clearTimeout(t);
   }, [pending, data, reload, records]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <LoadState load={status} label="QuickBooks" />;
   const c = data.connection;
   const connected = c && c.status !== "disconnected";
-
-  async function run(path: string, ok: string) {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const res = await api<{ url?: string }>(path, { method: "POST", body: {} });
-      if (res?.url) {
-        window.location.href = res.url;
-        return;
-      }
-      await Promise.all([reload(), records.reload()]);
-      setMessage(ok);
-    } catch (err) {
-      setMessage(errorText(err, "Something went wrong"));
-    }
-    setBusy(false);
-  }
   const refreshAll = async () => {
     await Promise.all([reload(), records.reload()]);
   };
@@ -424,8 +422,8 @@ function QuickBooks() {
           <>
             <div className="row">
               <h2>{c.companyName ?? "QuickBooks company"}</h2>
-              {c.status === "connected" ? <span className="badge ok">Connected</span> : <span className="badge danger">Needs reconnecting</span>}
-              {c.environment !== "production" && <span className="badge">{c.environment === "test" ? "Test company" : "Sandbox"}</span>}
+              {c.status === "connected" ? <Badge tone="success">Connected</Badge> : <Badge tone="danger">Needs reconnecting</Badge>}
+              {c.environment !== "production" && <Badge>{c.environment === "test" ? "Test company" : "Sandbox"}</Badge>}
               <span className="spacer" />
               {c.setupState === "active" && editable && c.status === "connected" && (
                 <button className="secondary" disabled={busy} onClick={() => void run("/quickbooks/sync", "Sync started")}>
@@ -457,20 +455,15 @@ function QuickBooks() {
                     Reconnect QuickBooks
                   </button>
                 )}
-                <button
-                  className="link"
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm("Stop syncing with QuickBooks? Nothing already in QuickBooks is changed.")) void run("/quickbooks/disconnect", "Disconnected");
-                  }}
-                >
+                <ConfirmButton className="link danger" question="Stop syncing with QuickBooks? Nothing already in QuickBooks is changed." confirmLabel="Disconnect" busy={busy} onConfirm={() => run("/quickbooks/disconnect", "Disconnected")}>
                   Disconnect
-                </button>
+                </ConfirmButton>
               </div>
             )}
           </>
         )}
         {message && <p className="muted">{message}</p>}
+        <FormError error={acting.error} />
       </section>
 
       {connected && c.setupState === "review" && (
@@ -490,9 +483,9 @@ function QuickBooks() {
           <section className="stack">
             <div className="row">
               <h2>Needs a decision</h2>
-              {data.attention > 0 && <span className="badge warn">{data.attention}</span>}
+              {data.attention > 0 && <Badge tone="warning">{data.attention}</Badge>}
             </div>
-            {records.error && <p className="error">{records.error}</p>}
+            <LoadState load={records} label="QuickBooks records" quiet />
             {records.data && records.data.length === 0 && <p className="card muted">Nothing needs you. Every record is in QuickBooks, on its way, or set aside on purpose.</p>}
             {records.data && records.data.length > 0 && (
               <ul className="exceptions">
