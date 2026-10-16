@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { ORIGIN } from "./origin.ts";
 
 // SW-12 plan §12 row 22, browser half: every request the browser makes during a demo walk, from
 // the office, the technician's phone and the homeowner's pages, stays on the app's own origin.
@@ -7,7 +8,7 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 // would call those services, is demo-isolation.test's: its providers are stand-ins in demo mode.)
 // Requests the browser makes for itself, outside any page (Chromium's own update or safe-browsing
 // checks), are not the app's and are not seen here.
-const APP = "http://localhost:3000";
+const APP = ORIGIN;
 
 test.use({ geolocation: { latitude: 30.27, longitude: -97.74 }, permissions: ["geolocation"] });
 

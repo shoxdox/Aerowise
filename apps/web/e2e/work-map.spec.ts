@@ -1,11 +1,10 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { ORIGIN } from "./origin.ts";
 
 // SW-10: work visits on the street map with the inspections, on the office schedule and on the
 // technician's phone. The e2e web server serves the synthetic map fixture; the API runs with
 // work_orders and field_work on (playwright.config.ts). Pixel 7 emulation for the phone; not a
 // physical-phone check.
-
-const ORIGIN = "http://localhost:3000";
 
 async function signIn(page: Page, email: string, landing: string) {
   await page.goto("/login");

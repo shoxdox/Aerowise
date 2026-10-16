@@ -1,12 +1,11 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import pg from "pg";
+import { ORIGIN } from "./origin.ts";
 
 // The street map on the office schedule and in the technician app. The e2e web server serves the
 // small synthetic map fixture (MAP_TILES_FILE), and the API runs in demo mode.
 
 const databaseUrl = process.env.E2E_DATABASE_URL ?? "postgres://aerowise:aerowise@localhost:5432/aerowise_e2e";
-const ORIGIN = "http://localhost:3000";
-
 async function signIn(page: Page, email: string, landing: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
@@ -272,7 +271,8 @@ test.describe("technician route map", () => {
       await expect(page.getByRole("button", { name: "Map" })).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator(".street-map")).toHaveAttribute("data-status", "ready");
       await expect(page.locator(".stop-card")).toHaveCount(0);
-      const markers = page.locator(".map-stop");
+      // Inspection markers only: the demo day also has a work visit, which has its own marker.
+      const markers = page.locator('.map-stop[data-kind="inspection"]');
       await expect(markers).toHaveCount(mine.filter((s) => s.site.lat !== null).length);
       expect(await markers.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.stop).sort())).toEqual(mine.map((s) => s.jobId).sort());
       await expect(page.locator(`.map-stop[data-stop="${theirJob}"]`)).toHaveCount(0);
@@ -371,10 +371,11 @@ test.describe("technician route map without its data", () => {
   });
 
   test("shows the full stop list in Map view when no stop has a location", async ({ page }) => {
-    await page.route(/\/api\/route(\?|$)/, async (route) => {
+    // Work visits too: the demo day has one, and it would otherwise still be on the map.
+    await page.route(/\/api\/(work\/)?route(\?|$)/, async (route) => {
       const response = await route.fetch();
       const body = await response.json();
-      for (const s of body.items) Object.assign(s.site, { lat: null, lng: null });
+      for (const s of body.items) Object.assign(s.site ?? s, { lat: null, lng: null });
       await route.fulfill({ response, json: body });
     });
     await signIn(page, "tech@example.com", "/tech");

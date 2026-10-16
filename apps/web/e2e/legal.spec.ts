@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { local } from "./origin.ts";
 
 test("a new company owner reads and accepts the terms and privacy policy before using the office", async ({ page, browser }) => {
   // The terms and privacy pages are public and show the version an owner accepts.
@@ -33,7 +34,7 @@ test("a new company owner reads and accepts the terms and privacy policy before 
 
   const other = await browser.newContext({ ...test.info().project.use });
   const owner = await other.newPage();
-  await owner.goto(link.replace(/^https?:\/\/[^/]+/, "http://localhost:3000"));
+  await owner.goto(local(link));
   await owner.getByLabel("Choose a password").fill("oscar-secret-1");
   await owner.getByLabel("Password again").fill("oscar-secret-1");
   await owner.getByRole("button", { name: /^Join / }).click();

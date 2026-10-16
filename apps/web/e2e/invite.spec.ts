@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { local } from "./origin.ts";
 
 test("the owner invites a technician, who sets a password from the link and lands in the tech app", async ({ page, browser }) => {
   await page.goto("/login");
@@ -21,7 +22,7 @@ test("the owner invites a technician, who sets a password from the link and land
   // The technician opens the link on their own phone.
   const phone = await browser.newContext({ ...test.info().project.use });
   const tech = await phone.newPage();
-  await tech.goto(link.replace(/^https?:\/\/[^/]+/, "http://localhost:3000"));
+  await tech.goto(local(link));
   await expect(tech.getByRole("heading", { name: "Join Hill Country Aerobic Services (demo)" })).toBeVisible();
   await expect(tech.getByLabel("Your name")).toHaveValue("Terry Tech");
   await tech.getByLabel("Choose a password").fill("terry-secret-1");
@@ -30,7 +31,7 @@ test("the owner invites a technician, who sets a password from the link and land
   await tech.waitForURL("**/tech");
 
   // The link worked once.
-  await tech.goto(link.replace(/^https?:\/\/[^/]+/, "http://localhost:3000"));
+  await tech.goto(local(link));
   await expect(tech.getByText("This invitation was already used. Sign in instead.")).toBeVisible();
   await phone.close();
 
