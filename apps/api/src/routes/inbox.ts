@@ -1,5 +1,5 @@
 import type { Database } from "@aerowise/db";
-import { AWAITING_SIGNATURE, holdsProviderLicense, labTestStatuses, loadCatalog, requirementsOf, resolveSite } from "@aerowise/compliance";
+import { AWAITING_SIGNATURE, holdsProviderLicense, labTestStatuses, loadCatalog, requirementsOf, resolveSite, visitDeadline } from "@aerowise/compliance";
 import {
   addDays,
   applyRequirements,
@@ -72,16 +72,18 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
   const handled = (woStatus: WorkOrderStatus | null) => woStatus === "scheduled" || woStatus === "in_progress";
 
   async function overdueVisits(organizationId: string, today: string): Promise<InboxException[]> {
+    // Overdue by the date that counts, as on the Due list: the authority's when it comes first.
+    const dueBy = visitDeadline("o");
     const rows = await sites(organizationId)
       .innerJoin("serviceObligations as o", (j) => j.onRef("o.siteId", "=", "s.id").onRef("o.organizationId", "=", "s.organizationId"))
       .leftJoin("jobs as j", (k) => k.onRef("j.obligationId", "=", "o.id").onRef("j.organizationId", "=", "o.organizationId").on("j.type", "=", "inspection").on("j.status", "<>", "cancelled"))
       .leftJoin("users as u", "u.id", "j.technicianUserId")
-      .select(["o.id", "o.dueOn", "o.sequence", "j.id as jobId", "j.scheduledDate", "j.technicianUserId", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
+      .select([dueBy.as("dueOn"), "o.id", "o.sequence", "j.id as jobId", "j.scheduledDate", "j.technicianUserId", "u.name as technicianName", "s.id as siteId", "s.addressLine1", "s.city", "c.id as customerId", "c.displayName"])
       // Inspections only (SW-9): pumping and maintenance visits are work, not compliance.
       .where("o.serviceType", "=", "aerobic_inspection")
       .where("o.status", "=", "open")
-      .where("o.dueOn", "<", today)
-      .orderBy("o.dueOn")
+      .where(dueBy, "<", today)
+      .orderBy(dueBy)
       .limit(PER_KIND)
       .execute();
     // On a route today or later, the office has dealt with it; a booking already past was missed.
@@ -285,8 +287,8 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
    * The authority requires the next inspection by the date on the site's latest filing (one
    * still waiting for the MP's signature counts: the inspection happened). Flag a site when no
    * open visit can meet that date: there is none, its window opens too late, or the date is
-   * within 30 days and the visit is not on a route by then. A visit already overdue by its own
-   * due date is the overdue item's, not this one's. Nothing here is urgent more than 30 days out.
+   * within 30 days and the visit is not on a route by then. A visit already overdue (by the
+   * date that counts) is the overdue item's, not this one's. Nothing here is urgent more than 30 days out.
    */
   async function lateNextVisits(organizationId: string, today: string): Promise<InboxException[]> {
     const soon = addDays(today, 30);
@@ -306,21 +308,22 @@ export const inboxRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date 
              s.id as "siteId", s.address_line1 as "addressLine1", s.city,
              c.id as "customerId", c.display_name as "displayName"
       from (
+        -- The latest inspection's filing: an older one's date stopped counting when it was done.
         select distinct on (site_id) site_id, next_due_on
         from filings
-        where organization_id = ${organizationId} and next_due_on is not null
+        where organization_id = ${organizationId} and kind = 'inspection_report'
         order by site_id, created_at desc
       ) latest
       join sites s on s.id = latest.site_id and s.organization_id = ${organizationId}
       join customers c on c.id = s.customer_id and c.organization_id = s.organization_id
       left join lateral (
-        select o.id, o.window_start, o.due_on, j.scheduled_date
+        select o.id, o.window_start, ${visitDeadline("o")} as due_by, j.scheduled_date
         from service_obligations o
         left join jobs j on j.obligation_id = o.id and j.organization_id = o.organization_id and j.type = 'inspection' and j.status <> 'cancelled'
         where o.organization_id = ${organizationId} and o.site_id = s.id and o.status = 'open' and o.service_type = 'aerobic_inspection'
         order by o.due_on limit 1
       ) nv on true
-      where s.active and (nv.id is null or nv.due_on >= ${today}::date) and (
+      where latest.next_due_on is not null and s.active and (nv.id is null or nv.due_by >= ${today}::date) and (
         nv.id is null
         or nv.window_start > latest.next_due_on
         or (latest.next_due_on <= ${soon}::date and (nv.scheduled_date is null or nv.scheduled_date > latest.next_due_on))

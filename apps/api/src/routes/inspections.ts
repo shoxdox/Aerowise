@@ -836,7 +836,8 @@ export const inspectionRoutes: FastifyPluginAsyncZod<{
         summary: "Accept a held inspection as the visit's inspection, credited to the technician who did it",
         description:
           "Onto its own visit when that is still open; otherwise onto the visit's current booking (the office scheduled it again). " +
-          "The same checks as the phone's completion apply; an inspection that fails them stays a draft the office can accept with a reason.",
+          "The same checks as the phone's completion apply; an inspection that fails them stays a draft for the technician to finish " +
+          "(the owner or a licensed maintenance provider can accept one missing only the company's own form photos, with a reason).",
         params: conflictParams,
         body: conflictAttachInput,
         response: { 200: inspectionSyncConflict },

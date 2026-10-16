@@ -391,7 +391,7 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
     .executeTakeFirst();
   if (!inserted) return null;
   // The authority's date becomes the site's next visit's due date, when the contract had it later.
-  const moved = await pullNextVisitForward(trx, { organizationId: args.organizationId, siteId: insp.siteId });
+  const moved = await pullNextVisitForward(trx, { organizationId: args.organizationId, siteId: insp.siteId, at: args.at });
   const movedNote = moved ? `; visit ${moved.sequence} moved from ${moved.from} to that date` : "";
   await recordEvent(
     trx,
@@ -1131,7 +1131,7 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
   f.submissionMethod = terms.submissionMethod;
   f.nextDueOn = terms.nextDueOn;
   // An authority chosen only now sets the next visit's date too.
-  await pullNextVisitForward(trx, { organizationId: f.organizationId, siteId: f.siteId });
+  await pullNextVisitForward(trx, { organizationId: f.organizationId, siteId: f.siteId, at: a.at });
 }
 
 /**

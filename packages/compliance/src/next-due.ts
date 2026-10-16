@@ -12,14 +12,16 @@ type Executor = Database | Transaction<DB>;
 
 /**
  * The authority's next due date for a site, as SQL: the one on its latest inspection filing, or
- * null when there is none or that authority keeps the contract's calendar. `org` and `site` are
- * ids (bound as parameters) or SQL references to them.
+ * null when there is none, that authority keeps the contract's calendar, or the latest one has no
+ * date yet (no authority known). An older filing's date never counts: the latest inspection
+ * restarted the authority's clock. `org` and `site` are ids (bound as parameters) or SQL
+ * references to them.
  */
 const latestNextDueOn = (org: string | RawBuilder<unknown>, site: string | RawBuilder<unknown>) => sql<string | null>`(
   select case when r.rules -> 'service' ? 'contractVisits' then null else f.next_due_on end
   from filings f
-  join jurisdiction_rulesets r on r.id = f.ruleset_id
-  where f.organization_id = ${org} and f.site_id = ${site} and f.kind = 'inspection_report' and f.next_due_on is not null
+  left join jurisdiction_rulesets r on r.id = f.ruleset_id
+  where f.organization_id = ${org} and f.site_id = ${site} and f.kind = 'inspection_report'
   order by f.created_at desc
   limit 1)`;
 
@@ -28,7 +30,7 @@ const latestNextDueOn = (org: string | RawBuilder<unknown>, site: string | RawBu
  * latest filing, when the contract had it later; its window ends there too. Runs in the
  * transaction that opens or rechecks a filing. Returns what moved, or null.
  */
-export async function pullNextVisitForward(trx: Executor, a: { organizationId: string; siteId: string }) {
+export async function pullNextVisitForward(trx: Executor, a: { organizationId: string; siteId: string; at: Date }) {
   const latest = await sql<{ nextDueOn: string | null }>`select ${latestNextDueOn(a.organizationId, a.siteId)}::text as "nextDueOn"`.execute(trx);
   const nextDueOn = latest.rows[0]?.nextDueOn ?? null;
   if (!nextDueOn) return null;
@@ -49,7 +51,7 @@ export async function pullNextVisitForward(trx: Executor, a: { organizationId: s
   const windowStart = next.windowStart < windowEnd ? next.windowStart : windowEnd;
   await trx
     .updateTable("serviceObligations")
-    .set({ dueOn: nextDueOn, windowStart, windowEnd, updatedAt: new Date() })
+    .set({ dueOn: nextDueOn, windowStart, windowEnd, updatedAt: a.at })
     .where("organizationId", "=", a.organizationId)
     .where("id", "=", next.id)
     .execute();

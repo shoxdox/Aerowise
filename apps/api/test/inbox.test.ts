@@ -167,6 +167,31 @@ describe("exception inbox", () => {
     expect((await s.api.get("/obligations/due?through=2026-07-15")).json().items).toEqual([expect.objectContaining({ id: visit2.id, dueOn: "2026-07-31", effectiveDueOn: "2026-07-01", overdue: false })]);
     ctx.now = new Date("2026-07-02T18:00:00Z");
     expect((await s.api.get(`/obligations/due?overdueOnly=true`)).json()).toMatchObject({ overdueTotal: 1, items: [{ id: visit2.id, overdue: true }] });
+    // The inbox says the same: overdue since the authority's date, once.
+    const inbox = (await inboxOf(s)).items;
+    expect(inbox.find((i) => i.kind === "inspection_overdue")).toMatchObject({ target: { id: visit2.id }, dueOn: "2026-07-01" });
+    expect(inbox.map((i) => i.kind)).not.toContain("next_visit_late");
+  });
+
+  it("stops counting an older report's date once a newer inspection has none yet", async () => {
+    const s = await countySetup(ctx);
+    const [, visit2, visit3] = s.contract.obligations;
+    await complete(s);
+    // Visit 2 is done at a site whose authority is not known any more: its filing has no date yet.
+    await s.api.patch(`/sites/${s.site.id}`, { county: "Nowhere County" });
+    const job2 = (await s.api.post("/jobs", { obligationId: visit2.id, technicianId: s.tech.id, scheduledDate: "2026-06-20" })).json();
+    const clientId = "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d02";
+    await s.techApi.put("/inspections/sync", payload(s, { clientId, jobId: job2.jobId }));
+    for (const [n, key] of [[5, "overview"], [6, "chlorinator"]] as const) expect((await s.techApi.putImage(photoUrl(clientId, n), JPEG, { "x-photo-key": key })).statusCode).toBe(201);
+    ctx.now = new Date("2026-06-20T18:00:00Z");
+    const done = await s.techApi.put("/inspections/sync", payload(s, { clientId, jobId: job2.jobId, status: "completed", completedAt: "2026-06-20T15:40:00Z", values: { ...completeValues(), air_pressure: 4 } }));
+    expect(done.json().status, done.body).toBe("completed");
+    expect(await ctx.db.selectFrom("filings").select(["status", "nextDueOn"]).where("inspectionId", "=", done.json().id).executeTakeFirstOrThrow()).toEqual({ status: "needs_review", nextDueOn: null });
+
+    // Visit 3 keeps the contract's date, not the first report's 2026-07-01, and nothing says it is late.
+    const due = (await s.api.get("/obligations/due?through=2026-12-31")).json().items as { id: string; dueOn: string; effectiveDueOn: string }[];
+    expect(due.map((o) => [o.id, o.dueOn, o.effectiveDueOn])).toEqual([[visit3.id, "2026-11-30", "2026-11-30"]]);
+    expect(await kinds(s)).not.toContain("next_visit_late");
   });
 
   it("raises no visit before the authority's date as urgent only within 30 days of it", async () => {
