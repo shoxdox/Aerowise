@@ -23,7 +23,9 @@ const cookieOf = (res: Awaited<ReturnType<typeof enter>>) => `aw_session=${res.c
 const audit = (organizationId: string) =>
   ctx.db.selectFrom("platformAuditEvents").select("action").where("organizationId", "=", organizationId).orderBy("occurredAt").orderBy("id").execute().then((r) => r.map((x) => x.action));
 
-describe("prospect demos", () => {
+// Each test plays the whole demo story (about 23 s locally since reports are signed before they
+// are sent and fails open follow-up issues), past vitest's 20 s default.
+describe("prospect demos", { timeout: 120_000 }, () => {
   it("are made from /admin with the prospect's name and counties, on fictional data, and nothing is sent", async () => {
     const { demo, link } = await setup();
     expect(demo).toMatchObject({ prospect: "Lone Star Aerobic", name: "Lone Star Aerobic (demo)", serviceCounties: ["Travis County", "Hays County"], state: "live", activeLinks: 1 });

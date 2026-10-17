@@ -856,7 +856,8 @@ describe("demo cleanup with service cycles", () => {
     const left = await rowsByTable(contract.organizationId);
     expect(Object.entries(left).filter(([, n]) => n > 0)).toEqual([]);
     expect(await ctx.db.selectFrom("contractServiceCycles").select("id").where("contractId", "=", contract.id).execute()).toEqual([]);
-  });
+    // Plays the whole demo story: about 23 s locally, past the 20 s default.
+  }, 120_000);
 
   it("a visitor demo's erase and the nightly reseed remove cycles, their visits and their work orders, and leave a real company as it was", async () => {
     const real = await withCycleWork("Real Septic");
