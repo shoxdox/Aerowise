@@ -1,10 +1,13 @@
 "use client";
 
 import { MONITORING_METHOD_LABELS, MONITORING_METHODS, type SystemMonitoring as Monitoring, type WastewaterSystem } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { day } from "@/lib/format";
 
 /**
@@ -16,18 +19,9 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
   const recordLoad = useLoad<{ items: Monitoring[] }>(`/sites/${siteId}/monitoring`);
   const { data, reload } = recordLoad;
   const [form, setForm] = useState<{ kind: "record"; systemId: string } | { kind: "end"; id: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  if (!data) return <LoadState load={recordLoad} label="monitoring records" />;
-  const active = systems.filter((s) => s.active);
-  if (active.length === 0 && data.items.length === 0) return null;
-  const open = (systemId: string) => data.items.find((m) => m.systemId === systemId && !m.endedOn);
-
-  async function send(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!form) return;
-    const v = formValues(event.currentTarget);
-    setError(null);
-    try {
+  const saving = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      if (!form) return;
       if (form.kind === "record") {
         await api(`/systems/${form.systemId}/monitoring`, {
           method: "POST",
@@ -38,10 +32,15 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
       }
       setForm(null);
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const send = saving.form;
+  const error = saving.error;
+  if (!data) return <LoadState load={recordLoad} label="monitoring records" />;
+  const active = systems.filter((s) => s.active);
+  if (active.length === 0 && data.items.length === 0) return null;
+  const open = (systemId: string) => data.items.find((m) => m.systemId === systemId && !m.endedOn);
 
   return (
     <section className="stack">
@@ -54,7 +53,7 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
           <div key={s.id} className="card tight">
             <div className="row">
               <strong>{unit}</strong>
-              {m ? <span className="badge completed">Monitored</span> : <span className="badge">Not monitored</span>}
+              {m ? <Badge tone="success">Monitored</Badge> : <Badge>Not monitored</Badge>}
               <span className="spacer" />
               {editable && !form && (
                 <button className="link" onClick={() => setForm(m ? { kind: "end", id: m.id } : { kind: "record", systemId: s.id })}>
@@ -95,9 +94,9 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
                   Checked working on
                   <input name="checkedOn" type="date" required />
                 </label>
-                {error && <p className="error wide">{error}</p>}
+                <FormError error={error} className="wide" />
                 <div className="wide row">
-                  <button type="submit">Save</button>
+                  <SubmitButton busy={saving.busy}>Save</SubmitButton>
                   <button type="button" className="link" onClick={() => setForm(null)}>
                     Cancel
                   </button>
@@ -114,9 +113,9 @@ export function SystemMonitoring({ siteId, systems, editable }: { siteId: string
                   Why
                   <input name="reason" required />
                 </label>
-                {error && <p className="error wide">{error}</p>}
+                <FormError error={error} className="wide" />
                 <div className="wide row">
-                  <button type="submit">Save</button>
+                  <SubmitButton busy={saving.busy}>Save</SubmitButton>
                   <button type="button" className="link" onClick={() => setForm(null)}>
                     Cancel
                   </button>

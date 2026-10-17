@@ -43,3 +43,4 @@ export * from "./cycles.ts";
 export * from "./deposits.ts";
 export * from "./pumping.ts";
 export * from "./completion.ts";
+export * from "./labels.ts";

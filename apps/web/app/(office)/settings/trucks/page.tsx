@@ -1,10 +1,15 @@
 "use client";
 
 import { FACILITY_KIND_LABELS, FACILITY_KINDS, roleHasPermission, type DisposalFacility, type PumpingSettings, type Vehicle } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
+import { type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
+import { plural, quantity } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
 
 /** SW-6: the company's pump trucks and the disposal facilities it delivers to, entered by hand. */
@@ -17,19 +22,16 @@ export default function TrucksPage() {
   const grace = useLoad<PumpingSettings>("/pumping/settings");
   // Only the owner sets the company's grace days, as with the other company settings.
   const owner = canEdit(me) && roleHasPermission(me.role, "org:manage");
-  const [problem, setProblem] = useState<string | null>(null);
-
-  async function save(path: string, method: "POST" | "PATCH", body: object) {
-    setProblem(null);
-    try {
+  const saving = useSubmit(
+    async (path: string, method: "POST" | "PATCH", body: object) => {
       await api(path, { method, body });
       await Promise.all([vehicles.reload(), facilities.reload(), grace.reload()]);
       return true;
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-      return false;
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const save = async (path: string, method: "POST" | "PATCH", body: object) => (await saving.run(path, method, body)) === true;
+  const problem = saving.error;
 
   async function addTruck(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,12 +69,10 @@ export default function TrucksPage() {
     await save("/pumping/settings", "PATCH", { disposalOverdueDays: Number(v.days) });
   }
 
-  const error = vehicles.error ?? facilities.error;
-  if (error) return <p className="error">{error}</p>;
   return (
     <div className="stack">
       <h1>Trucks and facilities</h1>
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
       {!on && <p className="muted small">Pumping is not switched on for this deployment; existing trucks and facilities stay readable.</p>}
 
       {grace.data && (
@@ -84,13 +84,13 @@ export default function TrucksPage() {
                 Show &quot;Disposal not recorded&quot; once a pump-out is more than this many days old without a disposal record
                 <input name="days" type="number" min={1} max={60} step={1} required defaultValue={grace.data.disposalOverdueDays} />
               </label>
-              <button type="submit" className="secondary">
+              <SubmitButton className="secondary" busy={saving.busy}>
                 Save
-              </button>
+              </SubmitButton>
             </form>
           ) : (
             <p className="muted">
-              The inbox shows &quot;Disposal not recorded&quot; once a pump-out is more than {grace.data.disposalOverdueDays} day{grace.data.disposalOverdueDays === 1 ? "" : "s"} old
+              The inbox shows &quot;Disposal not recorded&quot; once a pump-out is more than {plural(grace.data.disposalOverdueDays, "day")} old
               without a disposal record.
             </p>
           )}
@@ -100,17 +100,17 @@ export default function TrucksPage() {
       <section className="stack">
         <h2>Trucks</h2>
         {!vehicles.data ? (
-          <p className="muted">Loading…</p>
+          <LoadState load={vehicles} label="trucks" />
         ) : vehicles.data.items.length === 0 ? (
           <p className="muted">No trucks yet.</p>
         ) : (
           <div className="table-scroll">
-            <table className="compact" data-testid="vehicles">
+            <table className="compact stack" data-testid="vehicles">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th>Plate</th>
-                  <th>Capacity</th>
+                  <th className="num">Capacity</th>
                   <th>Registration</th>
                   <th />
                 </tr>
@@ -118,16 +118,17 @@ export default function TrucksPage() {
               <tbody>
                 {vehicles.data.items.map((t) => (
                   <tr key={t.id} className={t.active ? undefined : "muted"}>
-                    <td>
-                      {t.name}
-                      {!t.active && <span className="badge cancelled">off</span>}
+                    <td data-label="Name">
+                      {t.name} {!t.active && <Badge tone="struck">Off</Badge>}
                     </td>
-                    <td>{t.plate ?? ""}</td>
-                    <td>{t.capacityGallons ? `${t.capacityGallons.toLocaleString("en-US")} gal` : ""}</td>
-                    <td>{t.registrationReference ?? ""}</td>
-                    <td>
+                    <td data-label="Plate">{t.plate ?? ""}</td>
+                    <td data-label="Capacity" className="num">
+                      {t.capacityGallons ? `${quantity(t.capacityGallons)} gal` : ""}
+                    </td>
+                    <td data-label="Registration">{t.registrationReference ?? ""}</td>
+                    <td className={editable ? "actions" : undefined}>
                       {editable && (
-                        <button type="button" className="link" onClick={() => void save(`/vehicles/${t.id}`, "PATCH", { active: !t.active })}>
+                        <button type="button" className={t.active ? "link danger" : "link"} disabled={saving.busy} onClick={() => void save(`/vehicles/${t.id}`, "PATCH", { active: !t.active })}>
                           {t.active ? "Switch off" : "Switch on"}
                         </button>
                       )}
@@ -160,7 +161,7 @@ export default function TrucksPage() {
               </label>
             </div>
             <div className="row">
-              <button type="submit">Add truck</button>
+              <SubmitButton busy={saving.busy}>Add truck</SubmitButton>
             </div>
           </form>
         )}
@@ -170,12 +171,12 @@ export default function TrucksPage() {
         <h2>Disposal facilities</h2>
         <p className="muted small">Entered by the company. Aerowise ships no facility list and does not check a facility&apos;s permits.</p>
         {!facilities.data ? (
-          <p className="muted">Loading…</p>
+          <LoadState load={facilities} label="facilities" />
         ) : facilities.data.items.length === 0 ? (
           <p className="muted">No facilities yet.</p>
         ) : (
           <div className="table-scroll">
-            <table className="compact" data-testid="facilities">
+            <table className="compact stack" data-testid="facilities">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -188,16 +189,15 @@ export default function TrucksPage() {
               <tbody>
                 {facilities.data.items.map((f) => (
                   <tr key={f.id} className={f.active ? undefined : "muted"}>
-                    <td>
-                      {f.name}
-                      {!f.active && <span className="badge cancelled">off</span>}
+                    <td data-label="Name">
+                      {f.name} {!f.active && <Badge tone="struck">Off</Badge>}
                     </td>
-                    <td>{FACILITY_KIND_LABELS[f.kind]}</td>
-                    <td>{[f.addressLine1, f.city, f.state, f.postalCode].filter(Boolean).join(", ")}</td>
-                    <td>{f.permitOrRegistrationNumber ?? ""}</td>
-                    <td>
+                    <td data-label="Kind">{FACILITY_KIND_LABELS[f.kind]}</td>
+                    <td data-label="Address">{[f.addressLine1, f.city, f.state, f.postalCode].filter(Boolean).join(", ")}</td>
+                    <td data-label="Permit or registration">{f.permitOrRegistrationNumber ?? ""}</td>
+                    <td className={editable ? "actions" : undefined}>
                       {editable && (
-                        <button type="button" className="link" onClick={() => void save(`/disposal-facilities/${f.id}`, "PATCH", { active: !f.active })}>
+                        <button type="button" className={f.active ? "link danger" : "link"} disabled={saving.busy} onClick={() => void save(`/disposal-facilities/${f.id}`, "PATCH", { active: !f.active })}>
                           {f.active ? "Switch off" : "Switch on"}
                         </button>
                       )}
@@ -252,7 +252,7 @@ export default function TrucksPage() {
               <input name="notes" maxLength={2000} />
             </label>
             <div className="row">
-              <button type="submit">Add facility</button>
+              <SubmitButton busy={saving.busy}>Add facility</SubmitButton>
             </div>
           </form>
         )}

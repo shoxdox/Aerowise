@@ -1,4 +1,5 @@
-import type { DeadlineState, FilingStatus, VerificationBadge } from "@aerowise/domain";
+import type { DeadlineState, FilingStatus, Tone, VerificationBadge } from "@aerowise/domain";
+import { Badge } from "@/components/StatusBadge";
 import { day } from "@/lib/format";
 
 export const FILING_STATUS_LABELS: Record<FilingStatus, string> = {
@@ -13,25 +14,24 @@ export const FILING_STATUS_LABELS: Record<FilingStatus, string> = {
   needs_review: "Needs review",
 };
 
-const STATUS_CLASS: Partial<Record<FilingStatus, string>> = {
-  confirmed: "ok",
-  sent: "upcoming",
+const STATUS_TONE: Partial<Record<FilingStatus, Tone>> = {
+  confirmed: "success",
+  sent: "info",
   failed: "danger",
   rejected: "danger",
-  needs_review: "warn",
+  needs_review: "warning",
 };
 
 export function FilingStatusBadge({ status }: { status: FilingStatus }) {
-  return <span className={`badge ${STATUS_CLASS[status] ?? ""}`}>{FILING_STATUS_LABELS[status]}</span>;
+  return <Badge tone={STATUS_TONE[status]}>{FILING_STATUS_LABELS[status]}</Badge>;
 }
 
 export function DeadlineCell({ deadlineOn, state }: { deadlineOn: string | null; state: DeadlineState }) {
   if (!deadlineOn) return <span className="muted">—</span>;
   return (
     <>
-      {day(deadlineOn)}
-      {state === "approaching" && <span className="badge warn"> due soon</span>}
-      {state === "overdue" && <span className="badge danger">overdue</span>}
+      {day(deadlineOn)} {state === "approaching" && <Badge tone="warning">Due soon</Badge>}
+      {state === "overdue" && <Badge tone="danger">Overdue</Badge>}
     </>
   );
 }
@@ -41,8 +41,8 @@ const VERIFIED_BY: Record<VerificationBadge["method"], string> = { email: "by em
 /** Shown only for a ruleset version someone confirmed with the authority. */
 export function VerifiedBadge({ verified }: { verified: VerificationBadge }) {
   return (
-    <span className="badge ok" title={`Confirmed with ${verified.confirmedWith} ${VERIFIED_BY[verified.method]}`}>
+    <Badge tone="success" title={`Confirmed with ${verified.confirmedWith} ${VERIFIED_BY[verified.method]}`}>
       Verified with {verified.authorityName} on {day(verified.confirmedOn)}
-    </span>
+    </Badge>
   );
 }

@@ -1,17 +1,22 @@
 "use client";
 
-import { ESTIMATE_STATUS_LABELS, estimateTotals, isEstimateOpen, selectedLines, type EstimateDetail, type EstimateLine } from "@aerowise/domain";
+import { estimateTotals, isEstimateOpen, selectedLines, type EstimateDetail, type EstimateLine } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useImperativeHandle, useRef, useState, type FormEvent, type Ref } from "react";
 import { DepositPanel } from "@/components/DepositPanel";
-import { blankLine, estimateBadge, EstimateLineEditor, fromSaved, toInput, type DraftLine } from "@/components/EstimateLineEditor";
+import { blankLine, EstimateLineEditor, fromSaved, toInput, type DraftLine } from "@/components/EstimateLineEditor";
 import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, money, when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { useUnsavedChanges } from "@/components/useUnsavedChanges";
+import { api, formValues, Refusal } from "@/lib/api";
+import { day, money, quantity, when } from "@/lib/format";
 import { useFeature } from "@/lib/features";
 import { canEdit, useSession } from "@/lib/session";
+import { usePageTitle } from "@/lib/title";
 
 type Totals = EstimateDetail["draft"]["totals"];
 
@@ -21,14 +26,14 @@ function sourceHref(e: EstimateDetail) {
   return null;
 }
 
-const qty = (l: EstimateLine) => String(l.quantityMilli / 1000);
+const qty = (l: EstimateLine) => quantity(l.quantityMilli / 1000);
 
 /** A sent version's lines and totals, read-only. */
 function LinesTable({ lines, totals, chosen, depositCents }: { lines: EstimateLine[]; totals: Totals; chosen?: string[] | null; depositCents?: number | null }) {
   const included = new Set(selectedLines(lines, chosen).map((l) => l.id));
   return (
     <div className="table-scroll">
-      <table className="compact">
+      <table className="compact stack">
         <thead>
           <tr>
             <th>Description</th>
@@ -40,14 +45,20 @@ function LinesTable({ lines, totals, chosen, depositCents }: { lines: EstimateLi
         <tbody>
           {lines.map((l) => (
             <tr key={l.id} className={included.has(l.id) ? undefined : "muted"}>
-              <td>
+              <td data-label="Description">
                 {l.description}
                 {l.optional && <span className="muted small"> · optional{chosen !== undefined ? (included.has(l.id) ? ", chosen" : ", left out") : l.selectedByDefault ? ", starts chosen" : ""}</span>}
                 {l.taxable && <span className="muted small"> · taxable</span>}
               </td>
-              <td className="num">{qty(l)}</td>
-              <td className="num">{money(l.unitPriceCents)}</td>
-              <td className="num">{money(l.amountCents)}</td>
+              <td data-label="Qty" className="num">
+                {qty(l)}
+              </td>
+              <td data-label="Unit price" className="num">
+                {money(l.unitPriceCents)}
+              </td>
+              <td data-label="Amount" className="num">
+                {money(l.amountCents)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -84,40 +95,66 @@ function LinesTable({ lines, totals, chosen, depositCents }: { lines: EstimateLi
   );
 }
 
-function DraftEditor({ e, onSaved, onError }: { e: EstimateDetail; onSaved: () => Promise<void>; onError: (m: string | null) => void }) {
-  const [lines, setLines] = useState<DraftLine[]>(() => (e.draft.lines.length ? e.draft.lines.map(fromSaved) : [blankLine()]));
-  const [busy, setBusy] = useState(false);
+/** What the page asks of the open draft before sending it: save what is typed, or say why not. */
+interface DraftHandle {
+  /** Saves the edits on screen, if there are any. False when the form refuses them (the reason is shown). */
+  saveEdits: () => Promise<boolean>;
+}
+
+/**
+ * The draft as typed. Sending, marking sent and recording acceptance act on what is on screen:
+ * the page asks this editor to save its edits first, so nothing typed is ever left out of what
+ * the customer gets.
+ */
+function DraftEditor({ e, onSaved, handle, onDirty }: { e: EstimateDetail; onSaved: () => Promise<void>; handle: Ref<DraftHandle>; onDirty: (dirty: boolean) => void }) {
+  const [lines, setLinesState] = useState<DraftLine[]>(() => (e.draft.lines.length ? e.draft.lines.map(fromSaved) : [blankLine()]));
+  const [dirty, setDirtyState] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
   // An existing deposit stays editable (and clearable) with the feature off.
   const deposits = useFeature("deposits") || e.draft.depositCents !== null;
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
+  useUnsavedChanges(dirty);
+  const setDirty = (next: boolean) => {
+    setDirtyState(next);
+    onDirty(next);
+  };
+  const setLines = (next: DraftLine[]) => {
+    setLinesState(next);
+    setDirty(true);
+  };
+
+  /** PATCHes the draft from the form; throws what the API refused. */
+  async function persist(): Promise<boolean> {
+    const f = form.current!;
+    if (!f.reportValidity()) return false;
     const parsed = toInput(lines);
-    if ("error" in parsed) return onError(parsed.error);
-    setBusy(true);
-    onError(null);
-    try {
-      await api(`/estimates/${e.id}`, {
-        method: "PATCH",
-        body: {
-          title: v.title,
-          lines: parsed.lines,
-          discountCents: Math.round(Number(v.discount || "0") * 100),
-          taxRateBps: Math.round(Number(v.taxRate || "0") * 100),
-          termsText: v.terms ?? "",
-          expiresOn: v.expiresOn || null,
-          ...(deposits ? { depositCents: Number(v.deposit) > 0 ? Math.round(Number(v.deposit) * 100) : null } : {}),
-        },
-      });
-      await onSaved();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : "Could not save the draft");
-    } finally {
-      setBusy(false);
-    }
+    if ("error" in parsed) throw new Refusal(parsed.error);
+    const v = formValues(f);
+    await api(`/estimates/${e.id}`, {
+      method: "PATCH",
+      body: {
+        title: v.title,
+        lines: parsed.lines,
+        discountCents: Math.round(Number(v.discount || "0") * 100),
+        taxRateBps: Math.round(Number(v.taxRate || "0") * 100),
+        termsText: v.terms ?? "",
+        expiresOn: v.expiresOn || null,
+        ...(deposits ? { depositCents: Number(v.deposit) > 0 ? Math.round(Number(v.deposit) * 100) : null } : {}),
+      },
+    });
+    setDirty(false);
+    return true;
   }
+
+  const save = useSubmit(
+    async () => {
+      if (await persist()) await onSaved();
+    },
+    { fallback: "Could not save the draft." },
+  );
+  useImperativeHandle(handle, () => ({ saveEdits: async () => (dirty ? persist() : true) }));
+
   return (
-    <form className="card stack" onSubmit={save}>
+    <form ref={form} className="card stack" onSubmit={(ev) => (ev.preventDefault(), void save.run())} onChange={() => setDirty(true)}>
       <h2>Draft{e.currentVersion > 1 ? ` of version ${e.currentVersion}` : ""}</h2>
       <label>
         Title
@@ -148,10 +185,16 @@ function DraftEditor({ e, onSaved, onError }: { e: EstimateDetail; onSaved: () =
         Terms the customer agrees to
         <textarea name="terms" rows={4} maxLength={10000} defaultValue={e.draft.termsText} />
       </label>
-      <div>
-        <button type="submit" className="secondary" disabled={busy}>
+      <FormError error={save.error} />
+      <div className="row">
+        <SubmitButton className="secondary" busy={save.busy}>
           Save draft
-        </button>
+        </SubmitButton>
+        {dirty && (
+          <span className="muted small" data-testid="draft-unsaved">
+            Not saved yet. Sending saves these changes first.
+          </span>
+        )}
       </div>
     </form>
   );
@@ -161,41 +204,57 @@ export default function EstimatePage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
   const recordLoad = useLoad<EstimateDetail>(`/estimates/${id}`);
-  const { data: e, error, reload } = recordLoad;
-  const [problem, setProblem] = useState<string | null>(null);
+  const { data: e, reload } = recordLoad;
   const [link, setLink] = useState<string | null>(null);
   const [panel, setPanel] = useState<"void" | "record" | "cancel" | null>(null);
   const [recordChosen, setRecordChosen] = useState<string[] | null>(null);
+  const draft = useRef<DraftHandle>(null);
+  usePageTitle(e ? `${e.label} · ${e.title}` : null);
 
-  async function act(path: string, body: unknown) {
-    setProblem(null);
-    try {
-      await api(path, { method: "POST", body });
-      setPanel(null);
-      await reload();
-      return true;
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-      return false;
-    }
+  /** Saves the draft's edits first when it is a draft, so what goes out is what is on screen. */
+  async function saveDraftFirst() {
+    return e?.status !== "draft" || !draft.current || (await draft.current.saveEdits());
   }
-  async function makeLink() {
-    setProblem(null);
-    try {
+  // Which button is on its way, so only that one says so.
+  const [pending, setPending] = useState<string | null>(null);
+  const action = useSubmit(
+    async (path: string, body: unknown, saveFirst = false) => {
+      // Withdrawing or cancelling never needs the draft's edits (and a half-typed line must not block it).
+      if (saveFirst && !(await saveDraftFirst())) return false;
+      try {
+        await api(path, { method: "POST", body });
+        setPanel(null);
+        return true;
+      } finally {
+        // The draft may have been saved even when the action was refused.
+        await reload();
+      }
+    },
+    { fallback: "Could not save." },
+  );
+  const linking = useSubmit(
+    async () => {
       const r = await api<{ url: string }>(`/estimates/${id}/link`, { method: "POST", body: {} });
       setLink(r.url);
       await navigator.clipboard?.writeText(r.url).catch(() => undefined);
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not make a link");
-    }
-  }
-  const submitWith = (fn: (v: Record<string, string | undefined>) => Promise<boolean>) => async (ev: FormEvent<HTMLFormElement>) => {
-    ev.preventDefault();
-    await fn(formValues(ev.currentTarget));
-  };
+    },
+    { fallback: "Could not make a link." },
+  );
+  // Recording acceptance on a draft records the saved lines, so it saves the edits first too.
+  const openRecord = useSubmit(
+    async () => {
+      if (panel === "record") return setPanel(null);
+      if (!(await saveDraftFirst())) return;
+      if (e?.status === "draft") await reload();
+      setRecordChosen(null);
+      setPanel("record");
+    },
+    { fallback: "Could not save the draft." },
+  );
+  const busy = action.busy || openRecord.busy;
+  const problem = action.error ?? linking.error ?? openRecord.error;
 
-  if (error && !e) return <LoadState load={recordLoad} label="record" />;
-  if (!e) return <LoadState load={recordLoad} label="record" />;
+  if (!e) return <LoadState load={recordLoad} label="estimate" back={{ href: "/estimates", label: "Estimates" }} />;
   const href = sourceHref(e);
   const latest = e.versions[e.versions.length - 1] ?? null;
   const open = isEstimateOpen(e.status);
@@ -204,10 +263,23 @@ export default function EstimatePage() {
   const recordDefault = recordLines.filter((l) => l.optional && l.selectedByDefault).map((l) => l.id);
   const chosenForRecord = recordChosen ?? recordDefault;
   const recordTotals = e.status === "draft" ? estimateTotals(recordLines, e.draft.discountCents, e.draft.taxRateBps, chosenForRecord) : latest ? estimateTotals(recordLines, latest.discountCents, latest.taxRateBps, chosenForRecord) : null;
+  /** Sending acts on what is on screen, so it saves the draft's edits first. */
+  const send = (email: boolean) => () => {
+    setPending(email ? "email" : "mark");
+    void action.run(`/estimates/${e.id}/send`, { email }, true);
+  };
+  const act = (path: string, body: unknown) => () => {
+    setPending(path);
+    void action.run(path, body);
+  };
+  const submitWith = (fn: (v: Record<string, string | undefined>) => unknown) => (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault();
+    fn(formValues(ev.currentTarget));
+  };
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="estimate" back={{ href: "/estimates", label: "Estimates" }} />
       <p>
         <Link href="/estimates">← Estimates</Link>
       </p>
@@ -215,9 +287,7 @@ export default function EstimatePage() {
         <h1>
           {e.label} · {e.title}
         </h1>
-        <span className={`badge ${estimateBadge(e.status)}`} data-testid="estimate-status">
-          {ESTIMATE_STATUS_LABELS[e.status]}
-        </span>
+        <StatusBadge of="estimate" value={e.status} data-testid="estimate-status" />
         {e.currentVersion > 1 && <span className="muted small">version {e.currentVersion}</span>}
       </div>
       <dl className="details">
@@ -246,8 +316,8 @@ export default function EstimatePage() {
         {e.workOrder && (
           <>
             <dt>Work order</dt>
-            <dd>
-              <Link href={`/work/${e.workOrder.id}`}>{e.workOrder.label}</Link> <span className="muted">· {e.workOrder.status}</span>
+            <dd className="row">
+              <Link href={`/work/${e.workOrder.id}`}>{e.workOrder.label}</Link> <StatusBadge of="workOrder" value={e.workOrder.status} />
             </dd>
           </>
         )}
@@ -271,7 +341,7 @@ export default function EstimatePage() {
         )}
       </dl>
 
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
 
       {e.acceptance && (
         <div className="card stack" data-testid="estimate-acceptance">
@@ -297,7 +367,16 @@ export default function EstimatePage() {
 
       {e.deposit && <DepositPanel deposit={e.deposit} onChange={reload} />}
 
-      {e.status === "draft" && editable && <DraftEditor key={JSON.stringify(e.draft)} e={e} onSaved={reload} onError={setProblem} />}
+      {e.status === "draft" && editable && (
+        <DraftEditor
+          key={JSON.stringify(e.draft)}
+          e={e}
+          onSaved={reload}
+          handle={draft}
+          // A changed draft is not what the open acceptance form would record: ask again.
+          onDirty={(dirty) => dirty && setPanel((p) => (p === "record" ? null : p))}
+        />
+      )}
       {e.status === "draft" && !editable && <LinesTable lines={e.draft.lines} totals={e.draft.totals} />}
 
       {!e.acceptance && e.status !== "draft" && latest && (
@@ -313,39 +392,39 @@ export default function EstimatePage() {
         <div className="row">
           {e.status === "draft" && (
             <>
-              <button onClick={() => void act(`/estimates/${e.id}/send`, { email: true })} disabled={!e.canEmail}>
+              <SubmitButton type="button" busy={action.busy && pending === "email"} busyLabel="Sending…" onClick={send(true)} disabled={!e.canEmail || busy}>
                 Send by email
-              </button>
-              <button className="secondary" onClick={() => void act(`/estimates/${e.id}/send`, { email: false })}>
+              </SubmitButton>
+              <SubmitButton type="button" className="secondary" busy={action.busy && pending === "mark"} busyLabel="Saving…" onClick={send(false)} disabled={busy}>
                 Mark sent (share the link yourself)
-              </button>
+              </SubmitButton>
             </>
           )}
           {open && (
             <>
-              <button className="secondary" onClick={() => void act(`/estimates/${e.id}/send`, { email: true })} disabled={!e.canEmail}>
+              <SubmitButton type="button" className="secondary" busy={action.busy && pending === "email"} busyLabel="Sending…" onClick={send(true)} disabled={!e.canEmail || busy}>
                 Email it again
-              </button>
-              <button className="secondary" onClick={() => void makeLink()}>
+              </SubmitButton>
+              <SubmitButton type="button" className="secondary" busy={linking.busy} busyLabel="Making a link…" onClick={() => void linking.run()}>
                 Copy a link
-              </button>
-              <button className="secondary" onClick={() => void act(`/estimates/${e.id}/revise`, {})}>
+              </SubmitButton>
+              <SubmitButton type="button" className="secondary" busy={action.busy && pending === `/estimates/${e.id}/revise`} onClick={act(`/estimates/${e.id}/revise`, {})} disabled={busy}>
                 Revise
-              </button>
+              </SubmitButton>
             </>
           )}
           {(e.status === "draft" || open) && (
             <>
-              <button className="secondary" onClick={() => setPanel(panel === "record" ? null : "record")}>
+              <SubmitButton type="button" className="secondary" busy={openRecord.busy} onClick={() => void openRecord.run()} disabled={action.busy}>
                 Record acceptance
-              </button>
-              <button className="secondary" onClick={() => setPanel(panel === "void" ? null : "void")}>
+              </SubmitButton>
+              <button type="button" className="secondary danger" disabled={busy} onClick={() => setPanel(panel === "void" ? null : "void")}>
                 Withdraw
               </button>
             </>
           )}
           {e.status === "accepted" && (
-            <button className="secondary" onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>
+            <button type="button" className="secondary danger" onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>
               Cancel the work
             </button>
           )}
@@ -359,13 +438,15 @@ export default function EstimatePage() {
       )}
 
       {panel === "void" && (
-        <form className="card stack" onSubmit={submitWith((v) => act(`/estimates/${e.id}/void`, { reason: v.reason }))}>
+        <form className="card stack" onSubmit={submitWith((v) => void action.run(`/estimates/${e.id}/void`, { reason: v.reason }))}>
           <label>
             Why withdraw it?
             <input name="reason" required maxLength={2000} />
           </label>
           <div>
-            <button type="submit">Withdraw the estimate</button>
+            <SubmitButton className="danger" busy={action.busy}>
+              Withdraw the estimate
+            </SubmitButton>
           </div>
         </form>
       )}
@@ -373,7 +454,7 @@ export default function EstimatePage() {
         <form
           className="card stack"
           onSubmit={submitWith((v) =>
-            act(`/estimates/${e.id}/record-acceptance`, { version: e.status === "draft" ? undefined : latest?.version, selectedOptionalLineIds: chosenForRecord, evidence: v.evidence }),
+            void action.run(`/estimates/${e.id}/record-acceptance`, { version: e.status === "draft" ? undefined : latest?.version, selectedOptionalLineIds: chosenForRecord, evidence: v.evidence }, true),
           )}
         >
           <h2>Record the customer&apos;s acceptance</h2>
@@ -391,7 +472,7 @@ export default function EstimatePage() {
               </label>
             ))}
           <p>
-            Total accepted: <strong>{money(recordTotals.totalCents)}</strong>
+            Total accepted: <strong data-testid="record-total">{money(recordTotals.totalCents)}</strong>
           </p>
           {selectedLines(recordLines, chosenForRecord).length === 0 && <p className="error">Choose at least one item: the customer has to accept something.</p>}
           <label>
@@ -399,21 +480,23 @@ export default function EstimatePage() {
             <textarea name="evidence" required rows={3} maxLength={4000} />
           </label>
           <div>
-            <button type="submit" disabled={selectedLines(recordLines, chosenForRecord).length === 0}>
+            <SubmitButton busy={action.busy} disabled={selectedLines(recordLines, chosenForRecord).length === 0}>
               Record acceptance and make the work order
-            </button>
+            </SubmitButton>
           </div>
         </form>
       )}
       {panel === "cancel" && (
-        <form className="card stack" onSubmit={submitWith((v) => act(`/estimates/${e.id}/cancel`, { reason: v.reason }))}>
+        <form className="card stack" onSubmit={submitWith((v) => void action.run(`/estimates/${e.id}/cancel`, { reason: v.reason }))}>
           <p className="muted small">Cancels the work order and its open visit. Work that has started or been invoiced cannot be cancelled here.</p>
           <label>
             Why cancel?
             <input name="reason" required maxLength={2000} />
           </label>
           <div>
-            <button type="submit">Cancel the accepted work</button>
+            <SubmitButton className="danger" busy={action.busy}>
+              Cancel the accepted work
+            </SubmitButton>
           </div>
         </form>
       )}

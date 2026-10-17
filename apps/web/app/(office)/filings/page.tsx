@@ -7,7 +7,7 @@ import { Pagination } from "@/components/Pagination";
 import { LoadState } from "@/components/LoadState";
 import { DeadlineCell, FilingStatusBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
-import { day, dayOf } from "@/lib/format";
+import { day, dayOf, plural } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 
 // All opens first, newest first, so the page is never blank while nothing is wrong; the inbox
@@ -28,14 +28,12 @@ const FILINGS_EMPTY: Record<(typeof VIEWS)[number]["key"], string> = {
   all: "No filings yet. They start when a technician finishes an inspection at a site whose authority takes reports.",
 };
 
-const when = dayOf;
-
 /** What the office should know about a filing, in a few words. */
 function note(f: FilingListItem) {
   if (f.status === "needs_review") return f.reviewReason;
-  if (f.status === "failed") return `${f.lastError ?? "Sending failed"} · ${f.attemptCount} tr${f.attemptCount === 1 ? "y" : "ies"}`;
+  if (f.status === "failed") return `${f.lastError ?? "Sending failed"} · ${plural(f.attemptCount, "try", "tries")}`;
   if (f.status === "confirmed") return f.confirmationReference ? `Reference ${f.confirmationReference}` : null;
-  if (f.status === "sent" && f.sentAt) return `Sent ${when(f.sentAt)}`;
+  if (f.status === "sent" && f.sentAt) return `Sent ${dayOf(f.sentAt)}`;
   return null;
 }
 
@@ -65,7 +63,7 @@ export default function FilingsPage() {
         Completed inspections await office review and the provider&apos;s signature, then follow the authority&apos;s actual email, manual or CSV submission method. Submitted means submission evidence is recorded. Some authorities publish no acknowledgment process; acceptance is only claimed when supported by evidence.
       </p>
       <LoadState load={load} label="filings" />
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>Deadline</th>
@@ -78,18 +76,18 @@ export default function FilingsPage() {
         <tbody>
           {data?.items.map((f) => (
             <tr key={f.id} className={f.deadlineState === "overdue" ? "overdue" : undefined}>
-              <td>
+              <td data-label="Deadline">
                 <DeadlineCell deadlineOn={f.deadlineOn} state={f.deadlineState} />
               </td>
-              <td>
+              <td data-label="Site">
                 <Link href={`/filings/${f.id}`}>
                   {f.site.addressLine1}, {f.site.city}
                 </Link>
                 <div className="muted small">{f.customer.displayName}</div>
               </td>
-              <td>{f.jurisdiction?.authorityName ?? <span className="muted">None matched</span>}</td>
-              <td>{f.contract ? `Contract from ${day(f.contract.startOn)}` : `Inspection ${when(f.inspection?.completedAt ?? null)}`}</td>
-              <td>
+              <td data-label="Authority">{f.jurisdiction?.authorityName ?? <span className="muted">None matched</span>}</td>
+              <td data-label="For">{f.contract ? `Contract from ${day(f.contract.startOn)}` : `Inspection ${dayOf(f.inspection?.completedAt ?? null)}`}</td>
+              <td data-label="Status">
                 <FilingStatusBadge status={f.status} />
                 {note(f) && <div className="muted small">{note(f)}</div>}
               </td>

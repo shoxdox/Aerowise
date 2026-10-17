@@ -1,18 +1,7 @@
-import { RENEWAL_STATUS_LABELS, type RenewalStatus } from "@aerowise/domain";
-
-const CLASS: Record<RenewalStatus, string> = {
-  upcoming: "",
-  sent: "upcoming",
-  viewed: "upcoming",
-  signed: "warn",
-  payment_pending: "warn",
-  paid: "warn",
-  activated: "completed",
-  declined: "inactive",
-  expired: "inactive",
-  needs_review: "danger",
-};
+import { statusLabel, type RenewalStatus } from "@aerowise/domain";
+import { toneClass } from "@/components/StatusBadge";
 
 export function RenewalBadge({ status }: { status: RenewalStatus }) {
-  return <span className={`badge renewal ${CLASS[status]}`}>{RENEWAL_STATUS_LABELS[status]}</span>;
+  const { label, tone } = statusLabel("renewal", status);
+  return <span className={`${toneClass(tone)} renewal`}>{label}</span>;
 }

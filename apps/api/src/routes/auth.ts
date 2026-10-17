@@ -1,12 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { verifyPassword, type Database } from "@aerowise/db";
-import { INTROS, isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES } from "@aerowise/domain";
+import { dateInZone, FEATURES, INTROS, isReadOnly, LEGAL_DOCUMENTS, organizationSubscription, ROLES, type Feature } from "@aerowise/domain";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql } from "kysely";
 import { z } from "zod";
 import { createSession, revokeSession, SESSION_COOKIE, type AuthContext } from "../auth/sessions.ts";
 import { HttpError } from "../lib/errors.ts";
 import { loadLegalStatus } from "../lib/legal.ts";
+import { perAddress } from "../lib/rate-limits.ts";
 
 // Used when the email is unknown so a failed login takes the same time either way.
 const DUMMY_HASH =
@@ -28,6 +29,10 @@ export const meResponse = z.object({
    * so it can later learn that the company was removed (STG-03). Says nothing else.
    */
   demoTicket: z.string().optional(),
+  /** What this deployment has switched on, so the office menu draws once without asking /app-info. */
+  features: z.array(z.enum(FEATURES)).optional(),
+  /** The organization's date right now (YYYY-MM-DD in its own time zone). */
+  today: z.iso.date().optional(),
 });
 
 const demoTicket = (key: string, organizationId: string) => createHmac("sha256", key).update(`demo-ticket.${organizationId}`).digest("base64url");
@@ -39,8 +44,19 @@ function verifyDemoTicket(key: string, organizationId: string, ticket: unknown) 
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
-export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">) {
-  if (auth.support) return loadSupportMe(db, auth.organizationId, auth.support);
+/** What the deployment adds to a session: its switched-on features and the company's date. */
+export interface MeContext {
+  features: ReadonlySet<Feature>;
+  now: Date;
+}
+
+const deployment = (ctx: MeContext | undefined, timezone: string) => (ctx ? { features: [...ctx.features].sort(), today: dateInZone(ctx.now, timezone) } : {});
+
+export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "organizationId" | "role" | "support">, ctx?: MeContext) {
+  if (auth.support) {
+    const me = await loadSupportMe(db, auth.organizationId, auth.support);
+    return { ...me, ...deployment(ctx, me.organization.timezone) };
+  }
   const { introsDismissed, ...user } = await db.selectFrom("users").select(["id", "name", "email", "introsDismissed"]).where("id", "=", auth.userId).executeTakeFirstOrThrow();
   const organizations = await db
     .selectFrom("memberships as m")
@@ -64,6 +80,7 @@ export async function loadMe(db: Database, auth: Pick<AuthContext, "userId" | "o
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
     legalDue: (await loadLegalStatus(db, auth)).due,
     introsDismissed: knownIntros(introsDismissed),
+    ...deployment(ctx, current.timezone),
   };
 }
 
@@ -95,15 +112,25 @@ async function loadSupportMe(db: Database, organizationId: string, support: NonN
   };
 }
 
-export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean; loginRateLimit: number; demoTicketKey: string }> = async (
+export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boolean; loginRateLimit: number; demoTicketKey: string; features: ReadonlySet<Feature>; now: () => Date }> = async (
   app,
-  { db, production, loginRateLimit, demoTicketKey },
+  { db, production, loginRateLimit, demoTicketKey, features, now },
 ) => {
   const cookieOptions = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: production };
+  // A second sign-in limit, per address alone: the per-email one below lets a single address try
+  // one password against any number of emails. Three times the per-email allowance, so a few
+  // people behind one office address can still each sign in.
+  const loginsFromAddress = app.createRateLimit(perAddress("login", loginRateLimit * 3));
 
   app.post(
     "/auth/login",
     {
+      onRequest: async (req, reply) => {
+        const limit = await loginsFromAddress(req);
+        if (limit.isAllowed || !limit.isExceeded) return;
+        reply.header("retry-after", String(limit.ttlInSeconds));
+        throw new HttpError(429, "rate_limited", "Too many attempts. Try again in a minute.");
+      },
       config: {
         public: true,
         rateLimit: {
@@ -149,14 +176,35 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
 
       const session = await createSession(db, membership.organizationId, user.id);
       reply.setCookie(SESSION_COOKIE, session.token, { ...cookieOptions, expires: session.expiresAt });
-      return loadMe(db, { userId: user.id, organizationId: membership.organizationId, role: membership.role });
+      return loadMe(db, { userId: user.id, organizationId: membership.organizationId, role: membership.role }, { features, now: now() });
     },
   );
 
   app.post(
     "/auth/logout",
-    { config: { public: true }, schema: { tags: ["auth"], summary: "Sign out", response: { 204: z.null() } } },
+    {
+      config: { public: true },
+      schema: {
+        tags: ["auth"],
+        summary: "Sign out",
+        body: z
+          .object({
+            /**
+             * The technician app signed out with no signal, at this time: once it has signal it ends the
+             * session it had then, but not one signed in since on that phone (by the same person or another).
+             */
+            signedInBefore: z.iso.datetime().optional(),
+          })
+          .optional(),
+        response: { 204: z.null() },
+      },
+    },
     async (req, reply) => {
+      const before = req.body?.signedInBefore;
+      if (req.auth && before) {
+        const session = await db.selectFrom("sessions").select("createdAt").where("id", "=", req.auth.sessionId).executeTakeFirst();
+        if (session && session.createdAt > new Date(before)) return reply.status(204).send(null);
+      }
       if (req.auth) await revokeSession(db, req.auth.sessionId);
       reply.clearCookie(SESSION_COOKIE, cookieOptions);
       return reply.status(204).send(null);
@@ -198,7 +246,7 @@ export const authRoutes: FastifyPluginAsyncZod<{ db: Database; production: boole
     { config: { permission: "self:read" }, schema: { tags: ["auth"], summary: "Current user and organization", response: { 200: meResponse } } },
     async (req) => {
       const auth = req.requireAuth();
-      const me = await loadMe(db, auth);
+      const me = await loadMe(db, auth, { features, now: now() });
       const org = await db.selectFrom("organizations").select("demo").where("id", "=", auth.organizationId).executeTakeFirstOrThrow();
       return org.demo ? { ...me, demoTicket: demoTicket(demoTicketKey, auth.organizationId) } : me;
     },

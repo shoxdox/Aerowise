@@ -2,6 +2,7 @@ import type { Database, DB } from "@aerowise/db";
 import {
   addDays,
   addMonths,
+  applyRequirements,
   canTransitionFiling,
   contractFilingRequired,
   exportLayoutFor,
@@ -18,6 +19,8 @@ import {
   type InspectionValues,
   type SubmissionMethod,
   type TemplateDefinition,
+  validateInspection,
+  type ValidationProblem,
 } from "@aerowise/domain";
 import type { ObjectStore } from "@aerowise/storage";
 import { sql, type Transaction, type Updateable } from "kysely";
@@ -27,7 +30,8 @@ import { providerSignatureRequired, reportSignature } from "./signatures.ts";
 import { contractBasisOf, contractDeadline, ensurePackage, findPackage, PackageNotReady, packageProblems } from "./packages.ts";
 import { ReportCorrectionError, amendmentsOf, currentAuthorityResponses, latestAuthorityReport, responsesForInspection, sameResponses, writeReportVersion } from "./reports.ts";
 import { siteMonitoredOn } from "./monitoring.ts";
-import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, type ResolvedJurisdiction } from "./rulesets.ts";
+import { pullNextVisitForward } from "./next-due.ts";
+import { dateInZone, explainSite, loadCatalog, NO_AUTHORITY, requirementsOf, type ResolvedJurisdiction } from "./rulesets.ts";
 
 type Executor = Database | Transaction<DB>;
 
@@ -386,6 +390,9 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
     .returning(filingColumns)
     .executeTakeFirst();
   if (!inserted) return null;
+  // The authority's date becomes the site's next visit's due date, when the contract had it later.
+  const moved = await pullNextVisitForward(trx, { organizationId: args.organizationId, siteId: insp.siteId, at: args.at });
+  const movedNote = moved ? `; visit ${moved.sequence} moved from ${moved.from} to that date` : "";
   await recordEvent(
     trx,
     inserted,
@@ -394,10 +401,10 @@ export async function openFiling(trx: Transaction<DB>, args: { organizationId: s
     resolved && !reviewReason
       ? {
           type: "filing_opened",
-          summary: `Filing with ${resolved.authorityName} opened; due ${terms!.deadlineOn}. Next inspection due by ${terms!.nextDueOn}`,
-          details: { jurisdiction: resolved.key, rulesetVersion: resolved.rules.version, deadlineOn: terms!.deadlineOn, nextDueOn: terms!.nextDueOn },
+          summary: `Filing with ${resolved.authorityName} opened; due ${terms!.deadlineOn}. Next inspection due by ${terms!.nextDueOn}${movedNote}`,
+          details: { jurisdiction: resolved.key, rulesetVersion: resolved.rules.version, deadlineOn: terms!.deadlineOn, nextDueOn: terms!.nextDueOn, nextVisit: moved },
         }
-      : { type: "filing_needs_review", summary: `Filing needs review: ${reviewReason}` },
+      : { type: "filing_needs_review", summary: `Filing needs review: ${reviewReason}`, ...(moved ? { details: { nextVisit: moved } } : {}) },
   );
   return inserted;
 }
@@ -641,7 +648,9 @@ export async function prepareFilingById(ctx: ComplianceContext, organizationId: 
         details: { packageId: pkg.id, filename: csv.filename, sha256: csv.sha256 },
       });
     }
-    if (mayAutoSubmit(resolved.rules) && f.submissionMethod === "email") {
+    // Whatever the rules allow, a report never goes out on its own before the MP signed the
+    // version it sends (285.7(b)(3)).
+    if (mayAutoSubmit(resolved.rules) && f.submissionMethod === "email" && (f.kind !== "inspection_report" || (await packageSigned(trx, f)))) {
       await move(trx, f, "queued", at, {}, null);
       await queueSubmit(trx, ctx, f, at);
     }
@@ -668,10 +677,16 @@ async function unsignedPackage(db: Executor, f: FilingRow, resolved: ResolvedJur
     const report = await latestAuthorityReport(db, f.organizationId, f.inspectionId);
     return !report || !(await reportSignature(db, f.organizationId, report.id));
   }
-  const doc = pkg.documents.find((d) => d.role === "inspection_report");
-  if (!doc?.sourceId) return true;
+  return !(await packageSigned(db, f));
+}
+
+/** Whether this submission's package carries the MP's signed copy of the report version it was made from. */
+async function packageSigned(db: Executor, f: FilingRow) {
+  const pkg = await findPackage(db, f.organizationId, f.id, f.submissionNo);
+  const doc = pkg?.documents.find((d) => d.role === "inspection_report");
+  if (!doc?.sourceId) return false;
   const signature = await reportSignature(db, f.organizationId, doc.sourceId);
-  return !signature || signature.sha256 !== doc.sha256;
+  return signature !== null && signature.sha256 === doc.sha256;
 }
 
 /**
@@ -889,16 +904,18 @@ export async function resubmitFiling(trx: Transaction<DB>, _ctx: Pick<Compliance
 }
 
 /**
- * A corrected authority report after a rejection: a new report version linked to the one
- * the authority refused, with the reason (and any corrected answers) printed on it, then
- * a new submission. Earlier versions and packages are never changed.
+ * A corrected authority report: a new report version linked to the one it replaces, with the
+ * reason (and any corrected answers) printed on it. After a rejection it goes out as a new
+ * submission; on a filing held for review (say, a reading the technician gave by phone) the
+ * filing is checked again and waits for the MP to sign the new version. Earlier versions and
+ * packages are never changed.
  */
 export async function correctFiling(
   ctx: ComplianceContext,
   f: FilingRow,
   a: ActionArgs & { reason: string; amendments: InspectionValues },
 ): Promise<{ reportId: string; version: number }> {
-  if (f.status !== "rejected") throw new FilingStateError("Only a rejected filing can be corrected");
+  if (f.status !== "rejected" && f.status !== "needs_review") throw new FilingStateError("Only a rejected filing, or one that needs review, can be corrected");
   if (f.kind !== "inspection_report" || !f.inspectionId) throw new FilingStateError("Contract filings are corrected by uploading the corrected signed contract");
   if (Object.keys(a.amendments).length === 0) throw new ReportCorrectionError("Choose at least one corrected answer. Use Resubmit unchanged when no answer needs correction.");
   const report = await writeReportVersion(ctx.db, ctx.store, {
@@ -911,6 +928,22 @@ export async function correctFiling(
     now: a.at,
   });
   return { reportId: report.id, version: report.version };
+}
+
+/**
+ * The answers to enter on an inspection filing held for review, so it can go: readings the
+ * authority's check finds missing or out of range (an inspection whose authority was chosen
+ * after it was done, or one accepted anyway when readings could still be waived). Entered with
+ * `correctFiling`, as a new report version saying why. Empty for any other filing.
+ */
+export async function answersToCorrect(db: Executor, organizationId: string, filingId: string): Promise<ValidationProblem[]> {
+  const f = await loadFiling(db, organizationId, filingId);
+  if (!f || f.kind !== "inspection_report" || !f.inspectionId || f.status !== "needs_review") return [];
+  const resolved = await recordedJurisdiction(db, f);
+  if (!resolved) return [];
+  const insp = await loadCanonicalInspection(db, organizationId, f.inspectionId);
+  const def = applyRequirements(insp.definition, requirementsOf(resolved, insp.site.customerType));
+  return validateInspection(def, insp.values, insp.photoCounts).filter((p) => p.problem !== "photos");
 }
 
 /** Switches a filing to the manual portal/export fallback. */
@@ -1097,6 +1130,8 @@ export async function recheckFiling(trx: Transaction<DB>, f: FilingRow, a: Actio
   f.jurisdictionId = terms.jurisdictionId;
   f.submissionMethod = terms.submissionMethod;
   f.nextDueOn = terms.nextDueOn;
+  // An authority chosen only now sets the next visit's date too.
+  await pullNextVisitForward(trx, { organizationId: f.organizationId, siteId: f.siteId, at: a.at });
 }
 
 /**

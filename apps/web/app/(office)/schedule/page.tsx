@@ -1,23 +1,20 @@
 "use client";
 
-import type { DueObligation, NearbyResult, OptimizeResult, RouteDay, Stop, Technician } from "@aerowise/domain";
+import { addDays, type DueObligation, type NearbyResult, type OptimizeResult, type RouteDay, type Stop, type Technician } from "@aerowise/domain";
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { ROUTE_COLORS, RouteMap } from "@/components/RouteMap";
 import { SafetyBadges } from "@/components/SafetyBadges";
 import { LoadState } from "@/components/LoadState";
 import { Pagination } from "@/components/Pagination";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useQueryState } from "@/components/useQueryState";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
-import { day, duration } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { day, duration, plural } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
-
-function addDays(date: string, n: number) {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 /** Monday of the week containing `date`. */
 function weekStart(date: string) {
@@ -46,7 +43,8 @@ export default function SchedulePage() {
   const week = useLoad<{ items: Stop[] }>(monday ? `/schedule?from=${monday}&to=${addDays(monday, 6)}` : null);
   const routes = useLoad<RouteDay>(selected ? `/routing/day?date=${selected}` : null);
   const [assignTo, setAssignTo] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
+  // The stop whose unscheduling reason is being asked, on its own card.
+  const [unscheduling, setUnscheduling] = useState<string | null>(null);
   const [sort, setSort] = useState<"due" | "nearby">("due");
   const [previews, setPreviews] = useState<Record<string, OptimizeResult>>({});
   // Which kinds of visit the day's columns list; the route and numbering always cover every stop.
@@ -72,35 +70,44 @@ export default function SchedulePage() {
   }, [unscheduled.data, nearby.data, sort, target.data]);
   const nearbyOf = useMemo(() => new Map((nearby.data?.items ?? []).map((n) => [n.obligationId, n])), [nearby.data]);
 
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
-    try {
-      await action();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update the schedule");
-    }
+  const refresh = async () => {
     setPreviews({});
     await Promise.all([unscheduled.reload(), week.reload(), routes.reload(), nearby.reload()]);
-  }
+  };
+  // One change to the schedule at a time: a second click on Assign waits instead of booking twice.
+  const changing = useSubmit(
+    async (action: () => Promise<unknown>) => {
+      try {
+        await action();
+        setUnscheduling(null);
+      } finally {
+        await refresh();
+      }
+    },
+    { fallback: "Could not update the schedule." },
+  );
+  const run = (action: () => Promise<unknown>) => changing.run(action);
 
   const dismiss = (techId: string) => setPreviews((p) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== techId)));
 
-  async function optimize(techId: string, apply: boolean) {
-    setError(null);
-    try {
+  const planning = useSubmit(
+    async (techId: string, apply: boolean) => {
       const r = await api<OptimizeResult>("/routing/optimize", { method: "POST", body: { technicianId: techId, scheduledDate: selected, apply } });
-      if (apply) await run(async () => {});
+      if (apply) await refresh();
       else setPreviews((p) => ({ ...p, [techId]: r }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not plan the route");
-    }
-  }
+    },
+    { fallback: "Could not plan the route." },
+  );
+  const optimize = (techId: string, apply: boolean) => planning.run(techId, apply);
+  const error = changing.error ?? planning.error;
+  const busy = changing.busy || planning.busy;
 
   const assign = (o: DueObligation) =>
     run(() => api("/jobs", { method: "POST", body: { obligationId: o.id, technicianId, scheduledDate: selected } }));
-  const unschedule = (s: Stop) => {
-    const reason = window.prompt("Why is this visit being unscheduled?", "Rescheduling");
-    if (reason) void run(() => api(`/jobs/${s.jobId}/cancel`, { method: "POST", body: { reason } }));
+  const unschedule = (s: Stop, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const { reason } = formValues(event.currentTarget);
+    void run(() => api(`/jobs/${s.jobId}/cancel`, { method: "POST", body: { reason } }));
   };
   /** Another technician takes the stop; an inspection already started on a phone goes with it (the API holds the first phone's later work for the office). */
   const giveTo = (s: Stop, technicianId: string) => run(() => api(`/jobs/${s.jobId}`, { method: "PATCH", body: { technicianId } }));
@@ -146,11 +153,11 @@ export default function SchedulePage() {
           <button key={d} className={`weekday ${d === selected ? "selected" : ""} ${d === today ? "today" : ""}`} onClick={() => setPicked(d)}>
             <span>{day(d, { weekday: "short" })}</span>
             <strong>{day(d, { month: "short", day: "numeric" })}</strong>
-            <span className="muted small">{countFor(d)} stops</span>
+            <span className="muted small">{plural(countFor(d), "stop")}</span>
           </button>
         ))}
       </div>
-      {error && <p className="error" role="alert">{error}</p>}
+      <FormError error={error} />
       <LoadState load={target} label="selected visit" />
       {obligationId && target.data?.items.length === 0 && <p className="card">This visit is no longer open. {siteId && <Link href={`/sites/${encodeURIComponent(siteId)}`}>Open its site to review the current record.</Link>}</p>}
       {target.data?.items[0]?.job && <p className="card">Selected visit at <Link href={`/sites/${target.data.items[0].site.id}`}>{target.data.items[0].site.addressLine1}</Link> is assigned to {target.data.items[0].job.technicianName} on {day(target.data.items[0].job.scheduledDate)}. Opening this link has not changed it.</p>}
@@ -194,23 +201,23 @@ export default function SchedulePage() {
                 </Link>
                 <span className="spacer" />
                 {editable && (
-                  <button className="secondary" onClick={() => assign(o)} disabled={!technicianId}>
+                  <SubmitButton type="button" className="secondary" busy={changing.busy} busyLabel="Assigning…" onClick={() => void assign(o)} disabled={!technicianId}>
                     Assign {day(selected, { month: "short", day: "numeric" })}
-                  </button>
+                  </SubmitButton>
                 )}
               </div>
               <div className="muted small">
                 {o.customer.displayName} · visit #{o.sequence} · due {day(o.dueOn, { month: "short", day: "numeric" })}
-                {o.overdue && <span className="badge danger">overdue</span>}
+                {o.overdue && <Badge tone="danger">Overdue</Badge>}
               </div>
               {sort === "nearby" && nearby.data && (
                 <div className="small">
                   {nearbyOf.get(o.id) ? (
                     <>
-                      <span className="badge">
+                      <Badge>
                         +{nearbyOf.get(o.id)!.detourMiles} mi · +{duration(nearbyOf.get(o.id)!.detourMinutes)}
-                      </span>
-                      {!nearbyOf.get(o.id)!.fits && <span className="badge warn">day would run long</span>}
+                      </Badge>{" "}
+                      {!nearbyOf.get(o.id)!.fits && <Badge tone="warning">Day would run long</Badge>}
                     </>
                   ) : (
                     <span className="muted">Not on the map</span>
@@ -257,7 +264,7 @@ export default function SchedulePage() {
                       {t.name}
                     </h2>
                     <span className="muted small">
-                      {stops.length} stop{stops.length === 1 ? "" : "s"} · {day(selected, { weekday: "short", month: "short", day: "numeric" })}
+                      {plural(stops.length, "stop")} · {day(selected, { weekday: "short", month: "short", day: "numeric" })}
                     </span>
                   </div>
                   {r && stops.length > 0 && (
@@ -266,18 +273,14 @@ export default function SchedulePage() {
                         Est. {r.driveMiles} mi · {duration(r.driveMinutes)} driving
                       </span>
                       <span className="muted">{duration(r.totalMinutes)} with stops</span>
-                      {r.overCapacity && <span className="badge danger">longer than a working day</span>}
-                      {r.unlocatedJobIds.length > 0 && (
-                        <span className="badge warn">
-                          {r.unlocatedJobIds.length} not on the map
-                        </span>
-                      )}
+                      {r.overCapacity && <Badge tone="danger">Longer than a working day</Badge>}
+                      {r.unlocatedJobIds.length > 0 && <Badge tone="warning">{r.unlocatedJobIds.length} not on the map</Badge>}
                     </div>
                   )}
                   {editable && stops.length > 1 && !preview && (
-                    <button className="secondary" onClick={() => void optimize(t.id, false)}>
+                    <SubmitButton type="button" className="secondary" busy={planning.busy} busyLabel="Planning…" onClick={() => void optimize(t.id, false)}>
                       Optimize route
-                    </button>
+                    </SubmitButton>
                   )}
                   {preview && (
                     <div className="card tight optimize stack">
@@ -289,7 +292,9 @@ export default function SchedulePage() {
                           </div>
                           <div className="muted small">New order: {preview.proposedJobIds.map((id) => numbers.get(id)).join(", ")}</div>
                           <div className="row">
-                            <button onClick={() => void optimize(t.id, true)}>Use this order</button>
+                            <SubmitButton type="button" busy={planning.busy} onClick={() => void optimize(t.id, true)}>
+                              Use this order
+                            </SubmitButton>
                             <button className="secondary" onClick={() => dismiss(t.id)}>
                               Keep current
                             </button>
@@ -323,10 +328,10 @@ export default function SchedulePage() {
                           <span className="spacer" />
                           {editable && (
                             <>
-                              <button className="link" aria-label="Move up" onClick={() => move(s, stops, -1)} disabled={i === 0}>
+                              <button className="link" aria-label="Move up" onClick={() => move(s, stops, -1)} disabled={i === 0 || busy}>
                                 ↑
                               </button>
-                              <button className="link" aria-label="Move down" onClick={() => move(s, stops, 1)} disabled={i === stops.length - 1}>
+                              <button className="link" aria-label="Move down" onClick={() => move(s, stops, 1)} disabled={i === stops.length - 1 || busy}>
                                 ↓
                               </button>
                             </>
@@ -352,7 +357,7 @@ export default function SchedulePage() {
                         {editable && (s.status === "scheduled" || (s.status === "in_progress" && !s.workOrder)) && (techs.data?.items.length ?? 0) > 1 && (
                           <label className="small">
                             Technician{" "}
-                            <select aria-label={`Technician for ${s.site.addressLine1}`} value={s.technicianId} onChange={(e) => void giveTo(s, e.target.value)}>
+                            <select aria-label={`Technician for ${s.site.addressLine1}`} value={s.technicianId} disabled={busy} onChange={(e) => void giveTo(s, e.target.value)}>
                               {techs.data!.items.map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}
@@ -362,10 +367,26 @@ export default function SchedulePage() {
                             {s.status === "in_progress" && <span className="muted"> · started on a phone; it continues on the new technician&apos;s</span>}
                           </label>
                         )}
-                        {editable && (
-                          <button className="link small" onClick={() => unschedule(s)}>
+                        {editable && unscheduling !== s.jobId && (
+                          <button className="link small danger" onClick={() => (changing.clear(), setUnscheduling(s.jobId))}>
                             Unschedule
                           </button>
+                        )}
+                        {editable && unscheduling === s.jobId && (
+                          <form className="stack" onSubmit={(e) => unschedule(s, e)}>
+                            <label>
+                              Why is this visit being unscheduled?
+                              <input name="reason" required maxLength={2000} defaultValue="Rescheduling" autoFocus />
+                            </label>
+                            <div className="row">
+                              <SubmitButton className="danger" busy={changing.busy}>
+                                Unschedule
+                              </SubmitButton>
+                              <button type="button" className="link" onClick={() => setUnscheduling(null)}>
+                                Keep it
+                              </button>
+                            </div>
+                          </form>
                         )}
                       </div>
                     </Fragment>

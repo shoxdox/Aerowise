@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Database, DB } from "@aerowise/db";
-import { addDays, buildIntervalSchedule, contractInstallments, parseServiceCycles, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
+import { addDays, buildIntervalSchedule, contractInstallments, invoiceNumberLabel, parseServiceCycles, termEndOn, type AgreementContent, type CoverageRule, type RenewalTerms } from "@aerowise/domain";
 import { sql, type Transaction } from "kysely";
 import { insertContract, termsForSite, type ContractCycles } from "./contracts.ts";
 import { loadPlanVersion } from "./plans.ts";
@@ -146,12 +146,16 @@ export interface ContractRow {
 
 export class RenewalError extends Error {
   constructor(
-    readonly code: "not_found" | "cancelled" | "already_renewed" | "renewal_exists" | "plan_unavailable",
+    readonly code: "not_found" | "cancelled" | "already_renewed" | "renewal_exists" | "plan_unavailable" | "renewal_in_progress" | "not_in_review" | "no_next_term" | "installment_billed",
     message: string,
   ) {
     super(message);
   }
 }
+
+/** Renewals that are finished: a contract can have another started once its last one is one of these. */
+export const FINISHED_RENEWAL_STATUSES = ["declined", "expired", "superseded"] as const;
+const dollars = (cents: number) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 /** Starts a renewal for a contract, in the caller's transaction. It is not sent yet. */
 export async function createRenewal(trx: Transaction<DB>, organizationId: string, contractId: string, opts: { createdBy?: string | null; requestId?: string | null; now: Date }) {
@@ -189,7 +193,7 @@ export async function createRenewal(trx: Transaction<DB>, organizationId: string
     .select("id")
     .where("organizationId", "=", organizationId)
     .where("contractId", "=", c.id)
-    .where("status", "not in", ["declined", "expired"])
+    .where("status", "not in", FINISHED_RENEWAL_STATUSES)
     .executeTakeFirst();
   if (open) throw new RenewalError("renewal_exists", "This contract already has a renewal in progress");
   const terms = await offerTerms(trx, organizationId, c);
@@ -231,14 +235,25 @@ export async function createRenewal(trx: Transaction<DB>, organizationId: string
   return row.id;
 }
 
-/** Why a renewal cannot become a contract right now, or null when it can. */
-async function activationProblem(trx: Transaction<DB>, organizationId: string, r: { contractId: string; siteId: string; startOn: string; endOn: string }) {
-  const prev = await trx.selectFrom("contracts").select(["id", "status", "serviceEndsOn"]).where("organizationId", "=", organizationId).where("id", "=", r.contractId).forUpdate().executeTakeFirstOrThrow();
-  if (prev.status === "cancelled") return "The contract being renewed was cancelled";
-  if (prev.serviceEndsOn) return `The contract being renewed is ending (service stops after ${prev.serviceEndsOn})`;
-  const renewed = await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("previousContractId", "=", prev.id).executeTakeFirst();
-  if (renewed) return "This contract was already renewed another way";
-  const overlap = await trx
+/** Why a renewal cannot become a contract: `reason` is for the office, `code` picks what the homeowner is told. */
+export interface ActivationProblem {
+  code: "cancelled" | "ending" | "renewed" | "overlap";
+  reason: string;
+}
+
+/**
+ * Why a renewal cannot become a contract right now, or null when it can. Signing and paying
+ * ask this first, so no invoice is made or charged for a term that cannot start. In a
+ * transaction it locks the contract being renewed (after the renewal, as everything does).
+ */
+export async function activationProblem(ex: Executor, organizationId: string, r: { contractId: string; siteId: string; startOn: string; endOn: string }): Promise<ActivationProblem | null> {
+  const q = ex.selectFrom("contracts").select(["id", "status", "serviceEndsOn"]).where("organizationId", "=", organizationId).where("id", "=", r.contractId);
+  const prev = await (ex.isTransaction ? q.forUpdate() : q).executeTakeFirstOrThrow();
+  if (prev.status === "cancelled") return { code: "cancelled", reason: "The contract being renewed was cancelled" };
+  if (prev.serviceEndsOn) return { code: "ending", reason: `The contract being renewed is ending (service stops after ${prev.serviceEndsOn})` };
+  const renewed = await ex.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("previousContractId", "=", prev.id).executeTakeFirst();
+  if (renewed) return { code: "renewed", reason: "This contract was already renewed another way" };
+  const overlap = await ex
     .selectFrom("contracts")
     .select("id")
     .where("organizationId", "=", organizationId)
@@ -246,8 +261,68 @@ async function activationProblem(trx: Transaction<DB>, organizationId: string, r
     .where("status", "=", "active")
     .where(sql<boolean>`daterange(start_on, end_on, '[]') && daterange(${r.startOn}::date, ${r.endOn}::date, '[]')`)
     .executeTakeFirst();
-  if (overlap) return "Another contract on this site already covers the new term's dates";
+  if (overlap) return { code: "overlap", reason: "Another contract on this site already covers the new term's dates" };
   return null;
+}
+
+/** A contract's renewal that is not finished, locked; the caller holds the contract's lock or takes it next. */
+export async function lockOpenRenewal(trx: Transaction<DB>, organizationId: string, contractId: string) {
+  return trx.selectFrom("renewals").selectAll().where("organizationId", "=", organizationId).where("contractId", "=", contractId).where("status", "not in", FINISHED_RENEWAL_STATUSES).forUpdate().executeTakeFirst();
+}
+
+/**
+ * Only an offer nobody has signed can be closed for a term made another way: once the
+ * customer has signed, money may be on its way, so the office finishes that renewal from its
+ * own page instead. Called before the term is made.
+ */
+export function refuseIfSigned(r: { status: string }) {
+  if (r.status === "needs_review") throw new RenewalError("renewal_in_progress", "This contract's renewal is waiting for review. Resolve it from the renewal page.");
+  if (!(["upcoming", "sent", "viewed"] as string[]).includes(r.status)) throw new RenewalError("renewal_in_progress", "The customer already signed this renewal. Finish it from the renewal page.");
+}
+
+/**
+ * Closes a contract's open renewal because the office has just made its next term another way
+ * ('Renew now'), in the caller's transaction, so the emailed link stops offering that term and
+ * no reminder goes out for it.
+ */
+export async function supersedeRenewal(
+  trx: Transaction<DB>,
+  organizationId: string,
+  r: { id: string; siteId: string; status: string },
+  newContractId: string,
+  opts: { now: Date; actorUserId?: string | null; requestId?: string | null },
+) {
+  refuseIfSigned(r);
+  await trx.updateTable("renewals").set({ status: "superseded", supersededAt: opts.now, newContractId, updatedAt: opts.now }).where("id", "=", r.id).execute();
+  await renewalOnTimeline(trx, {
+    organizationId,
+    siteId: r.siteId,
+    renewalId: r.id,
+    eventType: "renewal_superseded",
+    summary: "Renewal offer closed: the office renewed the contract another way",
+    actorUserId: opts.actorUserId,
+    at: opts.now,
+  });
+  await systemAudit(trx, { organizationId, actorUserId: opts.actorUserId, requestId: opts.requestId, action: "renewal.superseded", entityType: "renewal", entityId: r.id, changes: { newContractId } });
+}
+
+/**
+ * Links a renewal invoice's first line to a contract's first installment, so that installment
+ * is not billed again. The invoice was issued before the contract existed.
+ */
+async function linkFirstInstallment(trx: Transaction<DB>, organizationId: string, invoiceId: string, contractId: string) {
+  const line = await trx
+    .selectFrom("invoiceLines")
+    .select(["id"])
+    .where("organizationId", "=", organizationId)
+    .where("invoiceId", "=", invoiceId)
+    .where("position", "=", 1)
+    .where("contractId", "is", null)
+    .executeTakeFirst();
+  if (!line) return;
+  const contract = await trx.selectFrom("contracts").select(["startOn", "endOn", "termMonths", "priceCents", "billingFrequency"]).where("id", "=", contractId).executeTakeFirstOrThrow();
+  const first = contractInstallments(contract)[0]!;
+  await trx.updateTable("invoiceLines").set({ contractId, installment: 1, periodStart: first.periodStart, periodEnd: first.periodEnd }).where("id", "=", line.id).execute();
 }
 
 export type ActivationResult = { status: "activated"; contractId: string } | { status: "needs_review"; reason: string };
@@ -280,9 +355,9 @@ export async function activateRenewal(
 
   const problem = await activationProblem(trx, organizationId, r);
   if (problem) {
-    await trx.updateTable("renewals").set({ status: "needs_review", reviewReason: problem, updatedAt: opts.now }).where("id", "=", r.id).execute();
-    await audit("renewal.needs_review", { reason: problem });
-    return { status: "needs_review", reason: problem };
+    await trx.updateTable("renewals").set({ status: "needs_review", reviewReason: problem.reason, updatedAt: opts.now }).where("id", "=", r.id).execute();
+    await audit("renewal.needs_review", { reason: problem.reason });
+    return { status: "needs_review", reason: problem.reason };
   }
   // The new term's coverage is what the customer signed for: the agreement lists it when the
   // plan builder was on at signing. Without a signature the deployment's switch decides.
@@ -325,27 +400,8 @@ export async function activateRenewal(
     .set({ status: "activated", activatedAt: opts.now, newContractId: contractId, reviewReason: null, updatedAt: opts.now })
     .where("id", "=", r.id)
     .execute();
-  // The renewal invoice was issued before this contract existed; its first line pays the
-  // contract's first installment, so link it and that installment is not billed again.
-  if (r.invoiceId) {
-    const line = await trx
-      .selectFrom("invoiceLines")
-      .select(["id", "description"])
-      .where("organizationId", "=", organizationId)
-      .where("invoiceId", "=", r.invoiceId)
-      .where("position", "=", 1)
-      .where("contractId", "is", null)
-      .executeTakeFirst();
-    const contract = await trx.selectFrom("contracts").select(["startOn", "endOn", "termMonths", "priceCents", "billingFrequency"]).where("id", "=", contractId).executeTakeFirstOrThrow();
-    const first = contractInstallments(contract)[0]!;
-    if (line) {
-      await trx
-        .updateTable("invoiceLines")
-        .set({ contractId, installment: 1, periodStart: first.periodStart, periodEnd: first.periodEnd })
-        .where("id", "=", line.id)
-        .execute();
-    }
-  }
+  // The renewal invoice's first line pays the contract's first installment.
+  if (r.invoiceId) await linkFirstInstallment(trx, organizationId, r.invoiceId, contractId);
   await renewalOnTimeline(trx, {
     organizationId,
     siteId: r.siteId,
@@ -357,6 +413,71 @@ export async function activateRenewal(
   });
   await audit("renewal.activated", { contractId, ...(opts.note ? { note: opts.note } : {}) });
   return { status: "activated", contractId };
+}
+
+/**
+ * Settles a renewal in review because its contract was already renewed another way (a
+ * 'Renew now' made while the customer was signing and paying, before that closed the offer):
+ * the renewal invoice counts toward the term that exists, as activation would have counted it
+ * toward the term it made, so that term's first installment is never billed twice. Refused
+ * when that installment is already on another invoice; the office voids that one or refunds
+ * this payment instead.
+ */
+export async function applyRenewalToTerm(trx: Transaction<DB>, organizationId: string, renewalId: string, opts: { now: Date; actorUserId?: string | null; requestId?: string | null }) {
+  const r = await trx.selectFrom("renewals").selectAll().where("organizationId", "=", organizationId).where("id", "=", renewalId).forUpdate().executeTakeFirst();
+  if (!r) throw new RenewalError("not_found", "Renewal not found");
+  if (r.status !== "needs_review") throw new RenewalError("not_in_review", "Only a renewal waiting for review can be counted toward another term");
+  const next = await trx
+    .selectFrom("contracts")
+    .select(["id", "status", "startOn", "endOn"])
+    .where("organizationId", "=", organizationId)
+    .where("previousContractId", "=", r.contractId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!next || next.status === "cancelled") throw new RenewalError("no_next_term", "This contract has no next term to count the renewal toward");
+  if (r.invoiceId) {
+    const billed = await trx
+      .selectFrom("invoiceLines as l")
+      .innerJoin("invoices as i", "i.id", "l.invoiceId")
+      .select(["i.number"])
+      .where("l.organizationId", "=", organizationId)
+      .where("l.contractId", "=", next.id)
+      .where("l.installment", "=", 1)
+      .where("i.status", "<>", "void")
+      .where("i.id", "<>", r.invoiceId)
+      .executeTakeFirst();
+    if (billed) {
+      const label = invoiceNumberLabel(billed.number);
+      throw new RenewalError("installment_billed", `The new term's first installment is already on ${label}. Void ${label} first, or refund this renewal's payment.`);
+    }
+    // Counted toward a term at another price, the difference would never be billed (or would
+    // be overcharged): that payment is refunded and the term billed on its own instead.
+    const line = await trx.selectFrom("invoiceLines").select("amountCents").where("organizationId", "=", organizationId).where("invoiceId", "=", r.invoiceId).where("position", "=", 1).executeTakeFirst();
+    const first = contractInstallments(await trx.selectFrom("contracts").select(["startOn", "endOn", "termMonths", "priceCents", "billingFrequency"]).where("id", "=", next.id).executeTakeFirstOrThrow())[0]!;
+    if (line && line.amountCents !== first.amountCents) {
+      throw new RenewalError(
+        "installment_billed",
+        `This renewal billed ${dollars(line.amountCents)} for the first installment, but the term already made bills ${dollars(first.amountCents)}. Refund this renewal's payment and bill the term from its site page.`,
+      );
+    }
+    await linkFirstInstallment(trx, organizationId, r.invoiceId, next.id);
+  }
+  await trx
+    .updateTable("renewals")
+    .set({ status: "activated", activatedAt: opts.now, newContractId: next.id, reviewReason: null, updatedAt: opts.now })
+    .where("id", "=", r.id)
+    .execute();
+  await renewalOnTimeline(trx, {
+    organizationId,
+    siteId: r.siteId,
+    renewalId: r.id,
+    eventType: "contract_renewed",
+    summary: `Renewal counted toward the term already made: ${next.startOn} to ${next.endOn}`,
+    actorUserId: opts.actorUserId,
+    at: opts.now,
+  });
+  await systemAudit(trx, { organizationId, actorUserId: opts.actorUserId, requestId: opts.requestId, action: "renewal.applied_to_term", entityType: "renewal", entityId: r.id, changes: { contractId: next.id, invoiceId: r.invoiceId } });
+  return { contractId: next.id };
 }
 
 /**

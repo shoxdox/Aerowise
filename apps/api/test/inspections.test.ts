@@ -1,7 +1,7 @@
 import { DEFAULT_TEMPLATE } from "@aerowise/domain";
 import { describe, expect, it } from "vitest";
 import { client, createUser, login, setupTestApp } from "./helpers.ts";
-import { completeValues, JPEG, payload, photoUrl, setup, uploadRequiredPhotos } from "./inspection-helpers.ts";
+import { completeValues, JPEG, payload, photoUrl, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 
@@ -206,25 +206,107 @@ describe("offline retries", () => {
 });
 
 describe("supervisor override", () => {
-  it("lets the office accept a failed inspection with a reason, and records it", async () => {
+  it("lets a licensed maintenance provider accept missing form photos with a reason, and records it", async () => {
     const s = await setup(ctx);
     const failed = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: completeValues() }))).json();
     expect(failed.validationStatus).toBe("invalid");
 
     expect((await s.techApi.post(`/inspections/${failed.id}/override`, { reason: "Camera broke" })).statusCode).toBe(403);
+    // Office staff without an MP license cannot.
     const office = await createUser(ctx.db, s.org.id, "office");
     const officeApi = client(ctx.app, await login(ctx.app, office.email));
-    expect((await officeApi.post(`/inspections/${failed.id}/override`, {})).statusCode).toBe(400);
+    const refused = await officeApi.post(`/inspections/${failed.id}/override`, { reason: "Camera broke" });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().message).toBe("Only the owner or a licensed maintenance provider can accept an inspection anyway");
+    expect((await s.api.post(`/inspections/${failed.id}/override`, {})).statusCode).toBe(400);
 
+    // One with an MP license on file can.
+    await s.api.post("/credentials", { userId: office.id, holderName: "Office Person", kind: "tceq_maintenance_provider", number: "MP0009999", verifiedOn: "2026-02-20", verificationSource: "TCEQ license search" });
     const res = await officeApi.post(`/inspections/${failed.id}/override`, { reason: "Camera broke; photos emailed separately" });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
     expect(res.json()).toMatchObject({ status: "completed", validationStatus: "overridden", overrideBy: office.id });
+    expect(res.json().validationProblems.map((p: { problem: string }) => p.problem)).toEqual(["photos", "photos"]);
     expect((await s.techApi.get("/route")).json().items[0].status).toBe("completed");
     const event = await ctx.db.selectFrom("auditEvents").selectAll().where("action", "=", "inspection.overridden").executeTakeFirstOrThrow();
     expect(event.actorUserId).toBe(office.id);
     expect(event.changes).toMatchObject({ reason: "Camera broke; photos emailed separately" });
 
     expect((await officeApi.post(`/inspections/${failed.id}/override`, { reason: "Again" })).statusCode).toBe(409);
+  });
+
+  it("never accepts an inspection with readings missing, even from the owner", async () => {
+    const s = await setup(ctx);
+    const values: Record<string, unknown> = completeValues();
+    delete values.aerator;
+    delete values.chlorine_level;
+    const p = payload(s);
+    await s.techApi.put("/inspections/sync", p);
+    await uploadRequiredPhotos(s, p.clientId);
+    const failed = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values }))).json();
+    expect(failed.validationStatus).toBe("invalid");
+    const refused = await s.api.post(`/inspections/${failed.id}/override`, { reason: "Tech confirmed by phone the unit was fine" });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().message).toBe("Only missing photos the company's own form asks for can be accepted anyway. Still needed: Aerator is required; Chlorine level is required");
+    // Nothing moved: the visit is still open and nothing was filed.
+    expect((await s.api.get(`/inspections/${failed.id}`)).json()).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect((await s.techApi.get("/route")).json().items[0].status).toBe("in_progress");
+    expect(await ctx.db.selectFrom("filings").select("id").execute()).toEqual([]);
+    // The technician finishes it on the phone instead.
+    const done = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: completeValues() }))).json();
+    expect(done).toMatchObject({ status: "completed", validationStatus: "valid" });
+  });
+});
+
+describe("follow-up issues", () => {
+  const photo = (s: Setup, clientId: string, n: number, key: string) => s.techApi.putImage(`/inspections/${clientId}/photos/00000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`, JPEG, { "x-photo-key": key });
+  const finish = async (s: Setup, o: { clientId: string; jobId: string; firstPhoto: number; values: Record<string, unknown>; issues?: object[] }) => {
+    const p = payload(s, { clientId: o.clientId, jobId: o.jobId });
+    await s.techApi.put("/inspections/sync", p);
+    for (const [i, key] of ["overview", "chlorinator", "aerator_failure"].entries()) await photo(s, o.clientId, o.firstPhoto + i, key);
+    const res = await s.techApi.put("/inspections/sync", payload(s, { clientId: o.clientId, jobId: o.jobId, status: "completed", values: o.values, issues: o.issues ?? [] }));
+    expect(res.json().status, res.body).toBe("completed");
+    return res.json() as { id: string; issues: { type: string; description: string; severity: string }[] };
+  };
+  const issueList = (i: { issues: { type: string; description: string }[] }) => i.issues.map((x) => `${x.type}: ${x.description}`).sort();
+
+  it("opens a repair for each item marked Fail and a pump-out when pumping is needed", async () => {
+    const s = await setup(ctx);
+    const done = await finish(s, { clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d01", jobId: s.job.jobId, firstPhoto: 1, values: { ...completeValues(), aerator: "fail", diffuser: "fail", pumping_needed: true } });
+    expect(issueList(done)).toEqual(["pump_out: The technician marked pumping needed", "repair_needed: Aerator failed at the inspection", "repair_needed: Diffuser failed at the inspection"]);
+    expect(done.issues.every((i) => i.severity === "medium")).toBe(true);
+    // A retry of the completing sync opens nothing more.
+    await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: { ...completeValues(), aerator: "fail", diffuser: "fail", pumping_needed: true } }));
+    expect(await ctx.db.selectFrom("issues").select("id").execute()).toHaveLength(3);
+    // The office sees them, ready to turn into work.
+    const inbox = (await s.api.get("/inbox")).json().items as { kind: string; title: string }[];
+    expect(inbox.filter((i) => i.kind === "issue_open").map((i) => i.title).sort()).toEqual(["Pump-out needed", "Repair needed", "Repair needed"]);
+  });
+
+  it("leaves it to the technician's own issue of that type, and never opens one the site already has open", async () => {
+    const s = await setup(ctx);
+    const first = await finish(s, {
+      clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d01",
+      jobId: s.job.jobId,
+      firstPhoto: 1,
+      values: { ...completeValues(), aerator: "fail", diffuser: "fail", pumping_needed: true },
+      issues: [
+        { clientId: "6a3f1b2c-1d2e-4f3a-8b4c-5d6e7f8a9b01", type: "repair_needed", severity: "high", description: "Aerator hums; diaphragm worn" },
+        { clientId: "6a3f1b2c-1d2e-4f3a-8b4c-5d6e7f8a9b02", type: "pump_out", severity: "high", description: "Sludge near the top" },
+      ],
+    });
+    // The technician described the repair and the pump-out, so the answers open nothing more.
+    expect(issueList(first)).toEqual(["pump_out: Sludge near the top", "repair_needed: Aerator hums; diaphragm worn"]);
+
+    // The next visit: the diffuser still fails (now an issue of its own); the pump-out is open already.
+    const job2 = (await s.api.post("/jobs", { obligationId: s.contract.obligations[1].id, technicianId: s.tech.id, scheduledDate: "2026-03-01" })).json();
+    const second = await finish(s, { clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d02", jobId: job2.jobId, firstPhoto: 11, values: { ...completeValues(), diffuser: "fail", pumping_needed: true } });
+    expect(issueList(second)).toEqual(["repair_needed: Diffuser failed at the inspection"]);
+
+    // And the one after: the diffuser's issue is still open, so only the new failure opens one.
+    const job3 = (await s.api.post("/jobs", { obligationId: s.contract.obligations[2].id, technicianId: s.tech.id, scheduledDate: "2026-03-01" })).json();
+    const third = await finish(s, { clientId: "8b0e7c1e-4a43-4c1f-9d4e-6a2f5b1c0d03", jobId: job3.jobId, firstPhoto: 21, values: { ...completeValues(), diffuser: "fail", pump_tank: "fail", pumping_needed: true } });
+    expect(issueList(third)).toEqual(["repair_needed: Pump tank failed at the inspection"]);
+    expect(await ctx.db.selectFrom("issues").select("id").where("type", "=", "pump_out").execute()).toHaveLength(1);
   });
 });
 

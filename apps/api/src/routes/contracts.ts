@@ -1,6 +1,6 @@
-import { openContractFiling } from "@aerowise/compliance";
+import { openContractFiling, visitDeadline } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
-import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, MoreVisitsRequired, siteVisitTerms, type ContractCycles } from "@aerowise/renewals";
+import { agreementCycles, agreementPreview, type AgreementTerm, coverageItemNames, coverageLines, loadPlanVersion, lockOpenRenewal, MoreVisitsRequired, refuseIfSigned, RenewalError, siteVisitTerms, supersedeRenewal, type ContractCycles } from "@aerowise/renewals";
 import { FORM_COLUMNS, toForm } from "../lib/forms.ts";
 import { cancelOpenVisits } from "@aerowise/tasks";
 import {
@@ -484,6 +484,10 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
           if (!form) throw unprocessable("intakeTemplateId is not one of this company's intake forms");
         }
         const cur = await trx.selectFrom("planVersions").selectAll().where("id", "=", p.currentVersionId).executeTakeFirstOrThrow();
+        // Versions are permanent, so a repeated save (a double click) must not make an identical one.
+        if (b.expectedVersion !== undefined && b.expectedVersion !== cur.version) {
+          throw new HttpError(409, "plan_version_changed", `This plan is on version ${cur.version} now. Open it again to see that version before saving.`);
+        }
         const serviceCycles = await versionCycles(trx, organizationId, cur, b);
         const created = await trx
           .insertInto("planVersions")
@@ -717,7 +721,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       schema: {
         tags: ["contracts"],
         summary: "Create the next term, starting the day after this one ends",
-        description: "The renewed contract is left unchanged as history. Renewal campaigns, e-signature and payment are separate modules.",
+        description:
+          "The renewed contract is left unchanged as history. An open renewal offer nobody has signed is closed in the same step (status `superseded`), so its link no longer offers the term. One the customer has signed is finished from its own page instead: 409 `renewal_in_progress`.",
         params,
         body: renewInput,
         response: { 201: contractDetail },
@@ -743,24 +748,42 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             serviceType: prev.serviceType,
             planVersionId: prev.planVersionId,
           };
-      const contractId = await db.transaction().execute(async (trx) => {
-        const created = await insertContract(trx, organizationId, {
-          siteId: prev.siteId,
-          startOn: addDays(prev.endOn, 1),
-          terms,
-          autoRenew: prev.autoRenew,
-          previousContractId: prev.id,
-          ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
-        }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
-        await audit(trx, req, {
-          action: "contract.renewed",
-          entityType: "contract",
-          entityId: created,
-          changes: { ...req.body, previousContractId: prev.id },
+      const contractId = await db
+        .transaction()
+        .execute(async (trx) => {
+          // There is one way a term gets made at a time. The open renewal offer is locked first,
+          // then the contract (the order signing and activation take them in); a renewal started
+          // in between is seen once the contract is locked, since starting one locks it too.
+          await lockOpenRenewal(trx, organizationId, prev.id);
+          await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("id", "=", prev.id).forUpdate().executeTakeFirstOrThrow();
+          // A second click, or a renewal activated meanwhile, made the term while this waited.
+          const made = await trx.selectFrom("contracts").select("id").where("organizationId", "=", organizationId).where("previousContractId", "=", prev.id).executeTakeFirst();
+          if (made) throw new HttpError(409, "already_renewed", "This contract has already been renewed");
+          const open = await lockOpenRenewal(trx, organizationId, prev.id);
+          if (open) refuseIfSigned(open);
+          const created = await insertContract(trx, organizationId, {
+            siteId: prev.siteId,
+            startOn: addDays(prev.endOn, 1),
+            terms,
+            autoRenew: prev.autoRenew,
+            previousContractId: prev.id,
+            ...(await planContent(trx, organizationId, terms.planVersionId, req.body.optionKeys)),
+          }, { confirmExtraVisits: true, acceptVisits: req.body.acceptVisits });
+          // The emailed offer for this term closes now: no signing, paying or reminders for it.
+          if (open) await supersedeRenewal(trx, organizationId, open, created, { now: now(), actorUserId: req.requireAuth().userId, requestId: req.id });
+          await audit(trx, req, {
+            action: "contract.renewed",
+            entityType: "contract",
+            entityId: created,
+            changes: { ...req.body, previousContractId: prev.id, ...(open ? { supersededRenewalId: open.id } : {}) },
+          });
+          await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
+          return created;
+        })
+        .catch((err) => {
+          if (err instanceof RenewalError) throw new HttpError(409, err.code, err.message);
+          throw err;
         });
-        await openContractFiling(trx, { organizationId, contractId: created, actorUserId: req.requireAuth().userId, at: now() });
-        return created;
-      });
       return reply.status(201).send(await loadContractDetail(organizationId, contractId));
     },
   );
@@ -848,6 +871,8 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
       schema: {
         tags: ["obligations"],
         summary: "Open visits due by a date, overdue first: aerobic inspections unless another kind is asked for",
+        description:
+          "Dated and sorted by `effectiveDueOn`: the visit's due date, or for the site's next inspection visit the authority's next due date from the latest report when that is earlier.",
         querystring: dueQuery,
         response: { 200: z.object({ items: z.array(dueObligation), total: z.number().int(), overdueTotal: z.number().int(), today: z.iso.date() }) },
       },
@@ -871,11 +896,13 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         // One kind at a time (SW-9): the inspection list never shows pumping or maintenance.
         .where("o.serviceType", "=", serviceType)
         .where("o.status", "=", "open");
+      // The date that counts: the authority's when it comes before the contract's.
+      const dueBy = visitDeadline("o");
       if (obligationId) base = base.where("o.id", "=", obligationId);
-      else base = base.where("o.dueOn", "<=", through);
+      else base = base.where(dueBy, "<=", through);
       if (siteId) base = base.where("o.siteId", "=", siteId);
-      if (overdueOnly) base = base.where("o.dueOn", "<", asOf);
-      if (upcomingOnly) base = base.where("o.dueOn", ">=", asOf);
+      if (overdueOnly) base = base.where(dueBy, "<", asOf);
+      if (upcomingOnly) base = base.where(dueBy, ">=", asOf);
       // Not yet booked: no live inspection job, or for pumping and maintenance no work order.
       if (unscheduledOnly) base = base.where("j.id", "is", null).where("wo.id", "is", null);
       const [rows, count] = await Promise.all([
@@ -892,21 +919,23 @@ export const contractRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
             "j.scheduledDate as jobDate",
             "j.technicianUserId as jobTechnicianId",
             "tu.name as jobTechnicianName",
+            dueBy.as("effectiveDueOn"),
           ])
-          .orderBy("o.dueOn")
+          .orderBy(dueBy)
           .orderBy("o.id")
           .limit(limit)
           .offset(offset)
           .execute(),
-        base.select([sql<number>`count(*)::int`.as("total"), sql<number>`count(*) filter (where o.due_on < ${asOf}::date)::int`.as("overdueTotal")]).executeTakeFirstOrThrow(),
+        base.select([sql<number>`count(*)::int`.as("total"), sql<number>`count(*) filter (where ${dueBy} < ${asOf}::date)::int`.as("overdueTotal")]).executeTakeFirstOrThrow(),
       ]);
       return {
         today: asOf,
         overdueTotal: count.overdueTotal,
         total: count.total,
-        items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, ...o }) => ({
+        items: rows.map(({ addressLine1, city, safetyFlags, schedulingNotes, customerId, customerName, jobId, jobDate, jobTechnicianId, jobTechnicianName, effectiveDueOn, ...o }) => ({
           ...obligation.parse(toObligation(o)),
-          overdue: o.dueOn < asOf,
+          effectiveDueOn,
+          overdue: effectiveDueOn < asOf,
           job:
             jobId && jobDate && jobTechnicianId
               ? { id: jobId, scheduledDate: jobDate, technicianId: jobTechnicianId, technicianName: jobTechnicianName ?? "" }

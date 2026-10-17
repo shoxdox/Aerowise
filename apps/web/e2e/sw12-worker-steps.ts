@@ -6,6 +6,8 @@ import { expect, type Page } from "@playwright/test";
 // syncing as the owner would set it up, and single worker steps run on demand (the e2e harness runs
 // no worker): one QuickBooks sync, or one inspection's reports and filing made ready.
 const databaseUrl = process.env.E2E_DATABASE_URL ?? "postgres://aerowise:aerowise@localhost:5432/aerowise_e2e";
+// The same files the e2e API keeps (playwright.config.ts): a report the MP signed through the API is stored there.
+const fileDir = process.env.E2E_FILE_DIR ?? "/tmp/aerowise-e2e-files";
 
 /** Connects the test company and starts syncing unless it already is; true when this call connected it. */
 export async function connectQuickBooks(page: Page): Promise<boolean> {
@@ -25,8 +27,11 @@ export async function connectQuickBooks(page: Page): Promise<boolean> {
   await page.getByRole("link", { name: "Review customer matches" }).click();
   await page.waitForURL("**/quickbooks/review");
   await expect(page.getByText(/compared your customers with the \d+ active customers/)).toBeVisible();
-  page.once("dialog", (d) => void d.accept());
   await page.getByRole("button", { name: "Start syncing" }).click();
+  // With customers still undecided, it asks first, right there.
+  const confirmSync = page.getByRole("group", { name: "Confirm" }).getByRole("button", { name: "Start syncing" });
+  await expect(confirmSync.or(page.getByRole("heading", { name: "Sync health" }))).toBeVisible();
+  if (await confirmSync.isVisible()) await confirmSync.click();
   await page.waitForURL(/\/quickbooks$/);
   await expect(page.getByRole("heading", { name: "Sync health" })).toBeVisible();
   return true;
@@ -49,7 +54,7 @@ export const failFilingSendOnce = (organizationId: string, filingId: string) => 
 function runOnce(...args: string[]) {
   const out = execFileSync("pnpm", ["--filter", "@aerowise/api", "exec", "tsx", "test/sw12-run-once.ts", ...args], {
     cwd: resolve(process.cwd(), "../.."),
-    env: { ...process.env, DATABASE_URL: databaseUrl, DEMO_MODE: "true", DEMO_LIVE_SERVICES: "", FILE_STORAGE_DIR: "/tmp/aerowise-e2e-files" },
+    env: { ...process.env, DATABASE_URL: databaseUrl, DEMO_MODE: "true", DEMO_LIVE_SERVICES: "", FILE_STORAGE_DIR: fileDir },
     encoding: "utf8",
     timeout: 60_000,
   });

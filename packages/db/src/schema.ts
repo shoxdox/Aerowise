@@ -466,6 +466,8 @@ export interface IssuesTable {
   resolvedBy: ColumnType<string | null, string | null | undefined, string | null>;
   resolution: ColumnType<string | null, string | null | undefined, string | null>;
   workOrderId: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The form item an issue opened by the server is about (migration 0067); null when a person raised it. */
+  fieldKey: ColumnType<string | null, string | null | undefined, string | null>;
   createdAt: CreatedAt;
   updatedAt: Timestamp;
 }
@@ -1163,7 +1165,7 @@ export interface QuickbooksTestCompaniesTable {
 
 export type TemplatePurpose = "inspection" | "work" | "intake";
 export type SignedDocumentKind = "renewal_agreement" | "work_completion" | "estimate_acceptance";
-export type RenewalStatus = "upcoming" | "sent" | "viewed" | "signed" | "payment_pending" | "paid" | "activated" | "declined" | "expired" | "needs_review";
+export type RenewalStatus = "upcoming" | "sent" | "viewed" | "signed" | "payment_pending" | "paid" | "activated" | "declined" | "expired" | "needs_review" | "superseded";
 
 export interface RenewalAddonsTable {
   id: Generated<string>;
@@ -1210,6 +1212,8 @@ export interface RenewalsTable {
   declinedAt: Timestamp | null;
   declineReason: string | null;
   expiredAt: Timestamp | null;
+  /** Closed because the office made the next term another way; `newContractId` is that term. */
+  supersededAt: Timestamp | null;
   reviewReason: string | null;
   signedDocumentId: string | null;
   invoiceId: string | null;

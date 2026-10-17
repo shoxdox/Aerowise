@@ -104,6 +104,16 @@ describe("on the way", () => {
     expect((await otherApi.post(`/jobs/${s.job.jobId}/on-the-way`, {})).statusCode).toBe(404);
   });
 
+  it("tells the technician's phone with the route whether these texts go, so it offers the button only then", async () => {
+    const s = await setup(ctx);
+    expect((await s.techApi.get("/route")).json().onTheWayTexts).toBe(false);
+    await s.api.patch("/sms/settings", { enabled: true });
+    expect((await s.techApi.get("/route")).json().onTheWayTexts).toBe(true);
+    // Texting on, but not this kind.
+    expect((await s.api.patch("/sms/settings", { kinds: ["report_ready"] })).statusCode).toBe(200);
+    expect((await s.techApi.get("/route")).json().onTheWayTexts).toBe(false);
+  });
+
   it("says why nothing went: texting off, no mobile number, no consent", async () => {
     const s = await setup(ctx);
     expect((await s.techApi.post(`/jobs/${s.job.jobId}/on-the-way`, {})).json()).toMatchObject({ outcome: "off" });
@@ -266,6 +276,9 @@ describe("failures", () => {
 describe("payment reminders", () => {
   it("texts an overdue invoice 3 and 14 days late, once each", async () => {
     const s = await texting();
+    // Online payment is set up, so the text offers it.
+    expect((await s.api.post("/billing/stripe/connect", {})).statusCode).toBe(200);
+    await s.api.post("/billing/stripe/refresh", {});
     const inv = await issuedInvoice(s);
     const at = (dueOffset: number) => {
       const d = new Date(`${inv.dueOn}T18:00:00Z`);
@@ -283,7 +296,7 @@ describe("payment reminders", () => {
     await sweep();
     await sweep();
     expect(textsTo(MOBILE)).toHaveLength(1);
-    expect(textsTo(MOBILE)[0]!.body).toMatch(new RegExp(`^Org A: invoice ${inv.number} for \\$45\\.00 was due \\w+ \\d+\\. Pay online: https://app\\.example\\.test/pay/[\\w.-]+ Reply STOP to opt out\\.$`));
+    expect(textsTo(MOBILE)[0]!.body).toMatch(new RegExp(`^Org A: invoice INV-${inv.number} for \\$45\\.00 was due \\w+ \\d+\\. Pay online: https://app\\.example\\.test/pay/[\\w.-]+ Reply STOP to opt out\\.$`));
     ctx.now = at(14);
     await sweep();
     expect(textsTo(MOBILE)).toHaveLength(2);
@@ -309,6 +322,8 @@ describe("payment reminders", () => {
     expect(res.json()).toEqual({ outcome: "queued", to: MOBILE });
     await runWorker(ctx);
     expect(textsTo(MOBILE)[0]!.body).toContain("is due");
+    // Without online payment set up, the link is to view the invoice, not to pay online.
+    expect(textsTo(MOBILE)[0]!.body).toContain(". View it: https://app.example.test/pay/");
     expect((await s.api.post(`/invoices/${inv.id}/text-reminder`, {})).statusCode).toBe(409);
 
     await s.api.post(`/invoices/${inv.id}/void`, { reason: "Entered twice" });
@@ -336,5 +351,25 @@ describe("renewal reminders", () => {
     expect(textsTo(MOBILE).map((m) => m.body)).toEqual([
       expect.stringMatching(/^Org A: your septic maintenance plan ends Mar 31\. Renew online in a couple of minutes: https:\/\/app\.example\.test\/renew\/[\w.-]+ Reply STOP to opt out\.$/),
     ]);
+  });
+
+  it("text nothing once the office has renewed the contract another way", async () => {
+    const t = await createTenant(ctx, "Org A");
+    await t.api.patch("/sms/settings", { enabled: true });
+    await t.api.patch(`/contacts/${t.contact.id}`, { phone: MOBILE, email: "pat@orga.test", consentSms: true });
+    const plan = (await t.api.post("/plans", { name: "Standard", termMonths: 12, visitsPerTerm: 2, priceCents: 30000 })).json();
+    const contract = (await t.api.post(`/sites/${t.site.id}/contracts`, { planId: plan.id, startOn: "2025-04-01" })).json();
+    await t.api.patch("/renewals/settings", { autoSend: true });
+    await t.api.post("/renewals/campaign", {});
+    await runWorker(ctx);
+    // The reminder is queued, then the customer renews by phone before it goes out.
+    ctx.now = new Date("2026-03-05T18:00:00Z");
+    expect((await t.api.post("/renewals/campaign", {})).json().reminded).toBe(1);
+    expect((await t.api.post(`/contracts/${contract.id}/renew`, {})).statusCode).toBe(201);
+    await runWorker(ctx);
+    expect(textsTo(MOBILE)).toHaveLength(0);
+    // And the campaign queues no more.
+    ctx.now = new Date("2026-03-25T18:00:00Z");
+    expect((await t.api.post("/renewals/campaign", {})).json().reminded).toBe(0);
   });
 });

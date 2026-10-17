@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLoad } from "@/components/useLoad";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { SubmitButton } from "@/components/SubmitButton";
+import { useSubmit } from "@/components/useSubmit";
 import { api, ApiError } from "@/lib/api";
 import { when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
@@ -39,7 +44,7 @@ function ReviewRow({ row, editable, onChange }: { row: QuickBooksReviewRow; edit
         <div className="muted small">{[row.customer.email, row.customer.phone].filter(Boolean).join(" · ") || "No email or phone"}</div>
       </td>
       <td>
-        <span className={`badge ${row.found === "review" && !row.decision ? "warn" : row.found === "exact" ? "ok" : ""}`}>{FOUND_LABELS[row.found]}</span>
+        <Badge tone={row.found === "review" && !row.decision ? "warning" : row.found === "exact" ? "success" : "neutral"}>{FOUND_LABELS[row.found]}</Badge>
       </td>
       <td>
         <fieldset className="plain stack" disabled={!editable}>
@@ -77,21 +82,24 @@ export default function QuickBooksReviewPage() {
   const router = useRouter();
   const status = useLoad<QuickBooksStatus>("/quickbooks");
   const review = useLoad<QuickBooksReview>("/quickbooks/review");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "undecided">("all");
-
-  async function refresh() {
-    setBusy(true);
-    setMessage(null);
-    try {
+  const reading = useSubmit(
+    async () => {
       await api("/quickbooks/review/refresh", { method: "POST", body: {} });
       await review.reload();
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not read QuickBooks");
-    }
-    setBusy(false);
-  }
+    },
+    { fallback: "Could not read QuickBooks." },
+  );
+  const committing = useSubmit(
+    async () => {
+      await api("/quickbooks/review/commit", { method: "POST", body: {} });
+      router.push("/quickbooks");
+    },
+    { fallback: "Could not start syncing.", leaves: true },
+  );
+  const refresh = () => reading.run();
+  const busy = reading.busy || committing.busy;
+  const message = reading.error ?? committing.error;
 
   // The first visit reads QuickBooks straight away.
   const neverFetched = review.data && !review.data.fetchedAt;
@@ -109,22 +117,9 @@ export default function QuickBooksReviewPage() {
       </div>
     );
   }
-  const err = status.error ?? review.error;
-  if (err) return <p className="error">{err}</p>;
-  if (!review.data) return <p className="muted">Loading…</p>;
+  if (status.error) return <LoadState load={status} label="QuickBooks" />;
+  if (!review.data) return <LoadState load={review} label="customer matches" />;
   const r = review.data;
-
-  async function commit() {
-    if (r.counts.undecided > 0 && !window.confirm(`${r.counts.undecided} customers have no choice yet. They will wait on the QuickBooks page and not sync until you decide. Continue?`)) return;
-    setBusy(true);
-    try {
-      await api("/quickbooks/review/commit", { method: "POST", body: {} });
-      router.push("/quickbooks");
-    } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : "Could not start syncing");
-      setBusy(false);
-    }
-  }
 
   const rows = filter === "undecided" ? r.rows.filter((x) => !x.decision) : r.rows;
   return (
@@ -158,12 +153,26 @@ export default function QuickBooksReviewPage() {
       </div>
       {editable && (
         <div className="row">
-          <button disabled={busy} onClick={() => void commit()}>
-            Start syncing
-          </button>
-          <button className="secondary" disabled={busy} onClick={() => void refresh()}>
+          {r.counts.undecided > 0 ? (
+            <ConfirmButton
+              className=""
+              danger={false}
+              question={`${r.counts.undecided} customers have no choice yet. They wait on the QuickBooks page and do not sync until you decide.`}
+              confirmLabel="Start syncing"
+              busy={committing.busy}
+              disabled={busy}
+              onConfirm={() => committing.run()}
+            >
+              Start syncing
+            </ConfirmButton>
+          ) : (
+            <SubmitButton type="button" busy={committing.busy} disabled={busy} onClick={() => void committing.run()}>
+              Start syncing
+            </SubmitButton>
+          )}
+          <SubmitButton type="button" className="secondary" busy={reading.busy} busyLabel="Reading QuickBooks…" disabled={busy} onClick={() => void refresh()}>
             Read QuickBooks again
-          </button>
+          </SubmitButton>
           {message && <span className="error">{message}</span>}
         </div>
       )}

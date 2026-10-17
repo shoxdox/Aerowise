@@ -45,7 +45,7 @@ export function authorityRequirements(rules: RulesetRules): RequirementLine[] {
   } else if (sub.method === "csv_export" && rules.export) {
     channel = `By CSV upload${sub.portalUrl ? " on the authority's portal" : ""}, in its own column layout (${rules.export.formReference}). Aerowise makes the file; the office uploads it and records the submission.`;
   } else if (sub.method === "email" && sub.email) {
-    channel = `By email to ${sub.email.to}. ${auto ? "Sent automatically once the report is ready." : "The office releases each one."}`;
+    channel = `By email to ${sub.email.to}. ${auto ? "Sent automatically once the maintenance provider signs the report." : "The office releases each one."}`;
   } else {
     channel = `By hand${sub.portalUrl ? " on the authority's portal" : " (portal, mail or counter)"}. Aerowise prepares the package and the office records the submission.`;
   }

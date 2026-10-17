@@ -4,7 +4,7 @@ import type { ObjectStore } from "@aerowise/storage";
 import { drainTasks, GENERATE_REPORTS, generateReports } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
-import { client, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
+import { client, setupTestApp, type TestContext } from "./helpers.ts";
 import { completeValues, payload, photoUrl, setup, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
@@ -126,12 +126,10 @@ describe("inspection reports", () => {
     expect((await s.api.get(`/inspections/${insp.id}/reports`)).json().items).toHaveLength(2);
   });
 
-  it("makes reports for an inspection the office accepted, noting why", async () => {
+  it("makes reports for an inspection the owner accepted, noting why", async () => {
     const s = await setup(ctx);
     const failed = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", values: completeValues() }))).json();
-    const office = await createUser(ctx.db, s.org.id, "office");
-    const officeApi = client(ctx.app, await login(ctx.app, office.email));
-    await officeApi.post(`/inspections/${failed.id}/override`, { reason: "Camera broke" });
+    expect((await s.api.post(`/inspections/${failed.id}/override`, { reason: "Camera broke" })).statusCode).toBe(200);
     await runWorker(ctx);
     const { authority } = await snapshots(ctx, failed.id);
     expect(authority!.inspection).toMatchObject({ validationStatus: "overridden", overrideReason: "Camera broke" });

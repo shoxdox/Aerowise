@@ -167,6 +167,16 @@ export function validateInspection(
   return problems;
 }
 
+/**
+ * What stops the owner or a maintenance provider accepting a failed inspection anyway: every
+ * missing or out-of-range reading, and any photo the site's authority requires. Only photos
+ * the company's own form asks for can be waived; the authority report needs the rest.
+ */
+export function overrideBlockers(problems: ValidationProblem[], authorityPhotos: readonly { key: string }[] = []): ValidationProblem[] {
+  const required = new Set(authorityPhotos.map((p) => p.key));
+  return problems.filter((p) => p.problem !== "photos" || required.has(p.key));
+}
+
 /** Keys from `values` that the template does not define (rejected on sync). */
 export function unknownKeys(def: TemplateDefinition, values: InspectionValues): string[] {
   const known = new Set(def.fields.map((f) => f.key));
@@ -319,6 +329,7 @@ export const DEFAULT_TEMPLATE: { key: string; version: number; name: string; def
 };
 
 export const ISSUE_TYPES = ["repair_needed", "pump_out", "part_replacement", "callback", "estimate_required", "noncompliance"] as const;
+export type IssueType = (typeof ISSUE_TYPES)[number];
 export const ISSUE_SEVERITIES = ["low", "medium", "high"] as const;
 
 export const ISSUE_LABELS: Record<(typeof ISSUE_TYPES)[number], string> = {

@@ -1,54 +1,51 @@
 "use client";
 
-import { canInviteRole, ROLES, type InvitationSent, type Role, type UsersOverview } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
+import { canInviteRole, ROLE_LABELS, ROLES, type InvitationSent, type UsersOverview } from "@aerowise/domain";
+import { useState } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { dayOf } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
-
-const ROLE_LABELS: Record<Role, string> = { owner: "Owner", office: "Office", technician: "Technician", read_only: "Read-only" };
-
-const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "America/Chicago" });
 
 export default function UsersPage() {
   const me = useSession();
-  const { data, reload } = useLoad<UsersOverview>("/users");
+  const users = useLoad<UsersOverview>("/users");
+  const { data, reload } = users;
   const [inviting, setInviting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<InvitationSent | null>(null);
   // Nothing here changes while the plan is read-only or support is looking.
   const editable = canEdit(me);
   const owner = editable && me.role === "owner";
   const roles = editable ? ROLES.filter((r) => canInviteRole(me.role, r)) : [];
 
-  async function onInvite(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const invite = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       setSent(await api<InvitationSent>("/invitations", { method: "POST", body: { email: v.email, name: v.name, role: v.role } }));
       setInviting(false);
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not send the invitation");
-    }
-  }
-
-  async function resend(id: string) {
-    setSent(await api<InvitationSent>(`/invitations/${id}/resend`, { method: "POST", body: {} }));
-    await reload();
-  }
-
-  async function setActive(userId: string, active: boolean) {
-    await api(`/users/${userId}/${active ? "reactivate" : "deactivate"}`, { method: "POST", body: {} });
-    await reload();
-  }
-
-  async function revoke(id: string) {
-    await api(`/invitations/${id}/revoke`, { method: "POST", body: {} });
-    setSent(null);
-    await reload();
-  }
+    },
+    { fallback: "Could not send the invitation." },
+  );
+  // Resending, cancelling an invitation and (de)activating someone each say when they fail.
+  const change = useSubmit(
+    async (action: () => Promise<unknown>) => {
+      await action();
+      await reload();
+    },
+    { fallback: "Could not save the change." },
+  );
+  const resend = (id: string) => change.run(async () => setSent(await api<InvitationSent>(`/invitations/${id}/resend`, { method: "POST", body: {} })));
+  const setActive = (userId: string, active: boolean) => change.run(() => api(`/users/${userId}/${active ? "reactivate" : "deactivate"}`, { method: "POST", body: {} }));
+  const revoke = (id: string) =>
+    change.run(async () => {
+      await api(`/invitations/${id}/revoke`, { method: "POST", body: {} });
+      setSent(null);
+    });
 
   return (
     <div className="stack">
@@ -66,14 +63,14 @@ export default function UsersPage() {
               : sent.delivery === "outbox"
                 ? `Invitation for ${sent.invitation.email} recorded in the test outbox; no email was delivered.`
                 : `Invitation emailed to ${sent.invitation.email}.`} You can also share this
-            link with them. It works once and expires on {day(sent.invitation.expiresAt)}.
+            link with them. It works once and expires on {dayOf(sent.invitation.expiresAt)}.
           </p>
           <input readOnly value={sent.url} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} />
         </div>
       )}
 
       {inviting && (
-        <form className="card grid" onSubmit={onInvite}>
+        <form className="card grid" onSubmit={invite.form}>
           <label>
             Email
             <input name="email" type="email" required />
@@ -92,56 +89,67 @@ export default function UsersPage() {
               ))}
             </select>
           </label>
-          {error && <p className="error wide">{error}</p>}
+          <FormError error={invite.error} className="wide" />
           <div className="wide">
-            <button type="submit">Send invitation</button>
+            <SubmitButton busy={invite.busy} busyLabel="Sending…">
+              Send invitation
+            </SubmitButton>
           </div>
         </form>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Status</th>
-            {owner && <th />}
-          </tr>
-        </thead>
-        <tbody>
-          {data?.members.map((m) => (
-            <tr key={m.userId}>
-              <td>{m.name}</td>
-              <td>{m.email}</td>
-              <td>{ROLE_LABELS[m.role]}</td>
-              <td>
-                <span className={`badge ${m.active ? "active" : "inactive"}`}>{m.active ? "active" : "deactivated"}</span>
-              </td>
-              {owner && (
-                <td>
-                  {m.userId !== me.user.id && (
-                    <button
-                      className="link"
-                      onClick={() => {
-                        if (m.active && !window.confirm(`Deactivate ${m.name}? They are signed out at once and cannot sign in to ${me.organization.name}.`)) return;
-                        void setActive(m.userId, !m.active);
-                      }}
-                    >
-                      {m.active ? "Deactivate" : "Reactivate"}
-                    </button>
-                  )}
-                </td>
-              )}
+      <LoadState load={users} label="users" quiet />
+      <FormError error={change.error} />
+      {data && (
+        <table className="stack">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              {owner && <th />}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.members.map((m) => (
+              <tr key={m.userId}>
+                <td data-label="Name">{m.name}</td>
+                <td data-label="Email">{m.email}</td>
+                <td data-label="Role">{ROLE_LABELS[m.role]}</td>
+                <td data-label="Status">
+                  <StatusBadge of="membership" value={m.active ? "active" : "deactivated"} />
+                </td>
+                {owner && (
+                  <td className={m.userId !== me.user.id ? "actions" : undefined}>
+                    {m.userId !== me.user.id &&
+                      (m.active ? (
+                        <ConfirmButton
+                          className="link danger"
+                          question={`Deactivate ${m.name}? They are signed out at once and cannot sign in to ${me.organization.name}.`}
+                          confirmLabel="Deactivate"
+                          busy={change.busy}
+                          onConfirm={() => setActive(m.userId, false)}
+                        >
+                          Deactivate
+                        </ConfirmButton>
+                      ) : (
+                        <SubmitButton type="button" className="link" busy={change.busy} onClick={() => void setActive(m.userId, true)}>
+                          Reactivate
+                        </SubmitButton>
+                      ))}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {data && data.invitations.length > 0 && (
         <>
           <h2>Invitations</h2>
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Email</th>
@@ -154,26 +162,26 @@ export default function UsersPage() {
             <tbody>
               {data.invitations.map((i) => (
                 <tr key={i.id}>
-                  <td>
+                  <td data-label="Email">
                     {i.email}
                     {i.name && <span className="muted"> · {i.name}</span>}
                   </td>
-                  <td>{ROLE_LABELS[i.role]}</td>
-                  <td>
-                    {day(i.sentAt)} <span className="muted">by {i.invitedBy}</span>
+                  <td data-label="Role">{ROLE_LABELS[i.role]}</td>
+                  <td data-label="Sent">
+                    {dayOf(i.sentAt)} <span className="muted">by {i.invitedBy}</span>
                   </td>
-                  <td>
-                    <span className={`badge ${i.status === "expired" ? "expired" : "upcoming"}`}>{i.status}</span>
+                  <td data-label="Status">
+                    <StatusBadge of="invitation" value={i.status} />
                   </td>
-                  <td>
+                  <td className={editable && canInviteRole(me.role, i.role) ? "actions" : undefined}>
                     {editable && canInviteRole(me.role, i.role) && (
                       <span className="row">
-                        <button className="link" onClick={() => resend(i.id)}>
+                        <SubmitButton type="button" className="link" busy={change.busy} busyLabel="Sending…" onClick={() => void resend(i.id)}>
                           Send again
-                        </button>
-                        <button className="link" onClick={() => revoke(i.id)}>
+                        </SubmitButton>
+                        <ConfirmButton className="link danger" question="Cancel this invitation? Its link stops working." confirmLabel="Cancel invitation" busy={change.busy} onConfirm={() => revoke(i.id)}>
                           Cancel
-                        </button>
+                        </ConfirmButton>
                       </span>
                     )}
                   </td>

@@ -1,43 +1,48 @@
 "use client";
 
-import { isSignable, type Plan, type RenewalDetail } from "@aerowise/domain";
+import { BILLING_FREQUENCY_LABELS, isSignable, type Plan, type RenewalDetail } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { RenewalBadge } from "@/components/RenewalBadge";
 import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, money, when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { dateRange, day, invoiceLabel, money, plural, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
-
-const FREQUENCY: Record<RenewalDetail["terms"]["billingFrequency"], string> = { annual: "yearly", semiannual: "twice a year", quarterly: "quarterly", monthly: "monthly" };
+import { usePageTitle } from "@/lib/title";
 
 export default function RenewalPage() {
   const { id } = useParams<{ id: string }>();
   const editable = canEdit(useSession());
   const recordLoad = useLoad<RenewalDetail>(`/renewals/${id}`);
-  const { data: r, error, reload } = recordLoad;
+  const { data: r, reload } = recordLoad;
   const plans = useLoad<{ items: Plan[] }>(editable ? "/plans" : null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  // Declining asks its optional reason right here, not in a browser pop-up.
+  const [declining, setDeclining] = useState(false);
+  usePageTitle(r ? `Renewal · ${r.customer.displayName}` : null);
 
-  async function run(action: () => Promise<unknown>, done?: string) {
-    setActionError(null);
-    setNotice(null);
-    try {
+  const acting = useSubmit(
+    async (action: () => Promise<unknown>, done?: string) => {
+      setNotice(null);
       await action();
       setEditing(false);
+      setDeclining(false);
       if (done) setNotice(done);
       await reload();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const run = (action: () => Promise<unknown>, done?: string) => acting.run(action, done);
+  const actionError = acting.error;
 
-  if (error && !r) return <LoadState load={recordLoad} label="record" />;
-  if (!r) return <LoadState load={recordLoad} label="record" />;
+  if (!r) return <LoadState load={recordLoad} label="renewal" back={{ href: "/renewals", label: "Renewals" }} />;
 
   const signable = isSignable(r.status);
   const canActivate =
@@ -51,17 +56,15 @@ export default function RenewalPage() {
     void run(() => api(`/renewals/${id}`, { method: "PATCH", body: { planId, priceCents } }), "Offer updated. A customer with the page open is asked to review it again.");
   }
 
-  function decline() {
-    const reason = window.prompt("Why is the customer not renewing? (optional)");
-    if (reason !== null) void run(() => api(`/renewals/${id}/decline`, { method: "POST", body: { reason: reason || null } }));
+  function decline(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const { reason } = formValues(event.currentTarget);
+    void run(() => api(`/renewals/${id}/decline`, { method: "POST", body: { reason: reason ?? null } }));
   }
 
-  function activate() {
-    const message = r!.signedDocument
-      ? "Start the next term now, without waiting for payment?"
-      : "This contract auto-renews. Start the next term without a new signature? Its first installment is billed as usual.";
-    if (window.confirm(message)) void run(() => api(`/renewals/${id}/activate`, { method: "POST", body: {} }));
-  }
+  const activateQuestion = r.signedDocument
+    ? "Start the next term now, without waiting for payment?"
+    : "This contract auto-renews. Start the next term without a new signature? Its first installment is billed as usual.";
 
   async function copyLink() {
     await navigator.clipboard?.writeText(r!.link).catch(() => undefined);
@@ -70,18 +73,18 @@ export default function RenewalPage() {
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="renewal" back={{ href: "/renewals", label: "Renewals" }} />
       <div className="row">
-        <Link href="/renewals">Renewals</Link>
+        <Link href="/renewals">← Renewals</Link>
       </div>
       <div className="row">
         <h1>{r.customer.displayName}</h1>
         <RenewalBadge status={r.status} />
         <span className="spacer" />
         {editable && signable && (
-          <button onClick={() => void run(() => api(`/renewals/${id}/send`, { method: "POST", body: {} }), "Renewal emailed.")} disabled={!r.email}>
+          <SubmitButton type="button" busy={acting.busy} busyLabel="Sending…" onClick={() => void run(() => api(`/renewals/${id}/send`, { method: "POST", body: {} }), "Renewal emailed.")} disabled={!r.email}>
             {r.sendCount > 0 ? "Email again" : "Email link"}
-          </button>
+          </SubmitButton>
         )}
         {signable && (
           <button className="secondary" onClick={() => void copyLink()}>
@@ -89,18 +92,32 @@ export default function RenewalPage() {
           </button>
         )}
         {canActivate && (
-          <button className="secondary" onClick={activate}>
+          <ConfirmButton className="secondary" danger={false} question={activateQuestion} busy={acting.busy} onConfirm={() => run(() => api(`/renewals/${id}/activate`, { method: "POST", body: {} }))}>
             {r.signedDocument ? "Activate now" : "Auto-renew now"}
-          </button>
+          </ConfirmButton>
         )}
-        {editable && (signable || r.status === "needs_review") && (
-          <button className="link" onClick={decline}>
+        {editable && (signable || r.status === "needs_review") && !declining && (
+          <button className="link danger" onClick={() => setDeclining(true)}>
             Mark declined
           </button>
         )}
       </div>
+      {declining && (
+        <form className="card row" onSubmit={decline}>
+          <label>
+            Why is the customer not renewing? <span className="muted small">(optional)</span>
+            <input name="reason" maxLength={2000} autoFocus />
+          </label>
+          <SubmitButton className="danger" busy={acting.busy}>
+            Mark declined
+          </SubmitButton>
+          <button type="button" className="link" onClick={() => setDeclining(false)}>
+            Keep the offer open
+          </button>
+        </form>
+      )}
       {notice && <p>{notice}</p>}
-      {actionError && <p className="error">{actionError}</p>}
+      <FormError error={actionError} />
       {r.reviewReason && <p className="error">Needs review: {r.reviewReason}</p>}
       {signable && !r.email && <p className="muted">The customer has no email on file. Copy the link and send it another way, or add an email to a contact.</p>}
 
@@ -125,7 +142,7 @@ export default function RenewalPage() {
                     .filter((p) => p.active || p.id === r.terms.planId)
                     .map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}: {p.termMonths} months, {money(p.priceCents)}
+                        {p.name}: {plural(p.termMonths, "month")}, {money(p.priceCents)}
                       </option>
                     ))}
                 </select>
@@ -134,7 +151,9 @@ export default function RenewalPage() {
                 Price for the term ($)
                 <input name="price" type="number" min={0} step="0.01" placeholder={(r.terms.priceCents / 100).toFixed(2)} />
               </label>
-              <button type="submit">Save offer</button>
+              <div>
+                <SubmitButton busy={acting.busy}>Save offer</SubmitButton>
+              </div>
             </form>
           ) : (
             <dl className="details">
@@ -142,14 +161,14 @@ export default function RenewalPage() {
               <dd>{r.terms.planName}</dd>
               <dt>Term</dt>
               <dd>
-                {day(r.terms.startOn)} to {day(r.terms.endOn)}
+                {dateRange(r.terms.startOn, r.terms.endOn)}
               </dd>
               <dt>Visits</dt>
               {/* A pumping or maintenance only offer (SW-9) has no single count: its cycles are on the plan version. */}
               <dd>{r.terms.serviceType === "aerobic_inspection" ? r.terms.visitsPerTerm : `${r.terms.serviceType === "pumping" ? "Pumping" : "Maintenance"} visits, as the plan version lists them`}</dd>
               <dt>Price</dt>
               <dd>
-                {money(r.terms.priceCents)}, billed {FREQUENCY[r.terms.billingFrequency]}
+                {money(r.terms.priceCents)}, billed {BILLING_FREQUENCY_LABELS[r.terms.billingFrequency]}
               </dd>
               <dt>Renews</dt>
               <dd>
@@ -226,8 +245,8 @@ export default function RenewalPage() {
           </ul>
           {r.invoice && (
             <p>
-              Invoice: <Link href={`/invoices/${r.invoice.id}`}>{r.invoice.number ? `INV-${r.invoice.number}` : "draft"}</Link> · {money(r.invoice.totalCents)} ·{" "}
-              {r.invoice.paymentStatus}
+              Invoice: <Link href={`/invoices/${r.invoice.id}`}>{invoiceLabel(r.invoice.number)}</Link> · {money(r.invoice.totalCents)}{" "}
+              <StatusBadge of="payment" value={r.invoice.paymentStatus} />
             </p>
           )}
           {r.newContractId && (

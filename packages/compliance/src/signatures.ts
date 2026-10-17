@@ -16,11 +16,23 @@ const sameName = (a: string, b: string) => a.trim().replace(/\s+/g, " ").toLower
 
 /**
  * 30 TAC 285.7(b)(3): the maintenance provider signs every maintenance report. It is a
- * statewide rule, so it holds for every real Texas authority profile. Only the fictional
- * demo rulesets (no profile, never loaded in production) go without it.
+ * statewide rule, so it holds for every Texas authority, the fictional demo county included:
+ * the demo shows the same sign-then-send a real provider works with.
  */
 export function providerSignatureRequired(rules: RulesetRules) {
-  return Boolean(rules.profile);
+  return rules.jurisdiction.state === "TX";
+}
+
+/** Whether this person has an active TCEQ maintenance provider license on file with the organization. */
+export async function holdsProviderLicense(db: Executor, organizationId: string, userId: string, onDate: string) {
+  const mine = await db
+    .selectFrom("providerCredentials")
+    .select(["active", "expiresOn", "number"])
+    .where("organizationId", "=", organizationId)
+    .where("userId", "=", userId)
+    .where("kind", "=", "tceq_maintenance_provider")
+    .execute();
+  return mine.some((c) => credentialProblems(c, onDate).length === 0);
 }
 
 /** The signature on one report version, if it has been signed. */
@@ -157,8 +169,8 @@ export async function signingPreview(db: Executor, args: { organizationId: strin
 
 /**
  * Whether this inspection's reports must carry the maintenance provider's signature before
- * they go to anyone. 30 TAC 285.7(b)(3) is statewide, so the answer is yes unless the
- * inspection's recorded ruleset is a fictional demo one (no profile).
+ * they go to anyone. 30 TAC 285.7(b)(3) is statewide, so the answer is yes for any Texas
+ * authority, and yes while no authority is recorded yet.
  */
 export async function signatureRequiredForInspection(db: Executor, organizationId: string, inspectionId: string) {
   const row = await db

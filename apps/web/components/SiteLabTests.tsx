@@ -1,16 +1,19 @@
 "use client";
 
 import { LAB_ANALYTE_LABELS, type LabTest, type LabTestStatus } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { LoadState } from "@/components/LoadState";
+import { Badge, toneClass } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { day } from "@/lib/format";
 
 const STATE_BADGE: Record<LabTestStatus["state"], [string, string]> = {
-  ok: ["badge", "Up to date"],
-  due_soon: ["badge warn", "Due soon"],
-  late: ["badge danger", "Overdue"],
+  ok: [toneClass("neutral"), "Up to date"],
+  due_soon: [toneClass("warning"), "Due soon"],
+  late: [toneClass("danger"), "Overdue"],
 };
 
 /**
@@ -23,18 +26,9 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
   const recordLoad = useLoad<{ requirement: LabTestStatus | null; items: LabTest[] }>(`/sites/${siteId}/lab-tests`);
   const { data, reload } = recordLoad;
   const [form, setForm] = useState<{ replaces: LabTest | null } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  if (!data) return <LoadState load={recordLoad} label="lab tests" />;
-  if (!data.requirement && data.items.length === 0) return null;
-  const req = data.requirement;
-  const analytes = req?.analytes ?? (["bod", "tss"] as const);
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
-    setError(null);
-    try {
+  const saving = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      const measured = data?.requirement?.analytes ?? (["bod", "tss"] as const);
       await api(`/sites/${siteId}/lab-tests`, {
         method: "POST",
         body: {
@@ -42,16 +36,20 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
           labName: v.labName,
           labReference: v.labReference ?? null,
           notes: v.notes ?? null,
-          results: analytes.filter((a) => v[a] !== undefined).map((a) => ({ analyte: a, value: Number(v[a]) })),
+          results: measured.filter((a) => v[a] !== undefined).map((a) => ({ analyte: a, value: Number(v[a]) })),
           ...(form?.replaces ? { replacesId: form.replaces.id } : {}),
         },
       });
       setForm(null);
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save the results." },
+  );
+
+  if (!data) return <LoadState load={recordLoad} label="lab tests" />;
+  if (!data.requirement && data.items.length === 0) return null;
+  const req = data.requirement;
+  const analytes = req?.analytes ?? (["bod", "tss"] as const);
 
   return (
     <section className="stack">
@@ -80,7 +78,7 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
         </p>
       )}
       {form && (
-        <form className="card grid" onSubmit={save}>
+        <form className="card grid" onSubmit={saving.form}>
           {form.replaces && <p className="wide small">Correcting the sample of {day(form.replaces.sampledOn)}. The original stays on record, marked as replaced.</p>}
           <label>
             Sampled on
@@ -104,9 +102,9 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
             Notes
             <textarea name="notes" rows={2} />
           </label>
-          {error && <p className="error wide">{error}</p>}
+          <FormError error={saving.error} className="wide" />
           <div className="wide row">
-            <button type="submit">{form.replaces ? "Save correction" : "Save results"}</button>
+            <SubmitButton busy={saving.busy}>{form.replaces ? "Save correction" : "Save results"}</SubmitButton>
             <button type="button" className="link" onClick={() => setForm(null)}>
               Cancel
             </button>
@@ -118,8 +116,8 @@ export function SiteLabTests({ siteId, editable }: { siteId: string; editable: b
         <div key={t.id} className="card tight">
           <div className="row">
             <strong>Sampled {day(t.sampledOn)}</strong>
-            {t.replacedById && <span className="badge inactive">Replaced by a correction</span>}
-            {t.replacesId && <span className="badge">Correction</span>}
+            {t.replacedById && <Badge tone="muted">Replaced by a correction</Badge>}
+            {t.replacesId && <Badge>Correction</Badge>}
             <span className="spacer" />
             {editable && !t.replacedById && !form && (
               <button className="link" onClick={() => setForm({ replaces: t })}>

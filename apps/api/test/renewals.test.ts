@@ -1,10 +1,11 @@
 import type { EmailMessage, EmailResult, EmailTransport } from "@aerowise/compliance";
 import { agreementContent } from "@aerowise/domain";
-import { canonicalJson, sha256Hex } from "@aerowise/renewals";
-import { drainTasks, linkToken } from "@aerowise/tasks";
+import { canonicalJson, insertContract, sha256Hex } from "@aerowise/renewals";
+import { drainTasks, linkToken, queueRenewalEmail } from "@aerowise/tasks";
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, setupTestApp, type TestContext } from "./helpers.ts";
+import { pdfText } from "./pdf-text.ts";
 
 const ctx = setupTestApp();
 
@@ -245,6 +246,13 @@ describe("the homeowner's link", () => {
     expect((await anon().post(`/renew/${r.token}/sign`, signBody(1))).json().status).toBe("activated");
     const d = (await t.api.get(`/renewals/${r.id}`)).json();
     expect(d.invoice).toMatchObject({ totalCents: 2500, paymentStatus: "unpaid" });
+    // The customer is told to pay from the invoice email, so it is emailed to the address they confirmed.
+    const view = (await anon().get(`/renew/${r.token}`)).json();
+    expect(view).toMatchObject({ status: "activated", pay: { amountDueCents: 2500, canPayOnline: true, dueOn: "2026-03-31" }, contact: { email: "new-email@example.test" } });
+    const invoice = (await t.api.get(`/invoices/${d.invoice.id}`)).json();
+    expect(invoice.events.map((e: { summary: string }) => e.summary)).toContain("Issued as INV-1001; emailing to new-email@example.test");
+    await runWorker(ctx);
+    expect(mail.delivered.get(`invoice-${d.invoice.id}-send-1`)?.to).toBe("new-email@example.test");
     // The next bill for the new contract is month two.
     const second = (await t.api.post(`/contracts/${d.newContractId}/invoice`, {})).json();
     expect(second.lines[0]).toMatchObject({ installment: 2, unitPriceCents: 2500 });
@@ -270,6 +278,52 @@ describe("the homeowner's link", () => {
     expect(customer.contacts).toEqual([expect.objectContaining({ name: "Pat Homeowner", email: "new-email@example.test", phone: "512-555-0100", type: "primary" })]);
   });
 
+  it("shows the homeowner the same term rows and agreement text the signed PDF prints, including that it renews automatically", async () => {
+    const t = await renewalTenant(ctx, "Org A", { autoRenew: true });
+    const r = await startRenewal(t);
+    const view = (await anon().get(`/renew/${r.token}`)).json();
+    expect(view.termRows).toEqual([
+      { key: "plan", label: "Plan", value: "Standard" },
+      { key: "term", label: "Term", value: "April 1, 2026 to March 31, 2027 (12 months)" },
+      { key: "visits", label: "Visits", value: "2 maintenance visits" },
+      { key: "price", label: "Price", value: "$300.00 for the term, billed yearly" },
+      // Present tense: the term being renewed has not ended yet.
+      { key: "follows", label: "Follows", value: "The term ending March 31, 2026" },
+      { key: "renews", label: "Renews", value: "Automatically, unless either party gives written notice before this term ends." },
+    ]);
+    expect(view.agreementText).toContain("5. Term. This agreement covers the dates shown above and renews automatically unless either party gives written notice before it ends.");
+    expect(view.pitch).toBe("Renewing keeps your aerobic system inspected on schedule, with each report filed where your county requires it.");
+
+    await anon().post(`/renew/${r.token}/sign`, signBody(1));
+    await runWorker(ctx);
+    const pdf = pdfText((await anon().get(`/renew/${r.token}/agreement.pdf`)).rawPayload).replace(/\s+/g, "");
+    for (const row of view.termRows) expect(pdf).toContain(`${row.label}${row.value}`.replace(/\s+/g, ""));
+    expect(pdf).toContain(view.agreementText.replace(/\s+/g, ""));
+    expect(pdf).not.toContain("thatended");
+    // Once signed, the page reads its rows from the signed copy: the same ones.
+    expect((await anon().get(`/renew/${r.token}`)).json().termRows).toEqual(view.termRows);
+
+    // Without auto-renew there is no such row, and clause 5 is the plain one.
+    const plain = await renewalTenant(ctx, "Org B");
+    const p = (await anon().get(`/renew/${(await startRenewal(plain)).token}`)).json();
+    expect(p.termRows.map((row: { key: string }) => row.key)).toEqual(["plan", "term", "visits", "price", "follows"]);
+    expect(p.agreementText).toContain("5. Term. This agreement covers the dates shown above. Either party may end it");
+  });
+
+  it("emails the renewal with replies going to the provider, and promises no inspections on a pumping plan", async () => {
+    const t = await renewalTenant(ctx);
+    await ctx.db.updateTable("organizations").set({ email: "office@orga.test" }).where("id", "=", t.org.id).execute();
+    const r = await startRenewal(t);
+    await ctx.db.updateTable("renewals").set({ serviceType: "pumping" }).where("id", "=", r.id).execute();
+    expect((await t.api.post(`/renewals/${r.id}/send`, {})).statusCode).toBe(200);
+    await runWorker(ctx);
+    const email = mail.delivered.get(`renewal-${r.id}-send-1`)!;
+    expect(email.replyTo).toBe("office@orga.test");
+    expect(email.text).toContain("Renewing keeps your pumping visits on schedule. The next term runs April 1, 2026 to March 31, 2027 for $300.00.");
+    expect(email.text).not.toMatch(/inspect|filed/);
+    expect((await anon().get(`/renew/${r.token}`)).json().pitch).toBe("Renewing keeps your pumping visits on schedule.");
+  });
+
   it("rejects an unknown link and a malformed signature", async () => {
     const t = await renewalTenant(ctx);
     const r = await startRenewal(t);
@@ -280,18 +334,159 @@ describe("the homeowner's link", () => {
 });
 
 describe("the office", () => {
-  it("sends a renewal to review when the contract was renewed another way before payment", async () => {
+  it("closes the emailed offer when the office renews by hand, so the term is never sold or billed twice", async () => {
+    const t = await renewalTenant(ctx);
+    await t.api.patch("/renewals/settings", { autoSend: true });
+    const r = await startRenewal(t, true);
+    await runWorker(ctx);
+    expect(mail.delivered.has(`renewal-${r.id}-send-1`)).toBe(true);
+    // The customer calls and renews by phone.
+    const renewed = await t.api.post(`/contracts/${t.contract.id}/renew`, {});
+    expect(renewed.statusCode).toBe(201);
+    const next = renewed.json();
+
+    // The offer closed in the same step, pointing at the term that replaced it.
+    expect((await t.api.get(`/renewals/${r.id}`)).json()).toMatchObject({ status: "superseded", newContractId: next.id, signedDocument: null, invoice: null });
+    expect((await t.api.get(`/contracts/${t.contract.id}`)).json()).toMatchObject({ renewedById: next.id, renewalStatus: "superseded" });
+
+    // The homeowner's link says so, and takes neither a signature nor money.
+    expect((await anon().get(`/renew/${r.token}`)).json()).toMatchObject({ status: "superseded", pay: null, newTermStartsOn: "2026-04-01" });
+    const sign = await anon().post(`/renew/${r.token}/sign`, signBody(1));
+    expect(sign.statusCode).toBe(409);
+    expect(sign.json().message).toBe("Your plan was already renewed. Nothing is due.");
+    expect((await anon().post(`/renew/${r.token}/checkout`, {})).statusCode).toBe(409);
+    expect((await anon().post(`/renew/${r.token}/decline`, {})).statusCode).toBe(409);
+    expect(await ctx.db.selectFrom("invoices").select("id").where("organizationId", "=", t.org.id).execute()).toHaveLength(0);
+
+    // No reminder email or text goes out for it, and the campaign does not start another.
+    ctx.now = new Date("2026-03-25T18:00:00Z");
+    expect((await t.api.post("/renewals/campaign", {})).json()).toMatchObject({ created: 0, sent: 0, reminded: 0 });
+    // A reminder queued before the office renewed is dropped when the worker reaches it.
+    await ctx.db.transaction().execute((trx) => queueRenewalEmail(trx, t.org.id, r.id, { now: ctx.now, reminderDays: 7 }));
+    await runWorker(ctx);
+    expect([...mail.delivered.keys()].filter((k) => k.startsWith(`renewal-${r.id}-send-`))).toEqual([`renewal-${r.id}-send-1`]);
+
+    // The new term's first installment is billed once, from the site page.
+    expect((await t.api.post(`/contracts/${next.id}/invoice`, {})).statusCode).toBe(201);
+    expect((await t.api.post(`/contracts/${next.id}/invoice`, {})).statusCode).toBe(422);
+  });
+
+  it("will not renew by hand once the customer has signed, and points to the renewal instead", async () => {
     const t = await renewalTenant(ctx);
     const r = await startRenewal(t);
-    await anon().post(`/renew/${r.token}/sign`, signBody(1));
-    expect((await t.api.post(`/contracts/${t.contract.id}/renew`, {})).statusCode).toBe(201);
+    expect((await anon().post(`/renew/${r.token}/sign`, signBody(1))).json().status).toBe("payment_pending");
+    const res = await t.api.post(`/contracts/${t.contract.id}/renew`, {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "renewal_in_progress", message: "The customer already signed this renewal. Finish it from the renewal page." });
+    expect((await t.api.get(`/sites/${t.site.id}/contracts`)).json().items).toHaveLength(1);
+    // Paying still activates the one term the customer signed for.
     await payOnline(r.token);
+    expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("activated");
+  });
+
+  it("refuses to sign or take payment for a renewal whose contract is ending, before any invoice is made", async () => {
+    const t = await renewalTenant(ctx);
+    const r = await startRenewal(t);
+    expect((await t.api.post(`/contracts/${t.contract.id}/cancel`, { reason: "Selling the house", discontinuedBy: "owner", serviceEndsOn: "2026-03-20" })).statusCode).toBe(200);
+    const sign = await anon().post(`/renew/${r.token}/sign`, signBody(1));
+    expect(sign.statusCode).toBe(409);
+    expect(sign.json().message).toContain("This renewal offer has ended");
+    expect(await ctx.db.selectFrom("invoices").select("id").where("organizationId", "=", t.org.id).execute()).toHaveLength(0);
+    expect(await ctx.db.selectFrom("signedDocuments").select("id").where("organizationId", "=", t.org.id).execute()).toHaveLength(0);
+    // The link says the offer ended, and the campaign emails nothing for it.
+    expect((await anon().get(`/renew/${r.token}`)).json()).toMatchObject({ status: "upcoming", unavailable: "ended", pay: null });
+    await t.api.patch("/renewals/settings", { autoSend: true });
+    expect((await t.api.post("/renewals/campaign", {})).json()).toMatchObject({ sent: 0, reminded: 0 });
+
+    // Signed before the contract was cancelled: the payment page is refused, not charged.
+    const t2 = await renewalTenant(ctx, "Org B");
+    const r2 = await startRenewal(t2);
+    expect((await anon().post(`/renew/${r2.token}/sign`, signBody(1))).json().status).toBe("payment_pending");
+    expect((await t2.api.post(`/contracts/${t2.contract.id}/cancel`, { reason: "Sold the house" })).statusCode).toBe(200);
+    const checkout = await anon().post(`/renew/${r2.token}/checkout`, {});
+    expect(checkout.statusCode).toBe(409);
+    expect(checkout.json()).toMatchObject({ error: "payment_closed", message: "This renewal offer has ended. Contact your service provider about your plan." });
+    // Nor through the invoice's own pay link, which the page and emails also hand out.
+    const payPath = new URL((await anon().get(`/renew/${r2.token}`)).json().paymentConfirmation.invoiceUrl).pathname;
+    const viaInvoice = await anon().post(`${payPath}/checkout`, {});
+    expect(viaInvoice.statusCode).toBe(409);
+    expect(viaInvoice.json().error).toBe("payment_closed");
+    expect(await ctx.db.selectFrom("checkoutSessions").select("id").where("organizationId", "=", t2.org.id).execute()).toHaveLength(0);
+  });
+
+  it("makes the next term once when 'Renew now' is pressed twice at the same moment", async () => {
+    const t = await renewalTenant(ctx);
+    const r = await startRenewal(t);
+    const results = await Promise.all([t.api.post(`/contracts/${t.contract.id}/renew`, {}), t.api.post(`/contracts/${t.contract.id}/renew`, {})]);
+    expect(results.map((x) => x.statusCode).sort()).toEqual([201, 409]);
+    expect(results.find((x) => x.statusCode === 409)!.json().error).toBe("already_renewed");
+    expect((await t.api.get(`/sites/${t.site.id}/contracts`)).json().items).toHaveLength(2);
+    expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("superseded");
+  });
+
+  /**
+   * What a 'Renew now' made while the customer was paying left behind before it closed the
+   * offer: the next term made by hand, and the renewal paid for that same term, in review.
+   */
+  async function stuckRenewal(t: Awaited<ReturnType<typeof renewalTenant>>) {
+    const r = await startRenewal(t);
+    await anon().post(`/renew/${r.token}/sign`, signBody(1));
+    const url = new URL((await anon().post(`/renew/${r.token}/checkout`, {})).json().url);
+    // The term made the way 'Renew now' used to make it, with the customer on the payment page.
+    const successor = await ctx.db.transaction().execute((trx) =>
+      insertContract(trx, t.org.id, {
+        siteId: t.site.id,
+        startOn: "2026-04-01",
+        terms: { planId: t.plan.id, planName: "Standard", customerType: "residential", termMonths: 12, visitsPerTerm: 2, priceCents: 30000, billingFrequency: "annual", serviceType: "aerobic_inspection", planVersionId: t.contract.planVersionId ?? null },
+        autoRenew: false,
+        previousContractId: t.contract.id,
+      }),
+    );
+    const paid = await anon().post(`/pay/${url.pathname.split("/")[2]}/test-checkout`, { sessionId: url.searchParams.get("session"), outcome: "card" });
+    expect(paid.json().ok).toBe(true);
+    return { r, successor };
+  }
+
+  it("counts a paid renewal toward the term that was already made another way, so it is not billed again", async () => {
+    const t = await renewalTenant(ctx);
+    const { r, successor } = await stuckRenewal(t);
     const d = (await t.api.get(`/renewals/${r.id}`)).json();
     expect(d).toMatchObject({ status: "needs_review", reviewReason: "This contract was already renewed another way", invoice: { paymentStatus: "paid" } });
     const inbox = (await t.api.get("/inbox")).json();
     expect(inbox.items).toContainEqual(expect.objectContaining({ kind: "renewal_needs_review", target: { type: "renewal", id: r.id } }));
-    // Trying again does not help until someone sorts it out.
+    // Trying again does not help; counting the payment toward the existing term does.
     expect((await t.api.post(`/renewals/${r.id}/activate`, {})).statusCode).toBe(409);
+    const applied = await t.api.post(`/renewals/${r.id}/apply-to-term`, {});
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json()).toMatchObject({ status: "activated", newContractId: successor, reviewReason: null, invoice: { paymentStatus: "paid" } });
+    const line = await ctx.db.selectFrom("invoiceLines").select(["contractId", "installment", "periodStart", "periodEnd"]).where("invoiceId", "=", d.invoice.id).where("position", "=", 1).executeTakeFirstOrThrow();
+    expect(line).toEqual({ contractId: successor, installment: 1, periodStart: "2026-04-01", periodEnd: "2027-03-31" });
+    expect((await t.api.post(`/contracts/${successor}/invoice`, {})).json().message).toContain("already on an invoice");
+    expect((await t.api.get("/inbox")).json().items.some((i: { kind: string }) => i.kind === "renewal_needs_review")).toBe(false);
+    expect((await anon().get(`/renew/${r.token}`)).json()).toMatchObject({ status: "activated", pay: null });
+  });
+
+  it("will not count a renewal payment toward a term whose first installment is already billed", async () => {
+    const t = await renewalTenant(ctx);
+    const { r, successor } = await stuckRenewal(t);
+    const draft = (await t.api.post(`/contracts/${successor}/invoice`, {})).json();
+    await t.api.post(`/invoices/${draft.id}/issue`, { send: false });
+    const refused = await t.api.post(`/renewals/${r.id}/apply-to-term`, {});
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().message).toBe("The new term's first installment is already on INV-1002. Void INV-1002 first, or refund this renewal's payment.");
+    expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("needs_review");
+  });
+
+  it("will not count a renewal payment toward a term made at another price", async () => {
+    const t = await renewalTenant(ctx);
+    const { r, successor } = await stuckRenewal(t);
+    await ctx.db.updateTable("contracts").set({ priceCents: 32000 }).where("id", "=", successor).execute();
+    const refused = await t.api.post(`/renewals/${r.id}/apply-to-term`, {});
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().message).toBe("This renewal billed $300.00 for the first installment, but the term already made bills $320.00. Refund this renewal's payment and bill the term from its site page.");
+    expect((await t.api.get(`/renewals/${r.id}`)).json().status).toBe("needs_review");
+    const line = await ctx.db.selectFrom("invoiceLines as l").innerJoin("renewals as r", "r.invoiceId", "l.invoiceId").select("l.contractId").where("r.id", "=", r.id).where("l.position", "=", 1).executeTakeFirstOrThrow();
+    expect(line.contractId).toBeNull();
   });
 
   it("renews an auto-renewing contract without a new signature, and refuses that for others", async () => {
@@ -299,9 +494,16 @@ describe("the office", () => {
     const r = await startRenewal(auto);
     const res = await auto.api.post(`/renewals/${r.id}/activate`, {});
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ status: "activated", signedDocument: null, invoice: null });
-    // Its first installment is billed the usual way.
-    expect((await auto.api.post(`/contracts/${res.json().newContractId}/invoice`, {})).statusCode).toBe(201);
+    // Its first installment is invoiced and emailed right away, as a renewal billed afterwards is.
+    expect(res.json()).toMatchObject({ status: "activated", signedDocument: null, invoice: { number: 1001, totalCents: 30000, paymentStatus: "unpaid" } });
+    const inv = (await auto.api.get(`/invoices/${res.json().invoice.id}`)).json();
+    expect(inv).toMatchObject({ status: "open", memo: "Renewal of your maintenance plan, April 1, 2026 to March 31, 2027." });
+    expect(inv.lines[0]).toMatchObject({ contractId: res.json().newContractId, installment: 1, unitPriceCents: 30000 });
+    expect(inv.events.map((e: { summary: string }) => e.summary)).toContain("Issued as INV-1001; emailing to billing@orga.test");
+    await runWorker(ctx);
+    expect(mail.delivered.get(`invoice-${inv.id}-send-1`)).toMatchObject({ to: "billing@orga.test", subject: "Invoice INV-1001 from Org A: $300.00 due March 31, 2026" });
+    // So it is never billed a second time.
+    expect((await auto.api.post(`/contracts/${res.json().newContractId}/invoice`, {})).json().message).toContain("already on an invoice");
 
     const manual = await renewalTenant(ctx, "Org B");
     const m = await startRenewal(manual);

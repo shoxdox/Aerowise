@@ -2,8 +2,12 @@
 
 import { roleHasPermission, SERVICE_ITEM_UNIT_LABELS, SERVICE_ITEM_UNITS, WORK_CATEGORY_LABELS, WORK_CATEGORIES, type ServiceItem } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
 import { money } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
@@ -13,20 +17,21 @@ export default function ServiceItemsPage() {
   const me = useSession();
   const on = useFeature("service_items");
   const editable = canEdit(me) && roleHasPermission(me.role, "invoices:write");
-  const { data, error, reload } = useLoad<{ items: ServiceItem[] }>("/service-items?active=all");
-  const [problem, setProblem] = useState<string | null>(null);
-
-  async function save(path: string, method: "POST" | "PATCH", body: object) {
-    setProblem(null);
-    try {
+  const items = useLoad<{ items: ServiceItem[] }>("/service-items?active=all");
+  const { data, reload } = items;
+  // The item whose price is being changed, right on its row.
+  const [repricing, setRepricing] = useState<string | null>(null);
+  const saving = useSubmit(
+    async (path: string, method: "POST" | "PATCH", body: object) => {
       await api(path, { method, body });
+      setRepricing(null);
       await reload();
       return true;
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-      return false;
-    }
-  }
+    },
+    { fallback: "Could not save.", labels: { unitPriceCents: "Price" } },
+  );
+  const save = async (path: string, method: "POST" | "PATCH", body: object) => (await saving.run(path, method, body)) === true;
+  const problem = saving.error;
 
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,15 +48,12 @@ export default function ServiceItemsPage() {
     if (ok) form.reset();
   }
 
-  async function reprice(item: ServiceItem) {
-    const answer = window.prompt(`New price for ${item.name} ($)`, (item.unitPriceCents / 100).toFixed(2));
-    if (answer === null) return;
-    const cents = Math.round(Number(answer) * 100);
-    if (!Number.isFinite(cents) || cents < 0) return setProblem("Enter a price of zero or more");
-    await save(`/service-items/${item.id}`, "PATCH", { unitPriceCents: cents });
+  function reprice(item: ServiceItem, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const { price } = formValues(event.currentTarget);
+    void save(`/service-items/${item.id}`, "PATCH", { unitPriceCents: Math.round(Number(price) * 100) });
   }
 
-  if (error) return <p className="error">{error}</p>;
   return (
     <div className="stack">
       <h1>Service items</h1>
@@ -59,18 +61,18 @@ export default function ServiceItemsPage() {
         What the company charges for. Work order and invoice lines start from an item and keep their own copy of its description and price, so changing or switching off an item never
         changes a line already written.
       </p>
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
       {!data ? (
-        <p className="muted">Loading…</p>
+        <LoadState load={items} label="service items" />
       ) : data.items.length === 0 ? (
         <p className="muted">No service items yet.</p>
       ) : (
         <div className="table-scroll">
-          <table className="compact" data-testid="service-items">
+          <table className="compact stack" data-testid="service-items">
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Price</th>
+                <th className="num">Price</th>
                 <th>Kind</th>
                 <th>Taxable</th>
                 <th />
@@ -79,23 +81,34 @@ export default function ServiceItemsPage() {
             <tbody>
               {data.items.map((i) => (
                 <tr key={i.id} className={i.active ? undefined : "muted"}>
-                  <td>
-                    {i.name}
-                    {!i.active && <span className="badge cancelled">off</span>}
+                  <td data-label="Name">
+                    {i.name} {!i.active && <Badge tone="struck">Off</Badge>}
                     {i.description && <div className="muted small">{i.description}</div>}
                   </td>
-                  <td>
-                    {money(i.unitPriceCents)} {SERVICE_ITEM_UNIT_LABELS[i.unit]}
+                  <td data-label="Price" className="num">
+                    {repricing === i.id ? (
+                      <form className="row" onSubmit={(e) => reprice(i, e)}>
+                        <input name="price" type="number" min={0} step="0.01" required defaultValue={(i.unitPriceCents / 100).toFixed(2)} aria-label={`New price for ${i.name} ($)`} autoFocus style={{ width: "7em" }} />
+                        <SubmitButton busy={saving.busy}>Save</SubmitButton>
+                        <button type="button" className="link" onClick={() => setRepricing(null)}>
+                          Cancel
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        {money(i.unitPriceCents)} {SERVICE_ITEM_UNIT_LABELS[i.unit]}
+                      </>
+                    )}
                   </td>
-                  <td>{i.category ? WORK_CATEGORY_LABELS[i.category] : ""}</td>
-                  <td>{i.taxable ? "yes" : "no"}</td>
-                  <td>
+                  <td data-label="Kind">{i.category ? WORK_CATEGORY_LABELS[i.category] : ""}</td>
+                  <td data-label="Taxable">{i.taxable ? "Yes" : "No"}</td>
+                  <td className={editable ? "actions" : undefined}>
                     {editable && (
                       <div className="row">
-                        <button type="button" className="link" onClick={() => void reprice(i)}>
+                        <button type="button" className="link" onClick={() => (saving.clear(), setRepricing(i.id))}>
                           Change price
                         </button>
-                        <button type="button" className="link" onClick={() => void save(`/service-items/${i.id}`, "PATCH", { active: !i.active })}>
+                        <button type="button" className={i.active ? "link danger" : "link"} disabled={saving.busy} onClick={() => void save(`/service-items/${i.id}`, "PATCH", { active: !i.active })}>
                           {i.active ? "Switch off" : "Switch on"}
                         </button>
                       </div>
@@ -146,11 +159,11 @@ export default function ServiceItemsPage() {
             Description on lines
             <input name="description" maxLength={2000} placeholder="Optional; the name is used otherwise" />
           </label>
-          <label className="row">
+          <label className="check">
             <input name="taxable" type="checkbox" /> Taxable
           </label>
           <div className="row">
-            <button type="submit">Add item</button>
+            <SubmitButton busy={saving.busy}>Add item</SubmitButton>
           </div>
         </form>
       )}

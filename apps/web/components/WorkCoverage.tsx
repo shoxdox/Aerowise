@@ -3,10 +3,14 @@
 import type { WorkOrderCoverage } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
 import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { dateRange } from "@/lib/format";
 
-const STATE_LABELS = { reserved: "applied", consumed: "used on the bill", released: "given back" } as const;
+const STATE_LABELS = { reserved: "Applied", consumed: "Used on the bill", released: "Given back" } as const;
 
 /**
  * What the site's contract covers for a work order (SW-8): its frozen coverage rules, how
@@ -16,19 +20,16 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
   const load = useLoad<WorkOrderCoverage>(`/work-orders/${workOrderId}/coverage`);
   const { data: c, reload } = load;
   const [asking, setAsking] = useState<"decline" | "restore" | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  async function act(path: string, body: unknown) {
-    setProblem(null);
-    try {
+  const acting = useSubmit(
+    async (path: string, body: unknown) => {
       await api(`/work-orders/${workOrderId}/coverage/${path}`, { method: "POST", body });
       setAsking(null);
       await reload();
       onChange?.();
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const act = (path: string, body: unknown) => acting.run(path, body);
   const withReason = (path: "decline" | "restore") => (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     void act(path, { reason: formValues(e.currentTarget).reason });
@@ -48,7 +49,7 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
           {c.contract.planVersion !== null && <span className="muted"> · version {c.contract.planVersion}</span>}
           <span className="muted">
             {" "}
-            · {c.contract.startOn} to {c.contract.endOn}
+            · {dateRange(c.contract.startOn, c.contract.endOn)}
           </span>
         </p>
       )}
@@ -64,14 +65,23 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
                   · {r.used} of {r.limit} used this term
                 </span>
               )}
-              {r.use && <span className={`badge ${r.use.state === "released" ? "inactive" : "active"}`}>{STATE_LABELS[r.use.state]}</span>}
-              {!r.use && r.matches && r.limit !== null && r.used >= r.limit && <span className="badge danger">limit reached</span>}
+              {r.use && (
+                <>
+                  {" "}
+                  <Badge tone={r.use.state === "released" ? "muted" : "success"}>{STATE_LABELS[r.use.state]}</Badge>
+                </>
+              )}
+              {!r.use && r.matches && r.limit !== null && r.used >= r.limit && <Badge tone="danger">Limit reached</Badge>}
             </li>
           ))}
         </ul>
       )}
       <div className="row">
-        {c.canApply && <button onClick={() => void act("apply", {})}>Apply coverage</button>}
+        {c.canApply && (
+          <SubmitButton type="button" busy={acting.busy} onClick={() => void act("apply", {})}>
+            Apply coverage
+          </SubmitButton>
+        )}
         {reserved && !consumed && !invoiced && (
           <button className="secondary" onClick={() => setAsking(asking === "decline" ? null : "decline")}>
             Don&apos;t apply coverage
@@ -94,11 +104,11 @@ export function WorkCoverage({ workOrderId, onChange }: { workOrderId: string; o
             <input name="reason" required maxLength={2000} />
           </label>
           <div className="wide">
-            <button type="submit">{asking === "decline" ? "Don't apply coverage" : "Restore benefit"}</button>
+            <SubmitButton busy={acting.busy}>{asking === "decline" ? "Don't apply coverage" : "Restore benefit"}</SubmitButton>
           </div>
         </form>
       )}
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={acting.error} />
     </section>
   );
 }

@@ -1,18 +1,21 @@
 "use client";
 
-import { formatPhone, invoiceNumberLabel, PAYMENT_METHOD_LABELS, SMS_SKIP_LABELS, type InvoiceDetail, type Payment, type SmsQueueResult } from "@aerowise/domain";
+import { formatPhone, PAYMENT_METHOD_LABELS, SMS_SKIP_LABELS, type InvoiceDetail, type Payment, type SmsQueueResult } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { InvoiceStatusBadge } from "@/components/InvoiceBadges";
 import { InvoiceEditor } from "@/components/InvoiceEditor";
 import { LoadState } from "@/components/LoadState";
+import { Badge, StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, money, today, when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
+import { day, invoiceLabel, money, quantity, today, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
-
-const PAYMENT_STATE: Record<Payment["status"], string> = { pending: "clearing", succeeded: "received", failed: "failed" };
+import { usePageTitle } from "@/lib/title";
 
 export default function InvoicePage() {
   const { id } = useParams<{ id: string }>();
@@ -21,76 +24,52 @@ export default function InvoicePage() {
   const editable = canEdit(me);
   const owner = me.role === "owner";
   const recordLoad = useLoad<InvoiceDetail>(`/invoices/${id}`);
-  const { data: inv, error, reload } = recordLoad;
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { data: inv, reload } = recordLoad;
   const [panel, setPanel] = useState<"payment" | "void" | "refundJob" | null>(null);
   const [refunding, setRefunding] = useState<Payment | null>(null);
   const [copied, setCopied] = useState(false);
   const [texted, setTexted] = useState<string | null>(null);
   // One id per opened "Refund the job": a retry or a second click sends the same one, so the money moves once.
   const [refundJobRequestId, setRefundJobRequestId] = useState("");
+  usePageTitle(inv ? invoiceLabel(inv.number) : null);
 
-  if (error && !inv) return <LoadState load={recordLoad} label="record" />;
-  if (!inv) return <LoadState load={recordLoad} label="record" />;
-
-  async function run(path: string, body: object = {}, after?: () => void) {
-    setBusy(true);
-    setActionError(null);
-    try {
+  const action = useSubmit(
+    async (path: string, body: object = {}, after?: () => void) => {
       await api(`/invoices/${id}/${path}`, { method: "POST", body });
       setPanel(null);
       if (after) after();
       else await reload();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not save");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function recordPayment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
-    void run("payments", { amountCents: Math.round(Number(v.amount) * 100), method: v.method, receivedOn: v.receivedOn, reference: v.reference ?? null, note: v.note ?? null });
-  }
-
-  async function refund(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!refunding) return;
-    const v = formValues(event.currentTarget);
-    setBusy(true);
-    setActionError(null);
-    try {
+    },
+    { fallback: "Could not save." },
+  );
+  const refund = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      if (!refunding) return;
       await api(`/payments/${refunding.id}/refund`, { method: "POST", body: { amountCents: Math.round(Number(v.amount) * 100), reason: v.reason, intent: v.intent } });
       setRefunding(null);
       await reload();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not refund");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function textReminder() {
-    setBusy(true);
-    setActionError(null);
-    setTexted(null);
-    try {
+    },
+    { fallback: "Could not refund." },
+  );
+  const reminder = useSubmit(
+    async () => {
+      setTexted(null);
       const r = await api<SmsQueueResult>(`/invoices/${id}/text-reminder`, { method: "POST", body: {} });
       setTexted(r.outcome === "queued" ? `Reminder texted to ${r.to ? formatPhone(r.to) : "the customer"}.` : `No text sent: ${r.outcome === "off" ? "texting is off" : SMS_SKIP_LABELS[r.outcome].toLowerCase()}.`);
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not text");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not text." },
+  );
+  const busy = action.busy || refund.busy || reminder.busy;
 
-  const label = invoiceNumberLabel(inv.number);
+  if (!inv) return <LoadState load={recordLoad} label="invoice" back={{ href: "/invoices", label: "Invoices" }} />;
+
+  const label = invoiceLabel(inv.number);
+  // A paid invoice is done: nothing to email again or pay through its link.
+  const owing = inv.amountDueCents > 0;
 
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="invoice" back={{ href: "/invoices", label: "Invoices" }} />
       <p>
         <Link href="/invoices">← Invoices</Link>
       </p>
@@ -132,8 +111,7 @@ export default function InvoicePage() {
             <dd>{day(inv.issuedOn)}</dd>
             <dt>Due</dt>
             <dd>
-              {day(inv.dueOn!)}
-              {inv.overdue && <span className="badge danger">overdue</span>}
+              {day(inv.dueOn!)} {inv.overdue && <Badge tone="danger">Overdue</Badge>}
             </dd>
             <dt>Emailed</dt>
             <dd>{inv.sentAt ? when(inv.sentAt) : "Not yet"}</dd>
@@ -159,77 +137,84 @@ export default function InvoicePage() {
         )}
       </dl>
 
-      {actionError && <p className="error">{actionError}</p>}
+      <FormError error={action.error ?? reminder.error} />
 
       {inv.status === "draft" && editable && (
         <>
-          <InvoiceEditor invoice={inv} onSaved={() => void reload()} />
+          <InvoiceEditor
+            invoice={inv}
+            onSaved={() => void reload()}
+            actions={[
+              { label: "Issue and email", busyLabel: "Issuing…", disabled: !inv.billToEmail, run: () => api(`/invoices/${id}/issue`, { method: "POST", body: { send: true } }).then(reload) },
+              { label: "Issue without emailing", busyLabel: "Issuing…", className: "secondary", run: () => api(`/invoices/${id}/issue`, { method: "POST", body: { send: false } }).then(reload) },
+            ]}
+          />
           <div className="row">
-            <button disabled={busy || !inv.billToEmail} onClick={() => void run("issue", { send: true })}>
-              Issue and email
-            </button>
-            <button className="secondary" disabled={busy} onClick={() => void run("issue", { send: false })}>
-              Issue without emailing
-            </button>
+            <p className="muted small">Issuing gives the invoice its number and freezes it. To change it afterwards, void it and issue a new one.</p>
             <span className="spacer" />
-            <button className="link" disabled={busy} onClick={() => window.confirm("Delete this draft?") && void run("discard", {}, () => router.push("/invoices"))}>
+            <ConfirmButton className="link danger" question="Delete this draft?" confirmLabel="Delete draft" busy={action.busy} onConfirm={() => action.run("discard", {}, () => router.push("/invoices"))}>
               Delete draft
-            </button>
+            </ConfirmButton>
           </div>
-          <p className="muted small">Issuing gives the invoice its number and freezes it. To change it afterwards, void it and issue a new one.</p>
         </>
       )}
 
       {inv.status !== "draft" && (
         <>
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Description</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Amount</th>
+                <th className="num">Qty</th>
+                <th className="num">Price</th>
+                <th className="num">Amount</th>
               </tr>
             </thead>
             <tbody>
               {inv.lines.map((l) => (
                 <tr key={l.id}>
-                  <td>
+                  <td data-label="Description">
                     {l.description}
                     {l.taxable && inv.taxRateBps > 0 && <span className="muted small"> · taxable</span>}
                   </td>
-                  <td>{l.quantity}</td>
-                  <td>{money(l.unitPriceCents)}</td>
-                  <td>{money(l.amountCents)}</td>
+                  <td data-label="Qty" className="num">
+                    {quantity(l.quantity)}
+                  </td>
+                  <td data-label="Price" className="num">
+                    {money(l.unitPriceCents)}
+                  </td>
+                  <td data-label="Amount" className="num">
+                    {money(l.amountCents)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <dl className="details totals">
             <dt>Subtotal</dt>
-            <dd>{money(inv.subtotalCents)}</dd>
+            <dd className="num">{money(inv.subtotalCents)}</dd>
             {inv.discountCents > 0 && (
               <>
                 <dt>Discount</dt>
-                <dd>−{money(inv.discountCents)}</dd>
+                <dd className="num">−{money(inv.discountCents)}</dd>
               </>
             )}
             {inv.taxRateBps > 0 && (
               <>
                 <dt>Sales tax ({(inv.taxRateBps / 100).toFixed(2)}%)</dt>
-                <dd>{money(inv.taxCents)}</dd>
+                <dd className="num">{money(inv.taxCents)}</dd>
               </>
             )}
             {inv.depositAppliedCents > 0 && (
               <>
                 <dt>Deposit applied</dt>
-                <dd>−{money(inv.depositAppliedCents)}</dd>
+                <dd className="num">−{money(inv.depositAppliedCents)}</dd>
               </>
             )}
             <dt>
               <strong>Total</strong>
             </dt>
-            <dd>
+            <dd className="num">
               <strong>{money(inv.totalCents)}</strong>
             </dd>
           </dl>
@@ -240,7 +225,7 @@ export default function InvoicePage() {
       {inv.status === "open" && editable && (
         <section className="stack">
           <div className="row">
-            {inv.payUrl && (
+            {owing && inv.payUrl && (
               <button
                 className="secondary"
                 onClick={() => {
@@ -250,24 +235,24 @@ export default function InvoicePage() {
                 {copied ? "Pay link copied" : "Copy pay link"}
               </button>
             )}
-            {inv.billToEmail && (
-              <button className="secondary" disabled={busy} onClick={() => void run("send")}>
+            {owing && inv.billToEmail && (
+              <SubmitButton type="button" className="secondary" busy={action.busy} busyLabel="Sending…" disabled={busy} onClick={() => void action.run("send")}>
                 Email again
-              </button>
+              </SubmitButton>
             )}
-            {inv.amountDueCents > 0 && (
-              <button className="secondary" disabled={busy} onClick={() => void textReminder()}>
+            {owing && (
+              <SubmitButton type="button" className="secondary" busy={reminder.busy} busyLabel="Texting…" disabled={busy} onClick={() => void reminder.run()}>
                 Text a reminder
-              </button>
+              </SubmitButton>
             )}
-            {inv.amountDueCents > 0 && (
+            {owing && (
               <button className="secondary" onClick={() => setPanel(panel === "payment" ? null : "payment")}>
                 Record a payment
               </button>
             )}
             {owner && inv.estimate?.role === "final" && inv.depositAppliedCents > 0 && (
               <button
-                className="secondary"
+                className="secondary danger"
                 onClick={() => {
                   setRefundJobRequestId(crypto.randomUUID());
                   setPanel(panel === "refundJob" ? null : "refundJob");
@@ -278,7 +263,7 @@ export default function InvoicePage() {
             )}
             <span className="spacer" />
             {inv.paidCents === 0 && inv.pendingCents === 0 && (
-              <button className="link" onClick={() => setPanel(panel === "void" ? null : "void")}>
+              <button className="link danger" onClick={() => setPanel(panel === "void" ? null : "void")}>
                 Void invoice
               </button>
             )}
@@ -292,7 +277,7 @@ export default function InvoicePage() {
               onSubmit={(ev) => {
                 ev.preventDefault();
                 const v = formValues(ev.currentTarget);
-                void run("refund-job", { requestId: refundJobRequestId, amountCents: Math.round(Number(v.amount) * 100), reason: v.reason });
+                void action.run("refund-job", { requestId: refundJobRequestId, amountCents: Math.round(Number(v.amount) * 100), reason: v.reason });
               }}
             >
               <p className="muted small">
@@ -308,14 +293,21 @@ export default function InvoicePage() {
                 <input name="reason" required maxLength={2000} />
               </label>
               <div>
-                <button type="submit" disabled={busy}>
+                <SubmitButton className="danger" busy={action.busy} busyLabel="Refunding…">
                   Refund
-                </button>
+                </SubmitButton>
               </div>
             </form>
           )}
           {panel === "payment" && (
-            <form className="card grid" onSubmit={recordPayment}>
+            <form
+              className="card grid"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                const v = formValues(ev.currentTarget);
+                void action.run("payments", { amountCents: Math.round(Number(v.amount) * 100), method: v.method, receivedOn: v.receivedOn, reference: v.reference ?? null, note: v.note ?? null });
+              }}
+            >
               <label>
                 Amount ($)
                 <input name="amount" type="number" min="0.01" step="0.01" max={inv.amountDueCents / 100} defaultValue={(inv.amountDueCents / 100).toFixed(2)} required />
@@ -341,24 +333,22 @@ export default function InvoicePage() {
                 <input name="note" placeholder="Optional" />
               </label>
               <div className="wide">
-                <button type="submit" disabled={busy}>
-                  Record payment
-                </button>
+                <SubmitButton busy={action.busy}>Record payment</SubmitButton>
               </div>
             </form>
           )}
 
           {panel === "void" && (
-            <form className="card stack" onSubmit={(e) => (e.preventDefault(), void run("void", { reason: formValues(e.currentTarget).reason }))}>
+            <form className="card stack" onSubmit={(e) => (e.preventDefault(), void action.run("void", { reason: formValues(e.currentTarget).reason }))}>
               <label>
                 Why is this invoice being voided?
                 <input name="reason" required />
               </label>
               <p className="muted small">The invoice keeps its number but is no longer owed, and its pay link stops working.</p>
               <div>
-                <button type="submit" disabled={busy}>
+                <SubmitButton className="danger" busy={action.busy} busyLabel="Voiding…">
                   Void invoice
-                </button>
+                </SubmitButton>
               </div>
             </form>
           )}
@@ -368,12 +358,12 @@ export default function InvoicePage() {
       {inv.payments.length > 0 && (
         <section className="stack">
           <h2>Payments</h2>
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Method</th>
-                <th>Amount</th>
+                <th className="num">Amount</th>
                 <th>Status</th>
                 <th />
               </tr>
@@ -381,13 +371,13 @@ export default function InvoicePage() {
             <tbody>
               {inv.payments.map((p) => (
                 <tr key={p.id}>
-                  <td>{p.receivedOn ? day(p.receivedOn) : when(p.createdAt)}</td>
-                  <td>
+                  <td data-label="Date">{p.receivedOn ? day(p.receivedOn) : when(p.createdAt)}</td>
+                  <td data-label="Method">
                     {PAYMENT_METHOD_LABELS[p.method]}
                     {p.source === "stripe" && <span className="muted small"> · online</span>}
                     {p.reference && <div className="muted small">{p.reference}</div>}
                   </td>
-                  <td>
+                  <td data-label="Amount" className="num">
                     {money(p.amountCents)}
                     {p.refunds.map((r) => (
                       <div key={r.id} className="muted small">
@@ -397,13 +387,13 @@ export default function InvoicePage() {
                       </div>
                     ))}
                   </td>
-                  <td>
-                    <span className={`badge ${p.status === "succeeded" ? "ok" : p.status === "failed" ? "danger" : "upcoming"}`}>{p.awaitingBankVerification ? "waiting on customer to verify bank" : PAYMENT_STATE[p.status]}</span>
+                  <td data-label="Status">
+                    {p.awaitingBankVerification ? <Badge tone="info">Waiting on the customer to verify their bank</Badge> : <StatusBadge of="paymentRecord" value={p.status} />}
                     {p.failureReason && <div className="error small">{p.failureReason}</div>}
                   </td>
-                  <td>
+                  <td className={owner ? "actions" : undefined}>
                     {owner && p.status === "succeeded" && p.refundedCents < p.amountCents && inv.estimate?.role !== "deposit" && (
-                      <button className="link" disabled={busy} onClick={() => setRefunding(p)}>
+                      <button className="link danger" disabled={busy} onClick={() => setRefunding(p)}>
                         Refund
                       </button>
                     )}
@@ -414,7 +404,11 @@ export default function InvoicePage() {
           </table>
           {refunding && (
             // Usually the customer no longer owes what is refunded. Reversing a payment taken by mistake is the exception.
-            <form className="card stack" onSubmit={refund} aria-label="Refund payment">
+            <form
+              className="card stack"
+              onSubmit={refund.form}
+              aria-label="Refund payment"
+            >
               <label>
                 Amount ($), up to {money(refunding.amountCents - refunding.refundedCents)}
                 <input name="amount" type="number" min="0.01" step="0.01" max={(refunding.amountCents - refunding.refundedCents) / 100} defaultValue={((refunding.amountCents - refunding.refundedCents) / 100).toFixed(2)} required />
@@ -432,11 +426,12 @@ export default function InvoicePage() {
                   <input type="radio" name="intent" value="reverse" /> Reverse payment: it was taken by mistake, so the balance is owed again
                 </label>
               </fieldset>
+              <FormError error={refund.error} />
               <div className="row">
-                <button type="submit" disabled={busy}>
+                <SubmitButton className="danger" busy={refund.busy} busyLabel="Refunding…">
                   Refund
-                </button>
-                <button type="button" className="secondary" disabled={busy} onClick={() => setRefunding(null)}>
+                </SubmitButton>
+                <button type="button" className="secondary" disabled={refund.busy} onClick={() => setRefunding(null)}>
                   Cancel
                 </button>
               </div>

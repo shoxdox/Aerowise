@@ -4,6 +4,7 @@ import { drainTasks, linkToken, linkTokenId, reconcileRefunds } from "@aerowise/
 import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { client, createTenant, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
+import { pdfText } from "./pdf-text.ts";
 
 const stripe = new TestPaymentProvider();
 const ctx = setupTestApp({ payments: stripe });
@@ -536,5 +537,82 @@ describe("invoice amounts stay within 32-bit cents", () => {
     expect(total.json().message).toBe("An invoice can come to at most $1,000,000");
     // Exactly the limit on one line is fine.
     expect((await t.api.post("/invoices", { customerId: t.customer.id, siteId: t.site.id, lines: [million] })).statusCode).toBe(201);
+  });
+});
+
+describe("what the customer is told", () => {
+  const textOf = (pdf: Buffer) => pdfText(pdf).replace(/\s+/g, "");
+
+  it("emails a balance reminder after a part payment, a receipt for a check, and nothing once paid, with replies going to the provider", async () => {
+    const t = await billingTenant(ctx);
+    await ctx.db.updateTable("organizations").set({ email: "office@orga.test" }).where("id", "=", t.org.id).execute();
+    const inv = await issued(t);
+    await runWorker(ctx);
+    const first = mail.delivered.get(`invoice-${inv.id}-send-1`)!;
+    expect(first.replyTo).toBe("office@orga.test");
+    expect(first.subject).toBe("Invoice INV-1001 from Org A: $325.00 due March 31, 2026");
+    expect(first.text).toContain("It is due on March 31, 2026.");
+    expect(first.text).toContain(`View and pay it online by card or bank transfer: https://app.example.test/pay/${inv.token}`);
+    expect(`${first.subject}\n${first.text}`).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+
+    // A check for part of it: the customer gets a receipt saying what is left.
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 20000, method: "check", receivedOn: "2026-03-01", reference: "1042" })).json();
+    await runWorker(ctx);
+    const receipt = mail.delivered.get(`invoice-receipt-${paid.payments[0].id}`)!;
+    expect(receipt).toMatchObject({ to: "billing@orga.test", replyTo: "office@orga.test", subject: "Payment received: $200.00 on invoice INV-1001" });
+    expect(receipt.text).toContain("We received your payment of $200.00 by check (1042) on March 1, 2026, for invoice INV-1001.");
+    expect(receipt.text).toContain("$125.00 is still due on it, by March 31, 2026.");
+
+    // Emailed again, it is a reminder of the balance, not the original total.
+    expect((await t.api.post(`/invoices/${inv.id}/send`, {})).statusCode).toBe(200);
+    await runWorker(ctx);
+    const reminder = mail.delivered.get(`invoice-${inv.id}-send-2`)!;
+    expect(reminder.subject).toBe("Reminder: $125.00 still due on invoice INV-1001 from Org A");
+    expect(reminder.text).toContain("This is a reminder that $125.00 is still due on invoice INV-1001 (of $325.00). It is due on March 31, 2026.");
+    // Its PDF shows the payment, not the amount due at issue.
+    const partial = textOf(reminder.attachments[0]!.content);
+    expect(partial).toContain("Paid$200.00");
+    expect(partial).toContain("Amountdue$125.00");
+
+    // Paid in full: nothing more to email, and the PDF says paid, with the date.
+    ctx.now = new Date("2026-03-04T18:00:00Z");
+    await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 12500, method: "cash", receivedOn: "2026-03-04" });
+    const refused = await t.api.post(`/invoices/${inv.id}/send`, {});
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().message).toBe("Nothing is due on this invoice, so there is nothing to send");
+    await runWorker(ctx);
+    const office = textOf((await t.api.get(`/invoices/${inv.id}/pdf`)).rawPayload);
+    const customer = textOf((await client(ctx.app).get(`/pay/${inv.token}/pdf`)).rawPayload);
+    for (const text of [office, customer]) {
+      expect(text).toContain("PAID");
+      expect(text).toContain("PaidonMarch4,2026");
+      expect(text).toContain("Amountdue$0.00");
+      expect(text).toContain("PaidinfullonMarch4,2026.");
+      expect(text).not.toContain("Howtopay");
+    }
+    // The receipt for the last payment says it is paid in full.
+    const last = [...mail.delivered.values()].filter((m) => m.idempotencyKey.startsWith("invoice-receipt-")).at(-1)!;
+    expect(last.text).toContain("The invoice is paid in full.");
+  });
+
+  it("words a receipt for a payment recorded as 'other' without naming a method", async () => {
+    const t = await billingTenant(ctx);
+    const inv = await issued(t);
+    const paid = (await t.api.post(`/invoices/${inv.id}/payments`, { amountCents: 5000, method: "other", receivedOn: "2026-03-02" })).json();
+    await runWorker(ctx);
+    expect(mail.delivered.get(`invoice-receipt-${paid.payments[0].id}`)!.text).toContain("We received your payment of $50.00 on March 2, 2026, for invoice INV-1001.");
+  });
+
+  it("never promises online payment when the provider cannot take it", async () => {
+    const t = await billingTenant(ctx, "Org A", { stripe: false });
+    const inv = await issued(t);
+    await runWorker(ctx);
+    const msg = mail.delivered.get(`invoice-${inv.id}-send-1`)!;
+    expect(msg.replyTo).toBeNull();
+    expect(msg.text).not.toContain("card or bank");
+    expect(msg.text).toContain("Please pay by check made out to Org A, with INV-1001 written on it.");
+    const pdf = textOf((await t.api.get(`/invoices/${inv.id}/pdf`)).rawPayload);
+    expect(pdf).not.toContain("Payonline");
+    expect(pdf).toContain("PleasepaybycheckmadeouttoOrgAandwriteINV-1001onit.");
   });
 });

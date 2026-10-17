@@ -201,13 +201,13 @@ describe("Hays County corrective reports (10.V.4)", () => {
 
     const [item] = await correctiveItems(s);
     // The report was made 2026-10-07 and has not been sent (no published channel).
-    expect(item).toMatchObject({ dueOn: "2026-10-17", target: { id: done.id }, detail: expect.stringContaining("within 10 days of the previous report (counted from the report's date, 2026-10-07, until it is sent; Aerowise's reading") });
+    expect(item).toMatchObject({ dueOn: "2026-10-17", target: { id: done.id }, detail: expect.stringContaining("within 10 days of the previous report (counted from the report's date, Oct 7, 2026, until it is sent; Aerowise's reading") });
 
     // Booking the retest uses none of the contract's visits.
     const retest = await s.api.post("/jobs", { retestOfInspectionId: done.id, technicianId: s.tech.id, scheduledDate: "2026-10-12" });
     expect(retest.statusCode, retest.body).toBe(201);
     expect(retest.json()).toMatchObject({ obligation: null, scheduledDate: "2026-10-12" });
-    expect((await correctiveItems(s))[0]!.detail).toContain("Retest booked for 2026-10-12");
+    expect((await correctiveItems(s))[0]!.detail).toContain("Retest booked for Oct 12, 2026");
     expect(await visitsOf(s, s.contract.id)).toEqual(before);
 
     ctx.now = new Date("2026-10-12T18:00:00Z");
@@ -237,7 +237,7 @@ describe("Hays County corrective reports (10.V.4)", () => {
     expect((await correctiveItems(s))[0]!.detail).not.toContain("Retest booked");
 
     const retest = (await s.api.post("/jobs", { retestOfInspectionId: done.id, technicianId: s.tech.id, scheduledDate: "2026-10-12" })).json();
-    expect((await correctiveItems(s))[0]!.detail).toContain("Retest booked for 2026-10-12");
+    expect((await correctiveItems(s))[0]!.detail).toContain("Retest booked for Oct 12, 2026");
     const row = await ctx.db.selectFrom("jobs").select(["type", "retestOfInspectionId", "obligationId"]).where("id", "=", retest.jobId).executeTakeFirstOrThrow();
     expect(row).toEqual({ type: "inspection", retestOfInspectionId: done.id, obligationId: null });
   });

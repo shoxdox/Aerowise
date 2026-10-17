@@ -1,10 +1,13 @@
 "use client";
 
 import { SUBSCRIPTION_STATE_LABELS, type SubscriptionOverview } from "@aerowise/domain";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { LoadState, NotForYourRole } from "@/components/LoadState";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
-import { day, money } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { day, money, plural } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
 const INVOICE_STATUS: Record<SubscriptionOverview["invoices"][number]["status"], string> = {
@@ -20,7 +23,7 @@ function planLine(plan: SubscriptionOverview["plan"]) {
   const label = SUBSCRIPTION_STATE_LABELS[plan.state];
   if (plan.state === "trial" || plan.state === "design_partner") {
     const left = plan.daysLeft ?? 0;
-    return `${label}: ${left > 0 ? `${left} days left` : left === 0 ? "ends today" : "ended"}, until ${day(plan.endsOn!)}`;
+    return `${label}: ${left > 0 ? `${plural(left, "day")} left` : left === 0 ? "ends today" : "ended"}, until ${day(plan.endsOn!)}`;
   }
   if (plan.state === "past_due") return `${label}: the last payment did not go through`;
   if (plan.state === "read_only") return `${label}: you can view and export everything; add a payment method to reactivate`;
@@ -29,9 +32,15 @@ function planLine(plan: SubscriptionOverview["plan"]) {
 
 export default function SubscriptionPage() {
   const me = useSession();
-  const { data, error, reload } = useLoad<SubscriptionOverview>(me.role === "owner" ? "/subscription" : null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const subscription = useLoad<SubscriptionOverview>(me.role === "owner" ? "/subscription" : null);
+  const { data, reload } = subscription;
+  const managePayment = useSubmit(
+    async () => {
+      const { url } = await api<{ url: string }>("/subscription/payment-method", { method: "POST", body: {} });
+      window.location.href = url;
+    },
+    { fallback: "Could not reach Stripe." },
+  );
 
   // Back from Stripe with a new payment method: check the plan again, which reactivates a
   // lapsed company. A change of plan reloads the page so the read-only banner goes too.
@@ -43,21 +52,8 @@ export default function SubscriptionPage() {
       .catch(() => undefined);
   }, [me.role, reload]);
 
-  if (me.role !== "owner") return <p className="muted">Only the owner can see the company's Aerowise subscription.</p>;
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
-
-  async function managePayment() {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const { url } = await api<{ url: string }>("/subscription/payment-method", { method: "POST", body: {} });
-      window.location.href = url;
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not reach Stripe");
-      setBusy(false);
-    }
-  }
+  if (me.role !== "owner") return <NotForYourRole />;
+  if (!data) return <LoadState load={subscription} label="subscription" />;
 
   const { plan, price, estimate, paymentMethod } = data;
   const free = plan.state === "trial" || plan.state === "design_partner";
@@ -79,8 +75,7 @@ export default function SubscriptionPage() {
         <h2>{free ? "After your free period" : "This month"}</h2>
         <p data-testid="estimate">
           <strong>{money(estimate.amountCents)}</strong>
-          {estimate.charged || free ? " estimated" : " (not charged while read-only)"} for {estimate.activeContracts} active{" "}
-          {estimate.activeContracts === 1 ? "contract" : "contracts"} as of {day(estimate.countedOn)}.
+          {estimate.charged || free ? " estimated" : " (not charged while read-only)"} for {plural(estimate.activeContracts, "active contract")} as of {day(estimate.countedOn)}.
         </p>
         <p className="muted small">
           {free
@@ -103,13 +98,13 @@ export default function SubscriptionPage() {
                   : "No payment method saved yet. Invoices are charged to it automatically each month."}
             </p>
             <div>
-              <button disabled={busy} onClick={() => void managePayment()}>
+              <SubmitButton type="button" busy={managePayment.busy} busyLabel="Opening Stripe…" onClick={() => void managePayment.run()}>
                 {paymentMethod ? "Change payment method" : "Add payment method"}
-              </button>
+              </SubmitButton>
             </div>
           </>
         )}
-        {message && <p className="error">{message}</p>}
+        <FormError error={managePayment.error} />
       </section>
 
       <section className="stack">
@@ -117,22 +112,26 @@ export default function SubscriptionPage() {
         {data.invoices.length === 0 ? (
           <p className="muted">No invoices yet.</p>
         ) : (
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Month</th>
-                <th>Active contracts</th>
-                <th>Amount</th>
+                <th className="num">Active contracts</th>
+                <th className="num">Amount</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {data.invoices.map((i) => (
                 <tr key={i.id}>
-                  <td>{day(i.startsOn, { month: "long", year: "numeric" })}</td>
-                  <td>{i.activeContracts}</td>
-                  <td>{money(i.amountCents)}</td>
-                  <td>
+                  <td data-label="Month">{day(i.startsOn, { month: "long", year: "numeric" })}</td>
+                  <td data-label="Active contracts" className="num">
+                    {i.activeContracts}
+                  </td>
+                  <td data-label="Amount" className="num">
+                    {money(i.amountCents)}
+                  </td>
+                  <td data-label="Status">
                     {i.hostedInvoiceUrl ? (
                       <a href={i.hostedInvoiceUrl} target="_blank" rel="noreferrer">
                         {INVOICE_STATUS[i.status]}

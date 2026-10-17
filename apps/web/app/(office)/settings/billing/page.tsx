@@ -3,16 +3,20 @@
 import type { BillingSettings } from "@aerowise/domain";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
 function Billing() {
   const owner = useSession().role === "owner";
   const returned = useSearchParams().get("stripe");
-  const { data, error, reload } = useLoad<BillingSettings>("/billing/settings");
-  const [busy, setBusy] = useState(false);
+  const settings = useLoad<BillingSettings>("/billing/settings");
+  const { data, reload } = settings;
   const [message, setMessage] = useState<string | null>(null);
 
   // Coming back from Stripe's setup pages: ask Stripe where the account stands.
@@ -20,32 +24,24 @@ function Billing() {
     if (returned && owner) void api("/billing/stripe/refresh", { method: "POST", body: {} }).then(reload, () => {});
   }, [returned, owner, reload]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const v = formValues(event.currentTarget);
-    setMessage(null);
-    try {
+  const save = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      setMessage(null);
       await api("/billing/settings", { method: "PATCH", body: { invoiceTermsDays: Number(v.terms), defaultTaxRateBps: Math.round(Number(v.tax ?? 0) * 100) } });
       await reload();
       setMessage("Saved");
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not save");
-    }
-  }
-
-  async function connect() {
-    setBusy(true);
-    try {
+    },
+    { fallback: "Could not save the invoice defaults." },
+  );
+  const connect = useSubmit(
+    async () => {
       const { url } = await api<{ url: string }>("/billing/stripe/connect", { method: "POST", body: {} });
       window.location.href = url;
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not reach Stripe");
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not reach Stripe." },
+  );
+
+  if (!data) return <LoadState load={settings} label="billing settings" />;
 
   const s = data.stripe;
   return (
@@ -59,25 +55,26 @@ function Billing() {
         {data.provider !== "none" &&
           (s.chargesEnabled ? (
             <p>
-              <span className="badge ok">Ready</span>{" "}
+              <Badge tone="success">Ready</Badge>{" "}
               {data.provider === "test"
                 ? "Try a simulated card or bank payment. No payment goes to Stripe or a bank."
                 : "Customers can pay invoices by card or bank transfer. Payments go to your Stripe account."}
             </p>
           ) : s.accountId ? (
             <p>
-              <span className="badge warn">Setup not finished</span> Stripe needs a few more details before customers can pay online.
+              <Badge tone="warning">Setup not finished</Badge> Stripe needs a few more details before customers can pay online.
             </p>
           ) : (
             <p className="muted">Connect a Stripe account so customers can pay invoices online. Payments settle directly to your bank through Stripe.</p>
           ))}
         {owner && data.provider !== "none" && !s.chargesEnabled && (
           <div>
-            <button disabled={busy} onClick={() => void connect()}>
+            <SubmitButton type="button" busy={connect.busy} busyLabel="Opening Stripe…" onClick={() => void connect.run()}>
               {s.accountId ? "Finish Stripe setup" : "Connect Stripe"}
-            </button>
+            </SubmitButton>
           </div>
         )}
+        <FormError error={connect.error} />
       </section>
 
       <section className="card row">
@@ -87,7 +84,7 @@ function Billing() {
         <Link href="/quickbooks">QuickBooks settings</Link>
       </section>
 
-      <form className="card grid" onSubmit={save}>
+      <form className="card grid" onSubmit={save.form}>
         <h2 className="wide">Invoice defaults</h2>
         <label>
           Payment terms (days until due)
@@ -97,10 +94,13 @@ function Billing() {
           Sales tax rate (%)
           <input name="tax" type="number" min={0} max={20} step="0.01" defaultValue={(data.defaultTaxRateBps / 100).toFixed(2)} disabled={!owner} />
         </label>
-        <p className="muted small wide">Used for new invoices. Tax is charged only on lines marked taxable.</p>
+        <p className="muted small wide">
+          Used for new invoices. Tax is charged only on lines marked taxable.{!owner && " Only an owner can change these."}
+        </p>
+        <FormError error={save.error} className="wide" />
         {owner && (
           <div className="wide row">
-            <button type="submit">Save</button>
+            <SubmitButton busy={save.busy}>Save</SubmitButton>
             {message && <span className="muted">{message}</span>}
           </div>
         )}

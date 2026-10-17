@@ -1,20 +1,22 @@
 "use client";
 
-import { formatEntered, formatGallons, roleHasPermission, VOLUME_UNITS, WASTE_TYPE_LABELS, type DisposalFacility, type DisposalLoad, type PumpingRecord, type Vehicle } from "@aerowise/domain";
+import { humanize, roleHasPermission, VOLUME_UNITS, WASTE_TYPE_LABELS, type DisposalFacility, type DisposalLoad, type PumpingRecord, type Vehicle } from "@aerowise/domain";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { useFeature } from "@/lib/features";
-import { day } from "@/lib/format";
+import { day, gallons, plural, volume, when } from "@/lib/format";
 import { canEdit, useSession } from "@/lib/session";
+import { usePageTitle } from "@/lib/title";
 
 type Revision = { revision: number; current: boolean; summary: string; correctionReason: string | null; recordedByName: string; createdAt: string };
 type Detail = DisposalLoad & { revisions: Revision[] };
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** One disposal record: its pump-outs, manifest photos and every revision. Corrections add a revision. */
 export default function DisposalRecordPage() {
@@ -23,25 +25,25 @@ export default function DisposalRecordPage() {
   const on = useFeature("pumping");
   const office = canEdit(me) && roleHasPermission(me.role, "work:write");
   const recordLoad = useLoad<Detail>(`/disposal/loads/${id}`);
-  const { data: l, error, reload } = recordLoad;
+  const { data: l, reload } = recordLoad;
   const [unloadedOffset, setUnloadedOffset] = useState(0);
   const unloaded = useLoad<{ items: PumpingRecord[]; nextOffset: number | null }>(office ? `/pumping-records?unloaded=true&limit=50&offset=${unloadedOffset}` : null);
   const vehicles = useLoad<{ items: Vehicle[] }>(office ? "/vehicles" : null);
   const facilities = useLoad<{ items: DisposalFacility[] }>(office ? "/disposal-facilities" : null);
   const [correcting, setCorrecting] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  async function act(path: string, body: unknown) {
-    setProblem(null);
-    try {
+  // The pump-out being taken out of the load: its reason is asked on its own row.
+  const [removing, setRemoving] = useState<string | null>(null);
+  usePageTitle(l ? `${day(l.deliveredOn)} · ${l.facilityName}` : null);
+  const acting = useSubmit(
+    async (path: string, body: unknown) => {
       await api(path, { method: "POST", body });
       await Promise.all([reload(), unloaded.reload()]);
       return true;
-    } catch (err) {
-      setProblem(err instanceof ApiError ? err.message : "Could not save");
-      return false;
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const act = async (path: string, body: unknown) => (await acting.run(path, body)) === true;
+  const problem = acting.error;
 
   async function correct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,36 +61,35 @@ export default function DisposalRecordPage() {
     if (ok) setCorrecting(false);
   }
 
-  async function remove(p: PumpingRecord) {
-    const reason = window.prompt(`Why is the pump-out at ${p.siteAddress} not in this load?`);
-    if (!reason) return;
-    await act(`/disposal/loads/${id}/items/remove`, { pumpingGroupId: p.groupId, reason });
+  async function remove(p: PumpingRecord, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const { reason } = formValues(event.currentTarget);
+    if (await act(`/disposal/loads/${id}/items/remove`, { pumpingGroupId: p.groupId, reason })) setRemoving(null);
   }
 
-  if (error && !l) return <LoadState load={recordLoad} label="record" />;
-  if (!l) return <LoadState load={recordLoad} label="record" />;
+  if (!l) return <LoadState load={recordLoad} label="disposal record" back={{ href: "/disposal", label: "Disposal records" }} />;
   const editable = office && on;
   return (
     <div className="stack">
-      <LoadState load={recordLoad} label="record" />
+      <LoadState load={recordLoad} label="disposal record" back={{ href: "/disposal", label: "Disposal records" }} />
       <p>
-        <Link href="/disposal">Disposal records</Link>
+        <Link href="/disposal">← Disposal records</Link>
       </p>
       <h1>
         {day(l.deliveredOn)} · {l.facilityName}
       </h1>
       <p className="muted">
-        {formatEntered(l.enteredTotal, l.enteredUnit)} · {l.vehicleName ? `truck ${l.vehicleName}` : "no truck named"} ·{" "}
+        {volume(l.enteredTotal, l.enteredUnit)} · {l.vehicleName ?? "no truck named"} ·{" "}
         {l.manifestReference ? `manifest/reference ${l.manifestReference}` : "no manifest/reference number"} · recorded by {l.recordedByName}
         {l.revision > 1 && ` · revision ${l.revision}`}
       </p>
       {l.notes && <p style={{ whiteSpace: "pre-wrap" }}>{l.notes}</p>}
       {l.volumesDiffer && (
         <p className="banner warn" role="status">
-          The pump-outs in this load add up to {formatGallons(l.itemsMilligallons)}, which differs from the load total of {formatGallons(l.totalMilligallons)}.
+          The pump-outs in this load add up to {gallons(l.itemsMilligallons)}, which differs from the load total of {gallons(l.totalMilligallons)}.
         </p>
       )}
-      {problem && <p className="error">{problem}</p>}
+      <FormError error={problem} />
 
       <section className="stack">
         <h2>Pump-outs</h2>
@@ -96,13 +97,13 @@ export default function DisposalRecordPage() {
           <p className="muted">No pump-outs in this load.</p>
         ) : (
           <div className="table-scroll">
-            <table className="compact" data-testid="load-items">
+            <table className="compact stack" data-testid="load-items">
               <thead>
                 <tr>
                   <th>Pumped</th>
                   <th>Site</th>
                   <th>Waste</th>
-                  <th>Volume</th>
+                  <th className="num">Volume</th>
                   <th>Technician</th>
                   {editable && <th />}
                 </tr>
@@ -110,21 +111,40 @@ export default function DisposalRecordPage() {
               <tbody>
                 {l.items.map((p) => (
                   <tr key={p.groupId}>
-                    <td>{day(p.serviceDate)}</td>
-                    <td>
+                    <td data-label="Pumped">{day(p.serviceDate)}</td>
+                    <td data-label="Site">
                       <Link href={`/sites/${p.siteId}`}>{p.siteAddress}</Link>
                       <div className="muted small">
                         {p.customerName} · <Link href={`/work/${p.workOrderId}`}>{p.workOrderLabel}</Link>
                       </div>
                     </td>
-                    <td>{WASTE_TYPE_LABELS[p.wasteType]}</td>
-                    <td>{formatEntered(p.enteredVolume, p.enteredUnit)}</td>
-                    <td>{p.technicianName}</td>
+                    <td data-label="Waste">{WASTE_TYPE_LABELS[p.wasteType]}</td>
+                    <td data-label="Volume" className="num">
+                      {volume(p.enteredVolume, p.enteredUnit)}
+                    </td>
+                    <td data-label="Technician">{p.technicianName}</td>
                     {editable && (
-                      <td>
-                        <button type="button" className="link" onClick={() => void remove(p)}>
-                          Take out
-                        </button>
+                      <td className="actions">
+                        {removing === p.groupId ? (
+                          <form className="stack" onSubmit={(e) => void remove(p, e)}>
+                            <label>
+                              Why is it not in this load?
+                              <input name="reason" required maxLength={2000} autoFocus />
+                            </label>
+                            <div className="row">
+                              <SubmitButton className="danger" busy={acting.busy}>
+                                Take it out
+                              </SubmitButton>
+                              <button type="button" className="link" onClick={() => setRemoving(null)}>
+                                Keep it
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <button type="button" className="link danger" onClick={() => setRemoving(p.groupId)}>
+                            Take out
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -136,7 +156,8 @@ export default function DisposalRecordPage() {
         <LoadState load={unloaded} label="available pump-outs" />
         <LoadState load={vehicles} label="vehicles" />
         <LoadState load={facilities} label="facilities" />
-        {unloaded.data && <nav className="row" aria-label="Available pump-out pages"><span>{unloaded.data.items.length} pump-outs on this page{unloaded.data.nextOffset !== null ? "; more available" : ""}</span><button className="secondary" disabled={unloadedOffset === 0} onClick={() => setUnloadedOffset(Math.max(0, unloadedOffset - 50))}>Previous pump-outs</button><button className="secondary" disabled={unloaded.data.nextOffset === null} onClick={() => setUnloadedOffset(unloaded.data!.nextOffset!)}>Next pump-outs</button></nav>}
+        {unloaded.data && editable && <p className="muted small">Pump-outs you can add: {unloaded.data.nextOffset !== null ? `${unloaded.data.items.length}+` : unloaded.data.items.length}</p>}
+        {unloaded.data && (unloadedOffset > 0 || unloaded.data.nextOffset !== null) && <nav className="row" aria-label="Available pump-out pages"><span>{plural(unloaded.data.items.length, "pump-out")} on this page; more available</span><button className="secondary" disabled={unloadedOffset === 0} onClick={() => setUnloadedOffset(Math.max(0, unloadedOffset - 50))}>Previous pump-outs</button><button className="secondary" disabled={unloaded.data.nextOffset === null} onClick={() => setUnloadedOffset(unloaded.data!.nextOffset!)}>Next pump-outs</button></nav>}
         {editable && unloaded.data && unloaded.data.items.length > 0 && (
           <form
             className="row"
@@ -152,13 +173,13 @@ export default function DisposalRecordPage() {
               </option>
               {unloaded.data.items.map((p) => (
                 <option key={p.groupId} value={p.groupId}>
-                  {p.serviceDate} · {p.siteAddress} · {formatEntered(p.enteredVolume, p.enteredUnit)}
+                  {day(p.serviceDate)} · {p.siteAddress} · {volume(p.enteredVolume, p.enteredUnit)}
                 </option>
               ))}
             </select>
-            <button type="submit" className="secondary">
+            <SubmitButton className="secondary" busy={acting.busy}>
               Add
-            </button>
+            </SubmitButton>
           </form>
         )}
       </section>
@@ -228,7 +249,7 @@ export default function DisposalRecordPage() {
               <select name="unit" defaultValue={l.enteredUnit}>
                 {VOLUME_UNITS.map((u) => (
                   <option key={u} value={u}>
-                    {u}
+                    {humanize(u)}
                   </option>
                 ))}
               </select>
@@ -243,7 +264,7 @@ export default function DisposalRecordPage() {
             <input name="reason" required minLength={3} maxLength={2000} />
           </label>
           <div className="row">
-            <button type="submit">Save correction</button>
+            <SubmitButton busy={acting.busy}>Save correction</SubmitButton>
             <button type="button" className="secondary" onClick={() => setCorrecting(false)}>
               Cancel
             </button>
@@ -257,7 +278,7 @@ export default function DisposalRecordPage() {
           {l.revisions.map((r) => (
             <li key={r.revision}>
               <strong>Revision {r.revision}</strong>
-              {r.current && <span className="badge">current</span>} · {r.summary}
+              {r.current && <Badge>Current</Badge>} · {r.summary}
               {r.correctionReason && <div className="muted small">Reason: {r.correctionReason}</div>}
               <div className="muted small">
                 {r.recordedByName} · {when(r.createdAt)}

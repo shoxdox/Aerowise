@@ -1,12 +1,16 @@
 "use client";
 
 import { SERVICE_REQUEST_LABELS, type PortalAccess, type ServiceRequest } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { Pagination } from "@/components/Pagination";
 import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { phone, plural, when } from "@/lib/format";
 
 /** The customer's portal access and what they have asked for from it. */
 export function CustomerPortal({ customerId, editable }: { customerId: string; editable: boolean }) {
@@ -17,23 +21,17 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
   const { data: requests, reload: reloadRequests } = requestLoad;
   const [url, setUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [resolving, setResolving] = useState<string | null>(null);
-
-  async function run(fn: () => Promise<void>) {
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
+  const acting = useSubmit(
+    async (fn: () => Promise<void>) => {
+      setMessage(null);
       await fn();
       await reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not reach Aerowise. Try again." },
+  );
+  const run = (fn: () => Promise<void>) => acting.run(fn);
+  const busy = acting.busy;
 
   const copy = () =>
     run(async () => {
@@ -49,23 +47,20 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
     });
   const revoke = () =>
     run(async () => {
-      if (!window.confirm("Turn off every portal link this customer has? They can ask for a new one by email.")) return;
       const { revoked } = await api<{ revoked: number }>(`/customers/${customerId}/portal-links/revoke`, { method: "POST", body: {} });
       setUrl(null);
-      setMessage(revoked === 1 ? "1 link turned off." : `${revoked} links turned off.`);
+      setMessage(`${plural(revoked, "link")} turned off.`);
     });
 
-  async function resolve(event: FormEvent<HTMLFormElement>, id: string) {
-    event.preventDefault();
-    const { resolution } = formValues(event.currentTarget);
-    try {
-      await api(`/service-requests/${id}/resolve`, { method: "POST", body: { resolution } });
+  const closing = useSubmit(
+    async ({ resolution }: Record<string, string | undefined>) => {
+      await api(`/service-requests/${resolving}/resolve`, { method: "POST", body: { resolution } });
       setResolving(null);
       await reloadRequests();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not close it");
-    }
-  }
+    },
+    { fallback: "Could not close it." },
+  );
+  const error = acting.error ?? closing.error;
 
   return (
     <section className="stack">
@@ -75,7 +70,7 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
       <div className="card stack">
         {access && (
           <p className="muted small">
-            {access.activeLinks === 0 ? "No working portal link." : access.activeLinks === 1 ? "1 working portal link." : `${access.activeLinks} working portal links.`}{" "}
+            {access.activeLinks === 0 ? "No working portal link." : `${plural(access.activeLinks, "working portal link")}.`}{" "}
             {access.lastUsedAt ? `Last opened ${when(access.lastUsedAt)}.` : "Never opened."}
           </p>
         )}
@@ -86,19 +81,19 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
           </div>
         )}
         {message && <p className="ok-text">{message}</p>}
-        {error && <p className="error">{error}</p>}
+        <FormError error={error} />
         {editable && (
           <div className="row">
-            <button className="secondary" disabled={busy || !access?.email} onClick={() => void email()} title={access?.email ? undefined : "No email on file"}>
+            <SubmitButton type="button" className="secondary" busy={busy} busyLabel="Working…" disabled={!access?.email} onClick={() => void email()} title={access?.email ? undefined : "No email on file"}>
               Email portal link
-            </button>
-            <button className="secondary" disabled={busy} onClick={() => void copy()}>
+            </SubmitButton>
+            <SubmitButton type="button" className="secondary" busy={busy} busyLabel="Working…" onClick={() => void copy()}>
               Copy portal link
-            </button>
+            </SubmitButton>
             {access && access.activeLinks > 0 && (
-              <button className="link" disabled={busy} onClick={() => void revoke()}>
+              <ConfirmButton className="link danger" question="Turn off every portal link this customer has? They can ask for a new one by email." confirmLabel="Turn off links" busy={busy} onConfirm={() => revoke()}>
                 Turn off links
-              </button>
+              </ConfirmButton>
             )}
           </div>
         )}
@@ -112,18 +107,18 @@ export function CustomerPortal({ customerId, editable }: { customerId: string; e
             <div key={r.id} className="stack">
               <div className="row">
                 <strong>{SERVICE_REQUEST_LABELS[r.kind]}</strong>
-                <span className={`badge ${r.status === "open" ? "warn" : "ok"}`}>{r.status}</span>
+                <Badge tone={r.status === "open" ? "warning" : "success"}>{r.status === "open" ? "Open" : "Closed"}</Badge>
                 <span className="muted small">
                   {r.site.addressLine1} · {when(r.createdAt)}
                 </span>
               </div>
               <div>{r.description}</div>
-              {r.contactPhone && <div className="small">Call {r.contactPhone}</div>}
+              {r.contactPhone && <div className="small">Call <a href={`tel:${r.contactPhone}`}>{phone(r.contactPhone)}</a></div>}
               {r.resolution && <div className="muted small">Done: {r.resolution}</div>}
               {editable && r.status === "open" && (resolving === r.id ? (
-                <form className="row" onSubmit={(e) => void resolve(e, r.id)}>
+                <form className="row" onSubmit={closing.form}>
                   <input name="resolution" aria-label="What was done" placeholder="What was done" required />
-                  <button type="submit">Close</button>
+                  <SubmitButton busy={closing.busy}>Close</SubmitButton>
                 </form>
               ) : (
                 <button className="link" onClick={() => setResolving(r.id)}>

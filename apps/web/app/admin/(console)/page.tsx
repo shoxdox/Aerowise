@@ -10,19 +10,17 @@ import {
   type SubscriptionConfig,
   type SubscriptionState,
 } from "@aerowise/domain";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
-import { day, money } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { day, money, plural, when as moment } from "@/lib/format";
 
-const when = (iso: string | null) =>
-  iso
-    ? new Date(iso).toLocaleString("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "America/Chicago",
-      })
-    : "Never";
+// The platform console has no company of its own, so moments read in Texas time (format.ts's default).
+const when = (iso: string | null) => (iso ? moment(iso) : "Never");
 
 /** Dollars typed in a form to cents, or null when left blank (use the configured price). */
 const toCents = (dollars: string | undefined) =>
@@ -36,10 +34,10 @@ function planSummary(o: AdminOrganization) {
   const left = o.daysLeft ?? 0;
   const remaining =
     left > 0
-      ? `${left} days left`
+      ? `${plural(left, "day")} left`
       : left === 0
         ? "ends today"
-        : `ended ${-left} days ago`;
+        : `ended ${plural(-left, "day")} ago`;
   return `${label} until ${day(o.plan.endsOn)} (${remaining})`;
 }
 
@@ -68,17 +66,13 @@ function PlanEditor({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
   const states: SubscriptionState[] = [
     org.plan.state,
     ...SUBSCRIPTION_TRANSITIONS[org.plan.state],
   ];
 
-  async function onSave(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const saving = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       await api(`/admin/organizations/${org.id}/plan`, {
         method: "PUT",
         body: {
@@ -97,17 +91,15 @@ function PlanEditor({
         });
       }
       onSaved();
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Could not save the plan",
-      );
-    }
-  }
+    },
+    { fallback: "Could not save the plan." },
+  );
+  const error = saving.error;
 
   return (
     <form
       className="card grid"
-      onSubmit={onSave}
+      onSubmit={saving.form}
       aria-label={`Plan for ${org.name}`}
     >
       <h2 className="wide">Plan for {org.name}</h2>
@@ -189,9 +181,9 @@ function PlanEditor({
         )}
         ).
       </p>
-      {error && <p className="error wide">{error}</p>}
+      <FormError error={error} className="wide" />
       <div className="wide row">
-        <button type="submit">Save plan</button>
+        <SubmitButton busy={saving.busy}>Save plan</SubmitButton>
         <button type="button" className="link" onClick={onCancel}>
           Cancel
         </button>
@@ -204,23 +196,15 @@ function PlanEditor({
 function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: (result: OrganizationErasure) => void; onCancel: () => void }) {
   const [typed, setTyped] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
+  const erase = useSubmit(
+    async () => {
       onDone(await api<OrganizationErasure>(`/admin/organizations/${org.id}/erase`, { method: "POST", body: { confirmName: typed, password } }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete the data");
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Could not delete the data." },
+  );
 
   return (
-    <form className="card stack" onSubmit={onSubmit} aria-label={`Delete the data of ${org.name}`}>
+    <form className="card stack" onSubmit={(e) => (e.preventDefault(), void erase.run())} aria-label={`Delete the data of ${org.name}`}>
       <p style={{ margin: 0 }}>
         <strong>Delete all of {org.name}&apos;s data</strong>
       </p>
@@ -241,11 +225,11 @@ function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: 
         <span>Your password</span>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
       </label>
-      {error && <p className="error">{error}</p>}
+      <FormError error={erase.error} />
       <div className="row">
-        <button type="submit" className="danger" disabled={busy || typed.trim() !== org.name.trim() || password.length === 0}>
-          {busy ? "Deleting…" : "Delete all data"}
-        </button>
+        <SubmitButton className="danger" busy={erase.busy} busyLabel="Deleting…" disabled={typed.trim() !== org.name.trim() || password.length === 0}>
+          Delete all data
+        </SubmitButton>
         <button type="button" className="link" onClick={onCancel}>
           Cancel
         </button>
@@ -255,51 +239,40 @@ function EraseForm({ org, onDone, onCancel }: { org: AdminOrganization; onDone: 
 }
 
 export default function AdminOrganizationsPage() {
-  const { data, reload } = useLoad<{
+  const organizations = useLoad<{
     items: AdminOrganization[];
     defaults: SubscriptionConfig;
   }>("/admin/organizations");
+  const { data, reload } = organizations;
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [invitingFor, setInvitingFor] = useState<AdminOrganization | null>(
     null,
   );
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const [supportFor, setSupportFor] = useState<AdminOrganization | null>(null);
-  const [supportError, setSupportError] = useState<string | null>(null);
 
   // Opens the company as its owner sees it, read-only, then goes there.
-  async function onSupport(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!supportFor) return;
-    setSupportError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const support = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      if (!supportFor) return;
       await api(`/admin/organizations/${supportFor.id}/support`, {
         method: "POST",
         body: { reason: v.reason },
       });
       window.location.assign("/inbox");
-    } catch (err) {
-      setSupportError(
-        err instanceof ApiError ? err.message : "Could not open the company",
-      );
-    }
-  }
+    },
+    { fallback: "Could not open the company." },
+  );
   const [sent, setSent] = useState<{
     org: string;
     result: InvitationSent;
   } | null>(null);
   const [erasing, setErasing] = useState<AdminOrganization | null>(null);
 
-  async function onInvite(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!invitingFor) return;
-    setInviteError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const invite = useSubmit(
+    async (v: Record<string, string | undefined>) => {
+      if (!invitingFor) return;
       const result = await api<InvitationSent>(
         `/admin/organizations/${invitingFor.id}/invitations`,
         {
@@ -309,18 +282,12 @@ export default function AdminOrganizationsPage() {
       );
       setSent({ org: invitingFor.name, result });
       setInvitingFor(null);
-    } catch (err) {
-      setInviteError(
-        err instanceof ApiError ? err.message : "Could not send the invitation",
-      );
-    }
-  }
+    },
+    { fallback: "Could not send the invitation." },
+  );
 
-  async function onCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const v = formValues(event.currentTarget);
-    try {
+  const create = useSubmit(
+    async (v: Record<string, string | undefined>) => {
       const org = await api<AdminOrganization>("/admin/organizations", {
         method: "POST",
         body: {
@@ -334,14 +301,9 @@ export default function AdminOrganizationsPage() {
       setCreating(false);
       setNotice(`Created ${org.name}.`);
       await reload();
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Could not create the organization",
-      );
-    }
-  }
+    },
+    { fallback: "Could not create the organization." },
+  );
 
   const editingOrg = data?.items.find((o) => o.id === editing);
 
@@ -376,7 +338,7 @@ export default function AdminOrganizationsPage() {
       )}
 
       {invitingFor && (
-        <form className="card grid" onSubmit={onInvite}>
+        <form className="card grid" onSubmit={invite.form}>
           <p className="wide" style={{ margin: 0 }}>
             <strong>Invite the owner of {invitingFor.name}</strong>
           </p>
@@ -388,9 +350,11 @@ export default function AdminOrganizationsPage() {
             Owner name
             <input name="name" placeholder="Optional" />
           </label>
-          {inviteError && <p className="error wide">{inviteError}</p>}
+          <FormError error={invite.error} className="wide" />
           <div className="wide row">
-            <button type="submit">Send owner invitation</button>
+            <SubmitButton busy={invite.busy} busyLabel="Sending…">
+              Send owner invitation
+            </SubmitButton>
             <button
               type="button"
               className="link"
@@ -403,7 +367,7 @@ export default function AdminOrganizationsPage() {
       )}
 
       {supportFor && (
-        <form className="card grid" onSubmit={onSupport}>
+        <form className="card grid" onSubmit={support.form}>
           <p className="wide">
             View <strong>{supportFor.name}</strong> as its owner sees it, for
             up to an hour. Nothing can be changed, and the company&apos;s
@@ -418,9 +382,11 @@ export default function AdminOrganizationsPage() {
               placeholder="Owner asked why a filing is late"
             />
           </label>
-          {supportError && <p className="error wide">{supportError}</p>}
+          <FormError error={support.error} className="wide" />
           <div className="wide row">
-            <button type="submit">Open read-only</button>
+            <SubmitButton busy={support.busy} busyLabel="Opening…">
+              Open read-only
+            </SubmitButton>
             <button
               type="button"
               className="link"
@@ -433,7 +399,7 @@ export default function AdminOrganizationsPage() {
       )}
 
       {creating && data && (
-        <form className="card grid" onSubmit={onCreate}>
+        <form className="card grid" onSubmit={create.form}>
           <label className="wide">
             Company name
             <input name="name" required placeholder="Brazos Aerobic Co" />
@@ -464,9 +430,9 @@ export default function AdminOrganizationsPage() {
               </option>
             </select>
           </label>
-          {error && <p className="error wide">{error}</p>}
+          <FormError error={create.error} className="wide" />
           <div className="wide">
-            <button type="submit">Create organization</button>
+            <SubmitButton busy={create.busy}>Create organization</SubmitButton>
           </div>
         </form>
       )}
@@ -502,6 +468,7 @@ export default function AdminOrganizationsPage() {
         />
       )}
 
+      <LoadState load={organizations} label="organizations" quiet />
       {/* The table scrolls on its own on a phone, so the page (and the plan form) stays screen-wide. */}
       <div className="table-scroll">
         <table>
@@ -523,7 +490,7 @@ export default function AdminOrganizationsPage() {
                 <td>
                   {o.name}{" "}
                   {o.dataDeletedAt ? (
-                    <span className="badge">Data deleted {when(o.dataDeletedAt)}</span>
+                    <Badge tone="muted">Data deleted {when(o.dataDeletedAt)}</Badge>
                   ) : (
                     <>
                       <button
@@ -534,7 +501,7 @@ export default function AdminOrganizationsPage() {
                         Edit plan
                       </button>{" "}
                       <button
-                        className="link small"
+                        className="link small danger"
                         onClick={() => {
                           setErasing(o);
                           setNotice(null);
@@ -569,7 +536,7 @@ export default function AdminOrganizationsPage() {
                             className="link"
                             onClick={() => {
                               setSupportFor(o);
-                              setSupportError(null);
+                              support.clear();
                             }}
                             aria-label={`View ${o.name} read-only`}
                           >

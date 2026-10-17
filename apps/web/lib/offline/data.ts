@@ -85,7 +85,7 @@ async function freshOrCached<T>(store: TenantStore, path: string, key: string): 
 }
 
 export async function loadRoute(store: TenantStore) {
-  const r = await freshOrCached<{ date: string; items: Stop[] }>(store, "/route", "route");
+  const r = await freshOrCached<{ date: string; items: Stop[]; onTheWayTexts?: boolean }>(store, "/route", "route");
   if (r.fresh && r.data) await store.kvSet("routeFetchedAt", new Date().toISOString());
   return { route: r.data as CachedRoute | undefined, fresh: r.fresh, fetchedAt: await store.kvGet<string>("routeFetchedAt") };
 }

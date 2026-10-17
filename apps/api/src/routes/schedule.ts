@@ -1,4 +1,4 @@
-import { loadCatalog, requirementsOf, resolveSite } from "@aerowise/compliance";
+import { loadCatalog, requirementsOf, resolveSite, visitDeadline } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import {
   canTransition,
@@ -14,6 +14,7 @@ import {
   type JobStatus,
   type Stop,
 } from "@aerowise/domain";
+import { smsKindOn, smsSettingsOf } from "@aerowise/sms";
 import { serviceEndForVisit } from "@aerowise/tasks";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { sql, type Transaction } from "kysely";
@@ -65,6 +66,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         "o.sequence",
         "o.dueOn",
         "o.windowEnd",
+        sql<string | null>`case when o.id is null then null else ${visitDeadline("o")} end`.as("mustBeDoneBy"),
         "s.id as siteId",
         "s.addressLine1",
         "s.addressLine2",
@@ -123,7 +125,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
     notes: r.notes,
     onTheWayAt: r.onTheWayAt?.toISOString() ?? null,
     obligation: r.obligationId && r.sequence !== null && r.dueOn && r.windowEnd
-      ? { id: r.obligationId, sequence: r.sequence, dueOn: r.dueOn, windowEnd: r.windowEnd }
+      ? { id: r.obligationId, sequence: r.sequence, dueOn: r.dueOn, windowEnd: r.windowEnd, mustBeDoneBy: r.mustBeDoneBy ?? r.dueOn }
       : null,
     site: {
       id: r.siteId,
@@ -258,7 +260,14 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         tags: ["schedule"],
         summary: "The signed-in technician's stops for a day, in route order",
         querystring: z.object({ date: date.optional() }),
-        response: { 200: z.object({ date, items: z.array(stop) }) },
+        response: {
+          200: z.object({
+            date,
+            items: z.array(stop),
+            /** Whether the company sends "on the way" texts now, so the phone offers the button only then. */
+            onTheWayTexts: z.boolean(),
+          }),
+        },
       },
     },
     async (req) => {
@@ -273,7 +282,7 @@ export const scheduleRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Da
         const resolved = resolveSite(catalog, { county: r.county, state: r.state, jurisdictionId: r.jurisdictionId }, day);
         return { ...toStop(r), requirements: resolved ? requirementsOf(resolved, r.customerType) : null };
       });
-      return { date: day, items };
+      return { date: day, items, onTheWayTexts: smsKindOn(await smsSettingsOf(db, organizationId), "on_the_way") };
     },
   );
 

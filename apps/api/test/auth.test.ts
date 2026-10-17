@@ -80,6 +80,28 @@ describe("sessions", () => {
     expect((await api.get("/auth/me")).statusCode).toBe(401);
   });
 
+  it("ends a phone's session from before a sign-out made with no signal, never one signed in since", async () => {
+    const org = await createOrg(ctx.db, "Org A");
+    const user = await createUser(ctx.db, org.id, "technician");
+    const old = client(ctx.app, await login(ctx.app, user.email));
+    await sql`update sessions set created_at = now() - interval '1 hour' where user_id = ${user.id}`.execute(ctx.db);
+    const signedOutAt = new Date(Date.now() - 60_000).toISOString();
+    const since = client(ctx.app, await login(ctx.app, user.email));
+
+    // Signed in again after it: kept, cookie and all.
+    const kept = await since.post("/auth/logout", { signedInBefore: signedOutAt });
+    expect(kept.statusCode).toBe(204);
+    expect(kept.cookies.find((c) => c.name === "aw_session")).toBeUndefined();
+    expect((await since.get("/auth/me")).statusCode).toBe(200);
+
+    // Still the session from before it: ended.
+    const ended = await old.post("/auth/logout", { signedInBefore: signedOutAt });
+    expect(ended.statusCode).toBe(204);
+    expect(ended.cookies.find((c) => c.name === "aw_session")?.value).toBe("");
+    expect((await old.get("/auth/me")).statusCode).toBe(401);
+    expect((await since.get("/auth/me")).statusCode).toBe(200);
+  });
+
   it("rejects expired sessions", async () => {
     const org = await createOrg(ctx.db, "Org A");
     const user = await createUser(ctx.db, org.id, "owner");
@@ -125,6 +147,21 @@ describe("sign-in rate limit", () => {
     for (let i = 0; i < 4; i++) await attempt("victim@example.com");
     expect((await attempt("victim@example.com")).statusCode).toBe(429);
     expect((await attempt("colleague@example.com")).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("also limits one address across emails, so a password can't be tried against every account", async () => {
+    const app = await buildApp({ db: ctx.db, loginRateLimit: 3 });
+    const attempt = (email: string, remoteAddress = "203.0.113.7") =>
+      app.inject({ method: "POST", url: "/auth/login", payload: { email, password: "guess" }, remoteAddress });
+    // Three times the per-email allowance, each email tried only once.
+    for (let i = 0; i < 9; i++) expect((await attempt(`person${i}@example.com`)).statusCode).toBe(401);
+    const blocked = await attempt("person9@example.com");
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json()).toEqual({ error: "rate_limited", message: "Too many attempts. Try again in a minute." });
+    expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(0);
+    // Someone at another address is not held up by it.
+    expect((await attempt("person9@example.com", "198.51.100.4")).statusCode).toBe(401);
     await app.close();
   });
 });

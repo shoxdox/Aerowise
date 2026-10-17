@@ -4,15 +4,20 @@ import { IMPORT_FIELD_LABELS, IMPORT_FIELDS, type ImportDetail, type ImportField
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { OnboardingSummary } from "@/components/OnboardingSummary";
 import { LoadState } from "@/components/LoadState";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
-import { when } from "@/lib/format";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { day, plural, when } from "@/lib/format";
+import { usePageTitle } from "@/lib/title";
 
 const SHOWN = 200;
-const STATUS_CLASS: Record<ImportRow["status"], string> = { ready: "ok", warning: "warn", duplicate: "upcoming", error: "danger" };
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+/** A date from the file as the rest of Aerowise shows dates, when it reads as one. */
+const fileDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? day(value) : value);
 type Filter = "all" | "problems" | ImportRow["status"];
 
 function Mapping({ imp, disabled, onSave }: { imp: ImportDetail; disabled: boolean; onSave: (m: Partial<Record<ImportField, number | null>>) => void }) {
@@ -60,15 +65,9 @@ function Undo({ imp, busy, onUndo }: { imp: ImportDetail; busy: boolean; onUndo:
           Imported the wrong file? Undo deletes the {plural(r.customers, "new customer")}, {plural(r.sites, "site")}, {plural(r.contracts, "contract")} and{" "}
           {plural(r.visits, "visit")} this import created.
         </span>
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm(`Delete the ${plural(r.sites, "site")} and everything else this import created?`)) onUndo();
-          }}
-        >
+        <ConfirmButton className="secondary danger" question={`Delete the ${plural(r.sites, "site")} and everything else this import created?`} confirmLabel="Undo import" busy={busy} onConfirm={onUndo}>
           Undo import
-        </button>
+        </ConfirmButton>
       </div>
     );
   }
@@ -89,29 +88,30 @@ export default function ImportPreviewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const importLoad = useLoad<ImportDetail>(`/imports/${id}`);
-  const { data: loaded, error: loadError } = importLoad;
+  const { data: loaded } = importLoad;
   const [updated, setUpdated] = useState<ImportDetail | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const imp = updated ?? loaded;
+  usePageTitle(imp ? `Import · ${imp.filename}` : null);
 
-  async function run(path: string, body: object = {}, method = "POST") {
-    setBusy(true);
-    setError(null);
-    try {
-      setUpdated(await api<ImportDetail>(`/imports/${id}${path}`, { method, body }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-      // A failed commit is recorded on the import; show it.
-      if (path === "/commit") setUpdated(await api<ImportDetail>(`/imports/${id}`).catch(() => null));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const acting = useSubmit(
+    async (path: string, body: object = {}, method: string = "POST") => {
+      try {
+        setUpdated(await api<ImportDetail>(`/imports/${id}${path}`, { method, body }));
+        return true;
+      } catch (err) {
+        // A failed commit is recorded on the import; show it.
+        if (path === "/commit") setUpdated(await api<ImportDetail>(`/imports/${id}`).catch(() => null));
+        throw err;
+      }
+    },
+    { fallback: "Could not save." },
+  );
+  const run = (path: string, body: object = {}, method = "POST") => acting.run(path, body, method);
+  const busy = acting.busy;
+  const error = acting.error;
 
-  if (loadError && !imp) return <LoadState load={importLoad} label="import" />;
-  if (!imp) return <LoadState load={importLoad} label="import" />;
+  if (!imp) return <LoadState load={importLoad} label="import" back={{ href: "/import", label: "Import" }} />;
 
   const open = imp.status === "preview" || imp.status === "failed";
   const s = imp.summary;
@@ -126,10 +126,10 @@ export default function ImportPreviewPage() {
 
   return (
     <div className="stack">
-      <LoadState load={importLoad} label="import" />
+      <LoadState load={importLoad} label="import" back={{ href: "/import", label: "Import" }} />
       <div className="row">
         <h1>{imp.filename}</h1>
-        <span className={`badge ${imp.status === "committed" ? "ok" : imp.status === "failed" ? "danger" : imp.status === "undone" ? "cancelled" : ""}`}>{imp.status}</span>
+        <StatusBadge of="import" value={imp.status} />
       </div>
       <p className="muted">
         <Link href="/import">All imports</Link> · uploaded {when(imp.createdAt)}
@@ -152,7 +152,7 @@ export default function ImportPreviewPage() {
           </p>
         </section>
       )}
-      {imp.status === "committed" && <Undo imp={imp} busy={busy} onUndo={() => run("/undo")} />}
+      {imp.status === "committed" && <Undo imp={imp} busy={busy} onUndo={() => void run("/undo")} />}
       {imp.status === "undone" && imp.undoneAt && (
         <p className="card">Undone {when(imp.undoneAt)}. Nothing this import created remains; you can import the file again.</p>
       )}
@@ -170,7 +170,7 @@ export default function ImportPreviewPage() {
               </option>
             ))}
           </select>
-          <span className="muted">This workbook has {imp.sheets.length} sheets with data. Only the chosen sheet is imported.</span>
+          <span className="muted">This workbook has {plural(imp.sheets.length, "sheet")} with data. Only the chosen sheet is imported.</span>
         </div>
       )}
 
@@ -189,16 +189,16 @@ export default function ImportPreviewPage() {
 
       {open && (
         <div className="row">
-          <button disabled={busy || s.included === 0} onClick={() => run("/commit")}>
-            {busy ? "Working…" : `Import ${s.included} ${s.included === 1 ? "row" : "rows"}`}
-          </button>
-          <button className="secondary" disabled={busy} onClick={() => run("/discard").then(() => router.push("/import"))}>
+          <SubmitButton type="button" busy={busy} busyLabel="Working…" disabled={s.included === 0} onClick={() => void run("/commit")}>
+            Import {plural(s.included, "row")}
+          </SubmitButton>
+          <ConfirmButton className="secondary danger" question="Discard this preview? Nothing from the file is imported." confirmLabel="Discard" busy={busy} onConfirm={async () => (await run("/discard")) && router.push("/import")}>
             Discard
-          </button>
+          </ConfirmButton>
           <span className="muted">Rows that can&apos;t be imported are skipped. Duplicates are skipped unless you tick them.</span>
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      <FormError error={error} />
 
       {/* Wide on a phone: the table scrolls sideways instead of widening the page. */}
       <div className="scroll-x">
@@ -230,7 +230,7 @@ export default function ImportPreviewPage() {
                 </td>
                 <td>
                   {r.record.customerName ?? "—"}
-                  {r.existingCustomer && <div className="muted">existing customer</div>}
+                  {r.existingCustomer && <div className="muted">Existing customer</div>}
                   {r.result && (
                     <div>
                       <Link href={`/sites/${r.result.siteId}`}>Open site</Link>
@@ -250,14 +250,14 @@ export default function ImportPreviewPage() {
                   {r.record.planName}
                   {r.record.contractStart && (
                     <div className="muted">
-                      {r.record.contractStart}
-                      {r.record.contractEnd && ` to ${r.record.contractEnd}`}
+                      {fileDate(r.record.contractStart)}
+                      {r.record.contractEnd && ` to ${fileDate(r.record.contractEnd)}`}
                     </div>
                   )}
-                  {r.record.lastInspection && <div className="muted">last inspected {r.record.lastInspection}</div>}
+                  {r.record.lastInspection && <div className="muted">last inspected {fileDate(r.record.lastInspection)}</div>}
                 </td>
                 <td>
-                  <span className={`badge ${STATUS_CLASS[r.status]}`}>{r.status}</span>
+                  <StatusBadge of="importRow" value={r.status} />
                   {r.duplicateOf && (
                     <div>
                       Same as{" "}

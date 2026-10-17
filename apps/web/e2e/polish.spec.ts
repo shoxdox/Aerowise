@@ -13,15 +13,11 @@ async function signIn(page: Page, email: string) {
 
 const sideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-test("B1: a technician's menu has no Filings or Invoices, which their role can't open", async ({ page }) => {
+test("B1: a technician who opens an office page is sent to their route, not shown office links their role can't open", async ({ page }) => {
   await signIn(page, "tech@example.com");
   await page.goto("/schedule");
-  await page.getByRole("button", { name: "Menu" }).click();
-  const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: "Schedule" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Filings" })).toHaveCount(0);
-  await expect(nav.getByRole("link", { name: "Invoices" })).toHaveCount(0);
-  await expect(nav.getByRole("link", { name: "QuickBooks" })).toHaveCount(0);
+  await page.waitForURL("**/tech");
+  await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
 });
 
 test("B2: at 8:30 PM in Texas, a new contract starts today, not tomorrow (UTC)", async ({ page }) => {
@@ -69,10 +65,10 @@ test("second walk: a demo filing reads consistently and fits a phone", async ({ 
   const filings = (await (await page.request.get("/api/filings?view=all&kind=inspection_report")).json()).items as { id: string; jurisdiction: { key: string } | null }[];
   const example = filings.find((f) => f.jurisdiction?.key === "tx-example-county")!;
   await page.goto(`/filings/${example.id}`);
-  // R1: the fictional county's rules don't wait for the signature, and the panel says so.
+  // R1: the fictional county holds for the MP's signature like a real one, so the report it got was signed first.
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "Maintenance provider signature" }) });
-  await expect(panel).toContainText("example county rules don't hold the filing");
-  await expect(panel).not.toContainText("so it cannot be filed");
+  await expect(panel).toContainText("signed by Olivia Owner");
+  await expect(panel).not.toContainText("example county rules don't hold the filing");
   // R2: the manifest hash wraps instead of widening the page.
   await expect(page.getByText(/Manifest SHA-256/).first()).toBeVisible();
   expect(await sideways(page)).toBeLessThanOrEqual(0);

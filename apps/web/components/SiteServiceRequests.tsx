@@ -1,10 +1,13 @@
 "use client";
 
-import { REPORT_CLASSIFICATION_LABELS, REPORT_CLASSIFICATIONS, SERVICE_REQUEST_KINDS, type ServiceRequestDetail } from "@aerowise/domain";
+import { REPORT_CLASSIFICATION_LABELS, REPORT_CLASSIFICATIONS, SERVICE_REQUEST_KINDS, SERVICE_REQUEST_LABELS, type ServiceRequestDetail } from "@aerowise/domain";
 import { useState, type FormEvent } from "react";
 import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError, formValues } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api, formValues } from "@/lib/api";
 import { when } from "@/lib/format";
 
 /**
@@ -18,20 +21,16 @@ import { when } from "@/lib/format";
 export function SiteServiceRequests({ siteId, editable }: { siteId: string; editable: boolean }) {
   const recordLoad = useLoad<{ items: ServiceRequestDetail[] }>(`/sites/${siteId}/service-requests`);
   const { data, reload } = recordLoad;
-  const [error, setError] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
-
-  async function send(path: string, body: object) {
-    setError(null);
-    try {
+  const sending = useSubmit(
+    async (path: string, body: object) => {
       await api(path, { method: "POST", body });
       await reload();
       return true;
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save");
-      return false;
-    }
-  }
+    },
+    { fallback: "Could not save." },
+  );
+  const send = async (path: string, body: object) => (await sending.run(path, body)) === true;
 
   function log(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +47,7 @@ export function SiteServiceRequests({ siteId, editable }: { siteId: string; edit
       <LoadState load={recordLoad} label="site service requests" />
       <div className="row">
         <h2>Complaints and requests</h2>
-        {unreviewed > 0 && <span className="badge warn">{unreviewed} to review for reporting</span>}
+        {unreviewed > 0 && <Badge tone="warning">{unreviewed} to review for reporting</Badge>}
         <span className="spacer" />
         {editable && !logging && (
           <button className="secondary" onClick={() => setLogging(true)}>
@@ -63,7 +62,7 @@ export function SiteServiceRequests({ siteId, editable }: { siteId: string; edit
             <select name="kind" defaultValue="odor">
               {SERVICE_REQUEST_KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {k}
+                  {SERVICE_REQUEST_LABELS[k]}
                 </option>
               ))}
             </select>
@@ -81,29 +80,29 @@ export function SiteServiceRequests({ siteId, editable }: { siteId: string; edit
             <input name="contactPhone" />
           </label>
           <div className="row">
-            <button type="submit">Log it</button>
+            <SubmitButton busy={sending.busy}>Log it</SubmitButton>
             <button type="button" className="link" onClick={() => setLogging(false)}>
               Cancel
             </button>
           </div>
         </form>
       )}
-      {error && <p className="error">{error}</p>}
+      <FormError error={sending.error} />
       {data.items.length === 0 && <p className="muted">None.</p>}
       {data.items.map((r) => (
-        <RequestCard key={r.id} r={r} editable={editable} send={send} />
+        <RequestCard key={r.id} r={r} editable={editable} send={send} busy={sending.busy} />
       ))}
     </section>
   );
 }
 
-function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable: boolean; send: (path: string, body: object) => Promise<boolean> }) {
+function RequestCard({ r, editable, send, busy }: { r: ServiceRequestDetail; editable: boolean; send: (path: string, body: object) => Promise<boolean>; busy: boolean }) {
   const [responding, setResponding] = useState(false);
   const reportable = r.classification === "owner_complaint" || r.classification === "monitoring_notice";
   return (
     <div className="card tight">
       <div className="row">
-        <strong>{r.kind}</strong>
+        <strong>{SERVICE_REQUEST_LABELS[r.kind]}</strong>
         <span className="muted small">
           {when(r.receivedAt)} · {r.source === "portal" ? "customer portal" : "logged by the office"}
         </span>
@@ -115,6 +114,7 @@ function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable:
           <select
             aria-label="Reporting classification"
             value={r.classification ?? ""}
+            disabled={busy}
             onChange={(e) => e.target.value && void send(`/service-requests/${r.id}/classify`, { classification: e.target.value })}
           >
             <option value="" disabled>
@@ -138,7 +138,7 @@ function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable:
           {r.responseAction ? (
             <>
               {r.responseAction} ({when(r.respondedAt)}){" "}
-              {r.responseOutcome === "resolved" ? <span className="badge completed">Resolved</span> : <span className="badge warn">Still outstanding</span>}
+              {r.responseOutcome === "resolved" ? <Badge tone="success">Resolved</Badge> : <Badge tone="warning">Still outstanding</Badge>}
             </>
           ) : (
             <span className="restriction">None recorded. Reports to the authority say it is outstanding until a response is recorded.</span>
@@ -178,7 +178,7 @@ function RequestCard({ r, editable, send }: { r: ServiceRequestDetail; editable:
             </select>
           </label>
           <div className="row">
-            <button type="submit">Save</button>
+            <SubmitButton busy={busy}>Save</SubmitButton>
             <button type="button" className="link" onClick={() => setResponding(false)}>
               Cancel
             </button>

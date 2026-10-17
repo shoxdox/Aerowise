@@ -51,14 +51,14 @@ test("a valid session after signing out, in and swiping back and forward never a
   await page.waitForURL("**/tech");
   await expect(page.locator(".tech-bar")).toContainText("Tess Tech");
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
-  await expect(page.getByText("Sign in again to send your changes")).toHaveCount(0);
+  await expect(page.getByText(/Sign in again/)).toHaveCount(0);
 
   // A change made now sends.
   await page.locator(".stop-card", { hasText: "In progress" }).first().click();
   await page.getByRole("button", { name: /Continue inspection/ }).click();
   await page.getByRole("group", { name: "Aerator" }).getByRole("button", { name: "Fail", exact: true }).click();
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
-  await expect(page.getByText("Sign in again to send your changes")).toHaveCount(0);
+  await expect(page.getByText(/Sign in again/)).toHaveCount(0);
 });
 
 test("a sign-in banner left by a refused send clears when the page is shown again with a valid session, and Try now sends", async ({ page, context }) => {
@@ -72,21 +72,22 @@ test("a sign-in banner left by a refused send clears when the page is shown agai
   let refuse = true;
   await context.route("**/api/inspections/sync", (route) => (refuse ? route.fulfill({ status: 401, body: "{}" }) : route.continue()));
   await page.getByRole("group", { name: "Aerator" }).getByRole("button", { name: "Fail", exact: true }).click();
-  await expect(page.getByText("Sign in again to send your changes")).toBeVisible();
-  await expect(page.getByTestId("sync-status")).toContainText("1 change waiting to send");
+  // One line, with what waits; never beside "All changes sent".
+  await expect(page.getByTestId("sync-status")).toHaveText(/^Sign in again to send 1 change\. It is saved on this phone\./);
+  await expect(page.getByTestId("sync-status")).toHaveCount(1);
   refuse = false;
 
   // Try now checks the sign-in again and sends.
   await page.getByRole("button", { name: "Try now" }).click();
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
-  await expect(page.getByText("Sign in again to send your changes")).toHaveCount(0);
+  await expect(page.getByText(/Sign in again/)).toHaveCount(0);
 
   // Same refusal, then the page is hidden and shown again (a swipe away and back): it clears by itself.
   refuse = true;
   await page.getByRole("group", { name: "Aerator" }).getByRole("button", { name: "Pass", exact: true }).click();
-  await expect(page.getByText("Sign in again to send your changes")).toBeVisible();
+  await expect(page.getByText(/Sign in again to send 1 change/)).toBeVisible();
   refuse = false;
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
   await expect(page.getByTestId("sync-status")).toHaveText("All changes sent");
-  await expect(page.getByText("Sign in again to send your changes")).toHaveCount(0);
+  await expect(page.getByText(/Sign in again/)).toHaveCount(0);
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import type { InspectionValues, LocationStatus, PumpOutInput, SignatureCapture, VolumeUnit } from "@aerowise/domain";
-import { done, openDb, openExisting, requireRegisteredTenant, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
+import { done, openDb, openExisting, requireRegisteredTenant, rewriteExisting, unfail, workDbName, WORK_OUTBOX_STORE, type Gps, type KnownTenant, type StoreSpecs } from "./db";
 
 // Work visits on the phone (SW-2): the technician's work stops, the field record for each, its
 // photos and the customer's signature, and an outbox of changes waiting for the server. All of it
@@ -440,3 +440,36 @@ export function workStoreFor(t: KnownTenant) {
 }
 
 export type WorkStore = ReturnType<typeof workStoreFor>;
+
+/**
+ * After a sign-out with changes still to send: removes from the sign-in's work database everything
+ * its outbox does not need, the work route, forms, trucks and facilities included. A record or load
+ * with nothing queued is already on the server. With an op only a later version knows, every record,
+ * load and photo stays, as that version may need them.
+ */
+export function keepOnlyQueuedWork(t: KnownTenant) {
+  return rewriteExisting(workDbName(t), ["kv", "records", "blobs", WORK_OUTBOX_STORE], async (trx, present) => {
+    const ops = present.has(WORK_OUTBOX_STORE) ? ((await done(trx.objectStore(WORK_OUTBOX_STORE).getAll())) as StoredWorkOp[]) : [];
+    const queued = new Set(ops.map((o) => o.recordClientId).filter((id): id is string => typeof id === "string"));
+    const keepAll = !ops.every(isKnown);
+    if (present.has("kv")) {
+      const kv = trx.objectStore("kv");
+      const loads = ((await done(kv.get(LOADS_KEY))) as LocalLoad[] | undefined) ?? [];
+      if (keepAll) for (const key of ["route", "pumping-field"]) kv.delete(key);
+      else {
+        kv.clear();
+        const waiting = loads.filter((l) => queued.has(l.clientId));
+        if (waiting.length > 0) kv.put(waiting, LOADS_KEY);
+      }
+    }
+    if (keepAll) return;
+    if (present.has("records")) {
+      const records = trx.objectStore("records");
+      for (const r of (await done(records.getAll())) as LocalWork[]) if (!queued.has(r.clientId)) records.delete(r.clientId);
+    }
+    if (present.has("blobs")) {
+      const blobs = trx.objectStore("blobs");
+      for (const b of (await done(blobs.getAll())) as WorkBlob[]) if (!queued.has(b.recordClientId)) blobs.delete(b.clientId);
+    }
+  });
+}

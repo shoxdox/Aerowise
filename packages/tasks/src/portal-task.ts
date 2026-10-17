@@ -3,6 +3,7 @@ import type { EmailTransport } from "@aerowise/compliance";
 import type { Database, DB } from "@aerowise/db";
 import { PORTAL_LINK_DAYS } from "@aerowise/domain";
 import type { Transaction } from "kysely";
+import { fromLine, replyToOf } from "./customer-email.ts";
 
 export const PORTAL_LINK_EMAIL = "portal.link_email";
 
@@ -68,8 +69,9 @@ export async function sendPortalLink(
   await ctx.mail.send({
     organizationId,
     idempotencyKey: `portal-link-${taskId}`,
-    from: `"${who.orgName.replace(/"/g, "")}" <${ctx.from ?? "billing@aerowise.invalid"}>`,
+    from: fromLine(who.orgName, ctx.from ?? "billing@aerowise.invalid"),
     to: p.to,
+    replyTo: replyToOf(who.orgEmail),
     subject: `Your septic service account with ${who.orgName}`,
     text: [
       `Hello ${who.displayName},`,

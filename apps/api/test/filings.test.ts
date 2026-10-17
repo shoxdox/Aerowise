@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { FakeMail } from "./fake-mail.ts";
 import { client, createOrg, createUser, login, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos, type Setup } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 
@@ -32,6 +32,13 @@ async function complete(s: Setup, values: Record<string, unknown> = { ...complet
   return res.json() as { id: string; status: string; validationStatus: string; validationProblems: { key: string }[] };
 }
 
+/** The reports are made, the MP signs (30 TAC 285.7(b)(3): nothing goes out before), and the worker files it. */
+async function signAndFile(s: Setup, inspectionId: string) {
+  await runWorker(ctx);
+  await signAsProvider(s, inspectionId);
+  await runWorker(ctx);
+}
+
 const filingOf = async (s: Setup, view = "all") => {
   const res = await s.api.get(`/filings?view=${view}`);
   expect(res.statusCode).toBe(200);
@@ -52,12 +59,21 @@ describe("filing with the county", () => {
     const opened = await filingOf(s);
     expect(opened).toMatchObject({ status: "pending", deadlineOn: "2026-03-15", nextDueOn: "2026-07-01", jurisdiction: { key: "tx-example-county", rulesetVersion: 2 } });
 
+    // The county's rules send by themselves, but never before the MP signs the report.
+    await runWorker(ctx);
+    expect(await detailOf(s, opened!.id)).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("Waiting for a licensed maintenance provider to sign the authority report (version 1)") });
+    expect(mail.delivered.size).toBe(0);
+    await signAsProvider(s, insp.id);
+    expect((await detailOf(s, opened!.id)).status).toBe("queued");
     await runWorker(ctx);
     const sent = await detailOf(s, opened!.id);
     expect(sent).toMatchObject({ status: "sent", submissionMethod: "email", methodVersion: "email-manual@2", stateMachineVersion: 2, confirmedAt: null, confirmationReference: null });
     expect(sent.proof).toMatchObject({ kind: "email_message_id", reference: expect.stringContaining("@fake>") });
     expect(sent.attempts).toHaveLength(1);
     expect(sent.package).toMatchObject({ destination: "filings@tx-example-county.example", subject: "Aerobic maintenance report, permit not recorded" });
+    // What went out is the signed copy.
+    const signature = await ctx.db.selectFrom("reportSignatures").select("sha256").executeTakeFirstOrThrow();
+    expect(sent.packages[0].documents.find((d: { role: string }) => d.role === "inspection_report").sha256).toBe(signature.sha256);
 
     const message = [...mail.delivered.values()][0]!;
     expect(message.to).toBe("filings@tx-example-county.example");
@@ -86,8 +102,7 @@ describe("filing with the county", () => {
     mail.delivered.clear();
     mail.mode = "lose_response_once";
     const s = await countySetup(ctx);
-    await complete(s);
-    await runWorker(ctx);
+    await signAndFile(s, (await complete(s)).id);
 
     // The provider took the message but the answer never came back.
     const failed = await filingOf(s, "attention");
@@ -115,10 +130,10 @@ describe("filing with the county", () => {
     mail.delivered.clear();
     mail.mode = "fail";
     const s = await countySetup(ctx);
-    await complete(s);
-    for (let i = 0; i < 3; i++) {
-      await runWorker(ctx);
+    await signAndFile(s, (await complete(s)).id);
+    for (let i = 0; i < 2; i++) {
       later(ctx, 3600_000);
+      await runWorker(ctx);
     }
     const f = await detailOf(s, (await filingOf(s))!.id);
     expect(f.status).toBe("failed");
@@ -139,8 +154,7 @@ describe("filing with the county", () => {
   it("falls back to filing by hand, keeping the proof the office records", async () => {
     mail.mode = "fail";
     const s = await countySetup(ctx);
-    await complete(s);
-    await runWorker(ctx);
+    await signAndFile(s, (await complete(s)).id);
     const f = (await filingOf(s))!;
     expect(f.status).toBe("failed");
 
@@ -165,8 +179,7 @@ describe("filing with the county", () => {
     mail.delivered.clear();
     mail.mode = "ok";
     const s = await countySetup(ctx);
-    await complete(s);
-    await runWorker(ctx);
+    await signAndFile(s, (await complete(s)).id);
     const f = (await filingOf(s))!;
     const rejected = await s.api.post(`/filings/${f.id}/reject`, { reason: "Permit number missing" });
     expect(rejected.json()).toMatchObject({ status: "rejected", rejectionReason: "Permit number missing" });
@@ -207,24 +220,56 @@ describe("jurisdiction requirements", () => {
     expect(await filingOf(s)).toBeUndefined();
   });
 
-  it("sends an override that skipped a county requirement to review", async () => {
+  it("never accepts anyway an inspection missing a reading the county requires", async () => {
     const s = await countySetup(ctx);
     const insp = await complete(s, completeValues());
-    await s.api.post(`/inspections/${insp.id}/override`, { reason: "Gauge broken" });
+    const refused = await s.api.post(`/inspections/${insp.id}/override`, { reason: "Gauge broken" });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().message).toContain("Air pressure is required");
+    expect((await s.api.get(`/inspections/${insp.id}`)).json()).toMatchObject({ status: "draft", validationStatus: "invalid" });
+    expect(await filingOf(s)).toBeUndefined();
+  });
+
+  it("takes a reading the county requires as a correction on a filing held for it, then waits for the MP to sign that version", async () => {
+    mail.delivered.clear();
+    mail.mode = "ok";
+    // Done before the site's authority was known, so the phone did not ask for air pressure.
+    const s = await countySetup(ctx, "Org A", { county: null });
+    const insp = await complete(s, completeValues());
+    expect(insp.status).toBe("completed");
     await runWorker(ctx);
-    expect(await filingOf(s, "attention")).toMatchObject({ status: "needs_review", reviewReason: "Air pressure is required" });
+    await s.api.patch(`/sites/${s.site.id}`, { county: "Example County" });
+    const f = (await filingOf(s, "attention"))!;
+    const held = (await s.api.post(`/filings/${f.id}/recheck`, {})).json();
+    expect(held).toMatchObject({ status: "needs_review", reviewReason: "Air pressure is required", answersToCorrect: [{ key: "air_pressure", label: "Air pressure", problem: "missing" }] });
+
+    // The technician read it out by phone; the office enters it as a correction that says so.
+    const corrected = await s.api.post(`/filings/${f.id}/correct`, { reason: "Air pressure 4.2 psi, read by the technician on site and given by phone", amendments: { air_pressure: 4.2 } });
+    expect(corrected.statusCode, corrected.body).toBe(200);
+    expect(corrected.json()).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("(version 2)"), answersToCorrect: [] });
+    expect(corrected.json().reports.map((r: { version: number }) => r.version)).toEqual([2, 1]);
+    expect(mail.delivered.size).toBe(0);
+
+    await signAsProvider(s, insp.id);
+    await runWorker(ctx);
+    const sent = await detailOf(s, f.id);
+    expect(sent.status).toBe("sent");
+    const v2 = await ctx.db.selectFrom("reports").select("id").where("inspectionId", "=", insp.id).where("audience", "=", "authority").where("version", "=", 2).executeTakeFirstOrThrow();
+    expect(sent.packages[0].documents.find((d: { role: string }) => d.role === "inspection_report").sourceId).toBe(v2.id);
   });
 
   it("holds a filing whose technician has no license number until it is fixed", async () => {
     mail.mode = "ok";
     const s = await countySetup(ctx, "Org A", { license: null });
-    await complete(s);
+    const insp = await complete(s);
     await runWorker(ctx);
     const f = (await filingOf(s, "attention"))!;
     expect(f).toMatchObject({ status: "needs_review", reviewReason: "The technician's license number is missing" });
 
     await ctx.db.updateTable("memberships").set({ technicianLicense: "MP-0001" }).where("userId", "=", s.tech.id).execute();
-    expect((await s.api.post(`/filings/${f.id}/recheck`, {})).json().status).toBe("queued");
+    expect((await s.api.post(`/filings/${f.id}/recheck`, {})).json()).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("sign") });
+    await signAsProvider(s, insp.id);
+    expect((await detailOf(s, f.id)).status).toBe("queued");
     await runWorker(ctx);
     expect((await detailOf(s, f.id)).status).toBe("sent");
   });
@@ -233,7 +278,7 @@ describe("jurisdiction requirements", () => {
     mail.mode = "ok";
     const s = await countySetup(ctx, "Org A", { county: "Nowhere County" });
     expect((await s.api.get(`/sites/${s.site.id}/jurisdiction`)).json()).toMatchObject({ source: "none", jurisdiction: null, candidates: [], reviewReason: expect.stringContaining("No reporting authority") });
-    await complete(s, { ...completeValues(), air_pressure: 4 });
+    const insp = await complete(s, { ...completeValues(), air_pressure: 4 });
     await runWorker(ctx);
     const f = (await filingOf(s, "attention"))!;
     expect(f).toMatchObject({ status: "needs_review", jurisdiction: null, deadlineOn: null });
@@ -248,7 +293,8 @@ describe("jurisdiction requirements", () => {
     const set = await s.api.put(`/sites/${s.site.id}/jurisdiction`, { jurisdictionId: example.id, evidenceKind: "permit_record", evidenceReference: "Permit file 2019-114" });
     expect(set.json()).toMatchObject({ source: "override", jurisdiction: { key: "tx-example-county" } });
 
-    expect((await s.api.post(`/filings/${f.id}/recheck`, {})).json()).toMatchObject({ status: "queued", deadlineOn: "2026-03-15" });
+    expect((await s.api.post(`/filings/${f.id}/recheck`, {})).json()).toMatchObject({ status: "needs_review", deadlineOn: "2026-03-15", reviewReason: expect.stringContaining("sign") });
+    await signAsProvider(s, insp.id);
     await runWorker(ctx);
     expect((await detailOf(s, f.id)).status).toBe("sent");
   });
@@ -311,9 +357,9 @@ describe("filing access", () => {
   });
 
   it("lets office staff act on filings, read-only users look, and technicians neither", async () => {
+    mail.mode = "ok";
     const s = await countySetup(ctx);
-    await complete(s);
-    await runWorker(ctx);
+    await signAndFile(s, (await complete(s)).id);
     const f = (await filingOf(s))!;
     const as = async (role: "office" | "read_only" | "technician") => client(ctx.app, await login(ctx.app, (await createUser(ctx.db, s.org.id, role)).email));
     const ro = await as("read_only");

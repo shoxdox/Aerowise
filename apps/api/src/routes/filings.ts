@@ -1,4 +1,5 @@
 import {
+  answersToCorrect,
   confirmFiling,
   correctFiling,
   explainSite,
@@ -522,6 +523,7 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         ? { status: profileStatus(rules), ...profileDates(rules), unresolved: rules.profile?.unresolved ?? [], confirmationMode: rules.confirmation.mode, confirmationNote: rules.confirmation.note ?? null, verified: verifiedWith(rules) }
         : null,
       reports: reports.map((r) => ({ ...r, generatedAt: r.generatedAt.toISOString() })),
+      answersToCorrect: (await answersToCorrect(db, organizationId, filingId)).map((p) => ({ key: p.key, label: p.label, problem: p.problem as "missing" | "invalid", message: p.message })),
     };
   }
 
@@ -621,7 +623,10 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
 
   app.post(
     "/filings/:id/correct",
-    action("Correct a rejected inspection filing: a new authority report version linked to the old one, then a new submission", filingCorrectInput),
+    action(
+      "Correct an inspection filing the authority rejected, or one held for review (a reading the technician gave by phone, say): a new authority report version linked to the old one, then checked again",
+      filingCorrectInput,
+    ),
     async (req) => {
       const { organizationId, userId } = req.requireAuth();
       const body = filingCorrectInput.parse(req.body);
@@ -635,7 +640,13 @@ export const filingRoutes: FastifyPluginAsyncZod<{ db: Database; now: () => Date
         if (err instanceof ReportCorrectionError) throw unprocessable(err.message);
         throw err;
       }
-      await act(req, f.id, "corrected", (trx, locked, a) => resubmitFiling(trx, ctx(), locked, a), { reason: body.reason, amendments: body.amendments, reportId: report.reportId, version: report.version });
+      // A rejected one goes out again as a new submission; one held for review is checked again.
+      await act(req, f.id, "corrected", (trx, locked, a) => (locked.status === "needs_review" ? recheckFiling(trx, locked, a) : resubmitFiling(trx, ctx(), locked, a)), {
+        reason: body.reason,
+        amendments: body.amendments,
+        reportId: report.reportId,
+        version: report.version,
+      });
       return prepared(req, f.id);
     },
   );

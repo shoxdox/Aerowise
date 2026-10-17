@@ -167,6 +167,8 @@ export const workOrderInput = z.object({
   /** Saved as a draft instead of ready to schedule. */
   draft: z.boolean().default(false),
   lines: z.array(workOrderLineChecked).max(100).default([]),
+  /** Chosen by the form once per new order and sent with every retry: the order's id, so it is made once. */
+  creationId: id.optional(),
 });
 export const workOrderFields = z.object({
   title: title.optional(),

@@ -76,6 +76,12 @@ export const inboxException = z.object({
   workOrder: workOrderLink.nullable().optional(),
   /** A held inspection: false when the visit already has another inspection, so it can only be set aside. */
   canAccept: z.boolean().optional(),
+  /** An inspection the technician could not finish: whether the person looking may accept it anyway (the owner or an MP, and only form photos are missing). */
+  canOverride: z.boolean().optional(),
+  /** A visit already on a route (today or later): when and with whom, so the screen says so instead of offering to schedule it. */
+  booking: z.object({ jobId: id, scheduledDate: z.iso.date(), technicianId: id, technicianName: z.string() }).nullable().optional(),
+  /** Items about the same thing share it (one call's dispatch and its reportable response): show them as one card. Group by `site.id` for the site's whole picture. */
+  groupKey: z.string().optional(),
 });
 export type InboxException = z.infer<typeof inboxException>;
 

@@ -29,8 +29,8 @@ afterAll(async () => {
   await syncRulesets(ctx.db);
 });
 
-/** A signed, completed inspection at a site in `county`, with the worker run. */
-async function filed(c: TestContext, county: string, name = "Org A") {
+/** A signed (unless `sign` is false), completed inspection at a site in `county`, with the worker run. */
+async function filed(c: TestContext, county: string, name = "Org A", sign = true) {
   const s = await setup(c, name);
   expect((await s.api.patch(`/sites/${s.site.id}`, { county })).statusCode).toBe(200);
   await c.db.updateTable("memberships").set({ technicianLicense: "MT-0001" }).where("userId", "=", s.tech.id).execute();
@@ -39,7 +39,7 @@ async function filed(c: TestContext, county: string, name = "Org A") {
   await uploadRequiredPhotos(s, p.clientId);
   const done = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } }))).json();
   await runWorker(c);
-  await signAsProvider(s, done.id);
+  if (sign) await signAsProvider(s, done.id);
   await runWorker(c);
   const f = (await s.api.get("/filings?view=all")).json().items[0];
   return { ...s, filing: (await s.api.get(`/filings/${f.id}`)).json() };
@@ -67,6 +67,18 @@ describe("sending", () => {
     const v = await filed(ctx, VERIFIED);
     expect(v.filing).toMatchObject({ status: "sent" });
     expect([...mail.delivered.values()].map((m) => m.to)).toEqual(["filings@tx-fixture-verified.example"]);
+  });
+
+  it("never sends a report on its own before the maintenance provider signs it, even for a verified ruleset", async () => {
+    const v = await filed(ctx, VERIFIED, "Org A", false);
+    expect(v.filing).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("sign the authority report (version 1)") });
+    expect(mail.delivered.size).toBe(0);
+    // Queued anyway (a sweep, a retry): the last check before sending puts it back to wait for the signature.
+    await ctx.db.updateTable("filings").set({ status: "queued" }).where("id", "=", v.filing.id).execute();
+    await ctx.db.insertInto("backgroundTasks").values({ kind: "filings.submit", organizationId: v.org.id, payload: JSON.stringify({ filingId: v.filing.id }), runAt: ctx.now }).execute();
+    await runWorker(ctx);
+    expect(mail.delivered.size).toBe(0);
+    expect((await v.api.get(`/filings/${v.filing.id}`)).json()).toMatchObject({ status: "needs_review", reviewReason: expect.stringContaining("sign") });
   });
 
   it("never happens on its own for a draft, even when the ruleset asks for automatic submission", async () => {

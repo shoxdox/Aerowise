@@ -1,10 +1,10 @@
-import { EmailNeedsReviewError, ProviderTransport, ResendEmailProvider, type EmailMessage } from "@aerowise/compliance";
+import { EmailNeedsReviewError, ProviderTransport, ResendEmailProvider, toEml, type EmailMessage } from "@aerowise/compliance";
 import { drainTasks } from "@aerowise/tasks";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { FakeResend, RESEND_TEST_SECRET } from "./fake-resend.ts";
 import { createOrg, setupTestApp, type TestContext } from "./helpers.ts";
-import { completeValues, payload, setup, uploadRequiredPhotos } from "./inspection-helpers.ts";
+import { completeValues, payload, setup, signAsProvider, uploadRequiredPhotos } from "./inspection-helpers.ts";
 
 const ctx = setupTestApp();
 const HOUR = 3600_000;
@@ -118,6 +118,17 @@ describe("email through Resend", () => {
     await mail.send(message(org.id));
     expect(api.emails[0]).toMatchObject({ to: ["inbox@test.example"], subject: "[for ossf@example.gov] Aerobic maintenance report, permit EX-1" });
   });
+
+  it("sends Reply-To, so a homeowner's reply reaches the provider rather than the sending address", async () => {
+    const org = await createOrg(ctx.db, "Org A");
+    const { api, mail } = resend(ctx);
+    await mail.send(message(org.id, { idempotencyKey: "invoice-1-send-1", replyTo: "office@orga.test" }));
+    await mail.send(message(org.id, { idempotencyKey: "invoice-2-send-1" }));
+    expect(api.emails.map((e) => e.reply_to)).toEqual(["office@orga.test", undefined]);
+    // The development outbox keeps it in the .eml it writes.
+    expect(toEml(message(org.id, { replyTo: "office@orga.test" }), "<m@x>", ctx.now)).toContain("\r\nReply-To: office@orga.test\r\n");
+    expect(toEml(message(org.id), "<m@x>", ctx.now)).not.toContain("Reply-To");
+  });
 });
 
 describe("Resend webhooks", () => {
@@ -221,7 +232,9 @@ describe("Resend webhooks", () => {
     const p = payload(s);
     await s.techApi.put("/inspections/sync", p);
     await uploadRequiredPhotos(s, p.clientId);
-    await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } }));
+    const done = (await s.techApi.put("/inspections/sync", payload(s, { status: "completed", completedAt: "2026-03-01T15:40:00Z", values: { ...completeValues(), air_pressure: 4.5 } }))).json();
+    await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now, mail });
+    await signAsProvider(s, done.id);
     await drainTasks({ db: ctx.db, store: ctx.store, now: () => ctx.now, mail });
     const filing = (await s.api.get("/filings?view=all")).json().items[0];
     expect(filing.status).toBe("sent");

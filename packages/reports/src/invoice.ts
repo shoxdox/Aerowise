@@ -12,11 +12,26 @@ const day = (iso: string) => {
   return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 };
 
+/** Where an invoice stands once money has come in, for a copy drawn after issue. */
+export interface InvoiceAccount {
+  /** Received, net of refunds. */
+  paidCents: number;
+  /** Bank payments still clearing. */
+  pendingCents: number;
+  /** Refunded as a credit: no longer owed. */
+  creditedCents: number;
+  amountDueCents: number;
+  /** The day it was paid in full, in the company's time zone. */
+  paidOn: string | null;
+}
+
 /**
  * Draws an invoice PDF from its snapshot. The creation date is the issue date, so the
- * same snapshot always draws the same document.
+ * same snapshot always draws the same document. `payUrl` is given only when the customer can
+ * pay online. With `account`, the copy shows what has been paid and what is still due (a
+ * paid invoice reads as paid, with its date), instead of the amount due when it was issued.
  */
-export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null } = {}): Promise<Buffer> {
+export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null; account?: InvoiceAccount } = {}): Promise<Buffer> {
   const doc = new PDFDocument({
     ...pdfkitFont(),
     size: "LETTER",
@@ -38,8 +53,11 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
 
   doc.fillColor(ACCENT).font(FONTS.bold).fontSize(18).text(s.provider.name, left, 54, { width: width * 0.6 });
   doc.fillColor(MUTED).font(FONTS.regular).fontSize(9).text([s.provider.address, s.provider.phone, s.provider.email].filter(Boolean).join("\n"), { width: width * 0.6 });
+  const a = opts.account;
+  const paidInFull = !!a && a.amountDueCents === 0 && a.pendingCents === 0 && a.paidCents > 0 && a.paidCents + a.creditedCents >= s.totalCents;
   doc.fillColor("#000").font(FONTS.bold).fontSize(20).text("Invoice", left, 54, { width, align: "right" });
   doc.font(FONTS.regular).fontSize(10).fillColor(MUTED).text(s.number, { width, align: "right" });
+  if (paidInFull) doc.font(FONTS.bold).fontSize(12).fillColor(ACCENT).text("PAID", { width, align: "right" });
   doc.moveDown(2.2);
 
   const top = Math.max(doc.y, 150);
@@ -52,11 +70,20 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
     doc.font(FONTS.regular).fontSize(10).fillColor("#000").text(s.serviceAddress, { width: width * 0.45 });
     leftBottom = doc.y;
   }
-  const meta: [string, string][] = [
-    ["Invoice date", day(s.issuedOn)],
-    ["Due date", day(s.dueOn)],
-    ["Amount due", money(s.totalCents)],
-  ];
+  const meta: [string, string][] = a
+    ? [
+        ["Invoice date", day(s.issuedOn)],
+        paidInFull && a.paidOn ? ["Paid on", day(a.paidOn)] : ["Due date", day(s.dueOn)],
+        ...(a.paidCents > 0 ? [["Paid", money(a.paidCents)] as [string, string]] : []),
+        ...(a.pendingCents > 0 ? [["Processing", money(a.pendingCents)] as [string, string]] : []),
+        ...(a.creditedCents > 0 ? [["Credited", money(a.creditedCents)] as [string, string]] : []),
+        ["Amount due", money(a.amountDueCents)],
+      ]
+    : [
+        ["Invoice date", day(s.issuedOn)],
+        ["Due date", day(s.dueOn)],
+        ["Amount due", money(s.totalCents)],
+      ];
   let y = top;
   for (const [label, value] of meta) {
     doc.font(FONTS.regular).fontSize(9).fillColor(MUTED).text(label, left + width * 0.55, y, { width: width * 0.2 });
@@ -117,17 +144,34 @@ export function renderInvoice(s: InvoiceSnapshot, opts: { payUrl?: string | null
   }
 
   doc.moveDown(1.5);
-  doc.font(FONTS.bold).fontSize(10).fillColor(ACCENT).text("How to pay", left, doc.y);
-  doc
-    .font(FONTS.regular)
-    .fontSize(10)
-    .fillColor("#000")
-    .text(
-      opts.payUrl
-        ? `Pay online by card or bank transfer at ${opts.payUrl}. You can also pay by check made out to ${s.provider.name}; please write ${s.number} on it.`
-        : `Please pay by check made out to ${s.provider.name} and write ${s.number} on it.`,
-      { width },
-    );
+  if (a && a.amountDueCents === 0) {
+    doc.font(FONTS.bold).fontSize(10).fillColor(ACCENT).text("Payment", left, doc.y);
+    doc
+      .font(FONTS.regular)
+      .fontSize(10)
+      .fillColor("#000")
+      .text(
+        paidInFull
+          ? `Paid in full${a.paidOn ? ` on ${day(a.paidOn)}` : ""}. Thank you.`
+          : a.pendingCents > 0
+            ? `Your payment of ${money(a.pendingCents)} is clearing. Nothing more is due.`
+            : "Nothing is due on this invoice.",
+        { width },
+      );
+  } else {
+    // The pay link only when the provider can take payment online; otherwise a check.
+    doc.font(FONTS.bold).fontSize(10).fillColor(ACCENT).text("How to pay", left, doc.y);
+    doc
+      .font(FONTS.regular)
+      .fontSize(10)
+      .fillColor("#000")
+      .text(
+        opts.payUrl
+          ? `Pay online by card or bank transfer at ${opts.payUrl}. You can also pay by check made out to ${s.provider.name}; please write ${s.number} on it.`
+          : `Please pay by check made out to ${s.provider.name} and write ${s.number} on it.${s.provider.phone ? ` Questions? Call ${s.provider.phone}.` : ""}`,
+        { width },
+      );
+  }
 
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {

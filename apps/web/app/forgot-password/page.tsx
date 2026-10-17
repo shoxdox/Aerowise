@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { api, ApiError, formValues } from "@/lib/api";
 
@@ -16,7 +17,13 @@ export default function ForgotPasswordPage() {
       await api("/auth/password-reset", { method: "POST", body: { email: formValues(event.currentTarget).email ?? "" } });
       setSent(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not send the email");
+      setError(
+        !(err instanceof ApiError)
+          ? "Couldn't reach Aerowise. Check your connection and try again."
+          : err.status === 429
+            ? "Too many requests for this email. Wait a minute, then try again."
+            : err.message,
+      );
     } finally {
       setBusy(false);
     }
@@ -25,6 +32,10 @@ export default function ForgotPasswordPage() {
   return (
     <main className="login">
       <form className="card stack" onSubmit={onSubmit}>
+        <Link href="/" className="brand">
+          <img src="/icons/icon.svg" alt="" width={32} height={32} />
+          Aerowise
+        </Link>
         <h1>Reset your password</h1>
         {sent ? (
           <p role="status">If that email has an Aerowise login, a reset link is on its way. It works for an hour.</p>
@@ -35,7 +46,11 @@ export default function ForgotPasswordPage() {
               Email
               <input name="email" type="email" autoComplete="username" required autoFocus />
             </label>
-            {error && <p className="error">{error}</p>}
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
             <button type="submit" disabled={busy}>
               {busy ? "Sending…" : "Send reset link"}
             </button>

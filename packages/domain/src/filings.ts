@@ -514,7 +514,9 @@ export const profileStatus = (rules: RulesetRules): ProfileStatus => rules.profi
 /**
  * Automatic submission only for verified profiles, and for fictional ones (which only
  * ever exist outside production and send to `.example` addresses). A draft profile's
- * filings wait for a person to release them, whatever `autoSubmit` says.
+ * filings wait for a person to release them, whatever `autoSubmit` says. Either way an
+ * inspection report goes on its own only once the maintenance provider signed the version it
+ * sends (the compliance engine checks the signature; 30 TAC 285.7(b)(3)).
  */
 export const mayAutoSubmit = (rules: RulesetRules) => rules.filing.autoSubmit && (profileStatus(rules) === "fictional" || verifiedWith(rules) !== null);
 
@@ -862,6 +864,12 @@ export const filingDetail = filingListItem.extend({
   profile: z.object({ status: z.enum(PROFILE_STATUSES), sourcesCheckedOn: isoDate.nullable(), requirementEffective: z.object({ date: isoDate.nullable(), basis: z.string() }).nullable(), unresolved: z.array(z.string()), confirmationMode: z.enum(["manual_reference", "none_published"]), confirmationNote: z.string().nullable(), verified: verificationBadge.nullable() }).nullable(),
   /** Report versions for an inspection filing, newest first; corrections link to what they replace. */
   reports: z.array(z.object({ id, version: z.number().int(), sha256: z.string(), supersedesReportId: id.nullable(), correctionReason: z.string().nullable(), generatedAt: z.iso.datetime({ offset: true }) })),
+  /**
+   * An inspection filing held for review because readings are missing or out of range: what to
+   * enter, by template field (`POST /filings/:id/correct` with those keys as `amendments`). The
+   * corrected version then needs the MP's signature. Empty when nothing can be corrected that way.
+   */
+  answersToCorrect: z.array(z.object({ key: z.string(), label: z.string(), problem: z.enum(["missing", "invalid"]), message: z.string() })).default([]),
 });
 export type FilingDetail = z.infer<typeof filingDetail>;
 

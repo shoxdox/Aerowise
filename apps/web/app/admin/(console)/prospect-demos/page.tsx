@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { LoadState } from "@/components/LoadState";
+import { Badge } from "@/components/StatusBadge";
+import { FormError, SubmitButton } from "@/components/SubmitButton";
 import { useLoad } from "@/components/useLoad";
-import { api, ApiError } from "@/lib/api";
+import { useSubmit } from "@/components/useSubmit";
+import { api } from "@/lib/api";
+import { when } from "@/lib/format";
 
 interface ProspectDemo {
   id: string;
@@ -15,37 +21,32 @@ interface ProspectDemo {
   activeLinks: number;
 }
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" });
-
 /**
  * Personalized prospect demos (W10.6): a fictional demo company under a prospect's name and
  * counties, with a sign-in link you copy and send yourself. Aerowise sends nothing.
  */
 export default function ProspectDemosPage() {
-  const { data, error, reload } = useLoad<{ items: ProspectDemo[] }>("/admin/prospect-demos");
+  const demos = useLoad<{ items: ProspectDemo[] }>("/admin/prospect-demos");
+  const { data, reload } = demos;
   const [prospect, setProspect] = useState("");
   const [counties, setCounties] = useState("");
   const [days, setDays] = useState(14);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [link, setLink] = useState<{ id: string; url: string } | null>(null);
   const [converted, setConverted] = useState<string | null>(null);
 
-  async function act<T>(fn: () => Promise<T>): Promise<T | undefined> {
-    setActionError(null);
-    setBusy(true);
-    try {
+  // One change at a time: a second click while one is on its way does nothing.
+  const acting = useSubmit(
+    async (fn: () => Promise<unknown>) => {
       const out = await fn();
       await reload();
       return out;
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Something went wrong");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { fallback: "Something went wrong. Try again." },
+  );
+  const act = async <T,>(fn: () => Promise<T>) => (await acting.run(fn)) as T | undefined;
+  const busy = acting.busy;
 
-  async function create(e: React.FormEvent) {
+  async function create(e: FormEvent) {
     e.preventDefault();
     const serviceCounties = counties.split(",").map((c) => c.trim()).filter(Boolean);
     const out = await act(() => api<{ demo: ProspectDemo; link: { url: string } }>("/admin/prospect-demos", { method: "POST", body: { prospect, serviceCounties, days } }));
@@ -77,12 +78,13 @@ export default function ProspectDemosPage() {
           <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Number(e.target.value))} />
         </label>
         <div className="row">
-          <button type="submit" className="primary" disabled={busy}>
-            {busy ? "Working…" : "Make the demo"}
-          </button>
+          <SubmitButton busy={busy} busyLabel="Working…">
+            Make the demo
+          </SubmitButton>
         </div>
       </form>
-      {(error || actionError) && <p className="error">{error ?? actionError}</p>}
+      <LoadState load={demos} label="prospect demos" quiet />
+      <FormError error={acting.error} />
       {link && (
         <p className="card" role="status">
           Sign-in link (shown once; it works until the demo ends): <code data-testid="prospect-demo-link">{link.url}</code>
@@ -98,7 +100,7 @@ export default function ProspectDemosPage() {
         <article key={d.id} className={`card stack${d.state === "ended" ? " muted" : ""}`} aria-label={`Demo for ${d.prospect}`}>
           <div className="row">
             <strong>{d.prospect}</strong>
-            {d.state === "live" ? <span className="badge ok">Live</span> : <span className="badge inactive">Ended</span>}
+            {d.state === "live" ? <Badge tone="success">Live</Badge> : <Badge tone="muted">Ended</Badge>}
             <span className="spacer" />
             <span className="muted small">
               Made {when(d.createdAt)}, {d.state === "live" ? "ends" : "ended"} {when(d.endsAt)}
@@ -117,26 +119,28 @@ export default function ProspectDemosPage() {
               >
                 New link (revokes the old one)
               </button>
-              <button
+              <ConfirmButton
                 className="secondary"
-                disabled={busy}
-                onClick={async () => {
-                  if (!window.confirm(`Start a real trial company for ${d.prospect}? The demo ends and nothing from it is kept.`)) return;
+                danger={false}
+                question={`Start a real trial company for ${d.prospect}? The demo ends and nothing from it is kept.`}
+                confirmLabel="Start their trial"
+                busy={busy}
+                onConfirm={async () => {
                   const out = await act(() => api<{ organizationId: string }>(`/admin/prospect-demos/${d.id}/convert`, { method: "POST", body: {} }));
                   if (out) setConverted(out.organizationId);
                 }}
               >
                 Start their trial
-              </button>
-              <button
-                className="link"
-                disabled={busy}
-                onClick={() => {
-                  if (window.confirm(`End the demo for ${d.prospect} now? Its link stops working and its data is emptied.`)) void act(() => api(`/admin/prospect-demos/${d.id}/end`, { method: "POST", body: {} }));
-                }}
+              </ConfirmButton>
+              <ConfirmButton
+                className="link danger"
+                question={`End the demo for ${d.prospect} now? Its link stops working and its data is emptied.`}
+                confirmLabel="End now"
+                busy={busy}
+                onConfirm={() => act(() => api(`/admin/prospect-demos/${d.id}/end`, { method: "POST", body: {} }))}
               >
                 End now
-              </button>
+              </ConfirmButton>
             </div>
           )}
         </article>

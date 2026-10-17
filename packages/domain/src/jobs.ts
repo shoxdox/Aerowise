@@ -67,7 +67,19 @@ export const stop = z.object({
   notes: z.string().nullable(),
   /** When the technician told the customer they were on the way. */
   onTheWayAt: z.iso.datetime({ offset: true }).nullable(),
-  obligation: z.object({ id, sequence: z.number().int(), dueOn: date, windowEnd: date }).nullable(),
+  obligation: z
+    .object({
+      id,
+      sequence: z.number().int(),
+      dueOn: date,
+      windowEnd: date,
+      /**
+       * The day this visit must be done by: its due date, or the authority's next due date from
+       * the site's latest report when that comes first. Absent on stops a phone saved before it was sent.
+       */
+      mustBeDoneBy: date.optional(),
+    })
+    .nullable(),
   site: z.object({
     id,
     addressLine1: z.string(),

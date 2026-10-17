@@ -32,6 +32,9 @@ describe("full data export", () => {
     const plan = (await a.api.post("/plans", { name: "Annual", termMonths: 12, visitsPerTerm: 3, priceCents: 27500 })).json();
     await a.api.post(`/sites/${a.site.id}/contracts`, { planId: plan.id, startOn: "2026-01-01" });
     await a.api.post("/customers", { displayName: "=HYPERLINK(\"http://x\")" });
+    // Online payment set up, so the issued PDF prints its pay link (the export must leave it out).
+    expect((await a.api.post("/billing/stripe/connect", {})).statusCode).toBe(200);
+    await a.api.post("/billing/stripe/refresh", {});
     const invoice = (await a.api.post("/invoices", { customerId: a.customer.id, lines: [{ description: "Pump out, \"big\" tank", unitPriceCents: 30000 }] })).json();
     expect((await a.api.post(`/invoices/${invoice.id}/issue`, { send: false })).statusCode).toBe(200);
     // The PDF first: under the frozen clock its task and the export's share a run time, so either could run first.

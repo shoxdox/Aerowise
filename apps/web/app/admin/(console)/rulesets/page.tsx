@@ -4,7 +4,7 @@ import type { RulesetCoverage, RulesetCoverageItem } from "@aerowise/domain";
 import Link from "next/link";
 import { VerifiedBadge } from "@/components/FilingBadges";
 import { useLoad } from "@/components/useLoad";
-import { day } from "@/lib/format";
+import { day, plural } from "@/lib/format";
 
 function Status({ item }: { item: RulesetCoverageItem }) {
   if (item.verified) return <VerifiedBadge verified={item.verified} />;
@@ -56,7 +56,7 @@ export default function RulesetCoveragePage() {
                   <Status item={i} />
                   {!i.verified && i.profileStatus !== "fictional" && <div className="muted small">{i.confirmation}</div>}
                 </td>
-                <td>{i.sourcesCheckedOn ? `${day(i.sourcesCheckedOn)} (${i.sourceCount} source${i.sourceCount === 1 ? "" : "s"})` : <span className="muted">—</span>}</td>
+                <td>{i.sourcesCheckedOn ? `${day(i.sourcesCheckedOn)} (${plural(i.sourceCount, "source")})` : <span className="muted">—</span>}</td>
                 <td>
                   {i.unresolved.length === 0 ? (
                     <span className="muted">None</span>
@@ -72,7 +72,7 @@ export default function RulesetCoveragePage() {
                   )}
                 </td>
                 <td>
-                  {i.sites} in {i.organizations} organization{i.organizations === 1 ? "" : "s"}
+                  {i.sites} in {plural(i.organizations, "organization")}
                   {i.sitesToDecide > 0 && <div className="muted small">{i.sitesToDecide} more to decide</div>}
                 </td>
               </tr>

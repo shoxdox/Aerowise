@@ -2,15 +2,13 @@
 
 import { invoiceTotals, validateInspection, visibleFields, type InspectionValues, type PublicRenewal, type ValidationProblem } from "@aerowise/domain";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Fragment, Suspense, useEffect, useState, type FormEvent } from "react";
 import { SignaturePad } from "@/components/forms/SignaturePad";
 import { TemplateSections } from "@/components/forms/TemplateFields";
 import { usePublicRead, useConfirmationPolling } from "@/components/public/usePublicRead";
 import { PublicLinkRecovery } from "@/components/public/PublicLinkRecovery";
 import { api, ApiError, formValues } from "@/lib/api";
 import { day, money, when } from "@/lib/format";
-
-const FREQUENCY: Record<PublicRenewal["terms"]["billingFrequency"], string> = { annual: "once a year", semiannual: "twice a year", quarterly: "quarterly", monthly: "monthly" };
 
 function Shell({ children, testMode }: { children: React.ReactNode; testMode?: boolean }) {
   return (
@@ -65,7 +63,9 @@ function RenewPage() {
     0,
     r.taxRateBps,
   );
-  const signable = r.status === "upcoming" || r.status === "sent" || r.status === "viewed";
+  // An offer whose plan was renewed another way (or whose contract is ending) is not signed.
+  const signable = (r.status === "upcoming" || r.status === "sent" || r.status === "viewed") && !r.unavailable;
+  const alreadyRenewed = r.status === "superseded" || r.unavailable === "renewed";
 
   async function sign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -156,7 +156,32 @@ function RenewPage() {
                 Thank you, {r.signed?.signerName ?? r.customerName}. Your {r.terms.planName} plan continues from {day(r.newTermStartsOn ?? r.terms.startOn)} to {day(r.terms.endOn)}. We will be in touch
                 to schedule your visits.
               </p>
-              {r.pay && <p>Your invoice for {money(r.pay.amountDueCents)} is due on its terms. You can pay it any time from the invoice email.</p>}
+              {r.pay && (
+                <>
+                  <p>
+                    Your invoice for {money(r.pay.amountDueCents)} is due {r.pay.dueOn ? `by ${day(r.pay.dueOn)}` : "on its terms"}.
+                    {r.payment === "invoice" && ` We emailed it to ${r.contact.email ?? "you"}.`}
+                  </p>
+                  {r.pay.canPayOnline && (
+                    <button className="big" onClick={() => void pay()} disabled={busy}>
+                      Pay {money(r.pay.amountDueCents)} now
+                    </button>
+                  )}
+                </>
+              )}
+            </>
+          ) : alreadyRenewed ? (
+            <>
+              <h1>Your plan was already renewed</h1>
+              <p>
+                Nothing is due here. {r.provider.name} has your next term on file{r.newTermStartsOn ? `, starting ${day(r.newTermStartsOn)}` : ""}.
+              </p>
+              {contact && <p>Questions? Contact {r.provider.name} at {contact}.</p>}
+            </>
+          ) : r.unavailable === "ended" ? (
+            <>
+              <h1>This offer has ended</h1>
+              <p>Contact {r.provider.name}{contact && ` at ${contact}`} about your plan.</p>
             </>
           ) : r.paymentConfirmation?.latestPaymentFailed ? (
             <>
@@ -233,35 +258,21 @@ function RenewPage() {
         {header}
         <h1>Renew your maintenance plan</h1>
         <p>
-          Your {r.currentTerm.planName} plan ends on {day(r.currentTerm.endOn)}.{" "}
-          {r.terms.serviceType === "aerobic_inspection"
-            ? "Renewing schedules aerobic inspections and prepares reports for your provider to review and submit through the applicable authority workflow."
-            : // A pumping or maintenance only plan (SW-9): no inspection or county report is promised.
-              `Renewing keeps your ${r.terms.serviceType === "pumping" ? "pumping" : "maintenance"} visits on schedule.`}
+          {/* No inspection or county report is promised on a pumping or maintenance plan (SW-9). */}
+          Your {r.currentTerm.planName} plan ends on {day(r.currentTerm.endOn)}. {r.pitch}
         </p>
+        {/* The rows the signed agreement prints, word for word, including whether it renews automatically. */}
         <dl className="details">
-          <dt>New term</dt>
-          <dd>
-            {day(r.terms.startOn)} to {day(r.terms.endOn)}
-          </dd>
-          <dt>Visits</dt>
-          {r.cycles.length > 0 ? (
-            // Each kind of visit with its own count this term (SW-9), never one total.
-            <dd data-testid="renewal-visits">
-              {r.cycles.map((c) => (
-                <div key={c}>{c}</div>
-              ))}
-            </dd>
-          ) : (
-            <dd>
-              {r.terms.visitsPerTerm} maintenance visit{r.terms.visitsPerTerm === 1 ? "" : "s"}
-            </dd>
-          )}
-          <dt>Price</dt>
-          <dd>
-            {money(r.terms.priceCents)} for the term
-            {r.installments > 1 ? `, paid ${FREQUENCY[r.terms.billingFrequency]} (${money(r.firstPaymentCents)} each)` : ""}
-          </dd>
+          {r.termRows.map((row) => (
+            <Fragment key={row.key}>
+              <dt>{row.label}</dt>
+              <dd data-testid={`renewal-${row.key}`}>
+                {row.value.split("\n").map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </dd>
+            </Fragment>
+          ))}
         </dl>
       </div>
 
